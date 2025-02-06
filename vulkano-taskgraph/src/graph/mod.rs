@@ -5,7 +5,8 @@ pub use self::{
     execute::{ExecuteError, ResourceMap},
 };
 use crate::{
-    resource::{self, AccessType, Flight, HostAccessType, ImageLayoutType},
+    linear_map::LinearMap,
+    resource::{self, AccessTypes, Flight, HostAccessType, ImageLayoutType},
     Id, InvalidSlotError, Object, ObjectType, QueueFamilyType, Task,
 };
 use ash::vk;
@@ -18,7 +19,12 @@ use std::{
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo},
     device::{Device, DeviceOwned, Queue},
-    image::{Image, ImageCreateInfo, ImageLayout},
+    format::Format,
+    image::{
+        sampler::ComponentMapping, Image, ImageAspects, ImageCreateInfo, ImageLayout, ImageUsage,
+        SampleCount,
+    },
+    render_pass::{Framebuffer, RenderPass, Subpass},
     swapchain::{Swapchain, SwapchainCreateInfo},
     sync::{semaphore::Semaphore, AccessFlags, PipelineStages},
 };
@@ -58,11 +64,18 @@ enum NodeInner<W: ?Sized> {
 type NodeIndex = u32;
 
 pub(crate) struct Resources {
-    inner: SlotMap<()>,
+    inner: SlotMap<ResourceInfo>,
     physical_resources: Arc<resource::Resources>,
     physical_map: HashMap<Id, Id>,
     host_reads: Vec<Id<Buffer>>,
     host_writes: Vec<Id<Buffer>>,
+    framebuffers: SlotMap<()>,
+}
+
+struct ResourceInfo {
+    format: Format,
+    samples: SampleCount,
+    usage: ImageUsage,
 }
 
 impl<W: ?Sized> TaskGraph<W> {
@@ -86,6 +99,8 @@ impl<W: ?Sized> TaskGraph<W> {
                 physical_map: HashMap::default(),
                 host_reads: Vec::new(),
                 host_writes: Vec::new(),
+                // FIXME:
+                framebuffers: SlotMap::new(256),
             },
         }
     }
@@ -100,7 +115,7 @@ impl<W: ?Sized> TaskGraph<W> {
         name: impl Into<Cow<'static, str>>,
         queue_family_type: QueueFamilyType,
         task: impl Task<World = W>,
-    ) -> TaskNodeBuilder<'_, W> {
+    ) -> TaskNodeBuilder<'_> {
         let id = self.nodes.add_node(
             name.into(),
             NodeInner::Task(TaskNode::new(queue_family_type, task)),
@@ -111,7 +126,8 @@ impl<W: ?Sized> TaskGraph<W> {
 
         TaskNodeBuilder {
             id,
-            task_node,
+            accesses: &mut task_node.accesses,
+            attachments: &mut task_node.attachments,
             resources: &mut self.resources,
         }
     }
@@ -210,13 +226,19 @@ impl<W: ?Sized> TaskGraph<W> {
         self.resources.add_swapchain(create_info)
     }
 
-    /// Adds a host buffer access to this task graph.
+    /// Adds a host buffer access to the task graph.
     ///
     /// # Panics
     ///
     /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
     pub fn add_host_buffer_access(&mut self, id: Id<Buffer>, access_type: HostAccessType) {
         self.resources.add_host_buffer_access(id, access_type)
+    }
+
+    /// Adds a [virtual framebuffer] to the task graph.
+    #[must_use]
+    pub fn add_framebuffer(&mut self) -> Id<Framebuffer> {
+        self.resources.add_framebuffer()
     }
 }
 
@@ -366,7 +388,13 @@ impl Resources {
             tag |= Id::EXCLUSIVE_BIT;
         }
 
-        let slot = self.inner.insert_with_tag_mut((), tag);
+        let resource_info = ResourceInfo {
+            format: Format::UNDEFINED,
+            samples: SampleCount::Sample1,
+            usage: ImageUsage::empty(),
+        };
+
+        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
 
         unsafe { Id::new(slot) }
     }
@@ -378,7 +406,13 @@ impl Resources {
             tag |= Id::EXCLUSIVE_BIT;
         }
 
-        let slot = self.inner.insert_with_tag_mut((), tag);
+        let resource_info = ResourceInfo {
+            format: create_info.format,
+            samples: create_info.samples,
+            usage: create_info.usage,
+        };
+
+        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
 
         unsafe { Id::new(slot) }
     }
@@ -390,7 +424,13 @@ impl Resources {
             tag |= Id::EXCLUSIVE_BIT;
         }
 
-        let slot = self.inner.insert_with_tag_mut((), tag);
+        let resource_info = ResourceInfo {
+            format: create_info.image_format,
+            samples: SampleCount::Sample1,
+            usage: create_info.image_usage,
+        };
+
+        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
 
         unsafe { Id::new(slot) }
     }
@@ -464,6 +504,13 @@ impl Resources {
         }
     }
 
+    fn add_framebuffer(&mut self) -> Id<Framebuffer> {
+        let tag = Framebuffer::TAG | Id::VIRTUAL_BIT;
+        let slot = self.framebuffers.insert_with_tag_mut((), tag);
+
+        unsafe { Id::new(slot) }
+    }
+
     fn capacity(&self) -> u32 {
         self.inner.capacity()
     }
@@ -472,12 +519,16 @@ impl Resources {
         self.inner.len()
     }
 
-    fn get(&self, id: Id) -> Result<&(), InvalidSlotError> {
+    pub(crate) fn physical_map(&self) -> &HashMap<Id, Id> {
+        &self.physical_map
+    }
+
+    fn get(&self, id: Id) -> Result<&ResourceInfo, InvalidSlotError> {
         // SAFETY: We never modify the map concurrently.
         unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
     }
 
-    fn iter(&self) -> impl Iterator<Item = (Id, &())> {
+    fn iter(&self) -> impl Iterator<Item = (Id, &ResourceInfo)> {
         // SAFETY: We never modify the map concurrently.
         unsafe { self.inner.iter_unprotected() }.map(|(slot, v)| (unsafe { Id::new(slot) }, v))
     }
@@ -501,6 +552,10 @@ impl Resources {
         };
 
         host_accesses.contains(&id)
+    }
+
+    fn framebuffer_mut(&mut self, id: Id<Framebuffer>) -> Option<&mut ()> {
+        self.framebuffers.get_mut(id.slot)
     }
 }
 
@@ -544,14 +599,16 @@ impl fmt::Debug for NodeId {
 /// accesses.
 pub struct TaskNode<W: ?Sized> {
     accesses: ResourceAccesses,
+    attachments: Option<Attachments>,
     queue_family_type: QueueFamilyType,
     queue_family_index: u32,
     dependency_level_index: u32,
+    subpass: Option<Subpass>,
     task: Box<dyn Task<World = W>>,
 }
 
 pub(crate) struct ResourceAccesses {
-    inner: Vec<(Id, ResourceAccess)>,
+    inner: LinearMap<Id, ResourceAccess>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -562,13 +619,22 @@ struct ResourceAccess {
     queue_family_index: u32,
 }
 
+pub(crate) struct Attachments {
+    framebuffer_id: Id<Framebuffer>,
+    input_attachments: LinearMap<Id, AttachmentInfo<'static>>,
+    color_attachments: LinearMap<Id, AttachmentInfo<'static>>,
+    depth_stencil_attachment: Option<(Id, AttachmentInfo<'static>)>,
+}
+
 impl<W: ?Sized> TaskNode<W> {
     fn new(queue_family_type: QueueFamilyType, task: impl Task<World = W>) -> Self {
         TaskNode {
             accesses: ResourceAccesses::new(),
+            attachments: None,
             queue_family_type,
             queue_family_index: 0,
             dependency_level_index: 0,
+            subpass: None,
             task: Box::new(task),
         }
     }
@@ -593,11 +659,43 @@ impl<W: ?Sized> TaskNode<W> {
     pub fn task_mut(&mut self) -> &mut dyn Task<World = W> {
         &mut *self.task
     }
+
+    /// Returns the subpass that the task node is part of, if any.
+    #[inline]
+    pub fn subpass(&self) -> Option<&Subpass> {
+        self.subpass.as_ref()
+    }
 }
 
 impl ResourceAccesses {
-    pub(crate) const fn new() -> Self {
-        ResourceAccesses { inner: Vec::new() }
+    const fn new() -> Self {
+        ResourceAccesses {
+            inner: LinearMap::new(),
+        }
+    }
+
+    fn get(&self, id: Id) -> Option<&ResourceAccess> {
+        self.inner.get(&id)
+    }
+
+    fn buffer_mut(
+        &mut self,
+        resources: &mut Resources,
+        id: Id<Buffer>,
+    ) -> (Id<Buffer>, Option<&mut ResourceAccess>) {
+        let (id, access) = self.get_mut(resources, id.erase()).expect("invalid buffer");
+
+        (unsafe { id.parametrize() }, access)
+    }
+
+    fn image_mut(
+        &mut self,
+        resources: &mut Resources,
+        id: Id<Image>,
+    ) -> (Id<Image>, Option<&mut ResourceAccess>) {
+        let (id, access) = self.get_mut(resources, id.erase()).expect("invalid image");
+
+        (unsafe { id.parametrize() }, access)
     }
 
     fn get_mut(
@@ -624,9 +722,7 @@ impl ResourceAccesses {
             };
         }
 
-        let access = self
-            .iter_mut()
-            .find_map(|(x, access)| (x == id).then_some(access));
+        let access = self.inner.get_mut(&id);
 
         Ok((id, access))
     }
@@ -634,94 +730,420 @@ impl ResourceAccesses {
     fn iter(&self) -> impl Iterator<Item = (Id, &ResourceAccess)> {
         self.inner.iter().map(|(id, access)| (*id, access))
     }
+}
 
-    fn iter_mut(&mut self) -> impl Iterator<Item = (Id, &mut ResourceAccess)> {
-        self.inner.iter_mut().map(|(id, access)| (*id, access))
+impl Attachments {
+    fn keys(&self) -> impl Iterator<Item = &Id> {
+        self.input_attachments
+            .keys()
+            .chain(self.color_attachments.keys())
+            .chain(self.depth_stencil_attachment.iter().map(|(id, _)| id))
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&Id, &AttachmentInfo<'static>)> {
+        self.input_attachments
+            .iter()
+            .chain(self.color_attachments.iter())
+            .chain(
+                self.depth_stencil_attachment
+                    .iter()
+                    .map(|(id, attachment_state)| (id, attachment_state)),
+            )
     }
 }
 
-/// A builder used to add resource accesses to a [`TaskNode`].
-pub struct TaskNodeBuilder<'a, W: ?Sized> {
+const INPUT_ATTACHMENT_ACCESS_FLAGS: AccessFlags = AccessFlags::INPUT_ATTACHMENT_READ;
+const COLOR_ATTACHMENT_ACCESS_FLAGS: AccessFlags =
+    AccessFlags::COLOR_ATTACHMENT_READ.union(AccessFlags::COLOR_ATTACHMENT_WRITE);
+const DEPTH_STENCIL_ATTACHMENT_ACCESS_FLAGS: AccessFlags =
+    AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ.union(AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE);
+const ATTACHMENT_ACCESS_FLAGS: AccessFlags = INPUT_ATTACHMENT_ACCESS_FLAGS
+    .union(COLOR_ATTACHMENT_ACCESS_FLAGS)
+    .union(DEPTH_STENCIL_ATTACHMENT_ACCESS_FLAGS);
+
+const COLOR_ASPECTS: ImageAspects = ImageAspects::COLOR
+    .union(ImageAspects::PLANE_0)
+    .union(ImageAspects::PLANE_1)
+    .union(ImageAspects::PLANE_2);
+const DEPTH_STENCIL_ASPECTS: ImageAspects = ImageAspects::DEPTH.union(ImageAspects::STENCIL);
+
+/// A builder used to add resource accesses and attachments to a [`TaskNode`].
+pub struct TaskNodeBuilder<'a> {
     id: NodeId,
-    task_node: &'a mut TaskNode<W>,
+    accesses: &'a mut ResourceAccesses,
+    attachments: &'a mut Option<Attachments>,
     resources: &'a mut Resources,
 }
 
-impl<W: ?Sized> TaskNodeBuilder<'_, W> {
-    /// Adds a buffer access to this task node.
+impl TaskNodeBuilder<'_> {
+    /// Adds a buffer access to the task node.
     ///
     /// # Panics
     ///
     /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
-    /// - Panics if `access_type` isn't a valid buffer access type.
-    pub fn buffer_access(&mut self, id: Id<Buffer>, access_type: AccessType) -> &mut Self {
-        let (id, access) = self.access_mut(id.erase()).expect("invalid buffer");
+    /// - Panics if `access_types` contains any access type that's not a valid buffer access type.
+    #[track_caller]
+    pub fn buffer_access(&mut self, id: Id<Buffer>, access_types: AccessTypes) -> &mut Self {
+        assert!(access_types.are_valid_buffer_access_types());
 
-        assert!(access_type.is_valid_buffer_access_type());
+        let (id, access) = self.accesses.buffer_mut(self.resources, id);
 
         if let Some(access) = access {
-            access.stage_mask |= access_type.stage_mask();
-            access.access_mask |= access_type.access_mask();
+            access.stage_mask |= access_types.stage_mask();
+            access.access_mask |= access_types.access_mask();
         } else {
-            self.task_node.accesses.inner.push((
+            self.accesses.inner.insert(
                 id.erase(),
                 ResourceAccess {
-                    stage_mask: access_type.stage_mask(),
-                    access_mask: access_type.access_mask(),
+                    stage_mask: access_types.stage_mask(),
+                    access_mask: access_types.access_mask(),
                     image_layout: ImageLayout::Undefined,
                     queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                 },
-            ));
+            );
         }
 
         self
     }
 
-    /// Adds an image access to this task node.
+    /// Adds an image access to the task node.
     ///
     /// # Panics
     ///
     /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
-    /// - Panics if `access_type` isn't a valid image access type.
+    /// - Panics if `access_types` contains any access type that's not a valid image access type.
+    /// - Panics if `access_types` contains attachment access types as well as other access types.
+    /// - Panics if `access_types` contains both color and depth/stencil access types.
     /// - Panics if an access for `id` was already added and its image layout doesn't equal
-    ///   `access_type.image_layout(layout_type)`.
+    ///   `access_types.image_layout(layout_type)`.
+    #[track_caller]
     pub fn image_access(
         &mut self,
         id: Id<Image>,
-        access_type: AccessType,
+        access_types: AccessTypes,
         layout_type: ImageLayoutType,
     ) -> &mut Self {
-        let (id, access) = self.access_mut(id.erase()).expect("invalid image");
+        assert!(access_types.are_valid_image_access_types());
 
-        assert!(access_type.is_valid_image_access_type());
+        let (id, access) = self.accesses.image_mut(self.resources, id);
 
-        let image_layout = access_type.image_layout(layout_type);
+        let access_mask = access_types.access_mask();
+
+        if access_mask.intersects(ATTACHMENT_ACCESS_FLAGS) {
+            assert!(
+                ATTACHMENT_ACCESS_FLAGS.contains(access_mask),
+                "an image access that contains attachment access types must not contain any other \
+                access types",
+            );
+
+            assert!(
+                !(access_mask.intersects(COLOR_ATTACHMENT_ACCESS_FLAGS)
+                    && access_mask.intersects(DEPTH_STENCIL_ATTACHMENT_ACCESS_FLAGS)),
+                "an image access can't contain both color and depth/stencil attachment access \
+                types",
+            );
+        }
 
         if let Some(access) = access {
-            assert_eq!(access.image_layout, image_layout);
+            assert_eq!(access.image_layout, access_types.image_layout(layout_type));
 
-            access.stage_mask |= access_type.stage_mask();
-            access.access_mask |= access_type.access_mask();
+            access.stage_mask |= access_types.stage_mask();
+            access.access_mask |= access_types.access_mask();
         } else {
-            self.task_node.accesses.inner.push((
+            self.accesses.inner.insert(
                 id.erase(),
                 ResourceAccess {
-                    stage_mask: access_type.stage_mask(),
-                    access_mask: access_type.access_mask(),
-                    image_layout,
+                    stage_mask: access_types.stage_mask(),
+                    access_mask: access_types.access_mask(),
+                    image_layout: access_types.image_layout(layout_type),
                     queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                 },
-            ));
+            );
         }
 
         self
     }
 
-    fn access_mut(
+    /// Sets the framebuffer that the task node's attachments will belong to. You must call this
+    /// method before adding attachments to the task node.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `id` is not a valid framebuffer ID.
+    /// - Panics if the framebuffer was already set.
+    #[track_caller]
+    pub fn framebuffer(&mut self, id: Id<Framebuffer>) -> &mut Self {
+        assert!(self.resources.framebuffer_mut(id).is_some());
+
+        assert!(
+            self.attachments.is_none(),
+            "a task node must use at most one framebuffer",
+        );
+
+        *self.attachments = Some(Attachments {
+            framebuffer_id: id,
+            color_attachments: LinearMap::new(),
+            input_attachments: LinearMap::new(),
+            depth_stencil_attachment: None,
+        });
+
+        self
+    }
+
+    /// Adds an input attachment to the task node.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the framebuffer wasn't set beforehand.
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
+    /// - Panics if `access_types` contains any access type that's not an input attachment access
+    ///   type.
+    /// - Panics if an input attachment for `id` was already added.
+    /// - Panics if an input attachment using the `attachment_info.index` was already added.
+    /// - Panics if a color or depth/stencil attachment using `id` was added but the attachment
+    ///   infos don't match.
+    /// - Panics if an access for `id` was already added and its image layout doesn't equal
+    ///   `access_types.image_layout(layout_type)`.
+    #[track_caller]
+    pub fn input_attachment(
         &mut self,
-        id: Id,
-    ) -> Result<(Id, Option<&mut ResourceAccess>), InvalidSlotError> {
-        self.task_node.accesses.get_mut(self.resources, id)
+        id: Id<Image>,
+        mut access_types: AccessTypes,
+        layout_type: ImageLayoutType,
+        attachment_info: &AttachmentInfo<'_>,
+    ) -> &mut Self {
+        let attachments = self
+            .attachments
+            .as_mut()
+            .expect("the framebuffer must be set before adding attachments");
+
+        let (id, _access) = self.accesses.image_mut(self.resources, id);
+
+        assert!(INPUT_ATTACHMENT_ACCESS_FLAGS.contains(access_types.access_mask()));
+
+        assert!(
+            attachments.input_attachments.get(&id.erase()).is_none(),
+            "a task node must use an image as at most one input attachment",
+        );
+
+        let input_attachment_index = attachment_info.index;
+
+        assert!(
+            !attachments
+                .input_attachments
+                .values()
+                .any(|info| info.index == input_attachment_index),
+            "the task node already has an input attachment that uses the input attachment index \
+            `{input_attachment_index}`",
+        );
+
+        assert!(
+            !attachments
+                .color_attachments
+                .get(&id.erase())
+                .is_some_and(|attachment_info2| attachment_info2 == attachment_info),
+            "the task node also uses the image as a color attachment but the attachment infos \
+            don't match",
+        );
+
+        assert!(
+            !attachments
+                .depth_stencil_attachment
+                .as_ref()
+                .is_some_and(|(_, attachment_info2)| attachment_info2 == attachment_info),
+            "the task node also uses the image as a depth/stencil attachment but the attachment \
+            infos dont' match",
+        );
+
+        let resource_info = self.resources.get(id.erase()).unwrap();
+        let format = if attachment_info.format == Format::UNDEFINED {
+            resource_info.format
+        } else {
+            attachment_info.format
+        };
+
+        // Clear operations (whether using `AttachmentLoadOp::Clear` or the `clear_attachments`
+        // command) are attachment writes.
+        if attachment_info.clear {
+            if format.aspects().intersects(COLOR_ASPECTS) {
+                access_types |= AccessTypes::COLOR_ATTACHMENT_WRITE;
+            } else if format.aspects().intersects(DEPTH_STENCIL_ASPECTS) {
+                access_types |= AccessTypes::DEPTH_STENCIL_ATTACHMENT_WRITE;
+            } else {
+                unreachable!();
+            }
+        }
+
+        attachments.input_attachments.insert(
+            id.erase(),
+            AttachmentInfo {
+                format,
+                _ne: crate::NE,
+                ..attachment_info.clone()
+            },
+        );
+
+        self.image_access(id, access_types, layout_type)
+    }
+
+    /// Adds a color attachment to the task node.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the framebuffer wasn't set beforehand.
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
+    /// - Panics if `access_types` contains any access type that's not a color attachment access
+    ///   type.
+    /// - Panics if a color attachment using `id` was already added.
+    /// - Panics if a color attachment using the `attachment_info.index` was already added.
+    /// - Panics if an input attachment using `id` was added but the attachment infos don't match.
+    /// - Panics if `attachment_info.format` is not a color format.
+    /// - Panics if an access for `id` was already added and its image layout doesn't equal
+    ///   `access_types.image_layout(layout_type)`.
+    #[track_caller]
+    pub fn color_attachment(
+        &mut self,
+        id: Id<Image>,
+        mut access_types: AccessTypes,
+        layout_type: ImageLayoutType,
+        attachment_info: &AttachmentInfo<'_>,
+    ) -> &mut Self {
+        let attachments = self
+            .attachments
+            .as_mut()
+            .expect("the framebuffer must be set before adding attachments");
+
+        let (id, _access) = self.accesses.image_mut(self.resources, id);
+
+        assert!(COLOR_ATTACHMENT_ACCESS_FLAGS.contains(access_types.access_mask()));
+
+        assert!(
+            attachments.color_attachments.get(&id.erase()).is_none(),
+            "a task node must use an image as at most one color attachment",
+        );
+
+        let location = attachment_info.index;
+
+        assert!(
+            !attachments
+                .color_attachments
+                .values()
+                .any(|info| info.index == location),
+            "the task node already has a color attachment that uses the location `{location}`",
+        );
+
+        assert!(
+            !attachments
+                .input_attachments
+                .get(&id.erase())
+                .is_some_and(|attachment_info2| attachment_info2 == attachment_info),
+            "the task node also uses the image as an input attachment but the attachment infos \
+            don't match",
+        );
+
+        let resource_info = self.resources.get(id.erase()).unwrap();
+        let format = if attachment_info.format == Format::UNDEFINED {
+            resource_info.format
+        } else {
+            attachment_info.format
+        };
+
+        assert!(
+            format.aspects().intersects(COLOR_ASPECTS),
+            "an image can only be used as a color attachment if it has a color format",
+        );
+
+        // Clear operations (whether using `AttachmentLoadOp::Clear` or the `clear_attachments`
+        // command) are attachment writes.
+        if attachment_info.clear {
+            access_types |= AccessTypes::COLOR_ATTACHMENT_WRITE;
+        }
+
+        attachments.color_attachments.insert(
+            id.erase(),
+            AttachmentInfo {
+                format,
+                _ne: crate::NE,
+                ..attachment_info.clone()
+            },
+        );
+
+        self.image_access(id, access_types, layout_type)
+    }
+
+    /// Adds a depth/stencil attachment to the task node.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the framebuffer wasn't set beforehand.
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
+    /// - Panics if `access_types` contains any access type that's not a depth/stencil attachment
+    ///   access type.
+    /// - Panics if a depth/stencil attachment was already added.
+    /// - Panics if an input attachment using `id` was added but the attachment infos don't match.
+    /// - Panics if `attachment_info.format` is not a depth/stencil format.
+    /// - Panics if an access for `id` was already added and its image layout doesn't equal
+    ///   `access_types.image_layout(layout_type)`.
+    #[track_caller]
+    pub fn depth_stencil_attachment(
+        &mut self,
+        id: Id<Image>,
+        mut access_types: AccessTypes,
+        layout_type: ImageLayoutType,
+        attachment_info: &AttachmentInfo<'_>,
+    ) -> &mut Self {
+        let attachments = self
+            .attachments
+            .as_mut()
+            .expect("the framebuffer must be set before adding attachments");
+
+        let (id, _access) = self.accesses.image_mut(self.resources, id);
+
+        assert!(DEPTH_STENCIL_ATTACHMENT_ACCESS_FLAGS.contains(access_types.access_mask()));
+
+        assert!(
+            attachments.depth_stencil_attachment.is_none(),
+            "a task node must have at most one depth/stencil attachment",
+        );
+
+        assert!(
+            !attachments
+                .input_attachments
+                .get(&id.erase())
+                .is_some_and(|attachment_info2| attachment_info2 == attachment_info),
+            "the task node also uses the image as an input attachment but the attachment infos \
+            don't match",
+        );
+
+        let resource_info = self.resources.get(id.erase()).unwrap();
+        let format = if attachment_info.format == Format::UNDEFINED {
+            resource_info.format
+        } else {
+            attachment_info.format
+        };
+
+        assert!(
+            format.aspects().intersects(DEPTH_STENCIL_ASPECTS),
+            "an image can only be used as a depth/stencil attachment if it has a depth/stencil \
+            format",
+        );
+
+        // Clear operations (whether using `AttachmentLoadOp::Clear` or the `clear_attachments`
+        // command) are attachment writes.
+        if attachment_info.clear {
+            access_types |= AccessTypes::DEPTH_STENCIL_ATTACHMENT_WRITE;
+        }
+
+        attachments.depth_stencil_attachment = Some((
+            id.erase(),
+            AttachmentInfo {
+                format,
+                _ne: crate::NE,
+                ..attachment_info.clone()
+            },
+        ));
+
+        self.image_access(id, access_types, layout_type)
     }
 
     /// Finishes building the task node and returns the ID of the built node.
@@ -731,14 +1153,89 @@ impl<W: ?Sized> TaskNodeBuilder<'_, W> {
     }
 }
 
+/// Parameters describing a rendering attachment.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttachmentInfo<'a> {
+    /// The input attachment index or location to use.
+    ///
+    /// For input attachments, this corresponds to the input attachment index you read from the
+    /// shader. For color attachments, this corresponds to the location you read or write from the
+    /// shader. For depth/stencil attachments, this is ignored.
+    ///
+    /// The default value is `0`.
+    pub index: u32,
+
+    /// If set to `true`, the attachment is cleared before the task is executed. The clear value is
+    /// set by the task in [`Task::clear_values`].
+    ///
+    /// The default value is `false`.
+    pub clear: bool,
+
+    /// The format of the attachment.
+    ///
+    /// If left as the default, the format of the image is used.
+    ///
+    /// If this is set to a format that is different from the image, the image must be created with
+    /// the `MUTABLE_FORMAT` flag.
+    ///
+    /// On [portability subset] devices, if `format` does not have the same number of components
+    /// and bits per component as the parent image's format, the
+    /// [`image_view_format_reinterpretation`] feature must be enabled on the device.
+    ///
+    /// The default value is `Format::UNDEFINED`.
+    ///
+    /// [portability subset]: vulkano::instance#portability-subset-devices-and-the-enumerate_portability-flag
+    /// [`image_view_format_reinterpretation`]: vulkano::device::DeviceFeatures::image_view_format_reinterpretation
+    pub format: Format,
+
+    /// How to map components of each pixel.
+    ///
+    /// On [portability subset] devices, if `component_mapping` is not the identity mapping, the
+    /// [`image_view_format_swizzle`] feature must be enabled on the device.
+    ///
+    /// The default value is [`ComponentMapping::identity()`].
+    ///
+    /// [portability subset]: vulkano::instance#portability-subset-devices-and-the-enumerate_portability-flag
+    /// [`image_view_format_swizzle`]: crate::device::DeviceFeatures::image_view_format_swizzle
+    pub component_mapping: ComponentMapping,
+
+    /// The mip level to render to.
+    ///
+    /// The default value is `0`.
+    pub mip_level: u32,
+
+    /// The base array layer to render to.
+    ///
+    /// The default value is `0`.
+    pub base_array_layer: u32,
+
+    pub _ne: crate::NonExhaustive<'a>,
+}
+
+impl Default for AttachmentInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        AttachmentInfo {
+            index: 0,
+            clear: false,
+            format: Format::UNDEFINED,
+            component_mapping: ComponentMapping::identity(),
+            mip_level: 0,
+            base_array_layer: 0,
+            _ne: crate::NE,
+        }
+    }
+}
+
 /// A [`TaskGraph`] that has been compiled into an executable form.
 pub struct ExecutableTaskGraph<W: ?Sized> {
     graph: TaskGraph<W>,
     flight_id: Id<Flight>,
     instructions: Vec<Instruction>,
     submissions: Vec<Submission>,
-    buffer_barriers: Vec<BufferMemoryBarrier>,
-    image_barriers: Vec<ImageMemoryBarrier>,
+    barriers: Vec<MemoryBarrier>,
+    render_passes: RefCell<Vec<RenderPassState>>,
+    clear_attachments: Vec<Id>,
     semaphores: RefCell<Vec<Arc<Semaphore>>>,
     swapchains: SmallVec<[Id<Swapchain>; 1]>,
     present_queue: Option<Arc<Queue>>,
@@ -749,8 +1246,7 @@ pub struct ExecutableTaskGraph<W: ?Sized> {
 #[derive(Debug)]
 struct Submission {
     queue: Arc<Queue>,
-    initial_buffer_barrier_range: Range<BarrierIndex>,
-    initial_image_barrier_range: Range<BarrierIndex>,
+    initial_barrier_range: Range<BarrierIndex>,
     instruction_range: Range<InstructionIndex>,
 }
 
@@ -770,20 +1266,27 @@ enum Instruction {
         node_index: NodeIndex,
     },
     PipelineBarrier {
-        buffer_barrier_range: Range<BarrierIndex>,
-        image_barrier_range: Range<BarrierIndex>,
+        barrier_range: Range<BarrierIndex>,
     },
     // TODO:
     // SetEvent {
     //     event_index: EventIndex,
-    //     buffer_barriers: Range<BarrierIndex>,
-    //     image_barriers: Range<BarrierIndex>,
+    //     barrier_range: Range<BarrierIndex>,
     // },
     // WaitEvent {
     //     event_index: EventIndex,
-    //     buffer_barriers: Range<BarrierIndex>,
-    //     image_barriers: Range<BarrierIndex>,
+    //     barrier_range: Range<BarrierIndex>,
     // },
+    BeginRenderPass {
+        render_pass_index: RenderPassIndex,
+    },
+    NextSubpass,
+    EndRenderPass,
+    ClearAttachments {
+        node_index: NodeIndex,
+        render_pass_index: RenderPassIndex,
+        clear_attachment_range: Range<ClearAttachmentIndex>,
+    },
     SignalSemaphore {
         semaphore_index: SemaphoreIndex,
         stage_mask: PipelineStages,
@@ -804,23 +1307,16 @@ enum Instruction {
     Submit,
 }
 
+type RenderPassIndex = usize;
+
 type SemaphoreIndex = usize;
 
 type BarrierIndex = u32;
 
-#[derive(Clone, Debug)]
-struct BufferMemoryBarrier {
-    src_stage_mask: PipelineStages,
-    src_access_mask: AccessFlags,
-    dst_stage_mask: PipelineStages,
-    dst_access_mask: AccessFlags,
-    src_queue_family_index: u32,
-    dst_queue_family_index: u32,
-    buffer: Id<Buffer>,
-}
+type ClearAttachmentIndex = usize;
 
 #[derive(Clone, Debug)]
-struct ImageMemoryBarrier {
+struct MemoryBarrier {
     src_stage_mask: PipelineStages,
     src_access_mask: AccessFlags,
     dst_stage_mask: PipelineStages,
@@ -829,7 +1325,24 @@ struct ImageMemoryBarrier {
     new_layout: ImageLayout,
     src_queue_family_index: u32,
     dst_queue_family_index: u32,
-    image: Id,
+    resource: Id,
+}
+
+#[derive(Debug)]
+struct RenderPassState {
+    render_pass: Arc<RenderPass>,
+    attachments: LinearMap<Id, AttachmentState>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    clear_node_indices: Vec<NodeIndex>,
+}
+
+#[derive(Debug)]
+struct AttachmentState {
+    index: u32,
+    format: Format,
+    component_mapping: ComponentMapping,
+    mip_level: u32,
+    base_array_layer: u32,
 }
 
 impl<W: ?Sized> ExecutableTaskGraph<W> {
@@ -873,8 +1386,9 @@ impl<W: ?Sized> fmt::Debug for ExecutableTaskGraph<W> {
             .field("flight_id", &self.flight_id)
             .field("instructions", &self.instructions)
             .field("submissions", &self.submissions)
-            .field("buffer_barriers", &self.buffer_barriers)
-            .field("image_barriers", &self.image_barriers)
+            .field("barriers", &self.barriers)
+            .field("render_passes", &self.render_passes)
+            .field("clear_attachments", &self.clear_attachments)
             .field("semaphores", &self.semaphores)
             .field("swapchains", &self.swapchains)
             .field("present_queue", &self.present_queue)

@@ -1,6 +1,6 @@
 use crate::{
     command_buffer::{RecordingCommandBuffer, Result},
-    resource::{AccessType, ImageLayoutType},
+    resource::{AccessTypes, ImageLayoutType},
     Id,
 };
 use ash::vk;
@@ -171,9 +171,9 @@ impl RecordingCommandBuffer<'_> {
         } = copy_image_info;
 
         let src_image = unsafe { self.accesses.image_unchecked(src_image) };
-        let src_image_layout = AccessType::CopyTransferRead.image_layout(src_image_layout);
+        let src_image_layout = AccessTypes::COPY_TRANSFER_READ.image_layout(src_image_layout);
         let dst_image = unsafe { self.accesses.image_unchecked(dst_image) };
-        let dst_image_layout = AccessType::CopyTransferWrite.image_layout(dst_image_layout);
+        let dst_image_layout = AccessTypes::COPY_TRANSFER_WRITE.image_layout(dst_image_layout);
 
         let fns = self.device().fns();
 
@@ -352,7 +352,7 @@ impl RecordingCommandBuffer<'_> {
 
         let src_buffer = unsafe { self.accesses.buffer_unchecked(src_buffer) };
         let dst_image = unsafe { self.accesses.image_unchecked(dst_image) };
-        let dst_image_layout = AccessType::CopyTransferWrite.image_layout(dst_image_layout);
+        let dst_image_layout = AccessTypes::COPY_TRANSFER_WRITE.image_layout(dst_image_layout);
 
         let fns = self.device().fns();
 
@@ -498,7 +498,7 @@ impl RecordingCommandBuffer<'_> {
         } = copy_image_to_buffer_info;
 
         let src_image = unsafe { self.accesses.image_unchecked(src_image) };
-        let src_image_layout = AccessType::CopyTransferRead.image_layout(src_image_layout);
+        let src_image_layout = AccessTypes::COPY_TRANSFER_READ.image_layout(src_image_layout);
         let dst_buffer = unsafe { self.accesses.buffer_unchecked(dst_buffer) };
 
         let fns = self.device().fns();
@@ -669,9 +669,9 @@ impl RecordingCommandBuffer<'_> {
         } = blit_image_info;
 
         let src_image = unsafe { self.accesses.image_unchecked(src_image) };
-        let src_image_layout = AccessType::BlitTransferRead.image_layout(src_image_layout);
+        let src_image_layout = AccessTypes::BLIT_TRANSFER_READ.image_layout(src_image_layout);
         let dst_image = unsafe { self.accesses.image_unchecked(dst_image) };
-        let dst_image_layout = AccessType::BlitTransferWrite.image_layout(dst_image_layout);
+        let dst_image_layout = AccessTypes::BLIT_TRANSFER_WRITE.image_layout(dst_image_layout);
 
         let fns = self.device().fns();
 
@@ -836,9 +836,9 @@ impl RecordingCommandBuffer<'_> {
         } = resolve_image_info;
 
         let src_image = unsafe { self.accesses.image_unchecked(src_image) };
-        let src_image_layout = AccessType::ResolveTransferRead.image_layout(src_image_layout);
+        let src_image_layout = AccessTypes::RESOLVE_TRANSFER_READ.image_layout(src_image_layout);
         let dst_image = unsafe { self.accesses.image_unchecked(dst_image) };
-        let dst_image_layout = AccessType::ResolveTransferRead.image_layout(dst_image_layout);
+        let dst_image_layout = AccessTypes::RESOLVE_TRANSFER_WRITE.image_layout(dst_image_layout);
 
         let fns = self.device().fns();
 

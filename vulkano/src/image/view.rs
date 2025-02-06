@@ -576,18 +576,20 @@ impl ImageView {
             let device = image.device();
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image_view)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_image_view)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Self::from_handle(image, handle, create_info)
+        unsafe { Self::from_handle(image, handle, create_info) }
     }
 
     /// Creates a default `ImageView`. Equivalent to
@@ -625,7 +627,7 @@ impl ImageView {
             usage = get_implicit_default_usage(subresource_range.aspects, &image);
         }
 
-        let format_features = get_format_features(format, &image);
+        let format_features = unsafe { get_format_features(format, &image) };
 
         let mut filter_cubic = false;
         let mut filter_cubic_minmax = false;
@@ -637,7 +639,7 @@ impl ImageView {
         {
             // Use unchecked, because all validation has been done above or is validated by the
             // image.
-            let properties =
+            let properties = unsafe {
                 device
                     .physical_device()
                     .image_format_properties_unchecked(ImageFormatInfo {
@@ -648,7 +650,8 @@ impl ImageView {
                         usage: image.usage(),
                         image_view_type: Some(view_type),
                         ..Default::default()
-                    })?;
+                    })
+            }?;
 
             if let Some(properties) = properties {
                 filter_cubic = properties.filter_cubic;
@@ -1182,9 +1185,11 @@ unsafe fn get_format_features(view_format: Format, image: &Image) -> FormatFeatu
 
     let mut format_features = {
         // Use unchecked, because all validation should have been done before calling.
-        let format_properties = device
-            .physical_device()
-            .format_properties_unchecked(view_format);
+        let format_properties = unsafe {
+            device
+                .physical_device()
+                .format_properties_unchecked(view_format)
+        };
         let drm_format_modifiers: SmallVec<[_; 1]> = image
             .drm_format_modifier()
             .map_or_else(Default::default, |(m, _)| smallvec![m]);

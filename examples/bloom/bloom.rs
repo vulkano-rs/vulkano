@@ -80,7 +80,7 @@ impl Task for BloomTask {
             PipelineBindPoint::Compute,
             &rcx.pipeline_layout,
             0,
-            &[&rcx.descriptor_set],
+            &[rcx.descriptor_set.as_raw()],
             &[],
         )?;
 

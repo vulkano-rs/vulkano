@@ -78,7 +78,7 @@ impl QueryPool {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `QueryPool` from a raw object handle.
@@ -351,20 +351,24 @@ impl QueryPool {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_2 {
-            (fns.v1_2.reset_query_pool)(
-                self.device.handle(),
-                self.handle(),
-                range.start,
-                range.len() as u32,
-            );
+            unsafe {
+                (fns.v1_2.reset_query_pool)(
+                    self.device.handle(),
+                    self.handle(),
+                    range.start,
+                    range.len() as u32,
+                )
+            };
         } else {
             debug_assert!(self.device.enabled_extensions().ext_host_query_reset);
-            (fns.ext_host_query_reset.reset_query_pool_ext)(
-                self.device.handle(),
-                self.handle(),
-                range.start,
-                range.len() as u32,
-            );
+            unsafe {
+                (fns.ext_host_query_reset.reset_query_pool_ext)(
+                    self.device.handle(),
+                    self.handle(),
+                    range.start,
+                    range.len() as u32,
+                )
+            };
         }
     }
 }

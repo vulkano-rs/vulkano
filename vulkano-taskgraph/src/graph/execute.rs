@@ -1,16 +1,18 @@
 use super::{
-    BarrierIndex, ExecutableTaskGraph, Instruction, NodeIndex, ResourceAccess, SemaphoreIndex,
+    BarrierIndex, ClearAttachmentIndex, ExecutableTaskGraph, Instruction, NodeIndex,
+    RenderPassIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
     command_buffer::RecordingCommandBuffer,
+    linear_map::LinearMap,
     resource::{
         BufferAccess, BufferState, DeathRow, ImageAccess, ImageState, Resources, SwapchainState,
     },
-    Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
+    ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
 use concurrent_slotmap::epoch;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt, mem,
@@ -22,7 +24,12 @@ use vulkano::{
     buffer::{Buffer, BufferMemory},
     command_buffer as raw,
     device::{Device, DeviceOwned, Queue},
-    image::Image,
+    format::ClearValue,
+    image::{
+        view::{ImageView, ImageViewCreateInfo},
+        Image, ImageSubresourceRange,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     swapchain::{AcquireNextImageInfo, AcquiredImage, Swapchain},
     sync::{
         fence::{Fence, FenceCreateFlags, FenceCreateInfo},
@@ -114,6 +121,9 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.invalidate_mapped_memory_ranges(&resource_map) }?;
+
+        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
+        unsafe { self.create_framebuffers(&resource_map) }?;
 
         let mut state_guard = StateGuard {
             executable: self,
@@ -260,6 +270,62 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         Ok(())
     }
 
+    unsafe fn create_framebuffers(&self, resource_map: &ResourceMap<'_>) -> Result {
+        for render_pass_state in self.render_passes.borrow_mut().iter_mut() {
+            // If we're executing this task graph for the first time, there are no framebuffers
+            // yet, so we need to create them.
+            if render_pass_state.framebuffers.is_empty() {
+                unsafe {
+                    create_framebuffers(
+                        &render_pass_state.render_pass,
+                        &render_pass_state.attachments,
+                        &mut render_pass_state.framebuffers,
+                        &self.swapchains,
+                        resource_map,
+                    )
+                }?;
+                continue;
+            }
+
+            // Otherwise we need to recreate the framebuffers for a given render pass if any of its
+            // attachments changed.
+            for (&id, attachment) in render_pass_state
+                .attachments
+                .keys()
+                .zip(render_pass_state.framebuffers[0].attachments())
+            {
+                let image = match id.object_type() {
+                    ObjectType::Image => {
+                        let image_id = unsafe { id.parametrize() };
+
+                        unsafe { resource_map.image_unchecked(image_id) }.image()
+                    }
+                    ObjectType::Swapchain => {
+                        let swapchain_id = unsafe { id.parametrize() };
+
+                        &unsafe { resource_map.swapchain_unchecked(swapchain_id) }.images()[0]
+                    }
+                    _ => unreachable!(),
+                };
+
+                if attachment.image() != image {
+                    unsafe {
+                        create_framebuffers(
+                            &render_pass_state.render_pass,
+                            &render_pass_state.attachments,
+                            &mut render_pass_state.framebuffers,
+                            &self.swapchains,
+                            resource_map,
+                        )
+                    }?;
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     unsafe fn execute_instructions2(
         &self,
         resource_map: &ResourceMap<'_>,
@@ -283,10 +349,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         for instruction in self.instructions.iter().cloned() {
             if execute_initial_barriers {
                 let submission = current_submission!(state);
-                state.initial_pipeline_barrier(
-                    submission.initial_buffer_barrier_range.clone(),
-                    submission.initial_image_barrier_range.clone(),
-                );
+                state.initial_pipeline_barrier(submission.initial_barrier_range.clone());
                 execute_initial_barriers = false;
             }
 
@@ -306,11 +369,28 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 Instruction::ExecuteTask { node_index } => {
                     state.execute_task(node_index)?;
                 }
-                Instruction::PipelineBarrier {
-                    buffer_barrier_range,
-                    image_barrier_range,
+                Instruction::PipelineBarrier { barrier_range } => {
+                    state.pipeline_barrier(barrier_range)?;
+                }
+                Instruction::BeginRenderPass { render_pass_index } => {
+                    state.begin_render_pass(render_pass_index)?;
+                }
+                Instruction::NextSubpass => {
+                    state.next_subpass();
+                }
+                Instruction::EndRenderPass => {
+                    state.end_render_pass();
+                }
+                Instruction::ClearAttachments {
+                    node_index,
+                    render_pass_index,
+                    clear_attachment_range,
                 } => {
-                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range)?;
+                    state.clear_attachments(
+                        node_index,
+                        render_pass_index,
+                        clear_attachment_range,
+                    )?;
                 }
                 Instruction::SignalSemaphore {
                     semaphore_index,
@@ -372,10 +452,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         for instruction in self.instructions.iter().cloned() {
             if execute_initial_barriers {
                 let submission = current_submission!(state);
-                state.initial_pipeline_barrier(
-                    submission.initial_buffer_barrier_range.clone(),
-                    submission.initial_image_barrier_range.clone(),
-                );
+                state.initial_pipeline_barrier(submission.initial_barrier_range.clone());
                 execute_initial_barriers = false;
             }
 
@@ -395,11 +472,28 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 Instruction::ExecuteTask { node_index } => {
                     state.execute_task(node_index)?;
                 }
-                Instruction::PipelineBarrier {
-                    buffer_barrier_range,
-                    image_barrier_range,
+                Instruction::PipelineBarrier { barrier_range } => {
+                    state.pipeline_barrier(barrier_range)?;
+                }
+                Instruction::BeginRenderPass { render_pass_index } => {
+                    state.begin_render_pass(render_pass_index)?;
+                }
+                Instruction::NextSubpass => {
+                    state.next_subpass();
+                }
+                Instruction::EndRenderPass => {
+                    state.end_render_pass();
+                }
+                Instruction::ClearAttachments {
+                    node_index,
+                    render_pass_index,
+                    clear_attachment_range,
                 } => {
-                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range)?;
+                    state.clear_attachments(
+                        node_index,
+                        render_pass_index,
+                        clear_attachment_range,
+                    )?;
                 }
                 Instruction::SignalSemaphore {
                     semaphore_index,
@@ -569,10 +663,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
             match id.object_type() {
                 ObjectType::Buffer => {
+                    let id = unsafe { id.parametrize() };
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let id_p = unsafe { id.parametrize() };
-                    let state = unsafe { resource_map.buffer_unchecked(id_p) };
+                    let state = unsafe { resource_map.buffer_unchecked(id) };
                     let access = BufferAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -581,10 +675,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     unsafe { state.set_access(access) };
                 }
                 ObjectType::Image => {
+                    let id = unsafe { id.parametrize() };
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let id_p = unsafe { id.parametrize() };
-                    let state = unsafe { resource_map.image_unchecked(id_p) };
+                    let state = unsafe { resource_map.image_unchecked(id) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -594,10 +688,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     unsafe { state.set_access(access) };
                 }
                 ObjectType::Swapchain => {
+                    let id = unsafe { id.parametrize() };
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let id_p = unsafe { id.parametrize() };
-                    let state = unsafe { resource_map.swapchain_unchecked(id_p) };
+                    let state = unsafe { resource_map.swapchain_unchecked(id) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -610,6 +704,100 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             }
         }
     }
+}
+
+unsafe fn create_framebuffers(
+    render_pass: &Arc<RenderPass>,
+    attachments: &LinearMap<Id, super::AttachmentState>,
+    framebuffers: &mut Vec<Arc<Framebuffer>>,
+    swapchains: &[Id<Swapchain>],
+    resource_map: &ResourceMap<'_>,
+) -> Result<()> {
+    let swapchain_image_counts = swapchains
+        .iter()
+        .map(|&id| {
+            let swapchain_state = unsafe { resource_map.swapchain_unchecked(id) };
+
+            swapchain_state.swapchain().image_count()
+        })
+        .collect::<SmallVec<[_; 1]>>();
+    let mut swapchain_image_indices: SmallVec<[u32; 1]> =
+        smallvec![0; swapchain_image_counts.len()];
+
+    framebuffers.clear();
+    framebuffers.reserve_exact(swapchain_image_counts.iter().product::<u32>() as usize);
+
+    'outer: loop {
+        let framebuffer = Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: attachments
+                    .iter()
+                    .map(|(&id, attachment)| {
+                        let image = match id.object_type() {
+                            ObjectType::Image => {
+                                let image_id = unsafe { id.parametrize() };
+
+                                unsafe { resource_map.image_unchecked(image_id) }.image()
+                            }
+                            ObjectType::Swapchain => {
+                                let swapchain_id = unsafe { id.parametrize() };
+                                let swapchain_state =
+                                    unsafe { resource_map.swapchain_unchecked(swapchain_id) };
+                                let i = swapchains.iter().position(|x| x.erase() == id).unwrap();
+                                let image_index = swapchain_image_indices[i];
+
+                                &swapchain_state.images()[image_index as usize]
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        ImageView::new(
+                            image.clone(),
+                            ImageViewCreateInfo {
+                                format: attachment.format,
+                                component_mapping: attachment.component_mapping,
+                                subresource_range: ImageSubresourceRange {
+                                    aspects: attachment.format.aspects(),
+                                    mip_levels: attachment.mip_level..attachment.mip_level + 1,
+                                    // FIXME:
+                                    array_layers: attachment.base_array_layer
+                                        ..attachment.base_array_layer + 1,
+                                },
+                                ..Default::default()
+                            },
+                        )
+                        // FIXME:
+                        .map_err(Validated::unwrap)
+                    })
+                    .collect::<Result<_, _>>()?,
+                ..Default::default()
+            },
+        )
+        // FIXME:
+        .map_err(Validated::unwrap)?;
+
+        framebuffers.push(framebuffer);
+
+        let mut i = 0;
+
+        loop {
+            let Some(image_index) = swapchain_image_indices.get_mut(i) else {
+                break 'outer;
+            };
+
+            *image_index += 1;
+
+            if *image_index == swapchain_image_counts[i] {
+                *image_index = 0;
+                i += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 struct ExecuteState2<'a, W: ?Sized + 'static> {
@@ -626,15 +814,18 @@ struct ExecuteState2<'a, W: ?Sized + 'static> {
     current_per_submit: PerSubmitInfo2,
     current_command_buffer: Option<raw::RecordingCommandBuffer>,
     command_buffers: Vec<Arc<raw::CommandBuffer>>,
-    current_buffer_barriers: Vec<vk::BufferMemoryBarrier2<'static>>,
-    current_image_barriers: Vec<vk::ImageMemoryBarrier2<'static>>,
+    current_buffer_barriers_vk: Vec<vk::BufferMemoryBarrier2<'static>>,
+    current_image_barriers_vk: Vec<vk::ImageMemoryBarrier2<'static>>,
+    clear_values: LinearMap<Id, Option<ClearValue>>,
+    clear_values_vk: Vec<vk::ClearValue>,
+    clear_attachments_vk: Vec<vk::ClearAttachment>,
 }
 
 #[derive(Default)]
 struct PerSubmitInfo2 {
-    wait_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
-    command_buffer_infos: SmallVec<[vk::CommandBufferSubmitInfo<'static>; 1]>,
-    signal_semaphore_infos: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
+    wait_semaphore_infos_vk: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
+    command_buffer_infos_vk: SmallVec<[vk::CommandBufferSubmitInfo<'static>; 1]>,
+    signal_semaphore_infos_vk: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
 }
 
 impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
@@ -672,117 +863,148 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             current_per_submit: PerSubmitInfo2::default(),
             current_command_buffer: None,
             command_buffers: Vec::new(),
-            current_buffer_barriers: Vec::new(),
-            current_image_barriers: Vec::new(),
+            current_buffer_barriers_vk: Vec::new(),
+            current_image_barriers_vk: Vec::new(),
+            clear_values: LinearMap::new(),
+            clear_values_vk: Vec::new(),
+            clear_attachments_vk: Vec::new(),
         })
     }
 
-    fn initial_pipeline_barrier(
-        &mut self,
-        buffer_barrier_range: Range<BarrierIndex>,
-        image_barrier_range: Range<BarrierIndex>,
-    ) {
-        self.convert_initial_buffer_barriers(buffer_barrier_range);
-        self.convert_initial_image_barriers(image_barrier_range);
+    fn initial_pipeline_barrier(&mut self, barrier_range: Range<BarrierIndex>) {
+        self.convert_initial_barriers(barrier_range);
     }
 
-    fn convert_initial_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
+    fn convert_initial_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
         let queue_family_index = current_submission!(self).queue.queue_family_index();
 
-        for barrier in &self.executable.buffer_barriers[barrier_range] {
-            let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
-            let buffer = state.buffer();
-            let access = state.access();
-            let mut src_stage_mask = PipelineStages::empty();
-            let mut src_access_mask = AccessFlags::empty();
-            let dst_stage_mask = barrier.dst_stage_mask;
-            let mut dst_access_mask = barrier.dst_access_mask;
+        for barrier in &self.executable.barriers[barrier_range] {
+            match barrier.resource.object_type() {
+                ObjectType::Buffer => {
+                    let buffer_id = unsafe { barrier.resource.parametrize() };
+                    let state = unsafe { self.resource_map.buffer_unchecked(buffer_id) };
+                    let buffer = state.buffer();
+                    let access = state.access();
 
-            if access.queue_family_index() == queue_family_index {
-                src_stage_mask = access.stage_mask();
-                src_access_mask = access.access_mask();
-            }
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
 
-            if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
-            } else if dst_access_mask.contains_writes() {
-                src_access_mask = AccessFlags::empty();
-                dst_access_mask = AccessFlags::empty();
-            } else {
-                continue;
-            }
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
 
-            self.current_buffer_barriers.push(
-                vk::BufferMemoryBarrier2::default()
-                    .src_stage_mask(src_stage_mask.into())
-                    .src_access_mask(src_access_mask.into())
-                    .dst_stage_mask(dst_stage_mask.into())
-                    .dst_access_mask(dst_access_mask.into())
-                    // FIXME:
-                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .buffer(buffer.handle())
-                    .offset(0)
-                    .size(buffer.size()),
-            );
-        }
-    }
+                    if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
 
-    fn convert_initial_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
-        let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = current_submission!(self).queue.queue_family_index();
-
-        for barrier in &self.executable.image_barriers[barrier_range] {
-            let (image, access) = match barrier.image.object_type() {
+                    self.current_buffer_barriers_vk.push(
+                        vk::BufferMemoryBarrier2::default()
+                            .src_stage_mask(src_stage_mask.into())
+                            .src_access_mask(src_access_mask.into())
+                            .dst_stage_mask(dst_stage_mask.into())
+                            .dst_access_mask(dst_access_mask.into())
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .buffer(buffer.handle())
+                            .offset(0)
+                            .size(buffer.size()),
+                    );
+                }
                 ObjectType::Image => {
-                    let image_id = unsafe { barrier.image.parametrize() };
+                    let image_id = unsafe { barrier.resource.parametrize() };
                     let state = unsafe { self.resource_map.image_unchecked(image_id) };
+                    let image = state.image();
+                    let access = state.access();
 
-                    (state.image(), state.access())
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
+
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
+
+                    #[allow(clippy::if_same_then_else)]
+                    if access.image_layout() != barrier.new_layout {
+                    } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads()
+                    {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier2::default()
+                            .src_stage_mask(src_stage_mask.into())
+                            .src_access_mask(src_access_mask.into())
+                            .dst_stage_mask(dst_stage_mask.into())
+                            .dst_access_mask(dst_access_mask.into())
+                            .old_layout(access.image_layout().into())
+                            .new_layout(barrier.new_layout.into())
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
                 }
                 ObjectType::Swapchain => {
-                    let swapchain_id = unsafe { barrier.image.parametrize() };
+                    let swapchain_id = unsafe { barrier.resource.parametrize() };
                     let state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
+                    let image = state.current_image();
+                    let access = state.access();
 
-                    (state.current_image(), state.access())
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
+
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
+
+                    #[allow(clippy::if_same_then_else)]
+                    if access.image_layout() != barrier.new_layout {
+                    } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads()
+                    {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier2::default()
+                            .src_stage_mask(src_stage_mask.into())
+                            .src_access_mask(src_access_mask.into())
+                            .dst_stage_mask(dst_stage_mask.into())
+                            .dst_access_mask(dst_access_mask.into())
+                            .old_layout(access.image_layout().into())
+                            .new_layout(barrier.new_layout.into())
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
                 }
                 _ => unreachable!(),
-            };
-
-            let mut src_stage_mask = PipelineStages::empty();
-            let mut src_access_mask = AccessFlags::empty();
-            let dst_stage_mask = barrier.dst_stage_mask;
-            let mut dst_access_mask = barrier.dst_access_mask;
-
-            if access.queue_family_index() == queue_family_index {
-                src_stage_mask = access.stage_mask();
-                src_access_mask = access.access_mask();
             }
-
-            #[allow(clippy::if_same_then_else)]
-            if access.image_layout() != barrier.new_layout {
-            } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
-            } else if dst_access_mask.contains_writes() {
-                src_access_mask = AccessFlags::empty();
-                dst_access_mask = AccessFlags::empty();
-            } else {
-                continue;
-            }
-
-            self.current_image_barriers.push(
-                vk::ImageMemoryBarrier2::default()
-                    .src_stage_mask(src_stage_mask.into())
-                    .src_access_mask(src_access_mask.into())
-                    .dst_stage_mask(dst_stage_mask.into())
-                    .dst_access_mask(dst_access_mask.into())
-                    .old_layout(access.image_layout().into())
-                    .new_layout(barrier.new_layout.into())
-                    // FIXME:
-                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .image(image.handle())
-                    .subresource_range(image.subresource_range().to_vk()),
-            );
         }
     }
 
@@ -791,7 +1013,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
             .image_available_semaphore;
 
-        self.current_per_submit.wait_semaphore_infos.push(
+        self.current_per_submit.wait_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(semaphore.handle())
                 .stage_mask(stage_mask.into()),
@@ -799,7 +1021,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
     }
 
     fn wait_semaphore(&mut self, semaphore_index: SemaphoreIndex, stage_mask: PipelineStages) {
-        self.current_per_submit.wait_semaphore_infos.push(
+        self.current_per_submit.wait_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(self.executable.semaphores.borrow()[semaphore_index].handle())
                 .stage_mask(stage_mask.into()),
@@ -807,7 +1029,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
     }
 
     fn execute_task(&mut self, node_index: NodeIndex) -> Result {
-        if !self.current_buffer_barriers.is_empty() || !self.current_image_barriers.is_empty() {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
             self.flush_barriers()?;
         }
 
@@ -833,7 +1056,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             unsafe { self.flush_current_command_buffer() }?;
 
             for command_buffer in self.command_buffers.drain(..) {
-                self.current_per_submit.command_buffer_infos.push(
+                self.current_per_submit.command_buffer_infos_vk.push(
                     vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()),
                 );
                 self.death_row.push(command_buffer);
@@ -843,75 +1066,170 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         Ok(())
     }
 
-    fn pipeline_barrier(
-        &mut self,
-        buffer_barrier_range: Range<BarrierIndex>,
-        image_barrier_range: Range<BarrierIndex>,
-    ) -> Result {
-        self.convert_buffer_barriers(buffer_barrier_range);
-        self.convert_image_barriers(image_barrier_range);
+    fn pipeline_barrier(&mut self, barrier_range: Range<BarrierIndex>) -> Result {
+        self.convert_barriers(barrier_range);
 
         self.flush_barriers()
     }
 
-    fn convert_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
+    fn convert_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
 
-        for barrier in &self.executable.buffer_barriers[barrier_range] {
-            let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
-            let buffer = state.buffer();
+        for barrier in &self.executable.barriers[barrier_range] {
+            match barrier.resource.object_type() {
+                ObjectType::Buffer => {
+                    let buffer_id = unsafe { barrier.resource.parametrize() };
+                    let state = unsafe { self.resource_map.buffer_unchecked(buffer_id) };
+                    let buffer = state.buffer();
 
-            self.current_buffer_barriers.push(
-                vk::BufferMemoryBarrier2::default()
-                    .src_stage_mask(barrier.src_stage_mask.into())
-                    .src_access_mask(barrier.src_access_mask.into())
-                    .dst_stage_mask(barrier.dst_stage_mask.into())
-                    .dst_access_mask(barrier.dst_access_mask.into())
-                    .src_queue_family_index(barrier.src_queue_family_index)
-                    .dst_queue_family_index(barrier.dst_queue_family_index)
-                    .buffer(buffer.handle())
-                    .offset(0)
-                    .size(buffer.size()),
-            );
+                    self.current_buffer_barriers_vk.push(
+                        vk::BufferMemoryBarrier2::default()
+                            .src_stage_mask(barrier.src_stage_mask.into())
+                            .src_access_mask(barrier.src_access_mask.into())
+                            .dst_stage_mask(barrier.dst_stage_mask.into())
+                            .dst_access_mask(barrier.dst_access_mask.into())
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .buffer(buffer.handle())
+                            .offset(0)
+                            .size(buffer.size()),
+                    );
+                }
+                ObjectType::Image => {
+                    let image_id = unsafe { barrier.resource.parametrize() };
+                    let image = unsafe { self.resource_map.image_unchecked(image_id) }.image();
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier2::default()
+                            .src_stage_mask(barrier.src_stage_mask.into())
+                            .src_access_mask(barrier.src_access_mask.into())
+                            .dst_stage_mask(barrier.dst_stage_mask.into())
+                            .dst_access_mask(barrier.dst_access_mask.into())
+                            .old_layout(barrier.old_layout.into())
+                            .new_layout(barrier.new_layout.into())
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+                }
+                ObjectType::Swapchain => {
+                    let swapchain_id = unsafe { barrier.resource.parametrize() };
+                    let image = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) }
+                        .current_image();
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier2::default()
+                            .src_stage_mask(barrier.src_stage_mask.into())
+                            .src_access_mask(barrier.src_access_mask.into())
+                            .dst_stage_mask(barrier.dst_stage_mask.into())
+                            .dst_access_mask(barrier.dst_access_mask.into())
+                            .old_layout(barrier.old_layout.into())
+                            .new_layout(barrier.new_layout.into())
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+                }
+                _ => unreachable!(),
+            }
         }
     }
 
-    fn convert_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
-        let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-
-        for barrier in &self.executable.image_barriers[barrier_range] {
-            let image = match barrier.image.object_type() {
-                ObjectType::Image => {
-                    let image_id = unsafe { barrier.image.parametrize() };
-
-                    unsafe { self.resource_map.image_unchecked(image_id) }.image()
-                }
-                ObjectType::Swapchain => {
-                    let swapchain_id = unsafe { barrier.image.parametrize() };
-
-                    unsafe { self.resource_map.swapchain_unchecked(swapchain_id) }.current_image()
-                }
-                _ => unreachable!(),
-            };
-
-            self.current_image_barriers.push(
-                vk::ImageMemoryBarrier2::default()
-                    .src_stage_mask(barrier.src_stage_mask.into())
-                    .src_access_mask(barrier.src_access_mask.into())
-                    .dst_stage_mask(barrier.dst_stage_mask.into())
-                    .dst_access_mask(barrier.dst_access_mask.into())
-                    .old_layout(barrier.old_layout.into())
-                    .new_layout(barrier.new_layout.into())
-                    .src_queue_family_index(barrier.src_queue_family_index)
-                    .dst_queue_family_index(barrier.dst_queue_family_index)
-                    .image(image.handle())
-                    .subresource_range(image.subresource_range().to_vk()),
-            );
+    fn begin_render_pass(&mut self, render_pass_index: RenderPassIndex) -> Result {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
+            self.flush_barriers()?;
         }
+
+        let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
+        let framebuffer = &render_pass_state.framebuffers
+            [unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) }];
+
+        // FIXME:
+        let mut render_area_vk = vk::Rect2D::default();
+        [render_area_vk.extent.width, render_area_vk.extent.height] = framebuffer.extent();
+
+        unsafe {
+            set_clear_values(
+                &self.executable.graph.nodes,
+                self.resource_map,
+                render_pass_state,
+                &mut self.clear_values,
+                &mut self.clear_values_vk,
+            )
+        };
+
+        let render_pass_begin_info_vk = vk::RenderPassBeginInfo::default()
+            .render_pass(framebuffer.render_pass().handle())
+            .framebuffer(framebuffer.handle())
+            .render_area(render_area_vk)
+            .clear_values(&self.clear_values_vk);
+
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_begin_render_pass)(
+                current_command_buffer!(self).handle(),
+                &render_pass_begin_info_vk,
+                vk::SubpassContents::INLINE,
+            )
+        };
+
+        self.death_row.push(framebuffer.clone());
+
+        Ok(())
+    }
+
+    fn next_subpass(&mut self) {
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_next_subpass)(
+                self.current_command_buffer.as_ref().unwrap().handle(),
+                vk::SubpassContents::INLINE,
+            )
+        };
+    }
+
+    fn end_render_pass(&mut self) {
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_end_render_pass)(self.current_command_buffer.as_ref().unwrap().handle())
+        };
+    }
+
+    fn clear_attachments(
+        &mut self,
+        node_index: NodeIndex,
+        render_pass_index: RenderPassIndex,
+        clear_attachment_range: Range<ClearAttachmentIndex>,
+    ) -> Result {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
+            self.flush_barriers()?;
+        }
+
+        let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
+
+        let attachments = &self.executable.clear_attachments[clear_attachment_range];
+
+        unsafe {
+            set_clear_attachments(
+                &self.executable.graph.nodes,
+                self.resource_map,
+                node_index,
+                render_pass_state,
+                attachments,
+                &mut self.clear_values,
+                &mut self.clear_attachments_vk,
+            )
+        };
+
+        Ok(())
     }
 
     fn signal_semaphore(&mut self, semaphore_index: SemaphoreIndex, stage_mask: PipelineStages) {
-        self.current_per_submit.signal_semaphore_infos.push(
+        self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(self.executable.semaphores.borrow()[semaphore_index].handle())
                 .stage_mask(stage_mask.into()),
@@ -923,7 +1241,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
             .pre_present_complete_semaphore;
 
-        self.current_per_submit.signal_semaphore_infos.push(
+        self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(semaphore.handle())
                 .stage_mask(stage_mask.into()),
@@ -935,7 +1253,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
             .pre_present_complete_semaphore;
 
-        self.current_per_submit.wait_semaphore_infos.push(
+        self.current_per_submit.wait_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(semaphore.handle())
                 .stage_mask(stage_mask.into()),
@@ -947,7 +1265,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let semaphore =
             &swapchain_state.semaphores[self.current_frame_index as usize].tasks_complete_semaphore;
 
-        self.current_per_submit.signal_semaphore_infos.push(
+        self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
                 .semaphore(semaphore.handle())
                 .stage_mask(stage_mask.into()),
@@ -959,13 +1277,13 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             (self.cmd_pipeline_barrier2)(
                 current_command_buffer!(self).handle(),
                 &vk::DependencyInfo::default()
-                    .buffer_memory_barriers(&self.current_buffer_barriers)
-                    .image_memory_barriers(&self.current_image_barriers),
+                    .buffer_memory_barriers(&self.current_buffer_barriers_vk)
+                    .image_memory_barriers(&self.current_image_barriers_vk),
             )
         };
 
-        self.current_buffer_barriers.clear();
-        self.current_image_barriers.clear();
+        self.current_buffer_barriers_vk.clear();
+        self.current_image_barriers_vk.clear();
 
         Ok(())
     }
@@ -987,12 +1305,12 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
         let submission = current_submission!(self);
 
-        let mut submit_infos = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
-        submit_infos.extend(self.per_submits.iter().map(|per_submit| {
+        let mut submit_infos_vk = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
+        submit_infos_vk.extend(self.per_submits.iter().map(|per_submit| {
             vk::SubmitInfo2::default()
-                .wait_semaphore_infos(&per_submit.wait_semaphore_infos)
-                .command_buffer_infos(&per_submit.command_buffer_infos)
-                .signal_semaphore_infos(&per_submit.signal_semaphore_infos)
+                .wait_semaphore_infos(&per_submit.wait_semaphore_infos_vk)
+                .command_buffer_infos(&per_submit.command_buffer_infos_vk)
+                .signal_semaphore_infos(&per_submit.signal_semaphore_infos_vk)
         }));
 
         let max_submission_index = self.executable.submissions.len() - 1;
@@ -1006,8 +1324,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             unsafe {
                 (self.queue_submit2)(
                     submission.queue.handle(),
-                    submit_infos.len() as u32,
-                    submit_infos.as_ptr(),
+                    submit_infos_vk.len() as u32,
+                    submit_infos_vk.as_ptr(),
                     fence_handle,
                 )
             }
@@ -1015,7 +1333,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             .map_err(VulkanError::from)
         })?;
 
-        drop(submit_infos);
+        drop(submit_infos_vk);
         self.per_submits.clear();
 
         *self.submission_count += 1;
@@ -1027,7 +1345,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let current_command_buffer = self.current_command_buffer.take().unwrap();
         let command_buffer = unsafe { current_command_buffer.end() }?;
         self.current_per_submit
-            .command_buffer_infos
+            .command_buffer_infos_vk
             .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
         self.death_row.push(Arc::new(command_buffer));
 
@@ -1049,18 +1367,21 @@ struct ExecuteState<'a, W: ?Sized + 'static> {
     current_per_submit: PerSubmitInfo,
     current_command_buffer: Option<raw::RecordingCommandBuffer>,
     command_buffers: Vec<Arc<raw::CommandBuffer>>,
-    current_buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
-    current_image_barriers: Vec<vk::ImageMemoryBarrier<'static>>,
-    current_src_stage_mask: vk::PipelineStageFlags,
-    current_dst_stage_mask: vk::PipelineStageFlags,
+    current_buffer_barriers_vk: Vec<vk::BufferMemoryBarrier<'static>>,
+    current_image_barriers_vk: Vec<vk::ImageMemoryBarrier<'static>>,
+    current_src_stage_mask_vk: vk::PipelineStageFlags,
+    current_dst_stage_mask_vk: vk::PipelineStageFlags,
+    clear_values: LinearMap<Id, Option<ClearValue>>,
+    clear_values_vk: Vec<vk::ClearValue>,
+    clear_attachments_vk: Vec<vk::ClearAttachment>,
 }
 
 #[derive(Default)]
 struct PerSubmitInfo {
-    wait_semaphores: SmallVec<[vk::Semaphore; 4]>,
-    wait_dst_stage_mask: SmallVec<[vk::PipelineStageFlags; 4]>,
-    command_buffers: SmallVec<[vk::CommandBuffer; 1]>,
-    signal_semaphores: SmallVec<[vk::Semaphore; 4]>,
+    wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    wait_dst_stage_mask_vk: SmallVec<[vk::PipelineStageFlags; 4]>,
+    command_buffers_vk: SmallVec<[vk::CommandBuffer; 1]>,
+    signal_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
 }
 
 impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
@@ -1091,121 +1412,153 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             current_per_submit: PerSubmitInfo::default(),
             current_command_buffer: None,
             command_buffers: Vec::new(),
-            current_buffer_barriers: Vec::new(),
-            current_image_barriers: Vec::new(),
-            current_src_stage_mask: vk::PipelineStageFlags::empty(),
-            current_dst_stage_mask: vk::PipelineStageFlags::empty(),
+            current_buffer_barriers_vk: Vec::new(),
+            current_image_barriers_vk: Vec::new(),
+            current_src_stage_mask_vk: vk::PipelineStageFlags::empty(),
+            current_dst_stage_mask_vk: vk::PipelineStageFlags::empty(),
+            clear_values: LinearMap::new(),
+            clear_values_vk: Vec::new(),
+            clear_attachments_vk: Vec::new(),
         })
     }
 
-    fn initial_pipeline_barrier(
-        &mut self,
-        buffer_barrier_range: Range<BarrierIndex>,
-        image_barrier_range: Range<BarrierIndex>,
-    ) {
-        self.convert_initial_buffer_barriers(buffer_barrier_range);
-        self.convert_initial_image_barriers(image_barrier_range);
+    fn initial_pipeline_barrier(&mut self, barrier_range: Range<BarrierIndex>) {
+        self.convert_initial_barriers(barrier_range);
     }
 
-    fn convert_initial_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
+    fn convert_initial_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
         let queue_family_index = current_submission!(self).queue.queue_family_index();
 
-        for barrier in &self.executable.buffer_barriers[barrier_range] {
-            let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
-            let buffer = state.buffer();
-            let access = state.access();
-            let mut src_stage_mask = PipelineStages::empty();
-            let mut src_access_mask = AccessFlags::empty();
-            let dst_stage_mask = barrier.dst_stage_mask;
-            let mut dst_access_mask = barrier.dst_access_mask;
+        for barrier in &self.executable.barriers[barrier_range] {
+            match barrier.resource.object_type() {
+                ObjectType::Buffer => {
+                    let buffer_id = unsafe { barrier.resource.parametrize() };
+                    let state = unsafe { self.resource_map.buffer_unchecked(buffer_id) };
+                    let buffer = state.buffer();
+                    let access = state.access();
 
-            if access.queue_family_index() == queue_family_index {
-                src_stage_mask = access.stage_mask();
-                src_access_mask = access.access_mask();
-            }
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
 
-            if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
-            } else if dst_access_mask.contains_writes() {
-                src_access_mask = AccessFlags::empty();
-                dst_access_mask = AccessFlags::empty();
-            } else {
-                continue;
-            }
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
 
-            self.current_buffer_barriers.push(
-                vk::BufferMemoryBarrier::default()
-                    .src_access_mask(convert_access_mask(src_access_mask))
-                    .dst_access_mask(convert_access_mask(dst_access_mask))
-                    // FIXME:
-                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .buffer(buffer.handle())
-                    .offset(0)
-                    .size(buffer.size()),
-            );
+                    if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
 
-            self.current_src_stage_mask |= convert_stage_mask(src_stage_mask);
-            self.current_dst_stage_mask |= convert_stage_mask(dst_stage_mask);
-        }
-    }
+                    self.current_buffer_barriers_vk.push(
+                        vk::BufferMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(src_access_mask))
+                            .dst_access_mask(convert_access_mask(dst_access_mask))
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .buffer(buffer.handle())
+                            .offset(0)
+                            .size(buffer.size()),
+                    );
 
-    fn convert_initial_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
-        let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = current_submission!(self).queue.queue_family_index();
-
-        for barrier in &self.executable.image_barriers[barrier_range] {
-            let (image, access) = match barrier.image.object_type() {
+                    self.current_src_stage_mask_vk |= convert_stage_mask(src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(dst_stage_mask);
+                }
                 ObjectType::Image => {
-                    let image_id = unsafe { barrier.image.parametrize() };
+                    let image_id = unsafe { barrier.resource.parametrize() };
                     let state = unsafe { self.resource_map.image_unchecked(image_id) };
+                    let image = state.image();
+                    let access = state.access();
 
-                    (state.image(), state.access())
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
+
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
+
+                    #[allow(clippy::if_same_then_else)]
+                    if access.image_layout() != barrier.new_layout {
+                    } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads()
+                    {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(src_access_mask))
+                            .dst_access_mask(convert_access_mask(dst_access_mask))
+                            .old_layout(access.image_layout().into())
+                            .new_layout(barrier.new_layout.into())
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+
+                    self.current_src_stage_mask_vk |= convert_stage_mask(src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(dst_stage_mask);
                 }
                 ObjectType::Swapchain => {
-                    let swapchain_id = unsafe { barrier.image.parametrize() };
+                    let swapchain_id = unsafe { barrier.resource.parametrize() };
                     let state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
+                    let image = state.current_image();
+                    let access = state.access();
 
-                    (state.current_image(), state.access())
+                    let mut src_stage_mask = PipelineStages::empty();
+                    let mut src_access_mask = AccessFlags::empty();
+                    let dst_stage_mask = barrier.dst_stage_mask;
+                    let mut dst_access_mask = barrier.dst_access_mask;
+
+                    if access.queue_family_index() == queue_family_index {
+                        src_stage_mask = access.stage_mask();
+                        src_access_mask = access.access_mask();
+                    }
+
+                    #[allow(clippy::if_same_then_else)]
+                    if access.image_layout() != barrier.new_layout {
+                    } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads()
+                    {
+                    } else if dst_access_mask.contains_writes() {
+                        src_access_mask = AccessFlags::empty();
+                        dst_access_mask = AccessFlags::empty();
+                    } else {
+                        continue;
+                    }
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(src_access_mask))
+                            .dst_access_mask(convert_access_mask(dst_access_mask))
+                            .old_layout(access.image_layout().into())
+                            .new_layout(barrier.new_layout.into())
+                            // FIXME:
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+
+                    self.current_src_stage_mask_vk |= convert_stage_mask(src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(dst_stage_mask);
                 }
                 _ => unreachable!(),
-            };
-
-            let mut src_stage_mask = PipelineStages::empty();
-            let mut src_access_mask = AccessFlags::empty();
-            let dst_stage_mask = barrier.dst_stage_mask;
-            let mut dst_access_mask = barrier.dst_access_mask;
-
-            if access.queue_family_index() == queue_family_index {
-                src_stage_mask = access.stage_mask();
-                src_access_mask = access.access_mask();
             }
-
-            #[allow(clippy::if_same_then_else)]
-            if access.image_layout() != barrier.new_layout {
-            } else if src_access_mask.contains_writes() && dst_access_mask.contains_reads() {
-            } else if dst_access_mask.contains_writes() {
-                src_access_mask = AccessFlags::empty();
-                dst_access_mask = AccessFlags::empty();
-            } else {
-                continue;
-            }
-
-            self.current_image_barriers.push(
-                vk::ImageMemoryBarrier::default()
-                    .src_access_mask(convert_access_mask(src_access_mask))
-                    .dst_access_mask(convert_access_mask(dst_access_mask))
-                    .old_layout(access.image_layout().into())
-                    .new_layout(barrier.new_layout.into())
-                    // FIXME:
-                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .image(image.handle())
-                    .subresource_range(image.subresource_range().to_vk()),
-            );
-
-            self.current_src_stage_mask |= convert_stage_mask(src_stage_mask);
-            self.current_dst_stage_mask |= convert_stage_mask(dst_stage_mask);
         }
     }
 
@@ -1215,24 +1568,25 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .image_available_semaphore;
 
         self.current_per_submit
-            .wait_semaphores
+            .wait_semaphores_vk
             .push(semaphore.handle());
         self.current_per_submit
-            .wait_dst_stage_mask
+            .wait_dst_stage_mask_vk
             .push(convert_stage_mask(stage_mask));
     }
 
     fn wait_semaphore(&mut self, semaphore_index: SemaphoreIndex, stage_mask: PipelineStages) {
         self.current_per_submit
-            .wait_semaphores
+            .wait_semaphores_vk
             .push(self.executable.semaphores.borrow()[semaphore_index].handle());
         self.current_per_submit
-            .wait_dst_stage_mask
+            .wait_dst_stage_mask_vk
             .push(convert_stage_mask(stage_mask));
     }
 
     fn execute_task(&mut self, node_index: NodeIndex) -> Result {
-        if !self.current_buffer_barriers.is_empty() || !self.current_image_barriers.is_empty() {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
             self.flush_barriers()?;
         }
 
@@ -1259,7 +1613,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
             for command_buffer in self.command_buffers.drain(..) {
                 self.current_per_submit
-                    .command_buffers
+                    .command_buffers_vk
                     .push(command_buffer.handle());
                 self.death_row.push(command_buffer);
             }
@@ -1268,78 +1622,174 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         Ok(())
     }
 
-    fn pipeline_barrier(
-        &mut self,
-        buffer_barrier_range: Range<BarrierIndex>,
-        image_barrier_range: Range<BarrierIndex>,
-    ) -> Result {
-        self.convert_buffer_barriers(buffer_barrier_range);
-        self.convert_image_barriers(image_barrier_range);
+    fn pipeline_barrier(&mut self, barrier_range: Range<BarrierIndex>) -> Result {
+        self.convert_barriers(barrier_range);
 
         self.flush_barriers()
     }
 
-    fn convert_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
+    fn convert_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
 
-        for barrier in &self.executable.buffer_barriers[barrier_range] {
-            let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
-            let buffer = state.buffer();
+        for barrier in &self.executable.barriers[barrier_range] {
+            match barrier.resource.object_type() {
+                ObjectType::Buffer => {
+                    let buffer_id = unsafe { barrier.resource.parametrize() };
+                    let state = unsafe { self.resource_map.buffer_unchecked(buffer_id) };
+                    let buffer = state.buffer();
 
-            self.current_buffer_barriers.push(
-                vk::BufferMemoryBarrier::default()
-                    .src_access_mask(convert_access_mask(barrier.src_access_mask))
-                    .dst_access_mask(convert_access_mask(barrier.dst_access_mask))
-                    .src_queue_family_index(barrier.src_queue_family_index)
-                    .dst_queue_family_index(barrier.dst_queue_family_index)
-                    .buffer(state.buffer().handle())
-                    .offset(0)
-                    .size(buffer.size()),
-            );
+                    self.current_buffer_barriers_vk.push(
+                        vk::BufferMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(barrier.src_access_mask))
+                            .dst_access_mask(convert_access_mask(barrier.dst_access_mask))
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .buffer(state.buffer().handle())
+                            .offset(0)
+                            .size(buffer.size()),
+                    );
 
-            self.current_src_stage_mask |= convert_stage_mask(barrier.src_stage_mask);
-            self.current_dst_stage_mask |= convert_stage_mask(barrier.dst_stage_mask);
+                    self.current_src_stage_mask_vk |= convert_stage_mask(barrier.src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(barrier.dst_stage_mask);
+                }
+                ObjectType::Image => {
+                    let image_id = unsafe { barrier.resource.parametrize() };
+                    let image = unsafe { self.resource_map.image_unchecked(image_id) }.image();
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(barrier.src_access_mask))
+                            .dst_access_mask(convert_access_mask(barrier.dst_access_mask))
+                            .old_layout(barrier.old_layout.into())
+                            .new_layout(barrier.new_layout.into())
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+
+                    self.current_src_stage_mask_vk |= convert_stage_mask(barrier.src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(barrier.dst_stage_mask);
+                }
+                ObjectType::Swapchain => {
+                    let swapchain_id = unsafe { barrier.resource.parametrize() };
+                    let image = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) }
+                        .current_image();
+
+                    self.current_image_barriers_vk.push(
+                        vk::ImageMemoryBarrier::default()
+                            .src_access_mask(convert_access_mask(barrier.src_access_mask))
+                            .dst_access_mask(convert_access_mask(barrier.dst_access_mask))
+                            .old_layout(barrier.old_layout.into())
+                            .new_layout(barrier.new_layout.into())
+                            .src_queue_family_index(barrier.src_queue_family_index)
+                            .dst_queue_family_index(barrier.dst_queue_family_index)
+                            .image(image.handle())
+                            .subresource_range(image.subresource_range().to_vk()),
+                    );
+
+                    self.current_src_stage_mask_vk |= convert_stage_mask(barrier.src_stage_mask);
+                    self.current_dst_stage_mask_vk |= convert_stage_mask(barrier.dst_stage_mask);
+                }
+                _ => unreachable!(),
+            }
         }
     }
 
-    fn convert_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
-        let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-
-        for barrier in &self.executable.image_barriers[barrier_range] {
-            let image = match barrier.image.object_type() {
-                ObjectType::Image => {
-                    let image_id = unsafe { barrier.image.parametrize() };
-
-                    unsafe { self.resource_map.image_unchecked(image_id) }.image()
-                }
-                ObjectType::Swapchain => {
-                    let swapchain_id = unsafe { barrier.image.parametrize() };
-
-                    unsafe { self.resource_map.swapchain_unchecked(swapchain_id) }.current_image()
-                }
-                _ => unreachable!(),
-            };
-
-            self.current_image_barriers.push(
-                vk::ImageMemoryBarrier::default()
-                    .src_access_mask(convert_access_mask(barrier.src_access_mask))
-                    .dst_access_mask(convert_access_mask(barrier.dst_access_mask))
-                    .old_layout(barrier.old_layout.into())
-                    .new_layout(barrier.new_layout.into())
-                    .src_queue_family_index(barrier.src_queue_family_index)
-                    .dst_queue_family_index(barrier.dst_queue_family_index)
-                    .image(image.handle())
-                    .subresource_range(image.subresource_range().to_vk()),
-            );
-
-            self.current_src_stage_mask |= convert_stage_mask(barrier.src_stage_mask);
-            self.current_dst_stage_mask |= convert_stage_mask(barrier.dst_stage_mask);
+    fn begin_render_pass(&mut self, render_pass_index: RenderPassIndex) -> Result {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
+            self.flush_barriers()?;
         }
+
+        let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
+        let framebuffer = &render_pass_state.framebuffers
+            [unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) }];
+
+        // FIXME:
+        let mut render_area_vk = vk::Rect2D::default();
+        [render_area_vk.extent.width, render_area_vk.extent.height] = framebuffer.extent();
+
+        unsafe {
+            set_clear_values(
+                &self.executable.graph.nodes,
+                self.resource_map,
+                render_pass_state,
+                &mut self.clear_values,
+                &mut self.clear_values_vk,
+            )
+        };
+
+        let render_pass_begin_info_vk = vk::RenderPassBeginInfo::default()
+            .render_pass(framebuffer.render_pass().handle())
+            .framebuffer(framebuffer.handle())
+            .render_area(render_area_vk)
+            .clear_values(&self.clear_values_vk);
+
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_begin_render_pass)(
+                current_command_buffer!(self).handle(),
+                &render_pass_begin_info_vk,
+                vk::SubpassContents::INLINE,
+            )
+        };
+
+        self.death_row.push(framebuffer.clone());
+
+        Ok(())
+    }
+
+    fn next_subpass(&mut self) {
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_next_subpass)(
+                self.current_command_buffer.as_ref().unwrap().handle(),
+                vk::SubpassContents::INLINE,
+            )
+        };
+    }
+
+    fn end_render_pass(&mut self) {
+        let fns = self.executable.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_end_render_pass)(self.current_command_buffer.as_ref().unwrap().handle())
+        };
+    }
+
+    fn clear_attachments(
+        &mut self,
+        node_index: NodeIndex,
+        render_pass_index: RenderPassIndex,
+        clear_attachment_range: Range<ClearAttachmentIndex>,
+    ) -> Result {
+        if !self.current_buffer_barriers_vk.is_empty() || !self.current_image_barriers_vk.is_empty()
+        {
+            self.flush_barriers()?;
+        }
+
+        let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
+
+        let attachments = &self.executable.clear_attachments[clear_attachment_range];
+
+        unsafe {
+            set_clear_attachments(
+                &self.executable.graph.nodes,
+                self.resource_map,
+                node_index,
+                render_pass_state,
+                attachments,
+                &mut self.clear_values,
+                &mut self.clear_attachments_vk,
+            )
+        };
+
+        Ok(())
     }
 
     fn signal_semaphore(&mut self, semaphore_index: SemaphoreIndex, _stage_mask: PipelineStages) {
         self.current_per_submit
-            .signal_semaphores
+            .signal_semaphores_vk
             .push(self.executable.semaphores.borrow()[semaphore_index].handle());
     }
 
@@ -1349,7 +1799,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .pre_present_complete_semaphore;
 
         self.current_per_submit
-            .signal_semaphores
+            .signal_semaphores_vk
             .push(semaphore.handle());
     }
 
@@ -1359,10 +1809,10 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .pre_present_complete_semaphore;
 
         self.current_per_submit
-            .wait_semaphores
+            .wait_semaphores_vk
             .push(semaphore.handle());
         self.current_per_submit
-            .wait_dst_stage_mask
+            .wait_dst_stage_mask_vk
             .push(convert_stage_mask(stage_mask));
     }
 
@@ -1372,7 +1822,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             &swapchain_state.semaphores[self.current_frame_index as usize].tasks_complete_semaphore;
 
         self.current_per_submit
-            .signal_semaphores
+            .signal_semaphores_vk
             .push(semaphore.handle());
     }
 
@@ -1386,33 +1836,33 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
     }
 
     fn flush_barriers(&mut self) -> Result {
-        if self.current_src_stage_mask.is_empty() {
-            self.current_src_stage_mask = vk::PipelineStageFlags::TOP_OF_PIPE;
+        if self.current_src_stage_mask_vk.is_empty() {
+            self.current_src_stage_mask_vk = vk::PipelineStageFlags::TOP_OF_PIPE;
         }
 
-        if self.current_dst_stage_mask.is_empty() {
-            self.current_dst_stage_mask = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+        if self.current_dst_stage_mask_vk.is_empty() {
+            self.current_dst_stage_mask_vk = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
         }
 
         unsafe {
             (self.cmd_pipeline_barrier)(
                 current_command_buffer!(self).handle(),
-                self.current_src_stage_mask,
-                self.current_dst_stage_mask,
+                self.current_src_stage_mask_vk,
+                self.current_dst_stage_mask_vk,
                 vk::DependencyFlags::empty(),
                 0,
                 ptr::null(),
-                self.current_buffer_barriers.len() as u32,
-                self.current_buffer_barriers.as_ptr(),
-                self.current_image_barriers.len() as u32,
-                self.current_image_barriers.as_ptr(),
+                self.current_buffer_barriers_vk.len() as u32,
+                self.current_buffer_barriers_vk.as_ptr(),
+                self.current_image_barriers_vk.len() as u32,
+                self.current_image_barriers_vk.as_ptr(),
             )
         };
 
-        self.current_buffer_barriers.clear();
-        self.current_image_barriers.clear();
-        self.current_src_stage_mask = vk::PipelineStageFlags::empty();
-        self.current_dst_stage_mask = vk::PipelineStageFlags::empty();
+        self.current_buffer_barriers_vk.clear();
+        self.current_image_barriers_vk.clear();
+        self.current_src_stage_mask_vk = vk::PipelineStageFlags::empty();
+        self.current_dst_stage_mask_vk = vk::PipelineStageFlags::empty();
 
         Ok(())
     }
@@ -1425,17 +1875,17 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
         let submission = current_submission!(self);
 
-        let mut submit_infos = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
-        submit_infos.extend(self.per_submits.iter().map(|per_submit| {
+        let mut submit_infos_vk = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
+        submit_infos_vk.extend(self.per_submits.iter().map(|per_submit| {
             vk::SubmitInfo::default()
-                .wait_semaphores(&per_submit.wait_semaphores)
-                .wait_dst_stage_mask(&per_submit.wait_dst_stage_mask)
-                .command_buffers(&per_submit.command_buffers)
-                .signal_semaphores(&per_submit.signal_semaphores)
+                .wait_semaphores(&per_submit.wait_semaphores_vk)
+                .wait_dst_stage_mask(&per_submit.wait_dst_stage_mask_vk)
+                .command_buffers(&per_submit.command_buffers_vk)
+                .signal_semaphores(&per_submit.signal_semaphores_vk)
         }));
 
         let max_submission_index = self.executable.submissions.len() - 1;
-        let fence_handle = if *self.submission_count == max_submission_index {
+        let fence_vk = if *self.submission_count == max_submission_index {
             self.current_fence.handle()
         } else {
             vk::Fence::null()
@@ -1445,16 +1895,16 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             unsafe {
                 (self.queue_submit)(
                     submission.queue.handle(),
-                    submit_infos.len() as u32,
-                    submit_infos.as_ptr(),
-                    fence_handle,
+                    submit_infos_vk.len() as u32,
+                    submit_infos_vk.as_ptr(),
+                    fence_vk,
                 )
             }
             .result()
             .map_err(VulkanError::from)
         })?;
 
-        drop(submit_infos);
+        drop(submit_infos_vk);
         self.per_submits.clear();
 
         *self.submission_count += 1;
@@ -1466,7 +1916,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         let current_command_buffer = self.current_command_buffer.take().unwrap();
         let command_buffer = unsafe { current_command_buffer.end() }?;
         self.current_per_submit
-            .command_buffers
+            .command_buffers_vk
             .push(command_buffer.handle());
         self.death_row.push(Arc::new(command_buffer));
 
@@ -1517,6 +1967,85 @@ fn create_command_buffer(
     // This can't panic because we know that the queue family index is active on the device,
     // otherwise we wouldn't have a reference to the `Queue`.
     .map_err(Validated::unwrap)
+}
+
+unsafe fn framebuffer_index(resource_map: &ResourceMap<'_>, swapchains: &[Id<Swapchain>]) -> usize {
+    let mut index = 0;
+    let mut factor = 1;
+
+    for &swapchain_id in swapchains {
+        let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
+        let swapchain = swapchain_state.swapchain();
+        index += swapchain_state.current_image_index().unwrap() * factor;
+        factor *= swapchain.image_count();
+    }
+
+    index as usize
+}
+
+unsafe fn set_clear_values(
+    nodes: &super::Nodes<impl ?Sized + 'static>,
+    resource_map: &ResourceMap<'_>,
+    render_pass_state: &super::RenderPassState,
+    clear_values: &mut LinearMap<Id, Option<ClearValue>>,
+    clear_values_vk: &mut Vec<vk::ClearValue>,
+) {
+    clear_values_vk.clear();
+
+    if render_pass_state.clear_node_indices.is_empty() {
+        return;
+    }
+
+    clear_values.clear();
+    clear_values.extend(render_pass_state.attachments.keys().map(|&id| (id, None)));
+
+    for &node_index in &render_pass_state.clear_node_indices {
+        let task_node = unsafe { nodes.task_node_unchecked(node_index) };
+
+        task_node.task.clear_values(&mut ClearValues {
+            inner: clear_values,
+            resource_map,
+        });
+    }
+
+    clear_values_vk.extend(clear_values.values().map(|clear_value| {
+        clear_value
+            .as_ref()
+            .map_or_else(Default::default, ClearValue::to_vk)
+    }));
+}
+
+unsafe fn set_clear_attachments(
+    nodes: &super::Nodes<impl ?Sized + 'static>,
+    resource_map: &ResourceMap<'_>,
+    node_index: NodeIndex,
+    render_pass_state: &super::RenderPassState,
+    attachments: &[Id],
+    clear_values: &mut LinearMap<Id, Option<ClearValue>>,
+    clear_attachments_vk: &mut Vec<vk::ClearAttachment>,
+) {
+    clear_attachments_vk.clear();
+    clear_values.clear();
+    clear_values.extend(attachments.iter().map(|&id| (id, None)));
+
+    let task_node = unsafe { nodes.task_node_unchecked(node_index) };
+
+    task_node.task.clear_values(&mut ClearValues {
+        inner: clear_values,
+        resource_map,
+    });
+
+    clear_attachments_vk.extend(clear_values.iter().map(|(id, clear_value)| {
+        let attachment_state = render_pass_state.attachments.get(id).unwrap();
+
+        vk::ClearAttachment {
+            aspect_mask: attachment_state.format.aspects().into(),
+            color_attachment: attachment_state.index,
+            clear_value: clear_value
+                .as_ref()
+                .map_or_else(Default::default, ClearValue::to_vk),
+        }
+    }));
 }
 
 fn convert_stage_mask(mut stage_mask: PipelineStages) -> vk::PipelineStageFlags {
@@ -1581,11 +2110,11 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             )
         } {
             Ok(new_fence) => {
-                drop(mem::replace(self.current_fence, new_fence));
+                *self.current_fence = new_fence;
             }
             Err(err) => {
-                // Device loss is already a form of poisoning built into Vulkan. There's no
-                // invalid state that can be observed by design.
+                // Device loss is already a form of poisoning built into Vulkan. There's no invalid
+                // state that can be observed by design.
                 if err == VulkanError::DeviceLost {
                     return;
                 }
@@ -1627,7 +2156,7 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             // SAFETY: The parameters are valid.
             match unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) } {
                 Ok(new_semaphore) => {
-                    let _ = mem::replace(semaphore, Arc::new(new_semaphore));
+                    *semaphore = Arc::new(new_semaphore);
                 }
                 Err(err) => {
                     if err == VulkanError::DeviceLost {
@@ -1704,25 +2233,24 @@ impl<'a> ResourceMap<'a> {
             let slot = unsafe { map.get_unchecked_mut(virtual_id.index() as usize) };
 
             *slot = match physical_id.object_type() {
-                // SAFETY: We own an `epoch::Guard`.
                 ObjectType::Buffer => {
-                    let physical_id_p = unsafe { physical_id.parametrize() };
-                    <*const _>::cast(unsafe {
-                        physical_resources.buffer_unprotected(physical_id_p)
-                    }?)
+                    let physical_id = unsafe { physical_id.parametrize() };
+
+                    // SAFETY: We own an `epoch::Guard`.
+                    <*const _>::cast(unsafe { physical_resources.buffer_unprotected(physical_id) }?)
                 }
-                // SAFETY: We own an `epoch::Guard`.
                 ObjectType::Image => {
-                    let physical_id_p = unsafe { physical_id.parametrize() };
-                    <*const _>::cast(unsafe {
-                        physical_resources.image_unprotected(physical_id_p)
-                    }?)
+                    let physical_id = unsafe { physical_id.parametrize() };
+
+                    // SAFETY: We own an `epoch::Guard`.
+                    <*const _>::cast(unsafe { physical_resources.image_unprotected(physical_id) }?)
                 }
-                // SAFETY: We own an `epoch::Guard`.
                 ObjectType::Swapchain => {
-                    let physical_id_p = unsafe { physical_id.parametrize() };
+                    let physical_id = unsafe { physical_id.parametrize() };
+
+                    // SAFETY: We own an `epoch::Guard`.
                     <*const _>::cast(unsafe {
-                        physical_resources.swapchain_unprotected(physical_id_p)
+                        physical_resources.swapchain_unprotected(physical_id)
                     }?)
                 }
                 _ => unreachable!(),

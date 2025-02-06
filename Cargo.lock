@@ -1825,7 +1825,7 @@ dependencies = [
 
 [[package]]
 name = "vulkano"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "ash",
  "bytemuck",
@@ -1855,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "vulkano-macros"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1865,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "vulkano-shaders"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "foldhash",
  "heck",
@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "vulkano-taskgraph"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "ash",
  "concurrent-slotmap",
@@ -1891,7 +1891,7 @@ dependencies = [
 
 [[package]]
 name = "vulkano-util"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "foldhash",
  "vulkano",

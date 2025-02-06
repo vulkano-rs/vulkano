@@ -409,7 +409,6 @@ impl Swapchain {
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `create_info.usage` is empty.
-    // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new(
         device: Arc<Device>,
@@ -429,9 +428,9 @@ impl Swapchain {
         create_info: SwapchainCreateInfo,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         let (handle, image_handles) =
-            Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
+            unsafe { Self::new_inner_unchecked(&device, &surface, &create_info, None) }?;
 
-        Self::from_handle(device, handle, image_handles, surface, create_info)
+        unsafe { Self::from_handle(device, handle, image_handles, surface, create_info) }
     }
 
     /// Creates a new swapchain from this one.
@@ -493,13 +492,15 @@ impl Swapchain {
             Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))
         }?;
 
-        let (swapchain, swapchain_images) = Self::from_handle(
-            self.device.clone(),
-            handle,
-            image_handles,
-            self.surface.clone(),
-            create_info,
-        )?;
+        let (swapchain, swapchain_images) = unsafe {
+            Self::from_handle(
+                self.device.clone(),
+                handle,
+                image_handles,
+                self.surface.clone(),
+                create_info,
+            )
+        }?;
 
         if self.full_screen_exclusive == FullScreenExclusive::ApplicationControlled {
             swapchain.full_screen_exclusive_held.store(
@@ -980,39 +981,45 @@ impl Swapchain {
 
         let handle = {
             let mut output = MaybeUninit::uninit();
-            (fns.khr_swapchain.create_swapchain_khr)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_swapchain.create_swapchain_khr)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         let image_handles = loop {
             let mut count = 0;
-            (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.handle(),
-                handle,
-                &mut count,
-                ptr::null_mut(),
-            )
+            unsafe {
+                (fns.khr_swapchain.get_swapchain_images_khr)(
+                    device.handle(),
+                    handle,
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut images = Vec::with_capacity(count as usize);
-            let result = (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.handle(),
-                handle,
-                &mut count,
-                images.as_mut_ptr(),
-            );
+            let result = unsafe {
+                (fns.khr_swapchain.get_swapchain_images_khr)(
+                    device.handle(),
+                    handle,
+                    &mut count,
+                    images.as_mut_ptr(),
+                )
+            };
 
             match result {
                 ash::vk::Result::SUCCESS => {
-                    images.set_len(count as usize);
+                    unsafe { images.set_len(count as usize) };
                     break images;
                 }
                 ash::vk::Result::INCOMPLETE => (),
@@ -1290,7 +1297,7 @@ impl Swapchain {
         let is_retired_lock = self.is_retired.lock();
         self.validate_acquire_next_image(acquire_info, *is_retired_lock)?;
 
-        Ok(self.acquire_next_image_unchecked(acquire_info)?)
+        Ok(unsafe { self.acquire_next_image_unchecked(acquire_info) }?)
     }
 
     fn validate_acquire_next_image(
@@ -1326,48 +1333,54 @@ impl Swapchain {
     ) -> Result<AcquiredImage, VulkanError> {
         let acquire_info_vk = acquire_info.to_vk(self.handle(), self.device.device_mask());
 
-        let fns = self.device.fns();
-        let mut output = MaybeUninit::uninit();
+        let (image_index, is_suboptimal) = {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
 
-        let result = if self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_device_group
-        {
-            (fns.khr_swapchain.acquire_next_image2_khr)(
-                self.device.handle(),
-                &acquire_info_vk,
-                output.as_mut_ptr(),
-            )
-        } else {
-            debug_assert!(acquire_info_vk.p_next.is_null());
-            (fns.khr_swapchain.acquire_next_image_khr)(
-                self.device.handle(),
-                acquire_info_vk.swapchain,
-                acquire_info_vk.timeout,
-                acquire_info_vk.semaphore,
-                acquire_info_vk.fence,
-                output.as_mut_ptr(),
-            )
-        };
-
-        let is_suboptimal = match result {
-            ash::vk::Result::SUCCESS => false,
-            ash::vk::Result::SUBOPTIMAL_KHR => true,
-            ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady),
-            ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
-            err => {
-                let err = VulkanError::from(err);
-
-                if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
-                    self.full_screen_exclusive_held
-                        .store(false, Ordering::SeqCst);
+            let result = if self.device.api_version() >= Version::V1_1
+                || self.device.enabled_extensions().khr_device_group
+            {
+                unsafe {
+                    (fns.khr_swapchain.acquire_next_image2_khr)(
+                        self.device.handle(),
+                        &acquire_info_vk,
+                        output.as_mut_ptr(),
+                    )
                 }
+            } else {
+                debug_assert!(acquire_info_vk.p_next.is_null());
+                unsafe {
+                    (fns.khr_swapchain.acquire_next_image_khr)(
+                        self.device.handle(),
+                        acquire_info_vk.swapchain,
+                        acquire_info_vk.timeout,
+                        acquire_info_vk.semaphore,
+                        acquire_info_vk.fence,
+                        output.as_mut_ptr(),
+                    )
+                }
+            };
 
-                return Err(err);
+            match result {
+                ash::vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
+                ash::vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
+                ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady),
+                ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
+                err => {
+                    let err = VulkanError::from(err);
+
+                    if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
+                        self.full_screen_exclusive_held
+                            .store(false, Ordering::SeqCst);
+                    }
+
+                    return Err(err);
+                }
             }
         };
 
         Ok(AcquiredImage {
-            image_index: output.assume_init(),
+            image_index,
             is_suboptimal,
         })
     }
@@ -1437,14 +1450,16 @@ impl Swapchain {
     ) -> Result<bool, VulkanError> {
         let result = {
             let fns = self.device.fns();
-            (fns.khr_present_wait.wait_for_present_khr)(
-                self.device.handle(),
-                self.handle,
-                present_id.get(),
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.khr_present_wait.wait_for_present_khr)(
+                    self.device.handle(),
+                    self.handle,
+                    present_id.get(),
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         };
 
         match result {
@@ -1516,8 +1531,12 @@ impl Swapchain {
             .store(true, Ordering::Relaxed);
 
         let fns = self.device.fns();
-        (fns.ext_full_screen_exclusive
-            .acquire_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        unsafe {
+            (fns.ext_full_screen_exclusive
+                .acquire_full_screen_exclusive_mode_ext)(
+                self.device.handle(), self.handle
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -1562,8 +1581,12 @@ impl Swapchain {
             .store(false, Ordering::Release);
 
         let fns = self.device.fns();
-        (fns.ext_full_screen_exclusive
-            .release_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        unsafe {
+            (fns.ext_full_screen_exclusive
+                .release_full_screen_exclusive_mode_ext)(
+                self.device.handle(), self.handle
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 

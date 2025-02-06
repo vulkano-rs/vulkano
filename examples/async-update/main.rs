@@ -41,7 +41,6 @@ use std::{
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    command_buffer::RenderPassBeginInfo,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
@@ -71,7 +70,6 @@ use vulkano::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync::Sharing,
     DeviceSize, Validated, VulkanError, VulkanLibrary,
@@ -80,9 +78,9 @@ use vulkano_taskgraph::{
     command_buffer::{
         BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
     },
-    graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
-    resource::{AccessType, Flight, HostAccessType, ImageLayoutType, Resources},
-    resource_map, Id, QueueFamilyType, Task, TaskContext, TaskResult,
+    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
+    resource_map, ClearValues, Id, QueueFamilyType, Task, TaskContext, TaskResult,
 };
 use winit::{
     application::ApplicationHandler,
@@ -123,8 +121,6 @@ struct App {
 struct RenderContext {
     window: Arc<Window>,
     swapchain_id: Id<Swapchain>,
-    render_pass: Arc<RenderPass>,
-    framebuffers: Vec<Arc<Framebuffer>>,
     viewport: Viewport,
     recreate_swapchain: bool,
     task_graph: ExecutableTaskGraph<Self>,
@@ -370,12 +366,12 @@ impl App {
                 [
                     (
                         texture_ids[0],
-                        AccessType::ClearTransferWrite,
+                        AccessTypes::CLEAR_TRANSFER_WRITE,
                         ImageLayoutType::Optimal,
                     ),
                     (
                         texture_ids[1],
-                        AccessType::ClearTransferWrite,
+                        AccessTypes::CLEAR_TRANSFER_WRITE,
                         ImageLayoutType::Optimal,
                     ),
                 ],
@@ -458,72 +454,26 @@ impl ApplicationHandler for App {
                 .unwrap()
         };
 
-        let render_pass = vulkano::single_pass_renderpass!(
+        let vs = vs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+        let layout = PipelineLayout::new(
             self.device.clone(),
-            attachments: {
-                color: {
-                    format: swapchain_format,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {},
-            },
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(self.device.clone())
+                .unwrap(),
         )
         .unwrap();
-
-        let framebuffers = window_size_dependent_setup(&self.resources, swapchain_id, &render_pass);
-
-        let pipeline = {
-            let vs = vs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
-            let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
-            ];
-            let layout = PipelineLayout::new(
-                self.device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(self.device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
-            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
-            GraphicsPipeline::new(
-                self.device.clone(),
-                None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState {
-                        topology: PrimitiveTopology::TriangleStrip,
-                        ..Default::default()
-                    }),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
-                },
-            )
-            .unwrap()
-        };
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -544,7 +494,7 @@ impl ApplicationHandler for App {
 
             DescriptorSet::new(
                 descriptor_set_allocator.clone(),
-                pipeline.layout().set_layouts()[0].clone(),
+                layout.set_layouts()[0].clone(),
                 [WriteDescriptorSet::buffer(0, buffer.clone().into())],
                 [],
             )
@@ -563,7 +513,7 @@ impl ApplicationHandler for App {
 
             DescriptorSet::new(
                 descriptor_set_allocator.clone(),
-                pipeline.layout().set_layouts()[1].clone(),
+                layout.set_layouts()[1].clone(),
                 [
                     WriteDescriptorSet::sampler(0, sampler.clone()),
                     WriteDescriptorSet::image_view(
@@ -578,7 +528,10 @@ impl ApplicationHandler for App {
 
         let mut task_graph = TaskGraph::new(&self.resources, 1, 4);
 
-        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
+            image_format: swapchain_format,
+            ..Default::default()
+        });
         let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
             sharing: if self.graphics_family_index != self.transfer_family_index {
                 Sharing::Concurrent(
@@ -592,10 +545,11 @@ impl ApplicationHandler for App {
             ..Default::default()
         });
         let virtual_uniform_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
+        let virtual_framebuffer_id = task_graph.add_framebuffer();
 
         task_graph.add_host_buffer_access(virtual_uniform_buffer_id, HostAccessType::Write);
 
-        task_graph
+        let render_node_id = task_graph
             .create_task_node(
                 "Render",
                 QueueFamilyType::Graphics,
@@ -603,29 +557,35 @@ impl ApplicationHandler for App {
                     swapchain_id: virtual_swapchain_id,
                     vertex_buffer_id: self.vertex_buffer_id,
                     current_texture_index: self.current_texture_index.clone(),
-                    pipeline,
+                    pipeline: None,
                     uniform_buffer_id: virtual_uniform_buffer_id,
                     uniform_buffer_sets,
                     sampler_sets,
                 },
             )
-            .image_access(
+            .framebuffer(virtual_framebuffer_id)
+            .color_attachment(
                 virtual_swapchain_id.current_image_id(),
-                AccessType::ColorAttachmentWrite,
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
                 ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    clear: true,
+                    ..Default::default()
+                },
             )
-            .buffer_access(self.vertex_buffer_id, AccessType::VertexAttributeRead)
+            .buffer_access(self.vertex_buffer_id, AccessTypes::VERTEX_ATTRIBUTE_READ)
             .image_access(
                 virtual_texture_id,
-                AccessType::FragmentShaderSampledRead,
+                AccessTypes::FRAGMENT_SHADER_SAMPLED_READ,
                 ImageLayoutType::Optimal,
             )
             .buffer_access(
                 virtual_uniform_buffer_id,
-                AccessType::VertexShaderUniformRead,
-            );
+                AccessTypes::VERTEX_SHADER_UNIFORM_READ,
+            )
+            .build();
 
-        let task_graph = unsafe {
+        let mut task_graph = unsafe {
             task_graph.compile(&CompileInfo {
                 queues: &[&self.graphics_queue],
                 present_queue: Some(&self.graphics_queue),
@@ -635,11 +595,44 @@ impl ApplicationHandler for App {
         }
         .unwrap();
 
+        let node = task_graph.task_node(render_node_id).unwrap();
+        let subpass = node.subpass().unwrap().clone();
+
+        let pipeline = GraphicsPipeline::new(
+            self.device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState {
+                    topology: PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                }),
+                viewport_state: Some(ViewportState::default()),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap();
+
+        task_graph
+            .task_node_mut(render_node_id)
+            .unwrap()
+            .task_mut()
+            .downcast_mut::<RenderTask>()
+            .unwrap()
+            .pipeline = Some(pipeline);
+
         self.rcx = Some(RenderContext {
             window,
             swapchain_id,
-            render_pass,
-            framebuffers,
             viewport,
             recreate_swapchain: false,
             task_graph,
@@ -692,11 +685,6 @@ impl ApplicationHandler for App {
                             ..create_info
                         })
                         .expect("failed to recreate swapchain");
-                    rcx.framebuffers = window_size_dependent_setup(
-                        &self.resources,
-                        rcx.swapchain_id,
-                        &rcx.render_pass,
-                    );
                     rcx.viewport.extent = window_size.into();
                     rcx.recreate_swapchain = false;
                 }
@@ -791,7 +779,7 @@ struct RenderTask {
     swapchain_id: Id<Swapchain>,
     vertex_buffer_id: Id<Buffer>,
     current_texture_index: Arc<AtomicBool>,
-    pipeline: Arc<GraphicsPipeline>,
+    pipeline: Option<Arc<GraphicsPipeline>>,
     uniform_buffer_id: Id<Buffer>,
     uniform_buffer_sets: [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT as usize],
     sampler_sets: [Arc<DescriptorSet>; 2],
@@ -800,6 +788,10 @@ struct RenderTask {
 impl Task for RenderTask {
     type World = RenderContext;
 
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
+        clear_values.set(self.swapchain_id.current_image_id(), [0.0; 4]);
+    }
+
     unsafe fn execute(
         &self,
         cbf: &mut RecordingCommandBuffer<'_>,
@@ -807,8 +799,6 @@ impl Task for RenderTask {
         rcx: &Self::World,
     ) -> TaskResult {
         let frame_index = tcx.current_frame_index();
-        let swapchain_state = tcx.swapchain(self.swapchain_id)?;
-        let image_index = swapchain_state.current_image_index().unwrap();
 
         // Write to the uniform buffer designated for this frame.
         *tcx.write_buffer(self.uniform_buffer_id, ..)? = vs::Data {
@@ -827,18 +817,13 @@ impl Task for RenderTask {
             },
         };
 
-        cbf.as_raw().begin_render_pass(
-            &RenderPassBeginInfo {
-                clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
-                ..RenderPassBeginInfo::framebuffer(rcx.framebuffers[image_index as usize].clone())
-            },
-            &Default::default(),
-        )?;
+        let pipeline = self.pipeline.as_ref().unwrap();
+
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
-        cbf.bind_pipeline_graphics(&self.pipeline)?;
+        cbf.bind_pipeline_graphics(pipeline)?;
         cbf.as_raw().bind_descriptor_sets(
             PipelineBindPoint::Graphics,
-            self.pipeline.layout(),
+            pipeline.layout(),
             0,
             &[
                 // Bind the uniform buffer designated for this frame.
@@ -853,9 +838,6 @@ impl Task for RenderTask {
 
         unsafe { cbf.draw(4, 1, 0, 0) }?;
 
-        cbf.as_raw().end_render_pass(&Default::default())?;
-
-        cbf.destroy_objects(rcx.framebuffers.iter().cloned());
         cbf.destroy_objects(self.uniform_buffer_sets.iter().cloned());
         cbf.destroy_objects(self.sampler_sets.iter().cloned());
 
@@ -936,12 +918,15 @@ fn run_worker(
         )
         .buffer_access(
             virtual_front_staging_buffer_id,
-            AccessType::CopyTransferRead,
+            AccessTypes::COPY_TRANSFER_READ,
         )
-        .buffer_access(virtual_back_staging_buffer_id, AccessType::CopyTransferRead)
+        .buffer_access(
+            virtual_back_staging_buffer_id,
+            AccessTypes::COPY_TRANSFER_READ,
+        )
         .image_access(
             virtual_texture_id,
-            AccessType::CopyTransferWrite,
+            AccessTypes::COPY_TRANSFER_WRITE,
             ImageLayoutType::Optimal,
         );
 
@@ -1088,30 +1073,4 @@ impl Task for UploadTask {
 
         Ok(())
     }
-}
-
-/// This function is called once during initialization, then again whenever the window is resized.
-fn window_size_dependent_setup(
-    resources: &Resources,
-    swapchain_id: Id<Swapchain>,
-    render_pass: &Arc<RenderPass>,
-) -> Vec<Arc<Framebuffer>> {
-    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
-    let images = swapchain_state.images();
-
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
-
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
 }

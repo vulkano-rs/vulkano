@@ -6,7 +6,6 @@ members = [
     "vulkano-shaders",
     "vulkano-taskgraph",
     "vulkano-util",
-    # "vulkano-win",
 ]
 # NOTE(Marc): Linux CI is failing because of a transitive dependency of the old winit that this
 # example depends on. I don't know how to update glium to the new version.
@@ -22,24 +21,24 @@ keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
 [workspace.dependencies.vulkano]
-version = "0.34"
+version = "0.35"
 path = "vulkano"
 default-features = false
 
 [workspace.dependencies.vulkano-macros]
-version = "0.34"
+version = "0.35"
 path = "vulkano-macros"
 
 [workspace.dependencies.vulkano-shaders]
-version = "0.34"
+version = "0.35"
 path = "vulkano-shaders"
 
 [workspace.dependencies.vulkano-taskgraph]
-version = "0.34"
+version = "0.35"
 path = "vulkano-taskgraph"
 
 [workspace.dependencies.vulkano-util]
-version = "0.34"
+version = "0.35"
 path = "vulkano-util"
 
 [workspace.dependencies]
@@ -85,6 +84,7 @@ ron = "0.8"
 rust.missing_docs = "allow"                                       # TODO: warn eventually
 rust.rust_2018_idioms = { level = "warn", priority = -1 }
 rust.rust_2024_compatibility = { level = "allow", priority = -1 } # TODO: warn eventually
+rust.unsafe_op_in_unsafe_fn = "warn"
 clippy.borrow_as_ptr = "warn"
 clippy.missing_safety_doc = "allow"                               # TODO: warn eventually
 clippy.multiple_unsafe_ops_per_block = "warn"

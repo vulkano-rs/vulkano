@@ -261,7 +261,7 @@ impl RenderPass {
         } = create_info;
 
         let mut attachment_use = vec![AttachmentUse::default(); attachments.len()];
-        let granularity = Self::get_granularity(&device, handle);
+        let granularity = unsafe { Self::get_granularity(&device, handle) };
         let mut views_used = 0;
 
         for subpass_desc in &subpasses {
@@ -323,14 +323,19 @@ impl RenderPass {
     }
 
     unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
-        let fns = device.fns();
-        let mut out = MaybeUninit::uninit();
-        (fns.v1_0.get_render_area_granularity)(device.handle(), handle, out.as_mut_ptr());
+        let granularity = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.v1_0.get_render_area_granularity)(device.handle(), handle, output.as_mut_ptr())
+            };
 
-        let out = out.assume_init();
-        debug_assert_ne!(out.width, 0);
-        debug_assert_ne!(out.height, 0);
-        [out.width, out.height]
+            unsafe { output.assume_init() }
+        };
+
+        debug_assert_ne!(granularity.width, 0);
+        debug_assert_ne!(granularity.height, 0);
+        [granularity.width, granularity.height]
     }
 
     /// Returns the flags that the render pass was created with.

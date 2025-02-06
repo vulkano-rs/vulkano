@@ -125,18 +125,20 @@ impl Semaphore {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_semaphore)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_semaphore)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Takes a semaphore from the vulkano-provided semaphore pool.
@@ -240,26 +242,34 @@ impl Semaphore {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn counter_value_unchecked(&self) -> Result<u64, VulkanError> {
-        let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
 
-        if self.device.api_version() >= Version::V1_2 {
-            (fns.v1_2.get_semaphore_counter_value)(
-                self.device.handle(),
-                self.handle,
-                output.as_mut_ptr(),
-            )
-        } else {
-            (fns.khr_timeline_semaphore.get_semaphore_counter_value_khr)(
-                self.device.handle(),
-                self.handle,
-                output.as_mut_ptr(),
-            )
-        }
-        .result()
-        .map_err(VulkanError::from)?;
+        let value = {
+            let mut output = MaybeUninit::uninit();
 
-        Ok(output.assume_init())
+            if self.device.api_version() >= Version::V1_2 {
+                unsafe {
+                    (fns.v1_2.get_semaphore_counter_value)(
+                        self.device.handle(),
+                        self.handle,
+                        output.as_mut_ptr(),
+                    )
+                }
+            } else {
+                unsafe {
+                    (fns.khr_timeline_semaphore.get_semaphore_counter_value_khr)(
+                        self.device.handle(),
+                        self.handle,
+                        output.as_mut_ptr(),
+                    )
+                }
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
+        };
+
+        Ok(value)
     }
 
     /// If `self` is a timeline semaphore, performs a signal operation on the semaphore, setting
@@ -276,7 +286,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_signal(&signal_info)?;
 
-        Ok(self.signal_unchecked(signal_info)?)
+        Ok(unsafe { self.signal_unchecked(signal_info) }?)
     }
 
     fn validate_signal(
@@ -312,9 +322,14 @@ impl Semaphore {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_2 {
-            (fns.v1_2.signal_semaphore)(self.device.handle(), &signal_info_vk)
+            unsafe { (fns.v1_2.signal_semaphore)(self.device.handle(), &signal_info_vk) }
         } else {
-            (fns.khr_timeline_semaphore.signal_semaphore_khr)(self.device.handle(), &signal_info_vk)
+            unsafe {
+                (fns.khr_timeline_semaphore.signal_semaphore_khr)(
+                    self.device.handle(),
+                    &signal_info_vk,
+                )
+            }
         }
         .result()
         .map_err(VulkanError::from)
@@ -375,21 +390,25 @@ impl Semaphore {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_2 {
-            (fns.v1_2.wait_semaphores)(
-                self.device.handle(),
-                &wait_info_vk,
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.v1_2.wait_semaphores)(
+                    self.device.handle(),
+                    &wait_info_vk,
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         } else {
-            (fns.khr_timeline_semaphore.wait_semaphores_khr)(
-                self.device.handle(),
-                &wait_info_vk,
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.khr_timeline_semaphore.wait_semaphores_khr)(
+                    self.device.handle(),
+                    &wait_info_vk,
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         }
         .result()
         .map_err(VulkanError::from)
@@ -452,21 +471,25 @@ impl Semaphore {
         let fns = device.fns();
 
         if device.api_version() >= Version::V1_2 {
-            (fns.v1_2.wait_semaphores)(
-                device.handle(),
-                &wait_info_vk,
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.v1_2.wait_semaphores)(
+                    device.handle(),
+                    &wait_info_vk,
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         } else {
-            (fns.khr_timeline_semaphore.wait_semaphores_khr)(
-                device.handle(),
-                &wait_info_vk,
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.khr_timeline_semaphore.wait_semaphores_khr)(
+                    device.handle(),
+                    &wait_info_vk,
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         }
         .result()
         .map_err(VulkanError::from)
@@ -556,18 +579,21 @@ impl Semaphore {
 
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
-        (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
-            self.device.handle(),
-            &info_vk,
-            output.as_mut_ptr(),
-        )
+        unsafe {
+            (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
+                self.device.handle(),
+                &info_vk,
+                output.as_mut_ptr(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::io::FromRawFd;
-            Ok(File::from_raw_fd(output.assume_init()))
+            let raw_fd = unsafe { output.assume_init() };
+            Ok(unsafe { File::from_raw_fd(raw_fd) })
         }
 
         #[cfg(not(unix))]
@@ -662,16 +688,23 @@ impl Semaphore {
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
-        let mut output = MaybeUninit::uninit();
-        let fns = self.device.fns();
-        (fns.khr_external_semaphore_win32
-            .get_semaphore_win32_handle_khr)(
-            self.device.handle(), &info_vk, output.as_mut_ptr()
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        let handle = {
+            let mut output = MaybeUninit::uninit();
+            let fns = self.device.fns();
+            unsafe {
+                (fns.khr_external_semaphore_win32
+                    .get_semaphore_win32_handle_khr)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
+        };
 
-        Ok(output.assume_init())
+        Ok(handle)
     }
 
     /// Exports the semaphore into a Zircon event handle.
@@ -750,18 +783,23 @@ impl Semaphore {
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
-        let mut output = MaybeUninit::uninit();
-        let fns = self.device.fns();
-        (fns.fuchsia_external_semaphore
-            .get_semaphore_zircon_handle_fuchsia)(
-            self.device.handle(),
-            &info_vk,
-            output.as_mut_ptr(),
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        let handle = {
+            let mut output = MaybeUninit::uninit();
+            let fns = self.device.fns();
+            unsafe {
+                (fns.fuchsia_external_semaphore
+                    .get_semaphore_zircon_handle_fuchsia)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
+        };
 
-        Ok(output.assume_init())
+        Ok(handle)
     }
 
     /// Imports a semaphore from a POSIX file descriptor.
@@ -782,7 +820,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_import_fd(&import_semaphore_fd_info)?;
 
-        Ok(self.import_fd_unchecked(import_semaphore_fd_info)?)
+        Ok(unsafe { self.import_fd_unchecked(import_semaphore_fd_info) }?)
     }
 
     fn validate_import_fd(
@@ -833,9 +871,11 @@ impl Semaphore {
         let info_vk = import_semaphore_fd_info.into_vk(self.handle());
 
         let fns = self.device.fns();
-        (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -858,7 +898,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_import_win32_handle(&import_semaphore_win32_handle_info)?;
 
-        Ok(self.import_win32_handle_unchecked(import_semaphore_win32_handle_info)?)
+        Ok(unsafe { self.import_win32_handle_unchecked(import_semaphore_win32_handle_info) }?)
     }
 
     fn validate_import_win32_handle(
@@ -913,8 +953,10 @@ impl Semaphore {
         let info_vk = import_semaphore_win32_handle_info.to_vk(self.handle());
 
         let fns = self.device.fns();
-        (fns.khr_external_semaphore_win32
-            .import_semaphore_win32_handle_khr)(self.device.handle(), &info_vk)
+        unsafe {
+            (fns.khr_external_semaphore_win32
+                .import_semaphore_win32_handle_khr)(self.device.handle(), &info_vk)
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -938,7 +980,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_import_zircon_handle(&import_semaphore_zircon_handle_info)?;
 
-        Ok(self.import_zircon_handle_unchecked(import_semaphore_zircon_handle_info)?)
+        Ok(unsafe { self.import_zircon_handle_unchecked(import_semaphore_zircon_handle_info) }?)
     }
 
     fn validate_import_zircon_handle(
@@ -977,8 +1019,10 @@ impl Semaphore {
         let info_vk = import_semaphore_zircon_handle_info.to_vk(self.handle());
 
         let fns = self.device.fns();
-        (fns.fuchsia_external_semaphore
-            .import_semaphore_zircon_handle_fuchsia)(self.device.handle(), &info_vk)
+        unsafe {
+            (fns.fuchsia_external_semaphore
+                .import_semaphore_zircon_handle_fuchsia)(self.device.handle(), &info_vk)
+        }
         .result()
         .map_err(VulkanError::from)?;
 

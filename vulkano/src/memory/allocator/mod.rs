@@ -1475,11 +1475,11 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             // memory and because a block isn't dropped until the allocator itself is dropped, at
             // which point it would be impossible to call this method. We also know that it must be
             // valid to create a reference to the block, because we locked the pool it belongs to.
-            let block = &mut *block_ptr;
+            let block = unsafe { &mut *block_ptr };
 
             // SAFETY: The caller must guarantee that `allocation` refers to a currently allocated
             // allocation of `self`.
-            block.deallocate(suballocation);
+            unsafe { block.deallocate(suballocation) };
         }
     }
 }
@@ -1534,7 +1534,7 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
     }
 
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
-        (**self).deallocate(allocation)
+        unsafe { (**self).deallocate(allocation) }
     }
 }
 
@@ -1626,7 +1626,7 @@ impl<S: Suballocator> DeviceMemoryBlock<S> {
     }
 
     unsafe fn deallocate(&mut self, suballocation: Suballocation) {
-        self.suballocator.deallocate(suballocation);
+        unsafe { self.suballocator.deallocate(suballocation) };
 
         self.allocation_count -= 1;
 

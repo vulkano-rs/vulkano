@@ -446,7 +446,7 @@ impl SuballocationList {
 
             if prev.allocation_type == SuballocationType::Free {
                 // SAFETY: We checked that the suballocation is free.
-                self.allocate(prev_ptr);
+                unsafe { self.allocate(prev_ptr) };
 
                 unsafe { (*node_ptr.as_ptr()).prev = prev.prev };
                 unsafe { (*node_ptr.as_ptr()).offset = prev.offset };
@@ -480,7 +480,7 @@ impl SuballocationList {
 
             if next.allocation_type == SuballocationType::Free {
                 // SAFETY: Same as above.
-                self.allocate(next_ptr);
+                unsafe { self.allocate(next_ptr) };
 
                 unsafe { (*node_ptr.as_ptr()).next = next.next };
                 // This is overflow-safe for the same reason as above.

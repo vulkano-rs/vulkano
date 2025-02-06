@@ -69,18 +69,20 @@ impl CommandPool {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_command_pool)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_command_pool)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `CommandPool` from a raw object handle.
@@ -134,7 +136,7 @@ impl CommandPool {
     pub unsafe fn reset(&self, flags: CommandPoolResetFlags) -> Result<(), Validated<VulkanError>> {
         self.validate_reset(flags)?;
 
-        Ok(self.reset_unchecked(flags)?)
+        Ok(unsafe { self.reset_unchecked(flags) }?)
     }
 
     fn validate_reset(&self, flags: CommandPoolResetFlags) -> Result<(), Box<ValidationError>> {
@@ -149,7 +151,7 @@ impl CommandPool {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reset_unchecked(&self, flags: CommandPoolResetFlags) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags.into())
+        unsafe { (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags.into()) }
             .result()
             .map_err(VulkanError::from)?;
 
@@ -215,7 +217,7 @@ impl CommandPool {
         let command_buffers: SmallVec<[_; 4]> = command_buffers.into_iter().collect();
         self.validate_free_command_buffers(&command_buffers)?;
 
-        self.free_command_buffers_unchecked(command_buffers);
+        unsafe { self.free_command_buffers_unchecked(command_buffers) };
         Ok(())
     }
 
@@ -239,12 +241,14 @@ impl CommandPool {
             command_buffers.into_iter().map(|cb| cb.handle).collect();
 
         let fns = self.device.fns();
-        (fns.v1_0.free_command_buffers)(
-            self.device.handle(),
-            self.handle,
-            command_buffers_vk.len() as u32,
-            command_buffers_vk.as_ptr(),
-        )
+        unsafe {
+            (fns.v1_0.free_command_buffers)(
+                self.device.handle(),
+                self.handle,
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        }
     }
 
     /// Trims a command pool, which recycles unused internal memory from the command pool back to
@@ -286,17 +290,21 @@ impl CommandPool {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_1 {
-            (fns.v1_1.trim_command_pool)(
-                self.device.handle(),
-                self.handle,
-                ash::vk::CommandPoolTrimFlags::empty(),
-            );
+            unsafe {
+                (fns.v1_1.trim_command_pool)(
+                    self.device.handle(),
+                    self.handle,
+                    ash::vk::CommandPoolTrimFlags::empty(),
+                )
+            };
         } else {
-            (fns.khr_maintenance1.trim_command_pool_khr)(
-                self.device.handle(),
-                self.handle,
-                ash::vk::CommandPoolTrimFlagsKHR::empty(),
-            );
+            unsafe {
+                (fns.khr_maintenance1.trim_command_pool_khr)(
+                    self.device.handle(),
+                    self.handle,
+                    ash::vk::CommandPoolTrimFlagsKHR::empty(),
+                )
+            };
         }
     }
 }

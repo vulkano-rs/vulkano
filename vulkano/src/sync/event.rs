@@ -102,7 +102,7 @@ impl Event {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Takes an event from the vulkano-provided event pool.
@@ -232,7 +232,7 @@ impl Event {
     pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
 
-        Ok(self.reset_unchecked()?)
+        Ok(unsafe { self.reset_unchecked() }?)
     }
 
     fn validate_reset(&mut self) -> Result<(), Box<ValidationError>> {

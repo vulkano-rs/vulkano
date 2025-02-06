@@ -74,7 +74,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.clear_color_image_unchecked(&clear_info);
+                unsafe { out.clear_color_image_unchecked(&clear_info) };
             },
         );
 
@@ -140,7 +140,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.clear_depth_stencil_image_unchecked(&clear_info);
+                unsafe { out.clear_depth_stencil_image_unchecked(&clear_info) };
             },
         );
 
@@ -198,7 +198,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.fill_buffer_unchecked(&dst_buffer, data);
+                unsafe { out.fill_buffer_unchecked(&dst_buffer, data) };
             },
         );
 
@@ -264,7 +264,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.update_buffer_unchecked(&dst_buffer, &data);
+                unsafe { out.update_buffer_unchecked(&dst_buffer, &data) };
             },
         );
 
@@ -280,7 +280,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_color_image(clear_info)?;
 
-        Ok(self.clear_color_image_unchecked(clear_info))
+        Ok(unsafe { self.clear_color_image_unchecked(clear_info) })
     }
 
     fn validate_clear_color_image(
@@ -321,14 +321,16 @@ impl RecordingCommandBuffer {
         let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_clear_color_image)(
-            self.handle(),
-            clear_info_vk.image,
-            clear_info_vk.image_layout,
-            &clear_info_vk.color,
-            ranges_vk.len() as u32,
-            ranges_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_clear_color_image)(
+                self.handle(),
+                clear_info_vk.image,
+                clear_info_vk.image_layout,
+                &clear_info_vk.color,
+                ranges_vk.len() as u32,
+                ranges_vk.as_ptr(),
+            )
+        };
 
         self
     }
@@ -340,7 +342,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_depth_stencil_image(clear_info)?;
 
-        Ok(self.clear_depth_stencil_image_unchecked(clear_info))
+        Ok(unsafe { self.clear_depth_stencil_image_unchecked(clear_info) })
     }
 
     fn validate_clear_depth_stencil_image(
@@ -381,14 +383,16 @@ impl RecordingCommandBuffer {
         let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_clear_depth_stencil_image)(
-            self.handle(),
-            clear_info_vk.image,
-            clear_info_vk.image_layout,
-            &clear_info_vk.depth_stencil,
-            ranges_vk.len() as u32,
-            ranges_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_clear_depth_stencil_image)(
+                self.handle(),
+                clear_info_vk.image,
+                clear_info_vk.image_layout,
+                &clear_info_vk.depth_stencil,
+                ranges_vk.len() as u32,
+                ranges_vk.as_ptr(),
+            )
+        };
 
         self
     }
@@ -401,7 +405,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_fill_buffer(dst_buffer, data)?;
 
-        Ok(self.fill_buffer_unchecked(dst_buffer, data))
+        Ok(unsafe { self.fill_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_fill_buffer(
@@ -477,13 +481,15 @@ impl RecordingCommandBuffer {
         data: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_fill_buffer)(
-            self.handle(),
-            dst_buffer.buffer().handle(),
-            dst_buffer.offset(),
-            dst_buffer.size(),
-            data,
-        );
+        unsafe {
+            (fns.v1_0.cmd_fill_buffer)(
+                self.handle(),
+                dst_buffer.buffer().handle(),
+                dst_buffer.offset(),
+                dst_buffer.size(),
+                data,
+            )
+        };
 
         self
     }
@@ -503,7 +509,7 @@ impl RecordingCommandBuffer {
 
         self.validate_update_buffer(dst_buffer.as_bytes(), size_of_val(data) as DeviceSize)?;
 
-        Ok(self.update_buffer_unchecked(dst_buffer, data))
+        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_update_buffer(
@@ -601,13 +607,15 @@ impl RecordingCommandBuffer {
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_update_buffer)(
-            self.handle(),
-            dst_buffer.buffer().handle(),
-            dst_buffer.offset(),
-            size_of_val(data) as DeviceSize,
-            <*const _>::cast(data),
-        );
+        unsafe {
+            (fns.v1_0.cmd_update_buffer)(
+                self.handle(),
+                dst_buffer.buffer().handle(),
+                dst_buffer.offset(),
+                size_of_val(data) as DeviceSize,
+                <*const _>::cast(data),
+            )
+        };
 
         self
     }

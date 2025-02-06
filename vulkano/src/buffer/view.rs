@@ -303,7 +303,7 @@ impl BufferView {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(subbuffer, handle, create_info))
+        Ok(unsafe { Self::from_handle(subbuffer, handle, create_info) })
     }
 
     /// Creates a new `BufferView` from a raw object handle.

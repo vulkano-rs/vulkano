@@ -18,7 +18,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_pipeline_barrier(dependency_info)?;
 
-        Ok(self.pipeline_barrier_unchecked(dependency_info))
+        Ok(unsafe { self.pipeline_barrier_unchecked(dependency_info) })
     }
 
     fn validate_pipeline_barrier(
@@ -212,12 +212,14 @@ impl RecordingCommandBuffer {
             let fns = self.device().fns();
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_pipeline_barrier2)(self.handle(), &dependency_info_vk);
+                unsafe { (fns.v1_3.cmd_pipeline_barrier2)(self.handle(), &dependency_info_vk) };
             } else {
-                (fns.khr_synchronization2.cmd_pipeline_barrier2_khr)(
-                    self.handle(),
-                    &dependency_info_vk,
-                );
+                unsafe {
+                    (fns.khr_synchronization2.cmd_pipeline_barrier2_khr)(
+                        self.handle(),
+                        &dependency_info_vk,
+                    )
+                };
             }
         } else {
             let DependencyInfoFields1Vk {
@@ -230,18 +232,20 @@ impl RecordingCommandBuffer {
             let dependency_flags_vk = dependency_info.to_vk_dependency_flags();
 
             let fns = self.device().fns();
-            (fns.v1_0.cmd_pipeline_barrier)(
-                self.handle(),
-                src_stage_mask_vk,
-                dst_stage_mask_vk,
-                dependency_flags_vk,
-                memory_barriers_vk.len() as u32,
-                memory_barriers_vk.as_ptr(),
-                buffer_memory_barriers_vk.len() as u32,
-                buffer_memory_barriers_vk.as_ptr(),
-                image_memory_barriers_vk.len() as u32,
-                image_memory_barriers_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_pipeline_barrier)(
+                    self.handle(),
+                    src_stage_mask_vk,
+                    dst_stage_mask_vk,
+                    dependency_flags_vk,
+                    memory_barriers_vk.len() as u32,
+                    memory_barriers_vk.as_ptr(),
+                    buffer_memory_barriers_vk.len() as u32,
+                    buffer_memory_barriers_vk.as_ptr(),
+                    image_memory_barriers_vk.len() as u32,
+                    image_memory_barriers_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -255,7 +259,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_event(event, dependency_info)?;
 
-        Ok(self.set_event_unchecked(event, dependency_info))
+        Ok(unsafe { self.set_event_unchecked(event, dependency_info) })
     }
 
     fn validate_set_event(
@@ -458,13 +462,17 @@ impl RecordingCommandBuffer {
             );
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_set_event2)(self.handle(), event.handle(), &dependency_info_vk);
+                unsafe {
+                    (fns.v1_3.cmd_set_event2)(self.handle(), event.handle(), &dependency_info_vk)
+                };
             } else {
-                (fns.khr_synchronization2.cmd_set_event2_khr)(
-                    self.handle(),
-                    event.handle(),
-                    &dependency_info_vk,
-                );
+                unsafe {
+                    (fns.khr_synchronization2.cmd_set_event2_khr)(
+                        self.handle(),
+                        event.handle(),
+                        &dependency_info_vk,
+                    )
+                };
             }
         } else {
             // The original function only takes a source stage mask; the rest of the info is
@@ -472,7 +480,7 @@ impl RecordingCommandBuffer {
             // here and ignore the rest.
             let stage_mask_vk = dependency_info.to_vk_src_stage_mask();
 
-            (fns.v1_0.cmd_set_event)(self.handle(), event.handle(), stage_mask_vk);
+            unsafe { (fns.v1_0.cmd_set_event)(self.handle(), event.handle(), stage_mask_vk) };
         }
 
         self
@@ -485,7 +493,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_wait_events(events)?;
 
-        Ok(self.wait_events_unchecked(events))
+        Ok(unsafe { self.wait_events_unchecked(events) })
     }
 
     fn validate_wait_events(
@@ -694,19 +702,23 @@ impl RecordingCommandBuffer {
                 .collect();
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_wait_events2)(
-                    self.handle(),
-                    events_vk.len() as u32,
-                    events_vk.as_ptr(),
-                    dependency_infos_vk.as_ptr(),
-                );
+                unsafe {
+                    (fns.v1_3.cmd_wait_events2)(
+                        self.handle(),
+                        events_vk.len() as u32,
+                        events_vk.as_ptr(),
+                        dependency_infos_vk.as_ptr(),
+                    )
+                };
             } else {
-                (fns.khr_synchronization2.cmd_wait_events2_khr)(
-                    self.handle(),
-                    events_vk.len() as u32,
-                    events_vk.as_ptr(),
-                    dependency_infos_vk.as_ptr(),
-                );
+                unsafe {
+                    (fns.khr_synchronization2.cmd_wait_events2_khr)(
+                        self.handle(),
+                        events_vk.len() as u32,
+                        events_vk.as_ptr(),
+                        dependency_infos_vk.as_ptr(),
+                    )
+                };
             }
         } else {
             // With the original function, you can only specify a single dependency info for all
@@ -724,19 +736,21 @@ impl RecordingCommandBuffer {
                     dst_stage_mask_vk,
                 } = dependency_info.to_vk_fields1();
 
-                (fns.v1_0.cmd_wait_events)(
-                    self.handle(),
-                    1,
-                    events_vk.as_ptr(),
-                    src_stage_mask_vk,
-                    dst_stage_mask_vk,
-                    memory_barriers_vk.len() as u32,
-                    memory_barriers_vk.as_ptr(),
-                    buffer_memory_barriers_vk.len() as u32,
-                    buffer_memory_barriers_vk.as_ptr(),
-                    image_memory_barriers_vk.len() as u32,
-                    image_memory_barriers_vk.as_ptr(),
-                );
+                unsafe {
+                    (fns.v1_0.cmd_wait_events)(
+                        self.handle(),
+                        1,
+                        events_vk.as_ptr(),
+                        src_stage_mask_vk,
+                        dst_stage_mask_vk,
+                        memory_barriers_vk.len() as u32,
+                        memory_barriers_vk.as_ptr(),
+                        buffer_memory_barriers_vk.len() as u32,
+                        buffer_memory_barriers_vk.as_ptr(),
+                        image_memory_barriers_vk.len() as u32,
+                        image_memory_barriers_vk.as_ptr(),
+                    )
+                };
             }
         }
 
@@ -751,7 +765,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_reset_event(event, stages)?;
 
-        Ok(self.reset_event_unchecked(event, stages))
+        Ok(unsafe { self.reset_event_unchecked(event, stages) })
     }
 
     fn validate_reset_event(
@@ -974,16 +988,20 @@ impl RecordingCommandBuffer {
 
         if self.device().enabled_features().synchronization2 {
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_reset_event2)(self.handle(), event.handle(), stages.into());
+                unsafe {
+                    (fns.v1_3.cmd_reset_event2)(self.handle(), event.handle(), stages.into())
+                };
             } else {
-                (fns.khr_synchronization2.cmd_reset_event2_khr)(
-                    self.handle(),
-                    event.handle(),
-                    stages.into(),
-                );
+                unsafe {
+                    (fns.khr_synchronization2.cmd_reset_event2_khr)(
+                        self.handle(),
+                        event.handle(),
+                        stages.into(),
+                    )
+                };
             }
         } else {
-            (fns.v1_0.cmd_reset_event)(self.handle(), event.handle(), stages.into());
+            unsafe { (fns.v1_0.cmd_reset_event)(self.handle(), event.handle(), stages.into()) };
         }
 
         self

@@ -8,13 +8,13 @@
 <br/>
 [![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
 [![vulkano-shaders crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=shaders)](https://crates.io/crates/vulkano-shaders)
+[![vulkano-taskgraph crates.io](https://img.shields.io/crates/v/vulkano-taskgraph?label=taskgraph)](https://crates.io/crates/vulkano-taskgraph)
 [![vulkano-util crates.io](https://img.shields.io/crates/v/vulkano-util?label=util)](https://crates.io/crates/vulkano-util)
-[![vulkano-win crates.io](https://img.shields.io/crates/v/vulkano-win?label=win)](https://crates.io/crates/vulkano-win)
 <br/>
 [![vulkano docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
 [![vulkano-shaders docs](https://img.shields.io/docsrs/vulkano-shaders?label=shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![vulkano-taskgraph docs](https://img.shields.io/docsrs/vulkano-taskgraph?label=taskgraph%20docs)](https://docs.rs/vulkano-taskgraph)
 [![vulkano-util docs](https://img.shields.io/docsrs/vulkano-util?label=util%20docs)](https://docs.rs/vulkano-util)
-[![vulkano-win docs](https://img.shields.io/docsrs/vulkano-win?label=win%20docs)](https://docs.rs/vulkano-win)
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
@@ -60,28 +60,6 @@ are maintained. As such we can recommend using any of them in the 3rd party code
 The choice depends on the end project's goals and requirements, and we recommend examining
 their actual set of features and API capabilities beforehand.
 
-### Projects using Vulkano
-
-We started collecting this list just recently and it would be appreciated if you help us by
-contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkano/blob/master/README.md).
-
-| Project Name | Description |
-| ------------ | ----------- |
-| [Basalt](https://github.com/AustinJ235/basalt) | GUI framework for Desktop applications |
-| [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
-| [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
-| [Korangar](https://github.com/vE5li/korangar) | A Vulkan based Ragnarok Online client |
-| [Krnl](https://github.com/charles-r-earp/krnl) | Safe, portable, high performance compute (GPGPU) kernels. |
-| [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
-| [Steel](https://github.com/SSSxCCC/steel) | The Steel Game Engine. |
-| [Vera](https://github.com/Coddeus/vera) | Animation engine scripted in Rust. |
-| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
-
-We would love to help you keep your project in sync with the most recent changes in Vulkano
-if you give us feedback by adding your project to this list.
-
-Thanks in advance!
-
 ## Documentation and Resources
 
 To get started you are encouraged to use the following resources:
@@ -107,15 +85,6 @@ The project was initially developed by Pierre Krieger(Tomaka), who established V
 design goals, and the code structure. In the meantime, development is driven by Vulkano
 community members.
 
-**New Pull Requests are usually scheduled for review by the end of each week.**
-The older PRs that are already in review have priority over the new ones. We are trying to push
-development forward as quick as possible, but the review process sometimes takes time,
-please be patient as the maintainers need time to check everything properly.
-
-If something needs to get promoted urgently, please ping current Vulkano
-maintainer([@Eliah-Lakhin](https://github.com/Eliah-Lakhin/)) in the PR's
-or Issue's comments.
-
 If your change adds, removes or modifies a trait or a function, please
 specify changelog entries **in the Pull Request description**(not in the changelog file directly).
 They will be transferred to the changelog right after the PR merge.
@@ -131,8 +100,9 @@ This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-taskgraph` allows building a dependency graph of tasks, which are automatically
+  synchronized and are then executed on the Vulkan device.
 - `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
-- `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan

@@ -11,8 +11,7 @@ use vulkano::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
             DescriptorType,
         },
-        sys::RawDescriptorSet,
-        DescriptorImageViewInfo, WriteDescriptorSet,
+        DescriptorImageViewInfo, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
@@ -38,8 +37,8 @@ use vulkano::{
     Validated, Version, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
-    graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, NodeId, TaskGraph},
-    resource::{AccessType, Flight, ImageLayoutType, Resources},
+    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    resource::{AccessTypes, Flight, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType,
 };
 use winit::{
@@ -81,10 +80,8 @@ pub struct RenderContext {
     recreate_swapchain: bool,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     sampler: Arc<Sampler>,
-    descriptor_set: Arc<RawDescriptorSet>,
+    descriptor_set: Arc<DescriptorSet>,
     task_graph: ExecutableTaskGraph<Self>,
-    scene_node_id: NodeId,
-    tonemap_node_id: NodeId,
     virtual_swapchain_id: Id<Swapchain>,
     virtual_bloom_image_id: Id<Image>,
 }
@@ -315,19 +312,32 @@ impl ApplicationHandler for App {
 
         let mut task_graph = TaskGraph::new(&self.resources, 3, 2);
 
-        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
-        let virtual_bloom_image_id = task_graph.add_image(&ImageCreateInfo::default());
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
+            image_format: swapchain_format,
+            ..Default::default()
+        });
+        let virtual_bloom_image_id = task_graph.add_image(&ImageCreateInfo {
+            format: Format::E5B9G9R9_UFLOAT_PACK32,
+            ..Default::default()
+        });
+        let virtual_framebuffer_id = task_graph.add_framebuffer();
 
         let scene_node_id = task_graph
             .create_task_node(
                 "Scene",
                 QueueFamilyType::Graphics,
-                SceneTask::new(self, &pipeline_layout, bloom_image_id),
+                SceneTask::new(self, virtual_bloom_image_id),
             )
-            .image_access(
+            .framebuffer(virtual_framebuffer_id)
+            .color_attachment(
                 virtual_bloom_image_id,
-                AccessType::ColorAttachmentWrite,
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
                 ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    clear: true,
+                    format: Format::R32_UINT,
+                    ..Default::default()
+                },
             )
             .build();
         let bloom_node_id = task_graph
@@ -338,29 +348,23 @@ impl ApplicationHandler for App {
             )
             .image_access(
                 virtual_bloom_image_id,
-                AccessType::ComputeShaderSampledRead,
-                ImageLayoutType::General,
-            )
-            .image_access(
-                virtual_bloom_image_id,
-                AccessType::ComputeShaderStorageWrite,
+                AccessTypes::COMPUTE_SHADER_SAMPLED_READ
+                    | AccessTypes::COMPUTE_SHADER_STORAGE_WRITE,
                 ImageLayoutType::General,
             )
             .build();
         let tonemap_node_id = task_graph
-            .create_task_node(
-                "Tonemap",
-                QueueFamilyType::Graphics,
-                TonemapTask::new(self, &pipeline_layout, swapchain_id, virtual_swapchain_id),
-            )
-            .image_access(
+            .create_task_node("Tonemap", QueueFamilyType::Graphics, TonemapTask::new(self))
+            .framebuffer(virtual_framebuffer_id)
+            .color_attachment(
                 virtual_swapchain_id.current_image_id(),
-                AccessType::ColorAttachmentWrite,
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
                 ImageLayoutType::Optimal,
+                &AttachmentInfo::default(),
             )
             .image_access(
                 virtual_bloom_image_id,
-                AccessType::FragmentShaderSampledRead,
+                AccessTypes::FRAGMENT_SHADER_SAMPLED_READ,
                 ImageLayoutType::General,
             )
             .build();
@@ -368,7 +372,7 @@ impl ApplicationHandler for App {
         task_graph.add_edge(scene_node_id, bloom_node_id).unwrap();
         task_graph.add_edge(bloom_node_id, tonemap_node_id).unwrap();
 
-        let task_graph = unsafe {
+        let mut task_graph = unsafe {
             task_graph.compile(&CompileInfo {
                 queues: &[&self.queue],
                 present_queue: Some(&self.queue),
@@ -377,6 +381,21 @@ impl ApplicationHandler for App {
             })
         }
         .unwrap();
+
+        let scene_node = task_graph.task_node_mut(scene_node_id).unwrap();
+        let subpass = scene_node.subpass().unwrap().clone();
+        scene_node
+            .task_mut()
+            .downcast_mut::<SceneTask>()
+            .unwrap()
+            .create_pipeline(&pipeline_layout, subpass);
+        let tonemap_node = task_graph.task_node_mut(tonemap_node_id).unwrap();
+        let subpass = tonemap_node.subpass().unwrap().clone();
+        tonemap_node
+            .task_mut()
+            .downcast_mut::<TonemapTask>()
+            .unwrap()
+            .create_pipeline(&pipeline_layout, subpass);
 
         self.rcx = Some(RenderContext {
             window,
@@ -389,8 +408,6 @@ impl ApplicationHandler for App {
             descriptor_set_allocator,
             descriptor_set,
             task_graph,
-            scene_node_id,
-            tonemap_node_id,
             virtual_swapchain_id,
             virtual_bloom_image_id,
         });
@@ -441,21 +458,6 @@ impl ApplicationHandler for App {
                         &rcx.descriptor_set_allocator,
                     );
 
-                    rcx.task_graph
-                        .task_node_mut(rcx.scene_node_id)
-                        .unwrap()
-                        .task_mut()
-                        .downcast_mut::<SceneTask>()
-                        .unwrap()
-                        .handle_resize(&self.resources, rcx.bloom_image_id);
-                    rcx.task_graph
-                        .task_node_mut(rcx.tonemap_node_id)
-                        .unwrap()
-                        .task_mut()
-                        .downcast_mut::<TonemapTask>()
-                        .unwrap()
-                        .handle_resize(&self.resources, rcx.swapchain_id);
-
                     rcx.recreate_swapchain = false;
                 }
 
@@ -501,7 +503,7 @@ fn window_size_dependent_setup(
     pipeline_layout: &Arc<PipelineLayout>,
     sampler: &Arc<Sampler>,
     descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
-) -> (Id<Image>, Arc<RawDescriptorSet>) {
+) -> (Id<Image>, Arc<DescriptorSet>) {
     let device = resources.device();
     let swapchain_state = resources.swapchain(swapchain_id).unwrap();
     let images = swapchain_state.images();
@@ -571,31 +573,30 @@ fn window_size_dependent_setup(
         .unwrap()
     });
 
-    let descriptor_set = RawDescriptorSet::new(
+    let descriptor_set = DescriptorSet::new(
         descriptor_set_allocator.clone(),
-        &pipeline_layout.set_layouts()[0],
-        0,
+        pipeline_layout.set_layouts()[0].clone(),
+        [
+            WriteDescriptorSet::sampler(0, sampler.clone()),
+            WriteDescriptorSet::image_view_with_layout(
+                1,
+                DescriptorImageViewInfo {
+                    image_view: bloom_texture_view,
+                    image_layout: ImageLayout::General,
+                },
+            ),
+            WriteDescriptorSet::image_view_with_layout_array(
+                2,
+                0,
+                bloom_mip_chain_views.map(|image_view| DescriptorImageViewInfo {
+                    image_view,
+                    image_layout: ImageLayout::General,
+                }),
+            ),
+        ],
+        [],
     )
     .unwrap();
-    let writes = &[
-        WriteDescriptorSet::sampler(0, sampler.clone()),
-        WriteDescriptorSet::image_view_with_layout(
-            1,
-            DescriptorImageViewInfo {
-                image_view: bloom_texture_view,
-                image_layout: ImageLayout::General,
-            },
-        ),
-        WriteDescriptorSet::image_view_with_layout_array(
-            2,
-            0,
-            bloom_mip_chain_views.map(|image_view| DescriptorImageViewInfo {
-                image_view,
-                image_layout: ImageLayout::General,
-            }),
-        ),
-    ];
-    unsafe { descriptor_set.update(writes, &[]) }.unwrap();
 
-    (bloom_image_id, Arc::new(descriptor_set))
+    (bloom_image_id, descriptor_set)
 }

@@ -249,12 +249,9 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let inner = RecordingCommandBuffer::new_unchecked(
-            allocator,
-            queue_family_index,
-            level,
-            begin_info,
-        )?;
+        let inner = unsafe {
+            RecordingCommandBuffer::new_unchecked(allocator, queue_family_index, level, begin_info)
+        }?;
 
         Ok(AutoCommandBufferBuilder {
             inner,
@@ -362,7 +359,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         debug_assert!(barriers.is_empty());
 
         Ok((
-            self.inner.end()?,
+            unsafe { self.inner.end() }?,
             self.commands
                 .into_iter()
                 .map(|(_, record_func)| record_func)

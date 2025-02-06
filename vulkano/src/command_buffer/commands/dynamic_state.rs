@@ -75,7 +75,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_blend_constants",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_blend_constants_unchecked(constants);
+                unsafe { out.set_blend_constants_unchecked(constants) };
             },
         );
 
@@ -132,7 +132,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_color_write_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_color_write_enable_unchecked(&enables);
+                unsafe { out.set_color_write_enable_unchecked(&enables) };
             },
         );
 
@@ -164,7 +164,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_cull_mode",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_cull_mode_unchecked(cull_mode);
+                unsafe { out.set_cull_mode_unchecked(cull_mode) };
             },
         );
 
@@ -213,7 +213,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_bias",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
+                unsafe { out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) };
             },
         );
 
@@ -245,7 +245,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_bias_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_bias_enable_unchecked(enable);
+                unsafe { out.set_depth_bias_enable_unchecked(enable) };
             },
         );
 
@@ -280,7 +280,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_bounds",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_bounds_unchecked(bounds.clone());
+                unsafe { out.set_depth_bounds_unchecked(bounds.clone()) };
             },
         );
 
@@ -315,7 +315,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_bounds_test_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_bounds_test_enable_unchecked(enable);
+                unsafe { out.set_depth_bounds_test_enable_unchecked(enable) };
             },
         );
 
@@ -350,7 +350,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_compare_op",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_compare_op_unchecked(compare_op);
+                unsafe { out.set_depth_compare_op_unchecked(compare_op) };
             },
         );
 
@@ -382,7 +382,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_test_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_test_enable_unchecked(enable);
+                unsafe { out.set_depth_test_enable_unchecked(enable) };
             },
         );
 
@@ -414,7 +414,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_write_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_depth_write_enable_unchecked(enable);
+                unsafe { out.set_depth_write_enable_unchecked(enable) };
             },
         );
 
@@ -460,7 +460,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_discard_rectangle",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_discard_rectangle_unchecked(first_rectangle, &rectangles);
+                unsafe { out.set_discard_rectangle_unchecked(first_rectangle, &rectangles) };
             },
         );
 
@@ -489,7 +489,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_front_face",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_front_face_unchecked(face);
+                unsafe { out.set_front_face_unchecked(face) };
             },
         );
 
@@ -526,7 +526,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_line_stipple",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_line_stipple_unchecked(factor, pattern);
+                unsafe { out.set_line_stipple_unchecked(factor, pattern) };
             },
         );
 
@@ -555,7 +555,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_line_width",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_line_width_unchecked(line_width);
+                unsafe { out.set_line_width_unchecked(line_width) };
             },
         );
 
@@ -584,7 +584,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_logic_op",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_logic_op_unchecked(logic_op);
+                unsafe { out.set_logic_op_unchecked(logic_op) };
             },
         );
 
@@ -616,7 +616,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_patch_control_points",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_patch_control_points_unchecked(num);
+                unsafe { out.set_patch_control_points_unchecked(num) };
             },
         );
 
@@ -651,7 +651,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_primitive_restart_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_primitive_restart_enable_unchecked(enable);
+                unsafe { out.set_primitive_restart_enable_unchecked(enable) };
             },
         );
 
@@ -689,7 +689,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_primitive_topology",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_primitive_topology_unchecked(topology);
+                unsafe { out.set_primitive_topology_unchecked(topology) };
             },
         );
 
@@ -724,7 +724,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_rasterizer_discard_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_rasterizer_discard_enable_unchecked(enable);
+                unsafe { out.set_rasterizer_discard_enable_unchecked(enable) };
             },
         );
 
@@ -771,7 +771,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_scissor",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_scissor_unchecked(first_scissor, &scissors);
+                unsafe { out.set_scissor_unchecked(first_scissor, &scissors) };
             },
         );
 
@@ -809,7 +809,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_scissor_with_count",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_scissor_with_count_unchecked(&scissors);
+                unsafe { out.set_scissor_with_count_unchecked(&scissors) };
             },
         );
 
@@ -860,7 +860,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_stencil_compare_mask",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_stencil_compare_mask_unchecked(faces, compare_mask);
+                unsafe { out.set_stencil_compare_mask_unchecked(faces, compare_mask) };
             },
         );
 
@@ -932,7 +932,9 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_stencil_op",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
+                unsafe {
+                    out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+                };
             },
         );
 
@@ -983,7 +985,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_stencil_reference",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_stencil_reference_unchecked(faces, reference);
+                unsafe { out.set_stencil_reference_unchecked(faces, reference) };
             },
         );
 
@@ -1015,7 +1017,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_stencil_test_enable",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_stencil_test_enable_unchecked(enable);
+                unsafe { out.set_stencil_test_enable_unchecked(enable) };
             },
         );
 
@@ -1066,7 +1068,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_stencil_write_mask",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_stencil_write_mask_unchecked(faces, write_mask);
+                unsafe { out.set_stencil_write_mask_unchecked(faces, write_mask) };
             },
         );
 
@@ -1106,7 +1108,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_vertex_input",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_vertex_input_unchecked(&vertex_input_state);
+                unsafe { out.set_vertex_input_unchecked(&vertex_input_state) };
             },
         );
 
@@ -1152,7 +1154,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_viewport",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_viewport_unchecked(first_viewport, &viewports);
+                unsafe { out.set_viewport_unchecked(first_viewport, &viewports) };
             },
         );
 
@@ -1190,7 +1192,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_viewport",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_viewport_with_count_unchecked(&viewports);
+                unsafe { out.set_viewport_with_count_unchecked(&viewports) };
             },
         );
 
@@ -1229,7 +1231,11 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_conservative_rasterization_mode",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode);
+                unsafe {
+                    out.set_conservative_rasterization_mode_unchecked(
+                        conservative_rasterization_mode,
+                    )
+                };
             },
         );
 
@@ -1273,9 +1279,11 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_extra_primitive_overestimation_size",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_extra_primitive_overestimation_size_unchecked(
-                    extra_primitive_overestimation_size,
-                );
+                unsafe {
+                    out.set_extra_primitive_overestimation_size_unchecked(
+                        extra_primitive_overestimation_size,
+                    )
+                };
             },
         );
 
@@ -1323,7 +1331,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_fragment_shading_rate",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops);
+                unsafe { out.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops) };
             },
         );
 
@@ -1339,7 +1347,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_blend_constants(constants)?;
 
-        Ok(self.set_blend_constants_unchecked(constants))
+        Ok(unsafe { self.set_blend_constants_unchecked(constants) })
     }
 
     fn validate_set_blend_constants(
@@ -1366,7 +1374,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_blend_constants_unchecked(&mut self, constants: [f32; 4]) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants);
+        unsafe { (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants) };
 
         self
     }
@@ -1378,7 +1386,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_color_write_enable(enables)?;
 
-        Ok(self.set_color_write_enable_unchecked(enables))
+        Ok(unsafe { self.set_color_write_enable_unchecked(enables) })
     }
 
     fn validate_set_color_write_enable(
@@ -1425,11 +1433,13 @@ impl RecordingCommandBuffer {
         }
 
         let fns = self.device().fns();
-        (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
-            self.handle(),
-            enables_vk.len() as u32,
-            enables_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
+                self.handle(),
+                enables_vk.len() as u32,
+                enables_vk.as_ptr(),
+            )
+        };
 
         self
     }
@@ -1441,7 +1451,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_cull_mode(cull_mode)?;
 
-        Ok(self.set_cull_mode_unchecked(cull_mode))
+        Ok(unsafe { self.set_cull_mode_unchecked(cull_mode) })
     }
 
     fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
@@ -1485,9 +1495,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_cull_mode)(self.handle(), cull_mode.into());
+            unsafe { (fns.v1_3.cmd_set_cull_mode)(self.handle(), cull_mode.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle(), cull_mode.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(
+                    self.handle(),
+                    cull_mode.into(),
+                )
+            };
         }
 
         self
@@ -1502,7 +1517,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor))
+        Ok(unsafe { self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) })
     }
 
     fn validate_set_depth_bias(
@@ -1547,7 +1562,9 @@ impl RecordingCommandBuffer {
         slope_factor: f32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor);
+        unsafe {
+            (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor)
+        };
 
         self
     }
@@ -1559,7 +1576,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias_enable(enable)?;
 
-        Ok(self.set_depth_bias_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_bias_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1598,10 +1615,12 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bias_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_bias_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
@@ -1614,7 +1633,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds(bounds.clone())?;
 
-        Ok(self.set_depth_bounds_unchecked(bounds))
+        Ok(unsafe { self.set_depth_bounds_unchecked(bounds) })
     }
 
     fn validate_set_depth_bounds(
@@ -1669,7 +1688,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end());
+        unsafe { (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end()) };
 
         self
     }
@@ -1681,7 +1700,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds_test_enable(enable)?;
 
-        Ok(self.set_depth_bounds_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_bounds_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bounds_test_enable(
@@ -1723,10 +1742,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_depth_bounds_test_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_depth_bounds_test_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
@@ -1739,7 +1762,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_compare_op(compare_op)?;
 
-        Ok(self.set_depth_compare_op_unchecked(compare_op))
+        Ok(unsafe { self.set_depth_compare_op_unchecked(compare_op) })
     }
 
     fn validate_set_depth_compare_op(
@@ -1786,12 +1809,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_compare_op)(self.handle(), compare_op.into());
+            unsafe { (fns.v1_3.cmd_set_depth_compare_op)(self.handle(), compare_op.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
-                self.handle(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
+                    self.handle(),
+                    compare_op.into(),
+                )
+            };
         }
 
         self
@@ -1804,7 +1829,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_test_enable(enable)?;
 
-        Ok(self.set_depth_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1843,12 +1868,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
-                self.handle(),
-                enable.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
+                    self.handle(),
+                    enable.into(),
+                )
+            };
         }
 
         self
@@ -1861,7 +1888,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_write_enable(enable)?;
 
-        Ok(self.set_depth_write_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_write_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1900,10 +1927,12 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_write_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_write_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_depth_write_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_depth_write_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
@@ -1917,7 +1946,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_discard_rectangle(first_rectangle, rectangles)?;
 
-        Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles))
+        Ok(unsafe { self.set_discard_rectangle_unchecked(first_rectangle, rectangles) })
     }
 
     fn validate_set_discard_rectangle(
@@ -1978,12 +2007,14 @@ impl RecordingCommandBuffer {
         }
 
         let fns = self.device().fns();
-        (fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext)(
-            self.handle(),
-            first_rectangle,
-            rectangles.len() as u32,
-            rectangles.as_ptr(),
-        );
+        unsafe {
+            (fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext)(
+                self.handle(),
+                first_rectangle,
+                rectangles.len() as u32,
+                rectangles.as_ptr(),
+            )
+        };
 
         self
     }
@@ -1995,7 +2026,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_front_face(face)?;
 
-        Ok(self.set_front_face_unchecked(face))
+        Ok(unsafe { self.set_front_face_unchecked(face) })
     }
 
     fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
@@ -2039,9 +2070,11 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_front_face)(self.handle(), face.into());
+            unsafe { (fns.v1_3.cmd_set_front_face)(self.handle(), face.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into())
+            };
         }
 
         self
@@ -2055,7 +2088,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_stipple(factor, pattern)?;
 
-        Ok(self.set_line_stipple_unchecked(factor, pattern))
+        Ok(unsafe { self.set_line_stipple_unchecked(factor, pattern) })
     }
 
     fn validate_set_line_stipple(
@@ -2101,7 +2134,9 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_line_stipple_unchecked(&mut self, factor: u32, pattern: u16) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern);
+        unsafe {
+            (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern)
+        };
 
         self
     }
@@ -2113,7 +2148,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_width(line_width)?;
 
-        Ok(self.set_line_width_unchecked(line_width))
+        Ok(unsafe { self.set_line_width_unchecked(line_width) })
     }
 
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
@@ -2148,7 +2183,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_line_width_unchecked(&mut self, line_width: f32) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_line_width)(self.handle(), line_width);
+        unsafe { (fns.v1_0.cmd_set_line_width)(self.handle(), line_width) };
 
         self
     }
@@ -2160,7 +2195,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_logic_op(logic_op)?;
 
-        Ok(self.set_logic_op_unchecked(logic_op))
+        Ok(unsafe { self.set_logic_op_unchecked(logic_op) })
     }
 
     fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
@@ -2203,7 +2238,9 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_logic_op_unchecked(&mut self, logic_op: LogicOp) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into());
+        unsafe {
+            (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into())
+        };
 
         self
     }
@@ -2215,7 +2252,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_patch_control_points(num)?;
 
-        Ok(self.set_patch_control_points_unchecked(num))
+        Ok(unsafe { self.set_patch_control_points_unchecked(num) })
     }
 
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
@@ -2273,8 +2310,10 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_patch_control_points_unchecked(&mut self, num: u32) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state2
-            .cmd_set_patch_control_points_ext)(self.handle(), num);
+        unsafe {
+            (fns.ext_extended_dynamic_state2
+                .cmd_set_patch_control_points_ext)(self.handle(), num)
+        };
 
         self
     }
@@ -2286,7 +2325,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_restart_enable(enable)?;
 
-        Ok(self.set_primitive_restart_enable_unchecked(enable))
+        Ok(unsafe { self.set_primitive_restart_enable_unchecked(enable) })
     }
 
     fn validate_set_primitive_restart_enable(
@@ -2328,10 +2367,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_primitive_restart_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_primitive_restart_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
@@ -2344,7 +2387,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_topology(topology)?;
 
-        Ok(self.set_primitive_topology_unchecked(topology))
+        Ok(unsafe { self.set_primitive_topology_unchecked(topology) })
     }
 
     fn validate_set_primitive_topology(
@@ -2441,10 +2484,12 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_topology)(self.handle(), topology.into());
+            unsafe { (fns.v1_3.cmd_set_primitive_topology)(self.handle(), topology.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_primitive_topology_ext)(self.handle(), topology.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_primitive_topology_ext)(self.handle(), topology.into())
+            };
         }
 
         self
@@ -2457,7 +2502,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_rasterizer_discard_enable(enable)?;
 
-        Ok(self.set_rasterizer_discard_enable_unchecked(enable))
+        Ok(unsafe { self.set_rasterizer_discard_enable_unchecked(enable) })
     }
 
     fn validate_set_rasterizer_discard_enable(
@@ -2499,10 +2544,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_rasterizer_discard_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_rasterizer_discard_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
@@ -2516,7 +2565,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor(first_scissor, scissors)?;
 
-        Ok(self.set_scissor_unchecked(first_scissor, scissors))
+        Ok(unsafe { self.set_scissor_unchecked(first_scissor, scissors) })
     }
 
     fn validate_set_scissor(
@@ -2591,12 +2640,14 @@ impl RecordingCommandBuffer {
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_scissor)(
-            self.handle(),
-            first_scissor,
-            scissors.len() as u32,
-            scissors.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_set_scissor)(
+                self.handle(),
+                first_scissor,
+                scissors.len() as u32,
+                scissors.as_ptr(),
+            )
+        };
 
         self
     }
@@ -2608,7 +2659,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor_with_count(scissors)?;
 
-        Ok(self.set_scissor_with_count_unchecked(scissors))
+        Ok(unsafe { self.set_scissor_with_count_unchecked(scissors) })
     }
 
     fn validate_set_scissor_with_count(
@@ -2679,18 +2730,22 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_scissor_with_count)(
-                self.handle(),
-                scissors.len() as u32,
-                scissors.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_scissor_with_count)(
+                    self.handle(),
+                    scissors.len() as u32,
+                    scissors.as_ptr(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_scissor_with_count_ext)(
-                self.handle(),
-                scissors.len() as u32,
-                scissors.as_ptr(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_scissor_with_count_ext)(
+                    self.handle(),
+                    scissors.len() as u32,
+                    scissors.as_ptr(),
+                )
+            };
         }
 
         self
@@ -2704,7 +2759,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask))
+        Ok(unsafe { self.set_stencil_compare_mask_unchecked(faces, compare_mask) })
     }
 
     fn validate_set_stencil_compare_mask(
@@ -2741,7 +2796,9 @@ impl RecordingCommandBuffer {
         compare_mask: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), faces.into(), compare_mask);
+        unsafe {
+            (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), faces.into(), compare_mask)
+        };
 
         self
     }
@@ -2757,7 +2814,9 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
-        Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
+        Ok(unsafe {
+            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+        })
     }
 
     fn validate_set_stencil_op(
@@ -2837,23 +2896,27 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_op)(
-                self.handle(),
-                faces.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_stencil_op)(
+                    self.handle(),
+                    faces.into(),
+                    fail_op.into(),
+                    pass_op.into(),
+                    depth_fail_op.into(),
+                    compare_op.into(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
-                self.handle(),
-                faces.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
+                    self.handle(),
+                    faces.into(),
+                    fail_op.into(),
+                    pass_op.into(),
+                    depth_fail_op.into(),
+                    compare_op.into(),
+                )
+            };
         }
 
         self
@@ -2867,7 +2930,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_reference(faces, reference)?;
 
-        Ok(self.set_stencil_reference_unchecked(faces, reference))
+        Ok(unsafe { self.set_stencil_reference_unchecked(faces, reference) })
     }
 
     fn validate_set_stencil_reference(
@@ -2904,7 +2967,7 @@ impl RecordingCommandBuffer {
         reference: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_reference)(self.handle(), faces.into(), reference);
+        unsafe { (fns.v1_0.cmd_set_stencil_reference)(self.handle(), faces.into(), reference) };
 
         self
     }
@@ -2916,7 +2979,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_test_enable(enable)?;
 
-        Ok(self.set_stencil_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_stencil_test_enable_unchecked(enable) })
     }
 
     fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -2955,10 +3018,12 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
@@ -2972,7 +3037,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_write_mask(faces, write_mask)?;
 
-        Ok(self.set_stencil_write_mask_unchecked(faces, write_mask))
+        Ok(unsafe { self.set_stencil_write_mask_unchecked(faces, write_mask) })
     }
 
     fn validate_set_stencil_write_mask(
@@ -3009,7 +3074,7 @@ impl RecordingCommandBuffer {
         write_mask: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask);
+        unsafe { (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask) };
 
         self
     }
@@ -3021,7 +3086,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_vertex_input(vertex_input_state)?;
 
-        Ok(self.set_vertex_input_unchecked(vertex_input_state))
+        Ok(unsafe { self.set_vertex_input_unchecked(vertex_input_state) })
     }
 
     fn validate_set_vertex_input(
@@ -3089,13 +3154,15 @@ impl RecordingCommandBuffer {
         );
 
         let fns = self.device().fns();
-        (fns.ext_vertex_input_dynamic_state.cmd_set_vertex_input_ext)(
-            self.handle(),
-            vertex_binding_descriptions_vk.len() as u32,
-            vertex_binding_descriptions_vk.as_ptr(),
-            vertex_attribute_descriptions_vk.len() as u32,
-            vertex_attribute_descriptions_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.ext_vertex_input_dynamic_state.cmd_set_vertex_input_ext)(
+                self.handle(),
+                vertex_binding_descriptions_vk.len() as u32,
+                vertex_binding_descriptions_vk.as_ptr(),
+                vertex_attribute_descriptions_vk.len() as u32,
+                vertex_attribute_descriptions_vk.as_ptr(),
+            )
+        };
 
         self
     }
@@ -3108,7 +3175,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport(first_viewport, viewports)?;
 
-        Ok(self.set_viewport_unchecked(first_viewport, viewports))
+        Ok(unsafe { self.set_viewport_unchecked(first_viewport, viewports) })
     }
 
     fn validate_set_viewport(
@@ -3183,12 +3250,14 @@ impl RecordingCommandBuffer {
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_viewport)(
-            self.handle(),
-            first_viewport,
-            viewports.len() as u32,
-            viewports.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_set_viewport)(
+                self.handle(),
+                first_viewport,
+                viewports.len() as u32,
+                viewports.as_ptr(),
+            )
+        };
 
         self
     }
@@ -3200,7 +3269,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport_with_count(viewports)?;
 
-        Ok(self.set_viewport_with_count_unchecked(viewports))
+        Ok(unsafe { self.set_viewport_with_count_unchecked(viewports) })
     }
 
     fn validate_set_viewport_with_count(
@@ -3274,18 +3343,22 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_viewport_with_count)(
-                self.handle(),
-                viewports.len() as u32,
-                viewports.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_viewport_with_count)(
+                    self.handle(),
+                    viewports.len() as u32,
+                    viewports.as_ptr(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_viewport_with_count_ext)(
-                self.handle(),
-                viewports.len() as u32,
-                viewports.as_ptr(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_viewport_with_count_ext)(
+                    self.handle(),
+                    viewports.len() as u32,
+                    viewports.as_ptr(),
+                )
+            };
         }
 
         self
@@ -3298,7 +3371,9 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_conservative_rasterization_mode()?;
 
-        Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
+        Ok(unsafe {
+            self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)
+        })
     }
 
     fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -3342,11 +3417,13 @@ impl RecordingCommandBuffer {
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state3
-            .cmd_set_conservative_rasterization_mode_ext)(
-            self.handle(),
-            conservative_rasterization_mode.into(),
-        );
+        unsafe {
+            (fns.ext_extended_dynamic_state3
+                .cmd_set_conservative_rasterization_mode_ext)(
+                self.handle(),
+                conservative_rasterization_mode.into(),
+            )
+        };
 
         self
     }
@@ -3358,8 +3435,11 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)?;
 
-        Ok(self
-            .set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
+        Ok(unsafe {
+            self.set_extra_primitive_overestimation_size_unchecked(
+                extra_primitive_overestimation_size,
+            )
+        })
     }
 
     fn validate_set_extra_primitive_overestimation_size(
@@ -3422,11 +3502,13 @@ impl RecordingCommandBuffer {
         extra_primitive_overestimation_size: f32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state3
-            .cmd_set_extra_primitive_overestimation_size_ext)(
-            self.handle(),
-            extra_primitive_overestimation_size,
-        );
+        unsafe {
+            (fns.ext_extended_dynamic_state3
+                .cmd_set_extra_primitive_overestimation_size_ext)(
+                self.handle(),
+                extra_primitive_overestimation_size,
+            )
+        };
 
         self
     }
@@ -3461,12 +3543,14 @@ impl RecordingCommandBuffer {
         let combiner_ops: [ash::vk::FragmentShadingRateCombinerOpKHR; 2] =
             [combiner_ops[0].into(), combiner_ops[1].into()];
 
-        (fns.khr_fragment_shading_rate
-            .cmd_set_fragment_shading_rate_khr)(
-            self.handle(),
-            &fragment_size,
-            combiner_ops.as_ptr().cast(),
-        );
+        unsafe {
+            (fns.khr_fragment_shading_rate
+                .cmd_set_fragment_shading_rate_khr)(
+                self.handle(),
+                &fragment_size,
+                combiner_ops.as_ptr().cast(),
+            )
+        };
 
         self
     }

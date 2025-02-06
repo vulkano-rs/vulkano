@@ -343,7 +343,7 @@ unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
 
     #[inline]
     unsafe fn deallocate(&self, allocation: CommandBufferAlloc) {
-        (**self).deallocate(allocation)
+        unsafe { (**self).deallocate(allocation) }
     }
 }
 
