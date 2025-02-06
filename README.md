@@ -60,28 +60,6 @@ are maintained. As such we can recommend using any of them in the 3rd party code
 The choice depends on the end project's goals and requirements, and we recommend examining
 their actual set of features and API capabilities beforehand.
 
-### Projects using Vulkano
-
-We started collecting this list just recently and it would be appreciated if you help us by
-contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkano/blob/master/README.md).
-
-| Project Name | Description |
-| ------------ | ----------- |
-| [Basalt](https://github.com/AustinJ235/basalt) | GUI framework for Desktop applications |
-| [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
-| [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
-| [Korangar](https://github.com/vE5li/korangar) | A Vulkan based Ragnarok Online client |
-| [Krnl](https://github.com/charles-r-earp/krnl) | Safe, portable, high performance compute (GPGPU) kernels. |
-| [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
-| [Steel](https://github.com/SSSxCCC/steel) | The Steel Game Engine. |
-| [Vera](https://github.com/Coddeus/vera) | Animation engine scripted in Rust. |
-| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
-
-We would love to help you keep your project in sync with the most recent changes in Vulkano
-if you give us feedback by adding your project to this list.
-
-Thanks in advance!
-
 ## Documentation and Resources
 
 To get started you are encouraged to use the following resources:
