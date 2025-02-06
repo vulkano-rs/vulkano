@@ -15,7 +15,7 @@
 
 ### Bugs fixed
 
-# Version 0.35.0 (2025-02-05)
+# Version 0.35.0 (2025-02-06)
 
 ### Public dependency updates
 
