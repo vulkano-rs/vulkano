@@ -312,12 +312,12 @@ impl ComputePipelineCreateInfo {
             }));
         }
 
-        let &PipelineShaderStageCreateInfo {
+        let PipelineShaderStageCreateInfo {
             flags: _,
-            ref entry_point,
-            required_subgroup_size: _vk,
+            entry_point,
+            required_subgroup_size: _,
             _ne: _,
-        } = &stage;
+        } = stage;
 
         let entry_point_info = entry_point.info();
 

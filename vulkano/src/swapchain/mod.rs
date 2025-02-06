@@ -2227,7 +2227,7 @@ impl SwapchainCreateInfo {
 
         let (image_sharing_mode_vk, queue_family_indices_vk) = match image_sharing {
             Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
-            Sharing::Concurrent(ref ids) => (ash::vk::SharingMode::CONCURRENT, ids.as_slice()),
+            Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.as_slice()),
         };
 
         let mut val_vk = ash::vk::SwapchainCreateInfoKHR::default()
