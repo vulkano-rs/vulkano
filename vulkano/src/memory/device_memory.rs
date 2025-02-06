@@ -2435,7 +2435,10 @@ unsafe impl Sync for MappedDeviceMemory {}
 #[cfg(test)]
 mod tests {
     use super::MemoryAllocateInfo;
-    use crate::memory::{DeviceMemory, MemoryMapFlags, MemoryMapInfo, MemoryPropertyFlags};
+    use crate::memory::{DeviceMemory, MemoryPropertyFlags};
+    #[cfg(unix)]
+    use crate::memory::{MemoryMapFlags, MemoryMapInfo};
+    #[cfg(unix)]
     use std::{ptr, ptr::NonNull};
 
     #[test]
@@ -2566,8 +2569,10 @@ mod tests {
         assert_eq!(device.allocation_count(), 1);
     }
 
-    #[test]
+    // TODO: This test could easily work on Windows, but there are no drivers that support this
+    // feature at the moment.
     #[cfg(unix)]
+    #[test]
     fn map_placed() {
         let (device, _) = gfx_dev_and_queue!(memory_map_placed; ext_map_memory_placed);
 
