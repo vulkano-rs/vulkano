@@ -78,9 +78,9 @@ use vulkano_taskgraph::{
     command_buffer::{
         BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
     },
-    graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
     resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
-    resource_map, Id, QueueFamilyType, Task, TaskContext, TaskResult,
+    resource_map, ClearValues, Id, QueueFamilyType, Task, TaskContext, TaskResult,
 };
 use winit::{
     application::ApplicationHandler,
@@ -554,6 +554,7 @@ impl ApplicationHandler for App {
                 "Render",
                 QueueFamilyType::Graphics,
                 RenderTask {
+                    swapchain_id: virtual_swapchain_id,
                     vertex_buffer_id: self.vertex_buffer_id,
                     current_texture_index: self.current_texture_index.clone(),
                     pipeline: None,
@@ -567,7 +568,10 @@ impl ApplicationHandler for App {
                 virtual_swapchain_id.current_image_id(),
                 AccessTypes::COLOR_ATTACHMENT_WRITE,
                 ImageLayoutType::Optimal,
-                &Default::default(),
+                &AttachmentInfo {
+                    clear: true,
+                    ..Default::default()
+                },
             )
             .buffer_access(self.vertex_buffer_id, AccessTypes::VERTEX_ATTRIBUTE_READ)
             .image_access(
@@ -772,6 +776,7 @@ mod fs {
 }
 
 struct RenderTask {
+    swapchain_id: Id<Swapchain>,
     vertex_buffer_id: Id<Buffer>,
     current_texture_index: Arc<AtomicBool>,
     pipeline: Option<Arc<GraphicsPipeline>>,
@@ -782,6 +787,10 @@ struct RenderTask {
 
 impl Task for RenderTask {
     type World = RenderContext;
+
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
+        clear_values.set(self.swapchain_id.current_image_id(), [0.0; 4]);
+    }
 
     unsafe fn execute(
         &self,
