@@ -86,7 +86,7 @@ impl RecordingCommandBuffer {
             let begin_info_vk = begin_info.to_vk(&begin_info_fields1_vk);
 
             let fns = allocation.inner.device().fns();
-            (fns.v1_0.begin_command_buffer)(allocation.inner.handle(), &begin_info_vk)
+            unsafe { (fns.v1_0.begin_command_buffer)(allocation.inner.handle(), &begin_info_vk) }
                 .result()
                 .map_err(VulkanError::from)?;
         }
@@ -110,7 +110,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn end(self) -> Result<CommandBuffer, VulkanError> {
         let fns = self.device().fns();
-        (fns.v1_0.end_command_buffer)(self.handle())
+        unsafe { (fns.v1_0.end_command_buffer)(self.handle()) }
             .result()
             .map_err(VulkanError::from)?;
 

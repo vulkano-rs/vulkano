@@ -391,13 +391,15 @@ impl Instance {
         let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = library.fns();
-            (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
-                .result()
-                .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe {
+                (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(library, handle, create_info))
+        Ok(unsafe { Self::from_handle(library, handle, create_info) })
     }
 
     /// Creates a new `Instance` from a raw object handle.
@@ -441,8 +443,7 @@ impl Instance {
         Arc::new(Instance {
             handle,
             fns: InstanceFunctions::load(|name| {
-                library
-                    .get_instance_proc_addr(handle, name.as_ptr())
+                unsafe { library.get_instance_proc_addr(handle, name.as_ptr()) }
                     .map_or(ptr::null(), |func| func as _)
             }),
             id: Self::next_id(),
@@ -628,17 +629,18 @@ impl Instance {
         let properties_vk = loop {
             let mut count = 0;
 
-            enumerate_physical_device_groups(self.handle, &mut count, ptr::null_mut())
+            unsafe { enumerate_physical_device_groups(self.handle, &mut count, ptr::null_mut()) }
                 .result()
                 .map_err(VulkanError::from)?;
 
             let mut properties = Vec::with_capacity(count as usize);
-            let result =
-                enumerate_physical_device_groups(self.handle, &mut count, properties.as_mut_ptr());
+            let result = unsafe {
+                enumerate_physical_device_groups(self.handle, &mut count, properties.as_mut_ptr())
+            };
 
             match result {
                 ash::vk::Result::SUCCESS => {
-                    properties.set_len(count as usize);
+                    unsafe { properties.set_len(count as usize) };
                     break properties;
                 }
                 ash::vk::Result::INCOMPLETE => (),
@@ -661,9 +663,10 @@ impl Instance {
                 physical_devices: physical_devices[..physical_device_count as usize]
                     .iter()
                     .map(|&handle| {
-                        self.physical_devices.get_or_try_insert(handle, |&handle| {
-                            PhysicalDevice::from_handle(self.clone(), handle)
-                        })
+                        self.physical_devices
+                            .get_or_try_insert(handle, |&handle| unsafe {
+                                PhysicalDevice::from_handle(self.clone(), handle)
+                            })
                     })
                     .collect::<Result<_, _>>()?,
                 subset_allocation: subset_allocation != ash::vk::FALSE,

@@ -99,7 +99,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_buffer_unchecked(&copy_buffer_info);
+                unsafe { out.copy_buffer_unchecked(&copy_buffer_info) };
             },
         );
 
@@ -201,7 +201,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_image_unchecked(&copy_image_info);
+                unsafe { out.copy_image_unchecked(&copy_image_info) };
             },
         );
 
@@ -288,7 +288,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info);
+                unsafe { out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info) };
             },
         );
 
@@ -375,7 +375,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info);
+                unsafe { out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info) };
             },
         );
 
@@ -488,7 +488,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.blit_image_unchecked(&blit_image_info);
+                unsafe { out.blit_image_unchecked(&blit_image_info) };
             },
         );
 
@@ -579,7 +579,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.resolve_image_unchecked(&resolve_image_info);
+                unsafe { out.resolve_image_unchecked(&resolve_image_info) };
             },
         );
 
@@ -595,7 +595,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer(copy_buffer_info)?;
 
-        Ok(self.copy_buffer_unchecked(copy_buffer_info))
+        Ok(unsafe { self.copy_buffer_unchecked(copy_buffer_info) })
     }
 
     fn validate_copy_buffer(
@@ -638,9 +638,14 @@ impl RecordingCommandBuffer {
             let copy_buffer_info_vk = copy_buffer_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info_vk);
+                unsafe { (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info_vk) };
             } else {
-                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle(), &copy_buffer_info_vk);
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(
+                        self.handle(),
+                        &copy_buffer_info_vk,
+                    )
+                };
             }
         } else {
             let regions_vk = copy_buffer_info.to_vk_regions();
@@ -649,13 +654,15 @@ impl RecordingCommandBuffer {
                 dst_buffer_vk,
             } = copy_buffer_info.to_vk();
 
-            (fns.v1_0.cmd_copy_buffer)(
-                self.handle(),
-                src_buffer_vk,
-                dst_buffer_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_copy_buffer)(
+                    self.handle(),
+                    src_buffer_vk,
+                    dst_buffer_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -668,7 +675,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image(copy_image_info)?;
 
-        Ok(self.copy_image_unchecked(copy_image_info))
+        Ok(unsafe { self.copy_image_unchecked(copy_image_info) })
     }
 
     fn validate_copy_image(
@@ -981,9 +988,11 @@ impl RecordingCommandBuffer {
             let copy_image_info_vk = copy_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info_vk);
+                unsafe { (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info_vk) };
             } else {
-                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info_vk);
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info_vk)
+                };
             }
         } else {
             let regions_vk = copy_image_info.to_vk_regions();
@@ -994,15 +1003,17 @@ impl RecordingCommandBuffer {
                 dst_image_layout_vk,
             } = copy_image_info.to_vk();
 
-            (fns.v1_0.cmd_copy_image)(
-                self.handle(),
-                src_image_vk,
-                src_image_layout_vk,
-                dst_image_vk,
-                dst_image_layout_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_copy_image)(
+                    self.handle(),
+                    src_image_vk,
+                    src_image_layout_vk,
+                    dst_image_vk,
+                    dst_image_layout_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -1015,7 +1026,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer_to_image(copy_buffer_to_image_info)?;
 
-        Ok(self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info))
+        Ok(unsafe { self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info) })
     }
 
     fn validate_copy_buffer_to_image(
@@ -1251,12 +1262,19 @@ impl RecordingCommandBuffer {
             let copy_buffer_to_image_info_vk = copy_buffer_to_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle(), &copy_buffer_to_image_info_vk);
+                unsafe {
+                    (fns.v1_3.cmd_copy_buffer_to_image2)(
+                        self.handle(),
+                        &copy_buffer_to_image_info_vk,
+                    )
+                };
             } else {
-                (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
-                    self.handle(),
-                    &copy_buffer_to_image_info_vk,
-                );
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
+                        self.handle(),
+                        &copy_buffer_to_image_info_vk,
+                    )
+                };
             }
         } else {
             let regions_vk = copy_buffer_to_image_info.to_vk_regions();
@@ -1266,14 +1284,16 @@ impl RecordingCommandBuffer {
                 dst_image_layout_vk,
             } = copy_buffer_to_image_info.to_vk();
 
-            (fns.v1_0.cmd_copy_buffer_to_image)(
-                self.handle(),
-                src_buffer_vk,
-                dst_image_vk,
-                dst_image_layout_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_copy_buffer_to_image)(
+                    self.handle(),
+                    src_buffer_vk,
+                    dst_image_vk,
+                    dst_image_layout_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -1286,7 +1306,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image_to_buffer(copy_image_to_buffer_info)?;
 
-        Ok(self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info))
+        Ok(unsafe { self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info) })
     }
 
     fn validate_copy_image_to_buffer(
@@ -1501,12 +1521,19 @@ impl RecordingCommandBuffer {
             let copy_image_to_buffer_info_vk = copy_image_to_buffer_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle(), &copy_image_to_buffer_info_vk);
+                unsafe {
+                    (fns.v1_3.cmd_copy_image_to_buffer2)(
+                        self.handle(),
+                        &copy_image_to_buffer_info_vk,
+                    )
+                };
             } else {
-                (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
-                    self.handle(),
-                    &copy_image_to_buffer_info_vk,
-                );
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
+                        self.handle(),
+                        &copy_image_to_buffer_info_vk,
+                    )
+                };
             }
         } else {
             let regions_vk = copy_image_to_buffer_info.to_vk_regions();
@@ -1516,14 +1543,16 @@ impl RecordingCommandBuffer {
                 dst_buffer_vk,
             } = copy_image_to_buffer_info.to_vk();
 
-            (fns.v1_0.cmd_copy_image_to_buffer)(
-                self.handle(),
-                src_image_vk,
-                src_image_layout_vk,
-                dst_buffer_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_copy_image_to_buffer)(
+                    self.handle(),
+                    src_image_vk,
+                    src_image_layout_vk,
+                    dst_buffer_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -1536,7 +1565,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_blit_image(blit_image_info)?;
 
-        Ok(self.blit_image_unchecked(blit_image_info))
+        Ok(unsafe { self.blit_image_unchecked(blit_image_info) })
     }
 
     fn validate_blit_image(
@@ -1579,9 +1608,11 @@ impl RecordingCommandBuffer {
             let blit_image_info_vk = blit_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info_vk);
+                unsafe { (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info_vk) };
             } else {
-                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info_vk);
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info_vk)
+                };
             }
         } else {
             let regions_vk = blit_image_info.to_vk_regions();
@@ -1593,16 +1624,18 @@ impl RecordingCommandBuffer {
                 filter_vk,
             } = blit_image_info.to_vk();
 
-            (fns.v1_0.cmd_blit_image)(
-                self.handle(),
-                src_image_vk,
-                src_image_layout_vk,
-                dst_image_vk,
-                dst_image_layout_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-                filter_vk,
-            );
+            unsafe {
+                (fns.v1_0.cmd_blit_image)(
+                    self.handle(),
+                    src_image_vk,
+                    src_image_layout_vk,
+                    dst_image_vk,
+                    dst_image_layout_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                    filter_vk,
+                )
+            };
         }
 
         self
@@ -1615,7 +1648,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_resolve_image(resolve_image_info)?;
 
-        Ok(self.resolve_image_unchecked(resolve_image_info))
+        Ok(unsafe { self.resolve_image_unchecked(resolve_image_info) })
     }
 
     fn validate_resolve_image(
@@ -1661,12 +1694,14 @@ impl RecordingCommandBuffer {
             let resolve_image_info_vk = resolve_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info_vk);
+                unsafe { (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info_vk) };
             } else {
-                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(
-                    self.handle(),
-                    &resolve_image_info_vk,
-                );
+                unsafe {
+                    (fns.khr_copy_commands2.cmd_resolve_image2_khr)(
+                        self.handle(),
+                        &resolve_image_info_vk,
+                    )
+                };
             }
         } else {
             let regions_vk = resolve_image_info.to_vk_regions();
@@ -1677,15 +1712,17 @@ impl RecordingCommandBuffer {
                 dst_image_layout_vk,
             } = resolve_image_info.to_vk();
 
-            (fns.v1_0.cmd_resolve_image)(
-                self.handle(),
-                src_image_vk,
-                src_image_layout_vk,
-                dst_image_vk,
-                dst_image_layout_vk,
-                regions_vk.len() as u32,
-                regions_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_resolve_image)(
+                    self.handle(),
+                    src_image_vk,
+                    src_image_layout_vk,
+                    dst_image_vk,
+                    dst_image_layout_vk,
+                    regions_vk.len() as u32,
+                    regions_vk.as_ptr(),
+                )
+            };
         }
 
         self

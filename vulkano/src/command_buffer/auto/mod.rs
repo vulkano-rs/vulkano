@@ -684,11 +684,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         {
-            let mut builder = AutoCommandBufferBuilder::secondary(
+            let mut builder = AutoCommandBufferBuilder::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
-                Default::default(),
             )
             .unwrap();
 
@@ -710,11 +709,10 @@ mod tests {
         }
 
         {
-            let mut builder = AutoCommandBufferBuilder::secondary(
+            let mut builder = AutoCommandBufferBuilder::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
-                Default::default(),
             )
             .unwrap();
 

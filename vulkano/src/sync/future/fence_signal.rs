@@ -436,7 +436,7 @@ where
         let state = self.state.lock();
         match *state {
             FenceSignalFutureState::Flushed(ref prev, _) => {
-                prev.signal_finished();
+                unsafe { prev.signal_finished() };
             }
             FenceSignalFutureState::Cleaned | FenceSignalFutureState::Poisoned => (),
             _ => unreachable!(),
@@ -564,7 +564,7 @@ where
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // Note that this is sound because we always return `SubmitAnyBuilder::Empty`. See the
         // documentation of `build_submission`.
-        (**self).build_submission()
+        unsafe { (**self).build_submission() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
@@ -572,7 +572,7 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        (**self).signal_finished()
+        unsafe { (**self).signal_finished() }
     }
 
     fn queue_change_allowed(&self) -> bool {

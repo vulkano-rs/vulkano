@@ -219,18 +219,20 @@ impl GraphicsPipeline {
 
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_graphics_pipelines)(
-                device.handle(),
-                cache_handle,
-                1,
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_graphics_pipelines)(
+                    device.handle(),
+                    cache_handle,
+                    1,
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         // Some drivers return `VK_SUCCESS` but provide a null handle if they
@@ -240,7 +242,7 @@ impl GraphicsPipeline {
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `GraphicsPipeline` from a raw object handle.

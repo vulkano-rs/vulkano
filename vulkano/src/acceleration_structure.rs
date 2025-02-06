@@ -126,7 +126,7 @@ impl AccelerationStructure {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        Ok(Self::new_unchecked(device, create_info)?)
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -170,19 +170,21 @@ impl AccelerationStructure {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_acceleration_structure
-                .create_acceleration_structure_khr)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_acceleration_structure
+                    .create_acceleration_structure_khr)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `AccelerationStructure` from a raw object handle.

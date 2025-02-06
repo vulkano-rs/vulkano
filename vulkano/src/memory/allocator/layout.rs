@@ -99,10 +99,9 @@ impl DeviceLayout {
         size: DeviceSize,
         alignment: DeviceSize,
     ) -> Self {
-        DeviceLayout::new_unchecked(
-            NonZeroDeviceSize::new_unchecked(size),
-            DeviceAlignment::new_unchecked(alignment),
-        )
+        let size = unsafe { NonZeroDeviceSize::new_unchecked(size) };
+        let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
+        unsafe { DeviceLayout::new_unchecked(size, alignment) }
     }
 
     /// Creates a new `DeviceLayout` for a sized `T`.

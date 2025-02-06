@@ -86,6 +86,7 @@ rust.missing_docs = "allow"                                       # TODO: warn e
 rust.rust_2018_idioms = { level = "warn", priority = -1 }
 rust.rust_2024_compatibility = { level = "allow", priority = -1 } # TODO: warn eventually
 rust.rust_2024_incompatible_pat = "warn"
+rust.unsafe_op_in_unsafe_fn = "warn"
 clippy.borrow_as_ptr = "warn"
 clippy.missing_safety_doc = "allow"                               # TODO: warn eventually
 clippy.multiple_unsafe_ops_per_block = "warn"

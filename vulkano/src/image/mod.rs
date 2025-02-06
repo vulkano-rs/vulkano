@@ -174,7 +174,7 @@ impl Image {
         Ok(Arc::new(image))
     }
 
-    fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
+    unsafe fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
         let aspects = inner.format().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.array_layers() as DeviceSize;
@@ -223,19 +223,25 @@ impl Image {
             _ne: crate::NonExhaustive(()),
         };
 
-        Ok(Self::from_raw(
+        let image = unsafe {
             RawImage::from_handle_with_destruction(
                 swapchain.device().clone(),
                 handle,
                 create_info,
                 false,
-            )?,
-            ImageMemory::Swapchain {
-                swapchain,
-                image_index,
-            },
-            ImageLayout::PresentSrc,
-        ))
+            )
+        }?;
+
+        Ok(unsafe {
+            Self::from_raw(
+                image,
+                ImageMemory::Swapchain {
+                    swapchain,
+                    image_index,
+                },
+                ImageLayout::PresentSrc,
+            )
+        })
     }
 
     /// Returns the type of memory that is backing this image.
@@ -409,8 +415,10 @@ impl Image {
         mip_level: u32,
         array_layer: u32,
     ) -> SubresourceLayout {
-        self.inner
-            .subresource_layout_unchecked(aspect, mip_level, array_layer)
+        unsafe {
+            self.inner
+                .subresource_layout_unchecked(aspect, mip_level, array_layer)
+        }
     }
 
     pub(crate) fn range_size(&self) -> DeviceSize {

@@ -478,7 +478,7 @@ impl ShaderModule {
 
         Self::validate_new(&device, &create_info, &spirv)?;
 
-        Ok(Self::new_with_spirv_unchecked(device, create_info, spirv)?)
+        Ok(unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }?)
     }
 
     fn validate_new(
@@ -499,7 +499,7 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let spirv = Spirv::new(create_info.code).unwrap();
-        Self::new_with_spirv_unchecked(device, create_info, spirv)
+        unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }
     }
 
     unsafe fn new_with_spirv_unchecked(
@@ -512,23 +512,20 @@ impl ShaderModule {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_shader_module)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_shader_module)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle_with_spirv(
-            device,
-            handle,
-            create_info,
-            spirv,
-        ))
+        Ok(unsafe { Self::from_handle_with_spirv(device, handle, create_info, spirv) })
     }
 
     /// Creates a new `ShaderModule` from a raw object handle.
@@ -543,7 +540,7 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Arc<ShaderModule> {
         let spirv = Spirv::new(create_info.code).unwrap();
-        Self::from_handle_with_spirv(device, handle, create_info, spirv)
+        unsafe { Self::from_handle_with_spirv(device, handle, create_info, spirv) }
     }
 
     unsafe fn from_handle_with_spirv(
@@ -577,7 +574,7 @@ impl ShaderModule {
         device: Arc<Device>,
         words: &[u32],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        Self::new(device, ShaderModuleCreateInfo::new(words))
+        unsafe { Self::new(device, ShaderModuleCreateInfo::new(words)) }
     }
 
     /// As `from_words`, but takes a slice of bytes.
@@ -596,7 +593,7 @@ impl ShaderModule {
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let words = spirv::bytes_to_words(bytes).unwrap();
-        Self::new(device, ShaderModuleCreateInfo::new(&words))
+        unsafe { Self::new(device, ShaderModuleCreateInfo::new(&words)) }
     }
 
     /// Returns the specialization constants that are defined in the module,
@@ -632,7 +629,7 @@ impl ShaderModule {
         self: &Arc<Self>,
         specialization_info: HashMap<u32, SpecializationConstant>,
     ) -> Arc<SpecializedShaderModule> {
-        SpecializedShaderModule::new_unchecked(self.clone(), specialization_info)
+        unsafe { SpecializedShaderModule::new_unchecked(self.clone(), specialization_info) }
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
