@@ -64,8 +64,8 @@ where
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // TODO: review this function
-        let first = unsafe { self.first.build_submission()? };
-        let second = unsafe { self.second.build_submission()? };
+        let first = unsafe { self.first.build_submission() }?;
+        let second = unsafe { self.second.build_submission() }?;
 
         // In some cases below we have to submit previous command buffers already, this s done by
         // flushing previous. Since the implementation should remember being flushed it's
