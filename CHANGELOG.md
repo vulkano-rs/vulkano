@@ -9,6 +9,8 @@
 
 ### Public dependency updates
 
+- Rust version: 1.80.0
+
 ### Breaking changes
 
 ### Additions
