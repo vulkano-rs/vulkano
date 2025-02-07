@@ -128,6 +128,7 @@ use std::{
     borrow::Cow,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    num::NonZero,
     ops::Deref,
     sync::Arc,
 };
@@ -165,11 +166,18 @@ pub mod shader;
 pub mod swapchain;
 pub mod sync;
 
-/// Represents an address (pointer) on a Vulkan device.
-pub use vk::DeviceAddress;
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
 pub use vk::DeviceSize;
+
+/// A [`DeviceSize`] that is known not to equal zero.
+pub type NonZeroDeviceSize = NonZero<DeviceSize>;
+
+/// Represents an address (pointer) on a Vulkan device.
+pub use vk::DeviceAddress;
+
+/// A [`DeviceAddress`] that is known not to equal zero.
+pub type NonNullDeviceAddress = NonZero<DeviceAddress>;
 
 /// Represents a region of device addresses with a stride.
 #[derive(Debug, Copy, Clone, Default)]
