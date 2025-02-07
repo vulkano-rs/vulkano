@@ -71,7 +71,7 @@ smallvec = "1.8"
 syn = "2.0"
 thread_local = "1.1"
 vk-parse = "0.15"
-winit = { version = "0.30", default-features = false }
+winit = "0.30"
 x11-dl = "2.0"
 x11rb = "0.13"
 
