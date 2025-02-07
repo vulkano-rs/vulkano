@@ -19,14 +19,14 @@ use crate::{
     instance::InstanceOwnedDebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
-use ash::vk::Handle;
+use ash::vk::{self, Handle};
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// An object that stores one `u64` value per Vulkan object.
 #[derive(Debug)]
 pub struct PrivateDataSlot {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::PrivateDataSlot,
+    handle: vk::PrivateDataSlot,
 }
 
 impl PrivateDataSlot {
@@ -112,7 +112,7 @@ impl PrivateDataSlot {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::PrivateDataSlot,
+        handle: vk::PrivateDataSlot,
         _create_info: PrivateDataSlotCreateInfo,
     ) -> Self {
         Self {
@@ -232,7 +232,7 @@ impl Drop for PrivateDataSlot {
 }
 
 unsafe impl VulkanObject for PrivateDataSlot {
-    type Handle = ash::vk::PrivateDataSlot;
+    type Handle = vk::PrivateDataSlot;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -267,10 +267,9 @@ impl PrivateDataSlotCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PrivateDataSlotCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PrivateDataSlotCreateInfo<'static> {
         let &Self { _ne: _ } = self;
 
-        ash::vk::PrivateDataSlotCreateInfo::default()
-            .flags(ash::vk::PrivateDataSlotCreateFlags::empty())
+        vk::PrivateDataSlotCreateInfo::default().flags(vk::PrivateDataSlotCreateFlags::empty())
     }
 }

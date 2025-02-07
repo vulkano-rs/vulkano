@@ -12,6 +12,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{
     mem::{size_of_val, MaybeUninit},
     num::NonZeroU64,
@@ -23,7 +24,7 @@ use std::{
 /// A collection of one or more queries of a particular type.
 #[derive(Debug)]
 pub struct QueryPool {
-    handle: ash::vk::QueryPool,
+    handle: vk::QueryPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -90,7 +91,7 @@ impl QueryPool {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::QueryPool,
+        handle: vk::QueryPool,
         create_info: QueryPoolCreateInfo,
     ) -> Arc<QueryPool> {
         let QueryPoolCreateInfo {
@@ -276,13 +277,13 @@ impl QueryPool {
                 size_of_val(destination),
                 destination.as_mut_ptr().cast(),
                 stride,
-                ash::vk::QueryResultFlags::from(flags) | T::FLAG,
+                vk::QueryResultFlags::from(flags) | T::FLAG,
             )
         };
 
         match result {
-            ash::vk::Result::SUCCESS => Ok(true),
-            ash::vk::Result::NOT_READY => Ok(false),
+            vk::Result::SUCCESS => Ok(true),
+            vk::Result::NOT_READY => Ok(false),
             err => Err(VulkanError::from(err)),
         }
     }
@@ -382,7 +383,7 @@ impl Drop for QueryPool {
 }
 
 unsafe impl VulkanObject for QueryPool {
-    type Handle = ash::vk::QueryPool;
+    type Handle = vk::QueryPool;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -514,7 +515,7 @@ impl QueryPoolCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::QueryPoolCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::QueryPoolCreateInfo<'static> {
         let &Self {
             query_type,
             query_count,
@@ -522,8 +523,8 @@ impl QueryPoolCreateInfo {
             _ne: _,
         } = self;
 
-        ash::vk::QueryPoolCreateInfo::default()
-            .flags(ash::vk::QueryPoolCreateFlags::empty())
+        vk::QueryPoolCreateInfo::default()
+            .flags(vk::QueryPoolCreateFlags::empty())
             .query_type(query_type.into())
             .query_count(query_count)
             .pipeline_statistics(pipeline_statistics.into())
@@ -730,15 +731,15 @@ vulkan_bitflags! {
 /// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
 /// not implement this trait for any other type.
 pub unsafe trait QueryResultElement: BufferContents + Sized {
-    const FLAG: ash::vk::QueryResultFlags;
+    const FLAG: vk::QueryResultFlags;
 }
 
 unsafe impl QueryResultElement for u32 {
-    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::empty();
+    const FLAG: vk::QueryResultFlags = vk::QueryResultFlags::empty();
 }
 
 unsafe impl QueryResultElement for u64 {
-    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::TYPE_64;
+    const FLAG: vk::QueryResultFlags = vk::QueryResultFlags::TYPE_64;
 }
 
 vulkan_bitflags! {

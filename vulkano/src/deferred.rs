@@ -12,6 +12,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// An operation on the host that has been deferred.
@@ -21,7 +22,7 @@ use std::{mem::MaybeUninit, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct DeferredOperation {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::DeferredOperationKHR,
+    handle: vk::DeferredOperationKHR,
 }
 
 impl DeferredOperation {
@@ -77,10 +78,7 @@ impl DeferredOperation {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     #[inline]
-    pub unsafe fn from_handle(
-        device: Arc<Device>,
-        handle: ash::vk::DeferredOperationKHR,
-    ) -> Arc<Self> {
+    pub unsafe fn from_handle(device: Arc<Device>, handle: vk::DeferredOperationKHR) -> Arc<Self> {
         Arc::new(Self {
             device: InstanceOwnedDebugWrapper(device),
             handle,
@@ -98,9 +96,9 @@ impl DeferredOperation {
         };
 
         match result {
-            ash::vk::Result::SUCCESS => Ok(DeferredOperationJoinStatus::Complete),
-            ash::vk::Result::THREAD_DONE_KHR => Ok(DeferredOperationJoinStatus::ThreadDone),
-            ash::vk::Result::THREAD_IDLE_KHR => Ok(DeferredOperationJoinStatus::ThreadIdle),
+            vk::Result::SUCCESS => Ok(DeferredOperationJoinStatus::Complete),
+            vk::Result::THREAD_DONE_KHR => Ok(DeferredOperationJoinStatus::ThreadDone),
+            vk::Result::THREAD_IDLE_KHR => Ok(DeferredOperationJoinStatus::ThreadIdle),
             err => Err(VulkanError::from(err)),
         }
     }
@@ -114,8 +112,8 @@ impl DeferredOperation {
         };
 
         match result {
-            ash::vk::Result::NOT_READY => None,
-            ash::vk::Result::SUCCESS => Some(Ok(())),
+            vk::Result::NOT_READY => None,
+            vk::Result::SUCCESS => Some(Ok(())),
             err => Some(Err(VulkanError::from(err))),
         }
     }
@@ -181,7 +179,7 @@ impl Drop for DeferredOperation {
 }
 
 unsafe impl VulkanObject for DeferredOperation {
-    type Handle = ash::vk::DeferredOperationKHR;
+    type Handle = vk::DeferredOperationKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

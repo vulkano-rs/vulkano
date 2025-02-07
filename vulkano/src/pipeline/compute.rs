@@ -25,6 +25,7 @@ use crate::{
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -38,7 +39,7 @@ use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// Check the documentation of the `PipelineCache` for more information.
 #[derive(Debug)]
 pub struct ComputePipeline {
-    handle: ash::vk::Pipeline,
+    handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -119,7 +120,7 @@ impl ComputePipeline {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Pipeline,
+        handle: vk::Pipeline,
         create_info: ComputePipelineCreateInfo,
     ) -> Arc<ComputePipeline> {
         let ComputePipelineCreateInfo {
@@ -197,7 +198,7 @@ impl Pipeline for ComputePipeline {
 impl_id_counter!(ComputePipeline);
 
 unsafe impl VulkanObject for ComputePipeline {
-    type Handle = ash::vk::Pipeline;
+    type Handle = vk::Pipeline;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -312,12 +313,12 @@ impl ComputePipelineCreateInfo {
             }));
         }
 
-        let &PipelineShaderStageCreateInfo {
+        let PipelineShaderStageCreateInfo {
             flags: _,
-            ref entry_point,
-            required_subgroup_size: _vk,
+            entry_point,
+            required_subgroup_size: _,
             _ne: _,
-        } = &stage;
+        } = stage;
 
         let entry_point_info = entry_point.info();
 
@@ -363,7 +364,7 @@ impl ComputePipelineCreateInfo {
         &self,
         fields1_vk: &'a ComputePipelineCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk,
-    ) -> ash::vk::ComputePipelineCreateInfo<'a> {
+    ) -> vk::ComputePipelineCreateInfo<'a> {
         let &Self {
             flags,
             ref stage,
@@ -378,14 +379,14 @@ impl ComputePipelineCreateInfo {
 
         let stage_vk = stage.to_vk(stage_fields1_vk, stage_extensions_vk);
 
-        ash::vk::ComputePipelineCreateInfo::default()
+        vk::ComputePipelineCreateInfo::default()
             .flags(flags.into())
             .stage(stage_vk)
             .layout(layout.handle())
             .base_pipeline_handle(
                 base_pipeline
                     .as_ref()
-                    .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
+                    .map_or(vk::Pipeline::null(), VulkanObject::handle),
             )
             .base_pipeline_index(-1)
     }

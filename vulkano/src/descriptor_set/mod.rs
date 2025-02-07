@@ -88,6 +88,7 @@ use crate::{
     image::{sampler::Sampler, ImageLayout},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use smallvec::{smallvec, SmallVec};
@@ -345,7 +346,7 @@ impl DescriptorSet {
 }
 
 unsafe impl VulkanObject for DescriptorSet {
-    type Handle = ash::vk::DescriptorSet;
+    type Handle = vk::DescriptorSet;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

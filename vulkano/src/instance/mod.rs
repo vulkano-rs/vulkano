@@ -88,7 +88,7 @@ use crate::{
     VulkanObject,
 };
 pub use crate::{fns::InstanceFunctions, version::Version};
-use ash::vk::Handle;
+use ash::vk::{self, Handle};
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::{
@@ -257,7 +257,7 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// ```
 // TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
-    handle: ash::vk::Instance,
+    handle: vk::Instance,
     fns: InstanceFunctions,
     id: NonZeroU64,
 
@@ -269,7 +269,7 @@ pub struct Instance {
     max_api_version: Version,
     _user_callbacks: Vec<Arc<DebugUtilsMessengerCallback>>,
 
-    physical_devices: WeakArcOnceCache<ash::vk::PhysicalDevice, PhysicalDevice>,
+    physical_devices: WeakArcOnceCache<vk::PhysicalDevice, PhysicalDevice>,
     physical_device_groups: RwLock<(bool, Vec<PhysicalDeviceGroupPropertiesRaw>)>,
 }
 
@@ -410,7 +410,7 @@ impl Instance {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         library: Arc<VulkanLibrary>,
-        handle: ash::vk::Instance,
+        handle: vk::Instance,
         mut create_info: InstanceCreateInfo,
     ) -> Arc<Self> {
         create_info.max_api_version.get_or_insert_with(|| {
@@ -551,11 +551,11 @@ impl Instance {
             };
 
             match result {
-                ash::vk::Result::SUCCESS => {
+                vk::Result::SUCCESS => {
                     unsafe { handles.set_len(count as usize) };
                     break handles;
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -639,11 +639,11 @@ impl Instance {
             };
 
             match result {
-                ash::vk::Result::SUCCESS => {
+                vk::Result::SUCCESS => {
                     unsafe { properties.set_len(count as usize) };
                     break properties;
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -652,7 +652,7 @@ impl Instance {
         let mut properties_raw: Vec<_> = Vec::with_capacity(properties_vk.len());
 
         for properties_vk in properties_vk {
-            let &ash::vk::PhysicalDeviceGroupProperties {
+            let &vk::PhysicalDeviceGroupProperties {
                 physical_device_count,
                 physical_devices,
                 subset_allocation,
@@ -669,7 +669,7 @@ impl Instance {
                             })
                     })
                     .collect::<Result<_, _>>()?,
-                subset_allocation: subset_allocation != ash::vk::FALSE,
+                subset_allocation: subset_allocation != vk::FALSE,
             });
             properties_raw.push(PhysicalDeviceGroupPropertiesRaw {
                 physical_device_count,
@@ -742,7 +742,7 @@ impl Drop for Instance {
 }
 
 unsafe impl VulkanObject for Instance {
-    type Handle = ash::vk::Instance;
+    type Handle = vk::Instance;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1041,7 +1041,7 @@ impl InstanceCreateInfo {
         &self,
         fields1_vk: &'a InstanceCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut InstanceCreateInfoExtensionsVk<'_>,
-    ) -> ash::vk::InstanceCreateInfo<'a> {
+    ) -> vk::InstanceCreateInfo<'a> {
         let &Self {
             flags,
             application_name: _,
@@ -1064,7 +1064,7 @@ impl InstanceCreateInfo {
             disable_validation_features_vk: _,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::InstanceCreateInfo::default()
+        let mut val_vk = vk::InstanceCreateInfo::default()
             .flags(flags.into())
             .application_info(application_info_vk)
             .enabled_layer_names(enabled_layer_names_vk)
@@ -1102,7 +1102,7 @@ impl InstanceCreateInfo {
         let validation_features_vk = (!enable_validation_features_vk.is_empty()
             || !disable_validation_features_vk.is_empty())
         .then(|| {
-            ash::vk::ValidationFeaturesEXT::default()
+            vk::ValidationFeaturesEXT::default()
                 .enabled_validation_features(enable_validation_features_vk)
                 .disabled_validation_features(disable_validation_features_vk)
         });
@@ -1144,7 +1144,7 @@ impl InstanceCreateInfo {
             enabled_extensions_vk,
         } = fields2_vk;
 
-        let mut application_info_vk = ash::vk::ApplicationInfo::default()
+        let mut application_info_vk = vk::ApplicationInfo::default()
             .application_version(
                 application_version
                     .try_into()
@@ -1233,16 +1233,16 @@ impl InstanceCreateInfo {
 }
 
 pub(crate) struct InstanceCreateInfoExtensionsVk<'a> {
-    pub(crate) debug_utils_messengers_vk: Vec<ash::vk::DebugUtilsMessengerCreateInfoEXT<'a>>,
-    pub(crate) validation_features_vk: Option<ash::vk::ValidationFeaturesEXT<'a>>,
+    pub(crate) debug_utils_messengers_vk: Vec<vk::DebugUtilsMessengerCreateInfoEXT<'a>>,
+    pub(crate) validation_features_vk: Option<vk::ValidationFeaturesEXT<'a>>,
 }
 
 pub(crate) struct InstanceCreateInfoFields1Vk<'a> {
-    pub(crate) application_info_vk: ash::vk::ApplicationInfo<'a>,
+    pub(crate) application_info_vk: vk::ApplicationInfo<'a>,
     pub(crate) enabled_layer_names_vk: SmallVec<[*const c_char; 2]>,
     pub(crate) enabled_extension_names_vk: SmallVec<[*const c_char; 2]>,
-    pub(crate) enable_validation_features_vk: SmallVec<[ash::vk::ValidationFeatureEnableEXT; 5]>,
-    pub(crate) disable_validation_features_vk: SmallVec<[ash::vk::ValidationFeatureDisableEXT; 5]>,
+    pub(crate) enable_validation_features_vk: SmallVec<[vk::ValidationFeatureEnableEXT; 5]>,
+    pub(crate) disable_validation_features_vk: SmallVec<[vk::ValidationFeatureDisableEXT; 5]>,
 }
 
 pub(crate) struct InstanceCreateInfoFields2Vk {

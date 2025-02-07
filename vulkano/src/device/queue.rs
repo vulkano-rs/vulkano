@@ -9,6 +9,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
@@ -21,7 +22,7 @@ use std::{
 // TODO: should use internal synchronization?
 #[derive(Debug)]
 pub struct Queue {
-    handle: ash::vk::Queue,
+    handle: vk::Queue,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
 
     flags: QueueCreateFlags,
@@ -70,7 +71,7 @@ impl Queue {
     #[inline]
     pub(super) unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Queue,
+        handle: vk::Queue,
         queue_info: DeviceQueueInfo,
     ) -> Arc<Self> {
         let DeviceQueueInfo {
@@ -138,7 +139,7 @@ impl Drop for Queue {
 }
 
 unsafe impl VulkanObject for Queue {
-    type Handle = ash::vk::Queue;
+    type Handle = vk::Queue;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -194,7 +195,7 @@ impl Default for DeviceQueueInfo {
 }
 
 impl DeviceQueueInfo {
-    pub(crate) fn to_vk(&self) -> ash::vk::DeviceQueueInfo2<'static> {
+    pub(crate) fn to_vk(&self) -> vk::DeviceQueueInfo2<'static> {
         let &Self {
             flags,
             queue_family_index,
@@ -202,7 +203,7 @@ impl DeviceQueueInfo {
             _ne: _,
         } = self;
 
-        ash::vk::DeviceQueueInfo2::default()
+        vk::DeviceQueueInfo2::default()
             .flags(flags.into())
             .queue_family_index(queue_family_index)
             .queue_index(queue_index)
@@ -468,18 +469,18 @@ impl QueueGuard<'_> {
         // Otherwise, we consider the present to be enqueued.
         if !matches!(
             result,
-            ash::vk::Result::SUCCESS
-                | ash::vk::Result::SUBOPTIMAL_KHR
-                | ash::vk::Result::ERROR_OUT_OF_DATE_KHR
-                | ash::vk::Result::ERROR_SURFACE_LOST_KHR
-                | ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+            vk::Result::SUCCESS
+                | vk::Result::SUBOPTIMAL_KHR
+                | vk::Result::ERROR_OUT_OF_DATE_KHR
+                | vk::Result::ERROR_SURFACE_LOST_KHR
+                | vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
         ) {
             return Err(VulkanError::from(result));
         }
 
         Ok(results_vk.into_iter().map(|result| match result {
-            ash::vk::Result::SUCCESS => Ok(false),
-            ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+            vk::Result::SUCCESS => Ok(false),
+            vk::Result::SUBOPTIMAL_KHR => Ok(true),
             err => Err(VulkanError::from(err)),
         }))
     }
@@ -919,12 +920,12 @@ pub struct QueueFamilyProperties {
 }
 
 impl QueueFamilyProperties {
-    pub(crate) fn to_mut_vk2() -> ash::vk::QueueFamilyProperties2<'static> {
-        ash::vk::QueueFamilyProperties2::default()
+    pub(crate) fn to_mut_vk2() -> vk::QueueFamilyProperties2<'static> {
+        vk::QueueFamilyProperties2::default()
     }
 
-    pub(crate) fn from_vk2(val_vk: &ash::vk::QueueFamilyProperties2<'_>) -> Self {
-        let &ash::vk::QueueFamilyProperties2 {
+    pub(crate) fn from_vk2(val_vk: &vk::QueueFamilyProperties2<'_>) -> Self {
+        let &vk::QueueFamilyProperties2 {
             ref queue_family_properties,
             ..
         } = val_vk;
@@ -932,8 +933,8 @@ impl QueueFamilyProperties {
         Self::from_vk(queue_family_properties)
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::QueueFamilyProperties) -> Self {
-        let &ash::vk::QueueFamilyProperties {
+    pub(crate) fn from_vk(val_vk: &vk::QueueFamilyProperties) -> Self {
+        let &vk::QueueFamilyProperties {
             queue_flags,
             queue_count,
             timestamp_valid_bits,

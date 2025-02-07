@@ -20,6 +20,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -30,7 +31,7 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 /// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct ImageView {
-    handle: ash::vk::ImageView,
+    handle: vk::ImageView,
     image: DeviceOwnedDebugWrapper<Arc<Image>>,
     id: NonZeroU64,
 
@@ -608,7 +609,7 @@ impl ImageView {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         image: Arc<Image>,
-        handle: ash::vk::ImageView,
+        handle: vk::ImageView,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
         let ImageViewCreateInfo {
@@ -750,7 +751,7 @@ impl Drop for ImageView {
 }
 
 unsafe impl VulkanObject for ImageView {
-    type Handle = ash::vk::ImageView;
+    type Handle = vk::ImageView;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1036,9 +1037,9 @@ impl ImageViewCreateInfo {
 
     pub(crate) fn to_vk<'a>(
         &self,
-        image_vk: ash::vk::Image,
+        image_vk: vk::Image,
         extensions_vk: &'a mut ImageViewCreateInfoExtensionsVk,
-    ) -> ash::vk::ImageViewCreateInfo<'a> {
+    ) -> vk::ImageViewCreateInfo<'a> {
         let &Self {
             view_type,
             format,
@@ -1049,8 +1050,8 @@ impl ImageViewCreateInfo {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::ImageViewCreateInfo::default()
-            .flags(ash::vk::ImageViewCreateFlags::empty())
+        let mut val_vk = vk::ImageViewCreateInfo::default()
+            .flags(vk::ImageViewCreateFlags::empty())
             .image(image_vk)
             .view_type(view_type.into())
             .format(format.into())
@@ -1084,12 +1085,12 @@ impl ImageViewCreateInfo {
         } = self;
 
         let sampler_ycbcr_conversion_vk = sampler_ycbcr_conversion.as_ref().map(|conversion| {
-            ash::vk::SamplerYcbcrConversionInfo::default().conversion(conversion.handle())
+            vk::SamplerYcbcrConversionInfo::default().conversion(conversion.handle())
         });
 
         let has_non_default_usage = !(usage.is_empty() || usage == implicit_default_usage);
         let usage_vk = has_non_default_usage
-            .then(|| ash::vk::ImageViewUsageCreateInfo::default().usage(usage.into()));
+            .then(|| vk::ImageViewUsageCreateInfo::default().usage(usage.into()));
 
         ImageViewCreateInfoExtensionsVk {
             sampler_ycbcr_conversion_vk,
@@ -1099,8 +1100,8 @@ impl ImageViewCreateInfo {
 }
 
 pub(crate) struct ImageViewCreateInfoExtensionsVk {
-    pub(crate) sampler_ycbcr_conversion_vk: Option<ash::vk::SamplerYcbcrConversionInfo<'static>>,
-    pub(crate) usage_vk: Option<ash::vk::ImageViewUsageCreateInfo<'static>>,
+    pub(crate) sampler_ycbcr_conversion_vk: Option<vk::SamplerYcbcrConversionInfo<'static>>,
+    pub(crate) usage_vk: Option<vk::ImageViewUsageCreateInfo<'static>>,
 }
 
 vulkan_enum! {

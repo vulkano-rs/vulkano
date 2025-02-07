@@ -46,13 +46,14 @@ use crate::{
     memory::{is_aligned, DeviceAlignment},
     DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
 #[derive(Debug)]
 pub struct BufferView {
-    handle: ash::vk::BufferView,
+    handle: vk::BufferView,
     subbuffer: Subbuffer<[u8]>,
     id: NonZeroU64,
 
@@ -314,7 +315,7 @@ impl BufferView {
     /// - `subbuffer` and `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         subbuffer: Subbuffer<impl ?Sized>,
-        handle: ash::vk::BufferView,
+        handle: vk::BufferView,
         create_info: BufferViewCreateInfo,
     ) -> Arc<BufferView> {
         let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
@@ -377,7 +378,7 @@ impl Drop for BufferView {
 }
 
 unsafe impl VulkanObject for BufferView {
-    type Handle = ash::vk::BufferView;
+    type Handle = vk::BufferView;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -427,14 +428,11 @@ impl BufferViewCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-        subbuffer: &Subbuffer<[u8]>,
-    ) -> ash::vk::BufferViewCreateInfo<'static> {
+    pub(crate) fn to_vk(&self, subbuffer: &Subbuffer<[u8]>) -> vk::BufferViewCreateInfo<'static> {
         let &Self { format, _ne: _ } = self;
 
-        ash::vk::BufferViewCreateInfo::default()
-            .flags(ash::vk::BufferViewCreateFlags::empty())
+        vk::BufferViewCreateInfo::default()
+            .flags(vk::BufferViewCreateFlags::empty())
             .buffer(subbuffer.buffer().handle())
             .format(format.into())
             .offset(subbuffer.offset())

@@ -21,6 +21,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Used to block the GPU execution until an event on the CPU occurs.
@@ -31,7 +32,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// device loss.
 #[derive(Debug)]
 pub struct Event {
-    handle: ash::vk::Event,
+    handle: vk::Event,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     must_put_in_pool: bool,
@@ -153,7 +154,7 @@ impl Event {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Event,
+        handle: vk::Event,
         create_info: EventCreateInfo,
     ) -> Event {
         let EventCreateInfo { flags, _ne: _ } = create_info;
@@ -191,8 +192,8 @@ impl Event {
         let fns = self.device.fns();
         let result = unsafe { (fns.v1_0.get_event_status)(self.device.handle(), self.handle) };
         match result {
-            ash::vk::Result::EVENT_SET => Ok(true),
-            ash::vk::Result::EVENT_RESET => Ok(false),
+            vk::Result::EVENT_SET => Ok(true),
+            vk::Result::EVENT_RESET => Ok(false),
             err => Err(VulkanError::from(err)),
         }
     }
@@ -268,7 +269,7 @@ impl Drop for Event {
 }
 
 unsafe impl VulkanObject for Event {
-    type Handle = ash::vk::Event;
+    type Handle = vk::Event;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -318,10 +319,10 @@ impl EventCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::EventCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::EventCreateInfo<'static> {
         let &Self { flags, _ne: _ } = self;
 
-        ash::vk::EventCreateInfo::default().flags(flags.into())
+        vk::EventCreateInfo::default().flags(flags.into())
     }
 }
 

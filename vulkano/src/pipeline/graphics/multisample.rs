@@ -4,6 +4,7 @@
 use crate::{
     device::Device, image::SampleCount, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 
 // TODO: handle some weird behaviors with non-floating-point targets
 
@@ -135,7 +136,7 @@ impl MultisampleState {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PipelineMultisampleStateCreateInfo<'_> {
+    pub(crate) fn to_vk(&self) -> vk::PipelineMultisampleStateCreateInfo<'_> {
         let &Self {
             rasterization_samples,
             sample_shading,
@@ -152,8 +153,8 @@ impl MultisampleState {
                 (false, 0.0)
             };
 
-        ash::vk::PipelineMultisampleStateCreateInfo::default()
-            .flags(ash::vk::PipelineMultisampleStateCreateFlags::empty())
+        vk::PipelineMultisampleStateCreateInfo::default()
+            .flags(vk::PipelineMultisampleStateCreateFlags::empty())
             .rasterization_samples(rasterization_samples.into())
             .sample_shading_enable(sample_shading_enable_vk)
             .min_sample_shading(min_sample_shading_vk)

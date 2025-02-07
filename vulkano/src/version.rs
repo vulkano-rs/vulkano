@@ -1,5 +1,6 @@
 // The `Version` object is reexported from the `instance` module.
 
+use ash::vk;
 use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     num::ParseIntError,
@@ -51,9 +52,9 @@ impl From<u32> for Version {
     #[inline]
     fn from(val: u32) -> Self {
         Version {
-            major: ash::vk::api_version_major(val),
-            minor: ash::vk::api_version_minor(val),
-            patch: ash::vk::api_version_patch(val),
+            major: vk::api_version_major(val),
+            minor: vk::api_version_minor(val),
+            patch: vk::api_version_patch(val),
         }
     }
 }
@@ -64,9 +65,7 @@ impl TryFrom<Version> for u32 {
     #[inline]
     fn try_from(val: Version) -> Result<Self, Self::Error> {
         if val.major <= 0x3ff && val.minor <= 0x3ff && val.patch <= 0xfff {
-            Ok(ash::vk::make_api_version(
-                0, val.major, val.minor, val.patch,
-            ))
+            Ok(vk::make_api_version(0, val.major, val.minor, val.patch))
         } else {
             Err(())
         }

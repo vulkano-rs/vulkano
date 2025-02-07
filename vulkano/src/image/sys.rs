@@ -33,6 +33,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -47,7 +48,7 @@ use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc
 /// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct RawImage {
-    handle: ash::vk::Image,
+    handle: vk::Image,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -142,7 +143,7 @@ impl RawImage {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
@@ -162,7 +163,7 @@ impl RawImage {
     #[inline]
     pub unsafe fn from_handle_borrowed(
         device: Arc<Device>,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
@@ -170,7 +171,7 @@ impl RawImage {
 
     pub(super) unsafe fn from_handle_with_destruction(
         device: Arc<Device>,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         create_info: ImageCreateInfo,
         needs_destruction: bool,
     ) -> Result<Self, VulkanError> {
@@ -278,10 +279,10 @@ impl RawImage {
 
     unsafe fn get_memory_requirements(
         device: &Device,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         plane_tiling: Option<(usize, ImageTiling)>,
     ) -> MemoryRequirements {
-        let mut info_vk = ash::vk::ImageMemoryRequirementsInfo2::default().image(handle);
+        let mut info_vk = vk::ImageMemoryRequirementsInfo2::default().image(handle);
         let mut plane_info_vk = None;
 
         if let Some((plane, tiling)) = plane_tiling {
@@ -298,9 +299,9 @@ impl RawImage {
                             || device.enabled_extensions().khr_sampler_ycbcr_conversion
                     );
                     match plane {
-                        0 => ash::vk::ImageAspectFlags::PLANE_0,
-                        1 => ash::vk::ImageAspectFlags::PLANE_1,
-                        2 => ash::vk::ImageAspectFlags::PLANE_2,
+                        0 => vk::ImageAspectFlags::PLANE_0,
+                        1 => vk::ImageAspectFlags::PLANE_1,
+                        2 => vk::ImageAspectFlags::PLANE_2,
                         _ => unreachable!(),
                     }
                 }
@@ -308,18 +309,17 @@ impl RawImage {
                 ImageTiling::DrmFormatModifier => {
                     debug_assert!(device.enabled_extensions().ext_image_drm_format_modifier);
                     match plane {
-                        0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                        1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                        2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                        3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                        0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                        1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                        2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                        3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
                         _ => unreachable!(),
                     }
                 }
             };
 
-            let next = plane_info_vk.insert(
-                ash::vk::ImagePlaneMemoryRequirementsInfo::default().plane_aspect(plane_aspect),
-            );
+            let next = plane_info_vk
+                .insert(vk::ImagePlaneMemoryRequirementsInfo::default().plane_aspect(plane_aspect));
             info_vk = info_vk.push_next(next);
         }
 
@@ -362,7 +362,7 @@ impl RawImage {
         }
 
         // Unborrow
-        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+        let memory_requirements2_vk = vk::MemoryRequirements2 {
             _marker: PhantomData,
             ..memory_requirements2_vk
         };
@@ -375,14 +375,14 @@ impl RawImage {
 
     unsafe fn get_sparse_memory_requirements(
         device: &Device,
-        handle: ash::vk::Image,
+        handle: vk::Image,
     ) -> Vec<SparseImageMemoryRequirements> {
         let fns = device.fns();
 
         if device.api_version() >= Version::V1_1
             || device.enabled_extensions().khr_get_memory_requirements2
         {
-            let info2_vk = ash::vk::ImageSparseMemoryRequirementsInfo2::default().image(handle);
+            let info2_vk = vk::ImageSparseMemoryRequirementsInfo2::default().image(handle);
 
             let mut count = 0;
 
@@ -470,9 +470,9 @@ impl RawImage {
 
     unsafe fn get_drm_format_modifier_properties(
         device: &Device,
-        handle: ash::vk::Image,
+        handle: vk::Image,
     ) -> Result<u64, VulkanError> {
-        let mut properties_vk = ash::vk::ImageDrmFormatModifierPropertiesEXT::default();
+        let mut properties_vk = vk::ImageDrmFormatModifierPropertiesEXT::default();
 
         let fns = device.fns();
         unsafe {
@@ -882,16 +882,16 @@ impl RawImage {
     > {
         let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
 
-        const PLANE_ASPECTS_VK_NORMAL: &[ash::vk::ImageAspectFlags] = &[
-            ash::vk::ImageAspectFlags::PLANE_0,
-            ash::vk::ImageAspectFlags::PLANE_1,
-            ash::vk::ImageAspectFlags::PLANE_2,
+        const PLANE_ASPECTS_VK_NORMAL: &[vk::ImageAspectFlags] = &[
+            vk::ImageAspectFlags::PLANE_0,
+            vk::ImageAspectFlags::PLANE_1,
+            vk::ImageAspectFlags::PLANE_2,
         ];
-        const PLANE_ASPECTS_VK_DRM_FORMAT_MODIFIER: &[ash::vk::ImageAspectFlags] = &[
-            ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-            ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-            ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-            ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+        const PLANE_ASPECTS_VK_DRM_FORMAT_MODIFIER: &[vk::ImageAspectFlags] = &[
+            vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
         ];
         let needs_plane = (self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_bind_memory2)
@@ -919,7 +919,7 @@ impl RawImage {
             .map(|plane_num| {
                 plane_aspects_vk.map(|plane_aspects_vk| {
                     let plane_aspect_vk = plane_aspects_vk[plane_num];
-                    ash::vk::BindImagePlaneMemoryInfo::default().plane_aspect(plane_aspect_vk)
+                    vk::BindImagePlaneMemoryInfo::default().plane_aspect(plane_aspect_vk)
                 })
             })
             .collect();
@@ -1430,13 +1430,13 @@ impl RawImage {
         self.subresource_layout.get_or_insert(
             (aspect, mip_level, array_layer),
             |&(aspect, mip_level, array_layer)| {
-                let subresource_vk = ash::vk::ImageSubresource {
+                let subresource_vk = vk::ImageSubresource {
                     aspect_mask: aspect.into(),
                     mip_level,
                     array_layer,
                 };
 
-                let ash::vk::SubresourceLayout {
+                let vk::SubresourceLayout {
                     offset,
                     size,
                     row_pitch,
@@ -1481,7 +1481,7 @@ impl Drop for RawImage {
 }
 
 unsafe impl VulkanObject for RawImage {
-    type Handle = ash::vk::Image;
+    type Handle = vk::Image;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -2959,7 +2959,7 @@ impl ImageCreateInfo {
     pub(crate) fn to_vk<'a>(
         &'a self,
         extensions_vk: &'a mut ImageCreateInfoExtensionsVk<'_>,
-    ) -> ash::vk::ImageCreateInfo<'a> {
+    ) -> vk::ImageCreateInfo<'a> {
         let &Self {
             flags,
             image_type,
@@ -2981,18 +2981,17 @@ impl ImageCreateInfo {
         } = self;
 
         let (sharing_mode, queue_family_indices_vk) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.as_slice(),
-            ),
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
         };
 
-        let mut val_vk = ash::vk::ImageCreateInfo::default()
+        let mut val_vk = vk::ImageCreateInfo::default()
             .flags(flags.into())
             .image_type(image_type.into())
             .format(format.into())
-            .extent(ash::vk::Extent3D {
+            .extent(vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],
@@ -3047,27 +3046,27 @@ impl ImageCreateInfo {
         } = fields1_vk;
 
         let drm_format_modifier_explicit_vk = (!plane_layouts_vk.is_empty()).then(|| {
-            ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
+            vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
                 .drm_format_modifier(self.drm_format_modifiers[0])
                 .plane_layouts(plane_layouts_vk)
         });
 
         let drm_format_modifier_list_vk = (!self.drm_format_modifier_plane_layouts.is_empty())
             .then(|| {
-                ash::vk::ImageDrmFormatModifierListCreateInfoEXT::default()
+                vk::ImageDrmFormatModifierListCreateInfoEXT::default()
                     .drm_format_modifiers(&self.drm_format_modifiers)
             });
 
         let external_memory_vk = (!self.external_memory_handle_types.is_empty()).then(|| {
-            ash::vk::ExternalMemoryImageCreateInfo::default()
+            vk::ExternalMemoryImageCreateInfo::default()
                 .handle_types(self.external_memory_handle_types.into())
         });
 
         let format_list_vk = (!view_formats_vk.is_empty())
-            .then(|| ash::vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+            .then(|| vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
 
         let stencil_usage_vk = self.stencil_usage.map(|stencil_usage| {
-            ash::vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
+            vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
         });
 
         ImageCreateInfoExtensionsVk {
@@ -3090,7 +3089,7 @@ impl ImageCreateInfo {
             .view_formats
             .iter()
             .copied()
-            .map(ash::vk::Format::from)
+            .map(vk::Format::from)
             .collect();
 
         ImageCreateInfoFields1Vk {
@@ -3102,17 +3101,16 @@ impl ImageCreateInfo {
 
 pub(crate) struct ImageCreateInfoExtensionsVk<'a> {
     pub(crate) drm_format_modifier_explicit_vk:
-        Option<ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT<'a>>,
-    pub(crate) drm_format_modifier_list_vk:
-        Option<ash::vk::ImageDrmFormatModifierListCreateInfoEXT<'a>>,
-    pub(crate) external_memory_vk: Option<ash::vk::ExternalMemoryImageCreateInfo<'static>>,
-    pub(crate) format_list_vk: Option<ash::vk::ImageFormatListCreateInfo<'a>>,
-    pub(crate) stencil_usage_vk: Option<ash::vk::ImageStencilUsageCreateInfo<'static>>,
+        Option<vk::ImageDrmFormatModifierExplicitCreateInfoEXT<'a>>,
+    pub(crate) drm_format_modifier_list_vk: Option<vk::ImageDrmFormatModifierListCreateInfoEXT<'a>>,
+    pub(crate) external_memory_vk: Option<vk::ExternalMemoryImageCreateInfo<'static>>,
+    pub(crate) format_list_vk: Option<vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) stencil_usage_vk: Option<vk::ImageStencilUsageCreateInfo<'static>>,
 }
 
 pub(crate) struct ImageCreateInfoFields1Vk {
-    plane_layouts_vk: SmallVec<[ash::vk::SubresourceLayout; 4]>,
-    view_formats_vk: Vec<ash::vk::Format>,
+    plane_layouts_vk: SmallVec<[vk::SubresourceLayout; 4]>,
+    view_formats_vk: Vec<vk::Format>,
 }
 
 #[cfg(test)]

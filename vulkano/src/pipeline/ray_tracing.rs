@@ -63,6 +63,7 @@ use crate::{
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     DeviceSize, StridedDeviceAddressRegion, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::{HashMap, HashSet};
 use smallvec::SmallVec;
 use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -72,7 +73,7 @@ use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, 
 /// This object uses the `VK_KHR_ray_tracing_pipeline` extension.
 #[derive(Debug)]
 pub struct RayTracingPipeline {
-    handle: ash::vk::Pipeline,
+    handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -135,8 +136,8 @@ impl RayTracingPipeline {
                 (fns.khr_ray_tracing_pipeline
                     .create_ray_tracing_pipelines_khr)(
                     device.handle(),
-                    ash::vk::DeferredOperationKHR::null(), // TODO: RayTracing: deferred_operation
-                    cache.map_or(ash::vk::PipelineCache::null(), |c| c.handle()),
+                    vk::DeferredOperationKHR::null(), // TODO: RayTracing: deferred_operation
+                    cache.map_or(vk::PipelineCache::null(), |c| c.handle()),
                     1,
                     &create_infos_vk,
                     ptr::null(),
@@ -160,7 +161,7 @@ impl RayTracingPipeline {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Pipeline,
+        handle: vk::Pipeline,
         create_info: RayTracingPipelineCreateInfo,
     ) -> Arc<Self> {
         let RayTracingPipelineCreateInfo {
@@ -340,7 +341,7 @@ impl Pipeline for RayTracingPipeline {
 impl_id_counter!(RayTracingPipeline);
 
 unsafe impl VulkanObject for RayTracingPipeline {
-    type Handle = ash::vk::Pipeline;
+    type Handle = vk::Pipeline;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -586,7 +587,7 @@ impl RayTracingPipelineCreateInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a RayTracingPipelineCreateInfoFields1Vk<'_>,
-    ) -> ash::vk::RayTracingPipelineCreateInfoKHR<'a> {
+    ) -> vk::RayTracingPipelineCreateInfoKHR<'a> {
         let &Self {
             flags,
             max_pipeline_ray_recursion_depth,
@@ -602,7 +603,7 @@ impl RayTracingPipelineCreateInfo {
             dynamic_state_vk,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::RayTracingPipelineCreateInfoKHR::default()
+        let mut val_vk = vk::RayTracingPipelineCreateInfoKHR::default()
             .flags(flags.into())
             .stages(stages_vk)
             .groups(groups_vk)
@@ -611,7 +612,7 @@ impl RayTracingPipelineCreateInfo {
             .base_pipeline_handle(
                 base_pipeline
                     .as_ref()
-                    .map_or(ash::vk::Pipeline::null(), |p| p.handle()),
+                    .map_or(vk::Pipeline::null(), |p| p.handle()),
             )
             .base_pipeline_index(-1);
 
@@ -651,8 +652,8 @@ impl RayTracingPipelineCreateInfo {
             .collect();
 
         let dynamic_state_vk = (!dynamic_states_vk.is_empty()).then(|| {
-            ash::vk::PipelineDynamicStateCreateInfo::default()
-                .flags(ash::vk::PipelineDynamicStateCreateFlags::empty())
+            vk::PipelineDynamicStateCreateInfo::default()
+                .flags(vk::PipelineDynamicStateCreateFlags::empty())
                 .dynamic_states(dynamic_states_vk)
         });
 
@@ -850,43 +851,43 @@ impl RayTracingShaderGroupCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::RayTracingShaderGroupCreateInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::RayTracingShaderGroupCreateInfoKHR<'static> {
         match self {
             RayTracingShaderGroupCreateInfo::General { general_shader } => {
-                ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
-                    .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                vk::RayTracingShaderGroupCreateInfoKHR::default()
+                    .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
                     .general_shader(*general_shader)
-                    .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                    .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                    .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
+                    .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                    .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                    .intersection_shader(vk::SHADER_UNUSED_KHR)
             }
             RayTracingShaderGroupCreateInfo::ProceduralHit {
                 closest_hit_shader,
                 any_hit_shader,
                 intersection_shader,
-            } => ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
-                .ty(ash::vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP)
-                .general_shader(ash::vk::SHADER_UNUSED_KHR)
-                .closest_hit_shader(closest_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
-                .any_hit_shader(any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+            } => vk::RayTracingShaderGroupCreateInfoKHR::default()
+                .ty(vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP)
+                .general_shader(vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(closest_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
+                .any_hit_shader(any_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
                 .intersection_shader(*intersection_shader),
             RayTracingShaderGroupCreateInfo::TrianglesHit {
                 closest_hit_shader,
                 any_hit_shader,
-            } => ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
-                .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                .general_shader(ash::vk::SHADER_UNUSED_KHR)
-                .closest_hit_shader(closest_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
-                .any_hit_shader(any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
-                .intersection_shader(ash::vk::SHADER_UNUSED_KHR),
+            } => vk::RayTracingShaderGroupCreateInfoKHR::default()
+                .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                .general_shader(vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(closest_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
+                .any_hit_shader(any_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
+                .intersection_shader(vk::SHADER_UNUSED_KHR),
         }
     }
 }
 
 pub(crate) struct RayTracingPipelineCreateInfoFields1Vk<'a> {
-    pub(crate) stages_vk: SmallVec<[ash::vk::PipelineShaderStageCreateInfo<'a>; 5]>,
-    pub(crate) groups_vk: SmallVec<[ash::vk::RayTracingShaderGroupCreateInfoKHR<'static>; 5]>,
-    pub(crate) dynamic_state_vk: Option<ash::vk::PipelineDynamicStateCreateInfo<'a>>,
+    pub(crate) stages_vk: SmallVec<[vk::PipelineShaderStageCreateInfo<'a>; 5]>,
+    pub(crate) groups_vk: SmallVec<[vk::RayTracingShaderGroupCreateInfoKHR<'static>; 5]>,
+    pub(crate) dynamic_state_vk: Option<vk::PipelineDynamicStateCreateInfo<'a>>,
 }
 
 pub(crate) struct RayTracingPipelineCreateInfoFields1ExtensionsVk {
@@ -895,7 +896,7 @@ pub(crate) struct RayTracingPipelineCreateInfoFields1ExtensionsVk {
 
 pub(crate) struct RayTracingPipelineCreateInfoFields2Vk<'a> {
     pub(crate) stages_fields1_vk: SmallVec<[PipelineShaderStageCreateInfoFields1Vk<'a>; 5]>,
-    pub(crate) dynamic_states_vk: SmallVec<[ash::vk::DynamicState; 4]>,
+    pub(crate) dynamic_states_vk: SmallVec<[vk::DynamicState; 4]>,
 }
 
 pub(crate) struct RayTracingPipelineCreateInfoFields3Vk {

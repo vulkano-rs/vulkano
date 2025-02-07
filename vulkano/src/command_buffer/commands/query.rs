@@ -10,6 +10,7 @@ use crate::{
     sync::{PipelineStage, PipelineStageAccessFlags, PipelineStages},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
@@ -1042,7 +1043,7 @@ impl RecordingCommandBuffer {
                 destination.buffer().handle(),
                 destination.offset(),
                 stride,
-                ash::vk::QueryResultFlags::from(flags) | T::FLAG,
+                vk::QueryResultFlags::from(flags) | T::FLAG,
             )
         };
 

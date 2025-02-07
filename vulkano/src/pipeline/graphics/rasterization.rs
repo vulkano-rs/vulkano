@@ -3,6 +3,7 @@
 use crate::{
     device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
@@ -380,7 +381,7 @@ impl RasterizationState {
     pub(crate) fn to_vk<'a>(
         &self,
         extensions_vk: &'a mut RasterizationStateExtensionsVk,
-    ) -> ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+    ) -> vk::PipelineRasterizationStateCreateInfo<'a> {
         let &Self {
             depth_clamp_enable,
             rasterizer_discard_enable,
@@ -412,8 +413,8 @@ impl RasterizationState {
             (false, 0.0, 0.0, 0.0)
         };
 
-        let mut val_vk = ash::vk::PipelineRasterizationStateCreateInfo::default()
-            .flags(ash::vk::PipelineRasterizationStateCreateFlags::empty())
+        let mut val_vk = vk::PipelineRasterizationStateCreateInfo::default()
+            .flags(vk::PipelineRasterizationStateCreateFlags::empty())
             .depth_clamp_enable(depth_clamp_enable)
             .rasterizer_discard_enable(rasterizer_discard_enable)
             .polygon_mode(polygon_mode.into())
@@ -457,7 +458,7 @@ impl RasterizationState {
                     (false, 1, 0)
                 };
 
-            ash::vk::PipelineRasterizationLineStateCreateInfoKHR::default()
+            vk::PipelineRasterizationLineStateCreateInfoKHR::default()
                 .line_rasterization_mode(line_rasterization_mode.into())
                 .stippled_line_enable(stippled_line_enable)
                 .line_stipple_factor(line_stipple_factor)
@@ -475,9 +476,9 @@ impl RasterizationState {
 }
 
 pub(crate) struct RasterizationStateExtensionsVk {
-    pub(crate) line_vk: Option<ash::vk::PipelineRasterizationLineStateCreateInfoKHR<'static>>,
+    pub(crate) line_vk: Option<vk::PipelineRasterizationLineStateCreateInfoKHR<'static>>,
     pub(crate) conservative_vk:
-        Option<ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static>>,
+        Option<vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static>>,
 }
 
 /// The values to use for depth biasing.
@@ -721,17 +722,15 @@ impl RasterizationConservativeState {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-    ) -> ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static> {
         let &Self {
             mode,
             overestimation_size,
             _ne: _,
         } = self;
 
-        ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
-            .flags(ash::vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty())
+        vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+            .flags(vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty())
             .conservative_rasterization_mode(mode.into())
             .extra_primitive_overestimation_size(overestimation_size)
     }

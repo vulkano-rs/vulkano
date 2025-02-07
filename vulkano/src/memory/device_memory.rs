@@ -9,7 +9,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
-use ash::vk::MemoryAllocateFlagsInfo;
+use ash::vk;
 use std::{
     ffi::c_void,
     fs::File,
@@ -46,7 +46,7 @@ use std::{
 /// ```
 #[derive(Debug)]
 pub struct DeviceMemory {
-    handle: ash::vk::DeviceMemory,
+    handle: vk::DeviceMemory,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -231,7 +231,7 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::DeviceMemory,
+        handle: vk::DeviceMemory,
         allocate_info: MemoryAllocateInfo<'_>,
     ) -> Self {
         let MemoryAllocateInfo {
@@ -746,7 +746,7 @@ impl DeviceMemory {
         &self,
         handle_type: ExternalMemoryHandleType,
     ) -> Result<File, VulkanError> {
-        let info_vk = ash::vk::MemoryGetFdInfoKHR::default()
+        let info_vk = vk::MemoryGetFdInfoKHR::default()
             .memory(self.handle)
             .handle_type(handle_type.into());
 
@@ -787,7 +787,7 @@ impl Drop for DeviceMemory {
 }
 
 unsafe impl VulkanObject for DeviceMemory {
-    type Handle = ash::vk::DeviceMemory;
+    type Handle = vk::DeviceMemory;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1070,7 +1070,7 @@ impl<'d> MemoryAllocateInfo<'d> {
     pub(crate) fn to_vk<'a>(
         &self,
         extensions_vk: &'a mut MemoryAllocateInfoExtensionsVk,
-    ) -> ash::vk::MemoryAllocateInfo<'a> {
+    ) -> vk::MemoryAllocateInfo<'a> {
         let &Self {
             allocation_size,
             memory_type_index,
@@ -1080,7 +1080,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::MemoryAllocateInfo::default()
+        let mut val_vk = vk::MemoryAllocateInfo::default()
             .allocation_size(allocation_size)
             .memory_type_index(memory_type_index);
 
@@ -1131,19 +1131,19 @@ impl<'d> MemoryAllocateInfo<'d> {
                 .as_ref()
                 .map(|dedicated_allocation| match dedicated_allocation {
                     DedicatedAllocation::Buffer(buffer) => {
-                        ash::vk::MemoryDedicatedAllocateInfo::default().buffer(buffer.handle())
+                        vk::MemoryDedicatedAllocateInfo::default().buffer(buffer.handle())
                     }
                     DedicatedAllocation::Image(image) => {
-                        ash::vk::MemoryDedicatedAllocateInfo::default().image(image.handle())
+                        vk::MemoryDedicatedAllocateInfo::default().image(image.handle())
                     }
                 });
 
         let export_vk = (!export_handle_types.is_empty()).then(|| {
-            ash::vk::ExportMemoryAllocateInfo::default().handle_types(export_handle_types.into())
+            vk::ExportMemoryAllocateInfo::default().handle_types(export_handle_types.into())
         });
 
-        let flags_vk = (!flags.is_empty())
-            .then(|| ash::vk::MemoryAllocateFlagsInfo::default().flags(flags.into()));
+        let flags_vk =
+            (!flags.is_empty()).then(|| vk::MemoryAllocateFlagsInfo::default().flags(flags.into()));
 
         MemoryAllocateInfoExtensionsVk {
             dedicated_vk,
@@ -1155,9 +1155,9 @@ impl<'d> MemoryAllocateInfo<'d> {
 }
 
 pub(crate) struct MemoryAllocateInfoExtensionsVk {
-    pub(crate) dedicated_vk: Option<ash::vk::MemoryDedicatedAllocateInfo<'static>>,
-    pub(crate) export_vk: Option<ash::vk::ExportMemoryAllocateInfo<'static>>,
-    pub(crate) flags_vk: Option<MemoryAllocateFlagsInfo<'static>>,
+    pub(crate) dedicated_vk: Option<vk::MemoryDedicatedAllocateInfo<'static>>,
+    pub(crate) export_vk: Option<vk::ExportMemoryAllocateInfo<'static>>,
+    pub(crate) flags_vk: Option<vk::MemoryAllocateFlagsInfo<'static>>,
     pub(crate) import_vk: Option<MemoryImportInfoVk>,
 }
 
@@ -1211,7 +1211,7 @@ pub enum MemoryImportInfo {
     ///   identically to the original.
     Win32 {
         handle_type: ExternalMemoryHandleType,
-        handle: ash::vk::HANDLE,
+        handle: vk::HANDLE,
     },
 }
 
@@ -1338,7 +1338,7 @@ impl MemoryImportInfo {
                 };
 
                 MemoryImportInfoVk::Fd(
-                    ash::vk::ImportMemoryFdInfoKHR::default()
+                    vk::ImportMemoryFdInfoKHR::default()
                         .handle_type(handle_type.into())
                         .fd(fd),
                 )
@@ -1347,7 +1347,7 @@ impl MemoryImportInfo {
                 handle_type,
                 handle,
             } => MemoryImportInfoVk::Win32Handle(
-                ash::vk::ImportMemoryWin32HandleInfoKHR::default()
+                vk::ImportMemoryWin32HandleInfoKHR::default()
                     .handle_type(handle_type.into())
                     .handle(handle),
             ),
@@ -1356,8 +1356,8 @@ impl MemoryImportInfo {
 }
 
 pub(crate) enum MemoryImportInfoVk {
-    Fd(ash::vk::ImportMemoryFdInfoKHR<'static>),
-    Win32Handle(ash::vk::ImportMemoryWin32HandleInfoKHR<'static>),
+    Fd(vk::ImportMemoryFdInfoKHR<'static>),
+    Win32Handle(vk::ImportMemoryWin32HandleInfoKHR<'static>),
 }
 
 vulkan_bitflags_enum! {
@@ -1691,9 +1691,9 @@ impl MemoryMapInfo {
 
     pub(crate) fn to_vk<'a>(
         &self,
-        memory_vk: ash::vk::DeviceMemory,
+        memory_vk: vk::DeviceMemory,
         extensions_vk: &'a mut MemoryMapInfoExtensionsVk,
-    ) -> ash::vk::MemoryMapInfoKHR<'a> {
+    ) -> vk::MemoryMapInfoKHR<'a> {
         let &Self {
             flags,
             offset,
@@ -1704,7 +1704,7 @@ impl MemoryMapInfo {
         // Sanity check: this would lead to UB when calculating pointer offsets.
         assert!(size <= isize::MAX.try_into().unwrap());
 
-        let mut val_vk = ash::vk::MemoryMapInfoKHR::default()
+        let mut val_vk = vk::MemoryMapInfoKHR::default()
             .flags(flags.into())
             .memory(memory_vk)
             .offset(offset)
@@ -1724,7 +1724,7 @@ impl MemoryMapInfo {
         placed_address: Option<NonNull<c_void>>,
     ) -> MemoryMapInfoExtensionsVk {
         let placed_vk = placed_address.map(|placed_address| {
-            ash::vk::MemoryMapPlacedInfoEXT::default().placed_address(placed_address.as_ptr())
+            vk::MemoryMapPlacedInfoEXT::default().placed_address(placed_address.as_ptr())
         });
 
         MemoryMapInfoExtensionsVk { placed_vk }
@@ -1732,7 +1732,7 @@ impl MemoryMapInfo {
 }
 
 pub(crate) struct MemoryMapInfoExtensionsVk {
-    pub(crate) placed_vk: Option<ash::vk::MemoryMapPlacedInfoEXT<'static>>,
+    pub(crate) placed_vk: Option<vk::MemoryMapPlacedInfoEXT<'static>>,
 }
 
 vulkan_bitflags! {
@@ -1764,14 +1764,11 @@ impl MemoryUnmapInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-        memory_vk: ash::vk::DeviceMemory,
-    ) -> ash::vk::MemoryUnmapInfoKHR<'static> {
+    pub(crate) fn to_vk(&self, memory_vk: vk::DeviceMemory) -> vk::MemoryUnmapInfoKHR<'static> {
         let &Self { _ne: _ } = self;
 
-        ash::vk::MemoryUnmapInfoKHR::default()
-            .flags(ash::vk::MemoryUnmapFlagsKHR::empty())
+        vk::MemoryUnmapInfoKHR::default()
+            .flags(vk::MemoryUnmapFlagsKHR::empty())
             .memory(memory_vk)
     }
 }
@@ -1936,17 +1933,14 @@ impl MappedMemoryRange {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-        memory_vk: ash::vk::DeviceMemory,
-    ) -> ash::vk::MappedMemoryRange<'static> {
+    pub(crate) fn to_vk(&self, memory_vk: vk::DeviceMemory) -> vk::MappedMemoryRange<'static> {
         let &Self {
             offset,
             size,
             _ne: _,
         } = self;
 
-        ash::vk::MappedMemoryRange::default()
+        vk::MappedMemoryRange::default()
             .memory(memory_vk)
             .offset(offset)
             .size(size)
@@ -2148,7 +2142,7 @@ impl MappedDeviceMemory {
                     memory.handle,
                     range.start,
                     range.end - range.start,
-                    ash::vk::MemoryMapFlags::empty(),
+                    vk::MemoryMapFlags::empty(),
                     output.as_mut_ptr(),
                 )
             }

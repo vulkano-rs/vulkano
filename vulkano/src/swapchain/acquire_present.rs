@@ -11,6 +11,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::Debug,
@@ -116,9 +117,9 @@ impl AcquireNextImageInfo {
 
     pub(crate) fn to_vk(
         &self,
-        swapchain_vk: ash::vk::SwapchainKHR,
+        swapchain_vk: vk::SwapchainKHR,
         device_mask_vk: u32,
-    ) -> ash::vk::AcquireNextImageInfoKHR<'static> {
+    ) -> vk::AcquireNextImageInfoKHR<'static> {
         let &Self {
             timeout,
             ref semaphore,
@@ -126,7 +127,7 @@ impl AcquireNextImageInfo {
             _ne: _,
         } = self;
 
-        ash::vk::AcquireNextImageInfoKHR::default()
+        vk::AcquireNextImageInfoKHR::default()
             .swapchain(swapchain_vk)
             .timeout(timeout.map_or(u64::MAX, |duration| {
                 u64::try_from(duration.as_nanos()).unwrap()
@@ -223,17 +224,17 @@ pub unsafe fn acquire_next_image_raw(
                 timeout_ns,
                 semaphore
                     .map(|s| s.handle())
-                    .unwrap_or(ash::vk::Semaphore::null()),
-                fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
+                    .unwrap_or(vk::Semaphore::null()),
+                fence.map(|f| f.handle()).unwrap_or(vk::Fence::null()),
                 output.as_mut_ptr(),
             )
         };
 
         match result {
-            ash::vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
-            ash::vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
-            ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
-            ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
+            vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
+            vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
+            vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
+            vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
             err => return Err(VulkanError::from(err).into()),
         }
     };
@@ -533,9 +534,9 @@ impl PresentInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a PresentInfoFields1Vk<'_>,
-        results_vk: &'a mut [ash::vk::Result],
+        results_vk: &'a mut [vk::Result],
         extensions_vk: &'a mut PresentInfoExtensionsVk<'_>,
-    ) -> ash::vk::PresentInfoKHR<'a> {
+    ) -> vk::PresentInfoKHR<'a> {
         let &Self {
             wait_semaphores: _,
             swapchain_infos: _,
@@ -555,7 +556,7 @@ impl PresentInfo {
             present_regions_vk,
         } = extensions_vk;
 
-        let mut val_vk = ash::vk::PresentInfoKHR::default()
+        let mut val_vk = vk::PresentInfoKHR::default()
             .wait_semaphores(wait_semaphores_vk)
             .swapchains(swapchains_vk)
             .image_indices(image_indices_vk)
@@ -576,8 +577,8 @@ impl PresentInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_results(&self) -> Vec<ash::vk::Result> {
-        vec![ash::vk::Result::SUCCESS; self.swapchain_infos.len()]
+    pub(crate) fn to_vk_results(&self) -> Vec<vk::Result> {
+        vec![vk::Result::SUCCESS; self.swapchain_infos.len()]
     }
 
     pub(crate) fn to_vk_extensions<'a>(
@@ -613,12 +614,11 @@ impl PresentInfo {
         }
 
         let present_id_vk =
-            has_present_ids.then(|| ash::vk::PresentIdKHR::default().present_ids(present_ids_vk));
-        let present_mode_vk = has_present_modes.then(|| {
-            ash::vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk)
-        });
+            has_present_ids.then(|| vk::PresentIdKHR::default().present_ids(present_ids_vk));
+        let present_mode_vk = has_present_modes
+            .then(|| vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk));
         let present_regions_vk = has_present_regions
-            .then(|| ash::vk::PresentRegionsKHR::default().regions(present_regions_vk));
+            .then(|| vk::PresentRegionsKHR::default().regions(present_regions_vk));
 
         PresentInfoExtensionsVk {
             present_id_vk,
@@ -669,9 +669,8 @@ impl PresentInfo {
             image_indices_vk.push(image_index);
             present_ids_vk.push(present_id.map_or(0, u64::from));
             present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
-            present_regions_vk.push(
-                ash::vk::PresentRegionKHR::default().rectangles(present_region_rectangles_vk),
-            );
+            present_regions_vk
+                .push(vk::PresentRegionKHR::default().rectangles(present_region_rectangles_vk));
         }
 
         PresentInfoFields1Vk {
@@ -698,18 +697,18 @@ impl PresentInfo {
 }
 
 pub(crate) struct PresentInfoExtensionsVk<'a> {
-    pub(crate) present_id_vk: Option<ash::vk::PresentIdKHR<'a>>,
-    pub(crate) present_mode_vk: Option<ash::vk::SwapchainPresentModeInfoEXT<'a>>,
-    pub(crate) present_regions_vk: Option<ash::vk::PresentRegionsKHR<'a>>,
+    pub(crate) present_id_vk: Option<vk::PresentIdKHR<'a>>,
+    pub(crate) present_mode_vk: Option<vk::SwapchainPresentModeInfoEXT<'a>>,
+    pub(crate) present_regions_vk: Option<vk::PresentRegionsKHR<'a>>,
 }
 
 pub(crate) struct PresentInfoFields1Vk<'a> {
-    pub(crate) wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-    pub(crate) swapchains_vk: SmallVec<[ash::vk::SwapchainKHR; 4]>,
+    pub(crate) wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    pub(crate) swapchains_vk: SmallVec<[vk::SwapchainKHR; 4]>,
     pub(crate) image_indices_vk: SmallVec<[u32; 4]>,
     pub(crate) present_ids_vk: SmallVec<[u64; 4]>,
-    pub(crate) present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; 4]>,
-    pub(crate) present_regions_vk: SmallVec<[ash::vk::PresentRegionKHR<'a>; 4]>,
+    pub(crate) present_modes_vk: SmallVec<[vk::PresentModeKHR; 4]>,
+    pub(crate) present_regions_vk: SmallVec<[vk::PresentRegionKHR<'a>; 4]>,
 }
 
 pub(crate) struct PresentInfoFields2Vk {
@@ -916,7 +915,7 @@ impl SwapchainPresentInfo {
 }
 
 pub(crate) struct SwapchainPresentInfoFields1Vk {
-    pub(crate) present_region_rectangles_vk: SmallVec<[ash::vk::RectLayerKHR; 4]>,
+    pub(crate) present_region_rectangles_vk: SmallVec<[vk::RectLayerKHR; 4]>,
 }
 
 /// Represents a rectangular region on an image layer.
@@ -942,19 +941,19 @@ impl RectangleLayer {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::RectLayerKHR {
+    pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {
         let &Self {
             offset,
             extent,
             layer,
         } = self;
 
-        ash::vk::RectLayerKHR {
-            offset: ash::vk::Offset2D {
+        vk::RectLayerKHR {
+            offset: vk::Offset2D {
                 x: offset[0] as i32,
                 y: offset[1] as i32,
             },
-            extent: ash::vk::Extent2D {
+            extent: vk::Extent2D {
                 width: extent[0],
                 height: extent[1],
             },
@@ -1005,7 +1004,7 @@ impl SemaphorePresentInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::Semaphore {
+    pub(crate) fn to_vk(&self) -> vk::Semaphore {
         let &Self {
             ref semaphore,
             _ne: _,

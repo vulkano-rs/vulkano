@@ -117,7 +117,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ash::vk::Handle;
+use ash::vk::{self, Handle};
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -146,7 +146,7 @@ include!(concat!(env!("OUT_DIR"), "/features.rs"));
 
 /// Represents a Vulkan context.
 pub struct Device {
-    handle: ash::vk::Device,
+    handle: vk::Device,
     // NOTE: `physical_devices` always contains this.
     physical_device: InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>,
     id: NonZeroU64,
@@ -164,9 +164,9 @@ pub struct Device {
     // This is required for validation in `memory::device_memory`, the count must only be modified
     // in that module.
     pub(crate) allocation_count: AtomicU32,
-    fence_pool: Mutex<Vec<ash::vk::Fence>>,
-    semaphore_pool: Mutex<Vec<ash::vk::Semaphore>>,
-    event_pool: Mutex<Vec<ash::vk::Event>>,
+    fence_pool: Mutex<Vec<vk::Fence>>,
+    semaphore_pool: Mutex<Vec<vk::Semaphore>>,
+    event_pool: Mutex<Vec<vk::Event>>,
 }
 
 impl Device {
@@ -390,7 +390,7 @@ impl Device {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         physical_device: Arc<PhysicalDevice>,
-        handle: ash::vk::Device,
+        handle: vk::Device,
         create_info: DeviceCreateInfo,
     ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
         let DeviceCreateInfo {
@@ -552,15 +552,15 @@ impl Device {
         self.allocation_count.load(Ordering::Acquire)
     }
 
-    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<ash::vk::Fence>> {
+    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<vk::Fence>> {
         &self.fence_pool
     }
 
-    pub(crate) fn semaphore_pool(&self) -> &Mutex<Vec<ash::vk::Semaphore>> {
+    pub(crate) fn semaphore_pool(&self) -> &Mutex<Vec<vk::Semaphore>> {
         &self.semaphore_pool
     }
 
-    pub(crate) fn event_pool(&self) -> &Mutex<Vec<ash::vk::Event>> {
+    pub(crate) fn event_pool(&self) -> &Mutex<Vec<vk::Event>> {
         &self.event_pool
     }
 
@@ -729,7 +729,7 @@ impl Device {
     #[inline]
     pub fn acceleration_structure_is_compatible(
         &self,
-        version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+        version_data: &[u8; 2 * vk::UUID_SIZE],
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_acceleration_structure_is_compatible(version_data)?;
 
@@ -738,7 +738,7 @@ impl Device {
 
     fn validate_acceleration_structure_is_compatible(
         &self,
-        _version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+        _version_data: &[u8; 2 * vk::UUID_SIZE],
     ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_acceleration_structure {
             return Err(Box::new(ValidationError {
@@ -765,11 +765,11 @@ impl Device {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn acceleration_structure_is_compatible_unchecked(
         &self,
-        version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+        version_data: &[u8; 2 * vk::UUID_SIZE],
     ) -> bool {
         let version_info_vk =
-            ash::vk::AccelerationStructureVersionInfoKHR::default().version_data(version_data);
-        let mut compatibility_vk = ash::vk::AccelerationStructureCompatibilityKHR::default();
+            vk::AccelerationStructureVersionInfoKHR::default().version_data(version_data);
+        let mut compatibility_vk = vk::AccelerationStructureCompatibilityKHR::default();
 
         let fns = self.fns();
         unsafe {
@@ -781,7 +781,7 @@ impl Device {
             )
         };
 
-        compatibility_vk == ash::vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
+        compatibility_vk == vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
     }
 
     /// Returns whether a descriptor set layout with the given `create_info` could be created
@@ -864,7 +864,7 @@ impl Device {
         }
 
         // Unborrow
-        let support_vk = ash::vk::DescriptorSetLayoutSupport {
+        let support_vk = vk::DescriptorSetLayoutSupport {
             _marker: PhantomData,
             ..support_vk
         };
@@ -918,8 +918,7 @@ impl Device {
         let mut extensions_vk = create_info.to_vk_extensions();
         let create_info_vk = create_info.to_vk(&mut extensions_vk);
 
-        let info_vk =
-            ash::vk::DeviceBufferMemoryRequirements::default().create_info(&create_info_vk);
+        let info_vk = vk::DeviceBufferMemoryRequirements::default().create_info(&create_info_vk);
 
         let mut memory_requirements2_extensions_vk =
             MemoryRequirements::to_mut_vk2_extensions(self);
@@ -949,7 +948,7 @@ impl Device {
         }
 
         // Unborrow
-        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+        let memory_requirements2_vk = vk::MemoryRequirements2 {
             _marker: PhantomData,
             ..memory_requirements2_vk
         };
@@ -1111,30 +1110,30 @@ impl Device {
         // only be needed if the image is disjoint, but the spec currently demands a valid aspect
         // even for non-disjoint DRM format modifier images.
         // See: https://github.com/KhronosGroup/Vulkan-Docs/issues/2309
-        // Replace this variable with ash::vk::ImageAspectFlags::NONE when resolved.
+        // Replace this variable with vk::ImageAspectFlags::NONE when resolved.
         let default_aspect = if create_info.tiling == ImageTiling::DrmFormatModifier {
             // Hopefully valid for any DrmFormatModifier image?
-            ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
+            vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
         } else {
-            ash::vk::ImageAspectFlags::NONE
+            vk::ImageAspectFlags::NONE
         };
         let plane_aspect = plane.map_or(default_aspect, |plane| match create_info.tiling {
             ImageTiling::Optimal | ImageTiling::Linear => match plane {
-                0 => ash::vk::ImageAspectFlags::PLANE_0,
-                1 => ash::vk::ImageAspectFlags::PLANE_1,
-                2 => ash::vk::ImageAspectFlags::PLANE_2,
+                0 => vk::ImageAspectFlags::PLANE_0,
+                1 => vk::ImageAspectFlags::PLANE_1,
+                2 => vk::ImageAspectFlags::PLANE_2,
                 _ => unreachable!(),
             },
             ImageTiling::DrmFormatModifier => match plane {
-                0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
                 _ => unreachable!(),
             },
         });
 
-        let info_vk = ash::vk::DeviceImageMemoryRequirements::default()
+        let info_vk = vk::DeviceImageMemoryRequirements::default()
             .create_info(&create_info_vk)
             .plane_aspect(plane_aspect);
 
@@ -1166,7 +1165,7 @@ impl Device {
         }
 
         // Unborrow
-        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+        let memory_requirements2_vk = vk::MemoryRequirements2 {
             _marker: PhantomData,
             ..memory_requirements2_vk
         };
@@ -1280,8 +1279,7 @@ impl Device {
         assert_eq!(object.device().handle(), self.handle());
 
         let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
-        let mut info_vk =
-            ash::vk::DebugUtilsObjectNameInfoEXT::default().object_handle(object.handle());
+        let mut info_vk = vk::DebugUtilsObjectNameInfoEXT::default().object_handle(object.handle());
 
         if let Some(object_name_vk) = &object_name_vk {
             info_vk = info_vk.object_name(object_name_vk);
@@ -1374,7 +1372,7 @@ impl Drop for Device {
 }
 
 unsafe impl VulkanObject for Device {
-    type Handle = ash::vk::Device;
+    type Handle = vk::Device;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1803,7 +1801,7 @@ impl DeviceCreateInfo {
         &self,
         fields1_vk: &'a DeviceCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut DeviceCreateInfoExtensionsVk<'_, '_>,
-    ) -> ash::vk::DeviceCreateInfo<'a> {
+    ) -> vk::DeviceCreateInfo<'a> {
         let DeviceCreateInfoFields1Vk {
             queue_create_infos_vk,
             enabled_extension_names_vk,
@@ -1811,8 +1809,8 @@ impl DeviceCreateInfo {
             device_group_physical_devices_vk: _,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::DeviceCreateInfo::default()
-            .flags(ash::vk::DeviceCreateFlags::empty())
+        let mut val_vk = vk::DeviceCreateInfo::default()
+            .flags(vk::DeviceCreateFlags::empty())
             .queue_create_infos(queue_create_infos_vk)
             .enabled_extension_names(enabled_extension_names_vk);
 
@@ -1844,7 +1842,7 @@ impl DeviceCreateInfo {
     pub(crate) fn to_vk_extensions<'a, 'b>(
         &self,
         fields1_vk: &'a DeviceCreateInfoFields1Vk<'_>,
-        features2_vk: Option<&'a mut ash::vk::PhysicalDeviceFeatures2<'b>>,
+        features2_vk: Option<&'a mut vk::PhysicalDeviceFeatures2<'b>>,
     ) -> DeviceCreateInfoExtensionsVk<'a, 'b> {
         let DeviceCreateInfoFields1Vk {
             queue_create_infos_vk: _,
@@ -1860,12 +1858,12 @@ impl DeviceCreateInfo {
         // or with physicalDeviceCount equal to zero, is equivalent to a physicalDeviceCount of one
         // and pPhysicalDevices pointing to the physicalDevice parameter to vkCreateDevice.
         let device_group_vk = (device_group_physical_devices_vk.len() > 1).then(|| {
-            ash::vk::DeviceGroupDeviceCreateInfo::default()
+            vk::DeviceGroupDeviceCreateInfo::default()
                 .physical_devices(device_group_physical_devices_vk)
         });
 
         let private_data_vk = (self.private_data_slot_request_count != 0).then(|| {
-            ash::vk::DevicePrivateDataCreateInfo::default()
+            vk::DevicePrivateDataCreateInfo::default()
                 .private_data_slot_request_count(self.private_data_slot_request_count)
         });
 
@@ -1879,7 +1877,7 @@ impl DeviceCreateInfo {
     pub(crate) fn to_vk_fields1<'a>(
         &'a self,
         fields2_vk: &'a DeviceCreateInfoFields2Vk,
-        features_vk: Option<&'a ash::vk::PhysicalDeviceFeatures>,
+        features_vk: Option<&'a vk::PhysicalDeviceFeatures>,
     ) -> DeviceCreateInfoFields1Vk<'a> {
         let DeviceCreateInfoFields2Vk {
             enabled_extensions_vk,
@@ -1918,16 +1916,16 @@ impl DeviceCreateInfo {
 }
 
 pub(crate) struct DeviceCreateInfoExtensionsVk<'a, 'b> {
-    pub(crate) device_group_vk: Option<ash::vk::DeviceGroupDeviceCreateInfo<'a>>,
-    pub(crate) features2_vk: Option<&'a mut ash::vk::PhysicalDeviceFeatures2<'b>>,
-    pub(crate) private_data_vk: Option<ash::vk::DevicePrivateDataCreateInfo<'static>>,
+    pub(crate) device_group_vk: Option<vk::DeviceGroupDeviceCreateInfo<'a>>,
+    pub(crate) features2_vk: Option<&'a mut vk::PhysicalDeviceFeatures2<'b>>,
+    pub(crate) private_data_vk: Option<vk::DevicePrivateDataCreateInfo<'static>>,
 }
 
 pub(crate) struct DeviceCreateInfoFields1Vk<'a> {
-    pub(crate) queue_create_infos_vk: SmallVec<[ash::vk::DeviceQueueCreateInfo<'a>; 2]>,
+    pub(crate) queue_create_infos_vk: SmallVec<[vk::DeviceQueueCreateInfo<'a>; 2]>,
     pub(crate) enabled_extension_names_vk: SmallVec<[*const c_char; 16]>,
-    pub(crate) features_vk: Option<&'a ash::vk::PhysicalDeviceFeatures>,
-    pub(crate) device_group_physical_devices_vk: SmallVec<[ash::vk::PhysicalDevice; 2]>,
+    pub(crate) features_vk: Option<&'a vk::PhysicalDeviceFeatures>,
+    pub(crate) device_group_physical_devices_vk: SmallVec<[vk::PhysicalDevice; 2]>,
 }
 
 pub(crate) struct DeviceCreateInfoFields2Vk {
@@ -2044,7 +2042,7 @@ impl QueueCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::DeviceQueueCreateInfo<'_> {
+    pub(crate) fn to_vk(&self) -> vk::DeviceQueueCreateInfo<'_> {
         let &Self {
             flags,
             queue_family_index,
@@ -2052,7 +2050,7 @@ impl QueueCreateInfo {
             _ne: _,
         } = self;
 
-        ash::vk::DeviceQueueCreateInfo::default()
+        vk::DeviceQueueCreateInfo::default()
             .flags(flags.into())
             .queue_family_index(queue_family_index)
             .queue_priorities(queues)

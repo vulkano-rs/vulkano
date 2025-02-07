@@ -626,14 +626,14 @@ fn add_build_geometry_resources(
     used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
     info: &AccelerationStructureBuildGeometryInfo,
 ) {
-    let &AccelerationStructureBuildGeometryInfo {
+    let AccelerationStructureBuildGeometryInfo {
         flags: _,
-        ref mode,
-        ref dst_acceleration_structure,
-        ref geometries,
-        ref scratch_data,
+        mode,
+        dst_acceleration_structure,
+        geometries,
+        scratch_data,
         _ne: _,
-    } = &info;
+    } = info;
 
     match geometries {
         AccelerationStructureGeometries::Triangles(geometries) => {

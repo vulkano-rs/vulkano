@@ -69,6 +69,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
@@ -198,7 +199,7 @@ impl Image {
     }
 
     pub(crate) unsafe fn from_swapchain(
-        handle: ash::vk::Image,
+        handle: vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
     ) -> Result<Self, VulkanError> {
@@ -554,7 +555,7 @@ impl Image {
 }
 
 unsafe impl VulkanObject for Image {
-    type Handle = ash::vk::Image;
+    type Handle = vk::Image;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1472,14 +1473,14 @@ impl ImageSubresourceLayers {
 
 impl ImageSubresourceLayers {
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::ImageSubresourceLayers {
+    pub fn to_vk(&self) -> vk::ImageSubresourceLayers {
         let &Self {
             aspects,
             mip_level,
             ref array_layers,
         } = self;
 
-        ash::vk::ImageSubresourceLayers {
+        vk::ImageSubresourceLayers {
             aspect_mask: aspects.into(),
             mip_level,
             base_array_layer: array_layers.start,
@@ -1595,14 +1596,14 @@ impl ImageSubresourceRange {
     }
 
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::ImageSubresourceRange {
+    pub fn to_vk(&self) -> vk::ImageSubresourceRange {
         let &Self {
             aspects,
             ref mip_levels,
             ref array_layers,
         } = self;
 
-        ash::vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange {
             aspect_mask: aspects.into(),
             base_mip_level: mip_levels.start,
             level_count: mip_levels.end - mip_levels.start,
@@ -1651,7 +1652,7 @@ pub struct SubresourceLayout {
 
 impl SubresourceLayout {
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::SubresourceLayout {
+    pub(crate) fn to_vk(&self) -> vk::SubresourceLayout {
         let &Self {
             offset,
             size,
@@ -1660,7 +1661,7 @@ impl SubresourceLayout {
             depth_pitch,
         } = self;
 
-        ash::vk::SubresourceLayout {
+        vk::SubresourceLayout {
             offset,
             size,
             row_pitch,
@@ -2014,7 +2015,7 @@ impl ImageFormatInfo {
     pub(crate) fn to_vk2<'a>(
         &self,
         extensions_vk: &'a mut ImageFormatInfo2ExtensionsVk<'_>,
-    ) -> ash::vk::PhysicalDeviceImageFormatInfo2<'a> {
+    ) -> vk::PhysicalDeviceImageFormatInfo2<'a> {
         let &Self {
             flags,
             format,
@@ -2029,7 +2030,7 @@ impl ImageFormatInfo {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::PhysicalDeviceImageFormatInfo2::default()
+        let mut val_vk = vk::PhysicalDeviceImageFormatInfo2::default()
             .format(format.into())
             .ty(image_type.into())
             .tiling(tiling.into())
@@ -2091,20 +2092,19 @@ impl ImageFormatInfo {
             .map(ImageDrmFormatModifierInfo::to_vk);
 
         let external_vk = external_memory_handle_type.map(|handle_type| {
-            ash::vk::PhysicalDeviceExternalImageFormatInfo::default()
-                .handle_type(handle_type.into())
+            vk::PhysicalDeviceExternalImageFormatInfo::default().handle_type(handle_type.into())
         });
 
         let format_list_vk = (!view_formats_vk.is_empty())
-            .then(|| ash::vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+            .then(|| vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
 
         let image_view_vk = image_view_type.map(|image_view_type| {
-            ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT::default()
+            vk::PhysicalDeviceImageViewImageFormatInfoEXT::default()
                 .image_view_type(image_view_type.into())
         });
 
         let stencil_usage_vk = stencil_usage.map(|stencil_usage| {
-            ash::vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
+            vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
         });
 
         ImageFormatInfo2ExtensionsVk {
@@ -2121,7 +2121,7 @@ impl ImageFormatInfo {
             .view_formats
             .iter()
             .copied()
-            .map(ash::vk::Format::from)
+            .map(vk::Format::from)
             .collect();
 
         ImageFormatInfo2Fields1Vk { view_formats_vk }
@@ -2129,16 +2129,15 @@ impl ImageFormatInfo {
 }
 
 pub(crate) struct ImageFormatInfo2ExtensionsVk<'a> {
-    pub(crate) drm_format_modifier_vk:
-        Option<ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'a>>,
-    pub(crate) external_vk: Option<ash::vk::PhysicalDeviceExternalImageFormatInfo<'static>>,
-    pub(crate) format_list_vk: Option<ash::vk::ImageFormatListCreateInfo<'a>>,
-    pub(crate) image_view_vk: Option<ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT<'static>>,
-    pub(crate) stencil_usage_vk: Option<ash::vk::ImageStencilUsageCreateInfo<'static>>,
+    pub(crate) drm_format_modifier_vk: Option<vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'a>>,
+    pub(crate) external_vk: Option<vk::PhysicalDeviceExternalImageFormatInfo<'static>>,
+    pub(crate) format_list_vk: Option<vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) image_view_vk: Option<vk::PhysicalDeviceImageViewImageFormatInfoEXT<'static>>,
+    pub(crate) stencil_usage_vk: Option<vk::ImageStencilUsageCreateInfo<'static>>,
 }
 
 pub(crate) struct ImageFormatInfo2Fields1Vk {
-    pub(crate) view_formats_vk: Vec<ash::vk::Format>,
+    pub(crate) view_formats_vk: Vec<vk::Format>,
 }
 
 /// The image's DRM format modifier configuration to query in
@@ -2228,7 +2227,7 @@ impl ImageDrmFormatModifierInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'_> {
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'_> {
         let &Self {
             drm_format_modifier,
             ref sharing,
@@ -2236,14 +2235,13 @@ impl ImageDrmFormatModifierInfo {
         } = self;
 
         let (sharing_mode, queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.as_slice(),
-            ),
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
         };
 
-        ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
+        vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
             .drm_format_modifier(drm_format_modifier)
             .sharing_mode(sharing_mode)
             .queue_family_indices(queue_family_indices)
@@ -2288,8 +2286,8 @@ pub struct ImageFormatProperties {
 impl ImageFormatProperties {
     pub(crate) fn to_mut_vk2(
         extensions_vk: &mut ImageFormatProperties2ExtensionsVk,
-    ) -> ash::vk::ImageFormatProperties2<'_> {
-        let mut val_vk = ash::vk::ImageFormatProperties2::default();
+    ) -> vk::ImageFormatProperties2<'_> {
+        let mut val_vk = vk::ImageFormatProperties2::default();
 
         let ImageFormatProperties2ExtensionsVk {
             external_vk,
@@ -2311,10 +2309,10 @@ impl ImageFormatProperties {
         image_format_info: &ImageFormatInfo,
     ) -> ImageFormatProperties2ExtensionsVk {
         let external_vk = (image_format_info.external_memory_handle_type.is_some())
-            .then(ash::vk::ExternalImageFormatProperties::default);
+            .then(vk::ExternalImageFormatProperties::default);
 
         let filter_cubic_image_view_vk = (image_format_info.image_view_type.is_some())
-            .then(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default);
+            .then(vk::FilterCubicImageViewImageFormatPropertiesEXT::default);
 
         ImageFormatProperties2ExtensionsVk {
             external_vk,
@@ -2323,12 +2321,12 @@ impl ImageFormatProperties {
     }
 
     pub(crate) fn from_vk2(
-        val_vk: &ash::vk::ImageFormatProperties2<'_>,
+        val_vk: &vk::ImageFormatProperties2<'_>,
         extensions_vk: &ImageFormatProperties2ExtensionsVk,
     ) -> Self {
-        let &ash::vk::ImageFormatProperties2 {
+        let &vk::ImageFormatProperties2 {
             image_format_properties:
-                ash::vk::ImageFormatProperties {
+                vk::ImageFormatProperties {
                     max_extent,
                     max_mip_levels,
                     max_array_layers,
@@ -2355,8 +2353,8 @@ impl ImageFormatProperties {
         } = extensions_vk;
 
         if let Some(val_vk) = external_vk {
-            let ash::vk::ExternalImageFormatProperties {
-                ref external_memory_properties,
+            let vk::ExternalImageFormatProperties {
+                external_memory_properties,
                 ..
             } = val_vk;
 
@@ -2369,15 +2367,15 @@ impl ImageFormatProperties {
         }
 
         if let Some(val_vk) = filter_cubic_image_view_vk {
-            let &ash::vk::FilterCubicImageViewImageFormatPropertiesEXT {
+            let &vk::FilterCubicImageViewImageFormatPropertiesEXT {
                 filter_cubic,
                 filter_cubic_minmax,
                 ..
             } = val_vk;
 
             val = Self {
-                filter_cubic: filter_cubic != ash::vk::FALSE,
-                filter_cubic_minmax: filter_cubic_minmax != ash::vk::FALSE,
+                filter_cubic: filter_cubic != vk::FALSE,
+                filter_cubic_minmax: filter_cubic_minmax != vk::FALSE,
                 ..val
             };
         }
@@ -2387,9 +2385,9 @@ impl ImageFormatProperties {
 }
 
 pub(crate) struct ImageFormatProperties2ExtensionsVk {
-    pub(crate) external_vk: Option<ash::vk::ExternalImageFormatProperties<'static>>,
+    pub(crate) external_vk: Option<vk::ExternalImageFormatProperties<'static>>,
     pub(crate) filter_cubic_image_view_vk:
-        Option<ash::vk::FilterCubicImageViewImageFormatPropertiesEXT<'static>>,
+        Option<vk::FilterCubicImageViewImageFormatPropertiesEXT<'static>>,
 }
 
 /// The image configuration to query in
@@ -2502,7 +2500,7 @@ impl SparseImageFormatInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceSparseImageFormatInfo2<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceSparseImageFormatInfo2<'static> {
         let &Self {
             format,
             image_type,
@@ -2512,7 +2510,7 @@ impl SparseImageFormatInfo {
             _ne: _,
         } = self;
 
-        ash::vk::PhysicalDeviceSparseImageFormatInfo2::default()
+        vk::PhysicalDeviceSparseImageFormatInfo2::default()
             .format(format.into())
             .ty(image_type.into())
             .samples(samples.into())
@@ -2539,16 +2537,16 @@ pub struct SparseImageFormatProperties {
 }
 
 impl SparseImageFormatProperties {
-    pub(crate) fn to_mut_vk2() -> ash::vk::SparseImageFormatProperties2<'static> {
-        ash::vk::SparseImageFormatProperties2::default()
+    pub(crate) fn to_mut_vk2() -> vk::SparseImageFormatProperties2<'static> {
+        vk::SparseImageFormatProperties2::default()
     }
 
-    pub(crate) fn to_mut_vk() -> ash::vk::SparseImageFormatProperties {
-        ash::vk::SparseImageFormatProperties::default()
+    pub(crate) fn to_mut_vk() -> vk::SparseImageFormatProperties {
+        vk::SparseImageFormatProperties::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::SparseImageFormatProperties) -> Self {
-        let &ash::vk::SparseImageFormatProperties {
+    pub(crate) fn from_vk(val_vk: &vk::SparseImageFormatProperties) -> Self {
+        let &vk::SparseImageFormatProperties {
             aspect_mask,
             image_granularity,
             flags,
@@ -2610,25 +2608,25 @@ pub struct SparseImageMemoryRequirements {
 }
 
 impl SparseImageMemoryRequirements {
-    pub(crate) fn to_mut_vk2() -> ash::vk::SparseImageMemoryRequirements2<'static> {
-        ash::vk::SparseImageMemoryRequirements2::default()
+    pub(crate) fn to_mut_vk2() -> vk::SparseImageMemoryRequirements2<'static> {
+        vk::SparseImageMemoryRequirements2::default()
     }
 
-    pub(crate) fn to_mut_vk() -> ash::vk::SparseImageMemoryRequirements {
-        ash::vk::SparseImageMemoryRequirements::default()
+    pub(crate) fn to_mut_vk() -> vk::SparseImageMemoryRequirements {
+        vk::SparseImageMemoryRequirements::default()
     }
 
-    pub(crate) fn from_vk2(val_vk: &ash::vk::SparseImageMemoryRequirements2<'_>) -> Self {
-        let ash::vk::SparseImageMemoryRequirements2 {
-            ref memory_requirements,
+    pub(crate) fn from_vk2(val_vk: &vk::SparseImageMemoryRequirements2<'_>) -> Self {
+        let vk::SparseImageMemoryRequirements2 {
+            memory_requirements,
             ..
         } = val_vk;
 
         SparseImageMemoryRequirements::from_vk(memory_requirements)
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::SparseImageMemoryRequirements) -> Self {
-        let &ash::vk::SparseImageMemoryRequirements {
+    pub(crate) fn from_vk(val_vk: &vk::SparseImageMemoryRequirements) -> Self {
+        let &vk::SparseImageMemoryRequirements {
             ref format_properties,
             image_mip_tail_first_lod,
             image_mip_tail_size,
@@ -2643,7 +2641,7 @@ impl SparseImageMemoryRequirements {
             image_mip_tail_offset,
             image_mip_tail_stride: (!format_properties
                 .flags
-                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
+                .intersects(vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
             .then_some(image_mip_tail_stride),
         }
     }

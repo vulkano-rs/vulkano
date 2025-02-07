@@ -25,6 +25,7 @@ use crate::{
     DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use bytemuck::cast_slice;
 use parking_lot::RwLock;
 use raw_window_handle::{HandleError, HasDisplayHandle, RawDisplayHandle};
@@ -59,7 +60,7 @@ use std::{
 /// }
 /// ```
 pub struct PhysicalDevice {
-    handle: ash::vk::PhysicalDevice,
+    handle: vk::PhysicalDevice,
     instance: DebugWrapper<Arc<Instance>>,
     id: NonZeroU64,
 
@@ -73,7 +74,7 @@ pub struct PhysicalDevice {
     queue_family_properties: Vec<QueueFamilyProperties>,
 
     // Data queried by the user at runtime, cached for faster lookups.
-    display_properties: WeakArcOnceCache<ash::vk::DisplayKHR, Display>,
+    display_properties: WeakArcOnceCache<vk::DisplayKHR, Display>,
     display_plane_properties: RwLock<Vec<DisplayPlanePropertiesRaw>>,
     external_buffer_properties: OnceCache<ExternalBufferInfo, ExternalBufferProperties>,
     external_fence_properties: OnceCache<ExternalFenceInfo, ExternalFenceProperties>,
@@ -92,7 +93,7 @@ impl PhysicalDevice {
     /// - `handle` must be a valid Vulkan object handle created from `instance`.
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
     ) -> Result<Arc<Self>, VulkanError> {
         let api_version = unsafe { Self::get_api_version(handle, &instance) };
         let extension_properties = unsafe { Self::get_extension_properties(handle, &instance) }?;
@@ -156,7 +157,7 @@ impl PhysicalDevice {
         }))
     }
 
-    unsafe fn get_api_version(handle: ash::vk::PhysicalDevice, instance: &Instance) -> Version {
+    unsafe fn get_api_version(handle: vk::PhysicalDevice, instance: &Instance) -> Version {
         let properties = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
@@ -169,7 +170,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_extension_properties(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
     ) -> Result<Vec<ExtensionProperties>, VulkanError> {
         let fns = instance.fns();
@@ -198,17 +199,17 @@ impl PhysicalDevice {
             };
 
             match result {
-                ash::vk::Result::SUCCESS => {
+                vk::Result::SUCCESS => {
                     unsafe { output.set_len(count as usize) };
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         }
     }
 
-    unsafe fn get_features(handle: ash::vk::PhysicalDevice, instance: &Instance) -> DeviceFeatures {
+    unsafe fn get_features(handle: vk::PhysicalDevice, instance: &Instance) -> DeviceFeatures {
         let mut output = DeviceFeaturesFfi::default();
 
         let fns = instance.fns();
@@ -220,7 +221,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_features2(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
@@ -247,7 +248,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_properties(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
@@ -268,7 +269,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_properties2(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
@@ -297,7 +298,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_memory_properties(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
     ) -> MemoryProperties {
         let properties = {
@@ -313,7 +314,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_memory_properties2(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
     ) -> MemoryProperties {
         let mut properties_vk = MemoryProperties::to_mut_vk2();
@@ -337,7 +338,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_queue_family_properties(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
     ) -> Vec<QueueFamilyProperties> {
         let fns = instance.fns();
@@ -365,7 +366,7 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_queue_family_properties2(
-        handle: ash::vk::PhysicalDevice,
+        handle: vk::PhysicalDevice,
         instance: &Instance,
     ) -> Vec<QueueFamilyProperties> {
         let mut num = 0;
@@ -527,11 +528,11 @@ impl PhysicalDevice {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties_vk.set_len(count as usize) };
                         break properties_vk;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -573,11 +574,11 @@ impl PhysicalDevice {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties_vk.set_len(count as usize) };
                         break properties_vk;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -701,11 +702,11 @@ impl PhysicalDevice {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties.set_len(count as usize) };
                         break properties;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -742,11 +743,11 @@ impl PhysicalDevice {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties.set_len(count as usize) };
                         break properties;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -845,11 +846,11 @@ impl PhysicalDevice {
             };
 
             match result {
-                ash::vk::Result::SUCCESS => {
+                vk::Result::SUCCESS => {
                     unsafe { displays.set_len(count as usize) };
                     break displays;
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -1164,7 +1165,7 @@ impl PhysicalDevice {
     pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
         self.format_properties.get_or_insert(format, |&format| {
             let fns = self.instance.fns();
-            let call = |format_properties2_vk: &mut ash::vk::FormatProperties2<'_>| {
+            let call = |format_properties2_vk: &mut vk::FormatProperties2<'_>| {
                 if self.api_version() >= Version::V1_1 {
                     unsafe {
                         (fns.v1_1.get_physical_device_format_properties2)(
@@ -1217,7 +1218,7 @@ impl PhysicalDevice {
             call(&mut properties2_vk);
 
             // Unborrow
-            let properties2_vk = ash::vk::FormatProperties2 {
+            let properties2_vk = vk::FormatProperties2 {
                 _marker: PhantomData,
                 ..properties2_vk
             };
@@ -1337,7 +1338,7 @@ impl PhysicalDevice {
                 };
 
                 // Unborrow
-                let properties2_vk = ash::vk::ImageFormatProperties2 {
+                let properties2_vk = vk::ImageFormatProperties2 {
                     _marker: PhantomData,
                     ..properties2_vk
                 };
@@ -1671,7 +1672,7 @@ impl PhysicalDevice {
         };
 
         // Unborrow
-        let capabilities_vk = ash::vk::SurfaceCapabilities2KHR {
+        let capabilities_vk = vk::SurfaceCapabilities2KHR {
             _marker: PhantomData,
             ..capabilities_vk
         };
@@ -1870,7 +1871,7 @@ impl PhysicalDevice {
                         .map_err(VulkanError::from)?;
 
                         let mut surface_format2s_vk =
-                            vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
+                            vec![vk::SurfaceFormat2KHR::default(); count as usize];
                         let result = unsafe {
                             (fns.khr_get_surface_capabilities2
                                 .get_physical_device_surface_formats2_khr)(
@@ -1882,11 +1883,11 @@ impl PhysicalDevice {
                         };
 
                         match result {
-                            ash::vk::Result::SUCCESS => {
+                            vk::Result::SUCCESS => {
                                 unsafe { surface_format2s_vk.set_len(count as usize) };
                                 break surface_format2s_vk;
                             }
-                            ash::vk::Result::INCOMPLETE => (),
+                            vk::Result::INCOMPLETE => (),
                             err => return Err(VulkanError::from(err)),
                         }
                     };
@@ -1894,9 +1895,9 @@ impl PhysicalDevice {
                     Ok(surface_format2s_vk
                         .iter()
                         .filter_map(|surface_format2_vk| {
-                            let &ash::vk::SurfaceFormat2KHR {
+                            let &vk::SurfaceFormat2KHR {
                                 surface_format:
-                                    ash::vk::SurfaceFormatKHR {
+                                    vk::SurfaceFormatKHR {
                                         format,
                                         color_space,
                                     },
@@ -1931,11 +1932,11 @@ impl PhysicalDevice {
                         };
 
                         match result {
-                            ash::vk::Result::SUCCESS => {
+                            vk::Result::SUCCESS => {
                                 unsafe { surface_formats.set_len(count as usize) };
                                 break surface_formats;
                             }
-                            ash::vk::Result::INCOMPLETE => (),
+                            vk::Result::INCOMPLETE => (),
                             err => return Err(VulkanError::from(err)),
                         }
                     };
@@ -1943,7 +1944,7 @@ impl PhysicalDevice {
                     Ok(surface_formats
                         .iter()
                         .filter_map(|surface_format_vk| {
-                            let &ash::vk::SurfaceFormatKHR {
+                            let &vk::SurfaceFormatKHR {
                                 format,
                                 color_space,
                             } = surface_format_vk;
@@ -2123,11 +2124,11 @@ impl PhysicalDevice {
                         };
 
                         match result {
-                            ash::vk::Result::SUCCESS => {
+                            vk::Result::SUCCESS => {
                                 unsafe { modes.set_len(count as usize) };
                                 break modes;
                             }
-                            ash::vk::Result::INCOMPLETE => (),
+                            vk::Result::INCOMPLETE => (),
                             err => return Err(VulkanError::from(err)),
                         }
                     };
@@ -2163,11 +2164,11 @@ impl PhysicalDevice {
                         };
 
                         match result {
-                            ash::vk::Result::SUCCESS => {
+                            vk::Result::SUCCESS => {
                                 unsafe { modes.set_len(count as usize) };
                                 break modes;
                             }
-                            ash::vk::Result::INCOMPLETE => (),
+                            vk::Result::INCOMPLETE => (),
                             err => return Err(VulkanError::from(err)),
                         }
                     };
@@ -2336,8 +2337,8 @@ impl PhysicalDevice {
             };
 
             match result {
-                ash::vk::Result::INCOMPLETE => (),
-                ash::vk::Result::SUCCESS => {
+                vk::Result::INCOMPLETE => (),
+                vk::Result::SUCCESS => {
                     unsafe { tool_properties.set_len(count as usize) };
 
                     return Ok(tool_properties
@@ -2465,7 +2466,7 @@ impl PhysicalDevice {
     pub unsafe fn wayland_presentation_support(
         &self,
         queue_family_index: u32,
-        display: *mut ash::vk::wl_display,
+        display: *mut vk::wl_display,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_wayland_presentation_support(queue_family_index, display)?;
 
@@ -2475,7 +2476,7 @@ impl PhysicalDevice {
     fn validate_wayland_presentation_support(
         &self,
         queue_family_index: u32,
-        _display: *mut ash::vk::wl_display,
+        _display: *mut vk::wl_display,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_wayland_surface {
             return Err(Box::new(ValidationError {
@@ -2508,7 +2509,7 @@ impl PhysicalDevice {
     pub unsafe fn wayland_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        display: *mut ash::vk::wl_display,
+        display: *mut vk::wl_display,
     ) -> bool {
         let fns = self.instance.fns();
         let support = unsafe {
@@ -2587,8 +2588,8 @@ impl PhysicalDevice {
     pub unsafe fn xcb_presentation_support(
         &self,
         queue_family_index: u32,
-        connection: *mut ash::vk::xcb_connection_t,
-        visual_id: ash::vk::xcb_visualid_t,
+        connection: *mut vk::xcb_connection_t,
+        visual_id: vk::xcb_visualid_t,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
 
@@ -2600,8 +2601,8 @@ impl PhysicalDevice {
     fn validate_xcb_presentation_support(
         &self,
         queue_family_index: u32,
-        _connection: *mut ash::vk::xcb_connection_t,
-        _visual_id: ash::vk::xcb_visualid_t,
+        _connection: *mut vk::xcb_connection_t,
+        _visual_id: vk::xcb_visualid_t,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xcb_surface {
             return Err(Box::new(ValidationError {
@@ -2634,8 +2635,8 @@ impl PhysicalDevice {
     pub unsafe fn xcb_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        connection: *mut ash::vk::xcb_connection_t,
-        visual_id: ash::vk::xcb_visualid_t,
+        connection: *mut vk::xcb_connection_t,
+        visual_id: vk::xcb_visualid_t,
     ) -> bool {
         let fns = self.instance.fns();
         let support = unsafe {
@@ -2660,8 +2661,8 @@ impl PhysicalDevice {
     pub unsafe fn xlib_presentation_support(
         &self,
         queue_family_index: u32,
-        display: *mut ash::vk::Display,
-        visual_id: ash::vk::VisualID,
+        display: *mut vk::Display,
+        visual_id: vk::VisualID,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
 
@@ -2673,8 +2674,8 @@ impl PhysicalDevice {
     fn validate_xlib_presentation_support(
         &self,
         queue_family_index: u32,
-        _display: *mut ash::vk::Display,
-        _visual_id: ash::vk::VisualID,
+        _display: *mut vk::Display,
+        _visual_id: vk::VisualID,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xlib_surface {
             return Err(Box::new(ValidationError {
@@ -2707,8 +2708,8 @@ impl PhysicalDevice {
     pub unsafe fn xlib_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        display: *mut ash::vk::Display,
-        visual_id: ash::vk::VisualID,
+        display: *mut vk::Display,
+        visual_id: vk::VisualID,
     ) -> bool {
         let fns = self.instance.fns();
         let support = unsafe {
@@ -2734,7 +2735,7 @@ impl PhysicalDevice {
     pub unsafe fn directfb_presentation_support(
         &self,
         queue_family_index: u32,
-        dfb: *mut ash::vk::IDirectFB,
+        dfb: *mut vk::IDirectFB,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_directfb_presentation_support(queue_family_index, dfb)?;
 
@@ -2744,7 +2745,7 @@ impl PhysicalDevice {
     fn validate_directfb_presentation_support(
         &self,
         queue_family_index: u32,
-        _dfb: *mut ash::vk::IDirectFB,
+        _dfb: *mut vk::IDirectFB,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().ext_directfb_surface {
             return Err(Box::new(ValidationError {
@@ -2778,7 +2779,7 @@ impl PhysicalDevice {
     pub unsafe fn directfb_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        dfb: *mut ash::vk::IDirectFB,
+        dfb: *mut vk::IDirectFB,
     ) -> bool {
         let fns = self.instance.fns();
         let support = unsafe {
@@ -2802,7 +2803,7 @@ impl PhysicalDevice {
     pub unsafe fn qnx_screen_presentation_support(
         &self,
         queue_family_index: u32,
-        window: *mut ash::vk::_screen_window,
+        window: *mut vk::_screen_window,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
 
@@ -2812,7 +2813,7 @@ impl PhysicalDevice {
     fn validate_qnx_screen_presentation_support(
         &self,
         queue_family_index: u32,
-        _window: *mut ash::vk::_screen_window,
+        _window: *mut vk::_screen_window,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().qnx_screen_surface {
             return Err(Box::new(ValidationError {
@@ -2845,7 +2846,7 @@ impl PhysicalDevice {
     pub unsafe fn qnx_screen_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        window: *mut ash::vk::_screen_window,
+        window: *mut vk::_screen_window,
     ) -> bool {
         let fns = self.instance.fns();
         let support = unsafe {
@@ -2902,7 +2903,7 @@ impl Debug for PhysicalDevice {
 }
 
 unsafe impl VulkanObject for PhysicalDevice {
-    type Handle = ash::vk::PhysicalDevice;
+    type Handle = vk::PhysicalDevice;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -2989,8 +2990,8 @@ pub struct PhysicalDeviceGroupProperties {
 #[repr(C)]
 pub(crate) struct PhysicalDeviceGroupPropertiesRaw {
     pub(crate) physical_device_count: u32,
-    pub(crate) physical_devices: [ash::vk::PhysicalDevice; ash::vk::MAX_DEVICE_GROUP_SIZE],
-    pub(crate) subset_allocation: ash::vk::Bool32,
+    pub(crate) physical_devices: [vk::PhysicalDevice; vk::MAX_DEVICE_GROUP_SIZE],
+    pub(crate) subset_allocation: vk::Bool32,
 }
 
 vulkan_enum! {
@@ -3031,9 +3032,9 @@ pub struct ConformanceVersion {
     pub patch: u8,
 }
 
-impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
+impl From<vk::ConformanceVersion> for ConformanceVersion {
     #[inline]
-    fn from(val: ash::vk::ConformanceVersion) -> Self {
+    fn from(val: vk::ConformanceVersion) -> Self {
         ConformanceVersion {
             major: val.major,
             minor: val.minor,
@@ -3153,8 +3154,8 @@ pub struct ToolProperties {
 }
 
 impl ToolProperties {
-    pub(crate) fn from_vk(val_vk: &ash::vk::PhysicalDeviceToolProperties<'_>) -> Self {
-        let &ash::vk::PhysicalDeviceToolProperties {
+    pub(crate) fn from_vk(val_vk: &vk::PhysicalDeviceToolProperties<'_>) -> Self {
+        let &vk::PhysicalDeviceToolProperties {
             name,
             version,
             purposes,
@@ -3299,9 +3300,9 @@ vulkan_enum! {
 #[derive(Clone, Copy, Debug)]
 pub struct ShaderCoreProperties {}
 
-impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
+impl From<vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     #[inline]
-    fn from(_val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
+    fn from(_val: vk::ShaderCorePropertiesFlagsAMD) -> Self {
         Self {}
     }
 }

@@ -10,6 +10,7 @@ use crate::{
     device::{Device, DeviceOwned},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{
     fmt::Debug,
@@ -178,7 +179,7 @@ impl Drop for RawDescriptorSet {
 }
 
 unsafe impl VulkanObject for RawDescriptorSet {
-    type Handle = ash::vk::DescriptorSet;
+    type Handle = vk::DescriptorSet;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

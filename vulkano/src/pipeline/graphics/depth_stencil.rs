@@ -16,6 +16,7 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 use std::ops::RangeInclusive;
 
 /// The state in a graphics pipeline describing how the depth, depth bounds and stencil tests
@@ -157,7 +158,7 @@ impl DepthStencilState {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PipelineDepthStencilStateCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PipelineDepthStencilStateCreateInfo<'static> {
         let &Self {
             flags,
             ref depth,
@@ -175,7 +176,7 @@ impl DepthStencilState {
 
                 (true, write_enable, compare_op.into())
             } else {
-                (false, false, ash::vk::CompareOp::ALWAYS)
+                (false, false, vk::CompareOp::ALWAYS)
             };
 
         let (depth_bounds_test_enable_vk, min_depth_bounds_vk, max_depth_bounds_vk) =
@@ -195,7 +196,7 @@ impl DepthStencilState {
             (false, Default::default(), Default::default())
         };
 
-        ash::vk::PipelineDepthStencilStateCreateInfo::default()
+        vk::PipelineDepthStencilStateCreateInfo::default()
             .flags(flags.into())
             .depth_test_enable(depth_test_enable_vk)
             .depth_write_enable(depth_write_enable_vk)
@@ -386,7 +387,7 @@ impl Default for StencilOpState {
 
 impl StencilOpState {
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::StencilOpState {
+    pub(crate) fn to_vk(&self) -> vk::StencilOpState {
         let &Self {
             ops,
             compare_mask,
@@ -394,7 +395,7 @@ impl StencilOpState {
             reference,
         } = self;
 
-        ash::vk::StencilOpState {
+        vk::StencilOpState {
             fail_op: ops.fail_op.into(),
             pass_op: ops.pass_op.into(),
             depth_fail_op: ops.depth_fail_op.into(),
