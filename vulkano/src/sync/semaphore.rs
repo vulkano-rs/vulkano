@@ -71,6 +71,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use core::slice;
 use smallvec::SmallVec;
 use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Duration};
@@ -81,7 +82,7 @@ use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Dur
 /// semaphore's status or wait for it to be signaled.
 #[derive(Debug)]
 pub struct Semaphore {
-    handle: ash::vk::Semaphore,
+    handle: vk::Semaphore,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -182,7 +183,7 @@ impl Semaphore {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Semaphore,
+        handle: vk::Semaphore,
         create_info: SemaphoreCreateInfo,
     ) -> Semaphore {
         let SemaphoreCreateInfo {
@@ -573,7 +574,7 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<File, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetFdInfoKHR::default()
+        let info_vk = vk::SemaphoreGetFdInfoKHR::default()
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
@@ -623,7 +624,7 @@ impl Semaphore {
     pub fn export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::HANDLE, Validated<VulkanError>> {
+    ) -> Result<vk::HANDLE, Validated<VulkanError>> {
         self.validate_export_win32_handle(handle_type)?;
 
         Ok(unsafe { self.export_win32_handle_unchecked(handle_type) }?)
@@ -683,8 +684,8 @@ impl Semaphore {
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::HANDLE, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR::default()
+    ) -> Result<vk::HANDLE, VulkanError> {
+        let info_vk = vk::SemaphoreGetWin32HandleInfoKHR::default()
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
@@ -721,7 +722,7 @@ impl Semaphore {
     pub unsafe fn export_zircon_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::zx_handle_t, Validated<VulkanError>> {
+    ) -> Result<vk::zx_handle_t, Validated<VulkanError>> {
         self.validate_export_zircon_handle(handle_type)?;
 
         Ok(unsafe { self.export_zircon_handle_unchecked(handle_type) }?)
@@ -778,8 +779,8 @@ impl Semaphore {
     pub unsafe fn export_zircon_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::zx_handle_t, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetZirconHandleInfoFUCHSIA::default()
+    ) -> Result<vk::zx_handle_t, VulkanError> {
+        let info_vk = vk::SemaphoreGetZirconHandleInfoFUCHSIA::default()
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
@@ -1044,7 +1045,7 @@ impl Drop for Semaphore {
 }
 
 unsafe impl VulkanObject for Semaphore {
-    type Handle = ash::vk::Semaphore;
+    type Handle = vk::Semaphore;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1209,7 +1210,7 @@ impl SemaphoreCreateInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         extensions_vk: &'a mut SemaphoreCreateInfoExtensionsVk,
-    ) -> ash::vk::SemaphoreCreateInfo<'a> {
+    ) -> vk::SemaphoreCreateInfo<'a> {
         let &Self {
             semaphore_type: _,
             initial_value: _,
@@ -1218,7 +1219,7 @@ impl SemaphoreCreateInfo {
         } = self;
 
         let mut val_vk =
-            ash::vk::SemaphoreCreateInfo::default().flags(ash::vk::SemaphoreCreateFlags::empty());
+            vk::SemaphoreCreateInfo::default().flags(vk::SemaphoreCreateFlags::empty());
 
         let SemaphoreCreateInfoExtensionsVk { export_vk, type_vk } = extensions_vk;
 
@@ -1242,10 +1243,10 @@ impl SemaphoreCreateInfo {
         } = self;
 
         let export_vk = (!export_handle_types.is_empty()).then(|| {
-            ash::vk::ExportSemaphoreCreateInfo::default().handle_types(export_handle_types.into())
+            vk::ExportSemaphoreCreateInfo::default().handle_types(export_handle_types.into())
         });
         let type_vk = (semaphore_type != SemaphoreType::Binary).then(|| {
-            ash::vk::SemaphoreTypeCreateInfo::default()
+            vk::SemaphoreTypeCreateInfo::default()
                 .semaphore_type(semaphore_type.into())
                 .initial_value(initial_value)
         });
@@ -1255,8 +1256,8 @@ impl SemaphoreCreateInfo {
 }
 
 pub(crate) struct SemaphoreCreateInfoExtensionsVk {
-    pub(crate) export_vk: Option<ash::vk::ExportSemaphoreCreateInfo<'static>>,
-    pub(crate) type_vk: Option<ash::vk::SemaphoreTypeCreateInfo<'static>>,
+    pub(crate) export_vk: Option<vk::ExportSemaphoreCreateInfo<'static>>,
+    pub(crate) type_vk: Option<vk::SemaphoreTypeCreateInfo<'static>>,
 }
 
 vulkan_enum! {
@@ -1374,13 +1375,10 @@ impl SemaphoreSignalInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-        semaphore_vk: ash::vk::Semaphore,
-    ) -> ash::vk::SemaphoreSignalInfo<'static> {
+    pub(crate) fn to_vk(&self, semaphore_vk: vk::Semaphore) -> vk::SemaphoreSignalInfo<'static> {
         let &Self { value, _ne: _ } = self;
 
-        ash::vk::SemaphoreSignalInfo::default()
+        vk::SemaphoreSignalInfo::default()
             .semaphore(semaphore_vk)
             .value(value)
     }
@@ -1431,15 +1429,15 @@ impl SemaphoreWaitInfo {
 
     pub(crate) fn to_vk<'a>(
         &'a self,
-        semaphore_vk: &'a ash::vk::Semaphore,
-    ) -> ash::vk::SemaphoreWaitInfo<'a> {
+        semaphore_vk: &'a vk::Semaphore,
+    ) -> vk::SemaphoreWaitInfo<'a> {
         let &Self {
             flags,
             ref value,
             _ne: _,
         } = self;
 
-        ash::vk::SemaphoreWaitInfo::default()
+        vk::SemaphoreWaitInfo::default()
             .flags(flags.into())
             .semaphores(slice::from_ref(semaphore_vk))
             .values(slice::from_ref(value))
@@ -1502,7 +1500,7 @@ impl SemaphoreWaitMultipleInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a SemaphoreWaitMultipleInfoFields1Vk,
-    ) -> ash::vk::SemaphoreWaitInfo<'a> {
+    ) -> vk::SemaphoreWaitInfo<'a> {
         let &Self {
             flags,
             semaphores: _,
@@ -1513,7 +1511,7 @@ impl SemaphoreWaitMultipleInfo {
             values_vk,
         } = fields1_vk;
 
-        ash::vk::SemaphoreWaitInfo::default()
+        vk::SemaphoreWaitInfo::default()
             .flags(flags.into())
             .semaphores(semaphores_vk)
             .values(values_vk)
@@ -1544,7 +1542,7 @@ impl SemaphoreWaitMultipleInfo {
 }
 
 pub(crate) struct SemaphoreWaitMultipleInfoFields1Vk {
-    semaphores_vk: SmallVec<[ash::vk::Semaphore; 8]>,
+    semaphores_vk: SmallVec<[vk::Semaphore; 8]>,
     values_vk: SmallVec<[u64; 8]>,
 }
 
@@ -1710,8 +1708,8 @@ impl ImportSemaphoreFdInfo {
 
     pub(crate) fn into_vk(
         self,
-        semaphore_vk: ash::vk::Semaphore,
-    ) -> ash::vk::ImportSemaphoreFdInfoKHR<'static> {
+        semaphore_vk: vk::Semaphore,
+    ) -> vk::ImportSemaphoreFdInfoKHR<'static> {
         let Self {
             flags,
             handle_type,
@@ -1731,7 +1729,7 @@ impl ImportSemaphoreFdInfo {
             -1
         };
 
-        ash::vk::ImportSemaphoreFdInfoKHR::default()
+        vk::ImportSemaphoreFdInfoKHR::default()
             .semaphore(semaphore_vk)
             .flags(flags.into())
             .handle_type(handle_type.into())
@@ -1756,7 +1754,7 @@ pub struct ImportSemaphoreWin32HandleInfo {
     /// The handle to import the semaphore from.
     ///
     /// The default value is `0`, which must be overridden.
-    pub handle: ash::vk::HANDLE,
+    pub handle: vk::HANDLE,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1827,8 +1825,8 @@ impl ImportSemaphoreWin32HandleInfo {
 
     pub(crate) fn to_vk(
         &self,
-        semaphore_vk: ash::vk::Semaphore,
-    ) -> ash::vk::ImportSemaphoreWin32HandleInfoKHR<'static> {
+        semaphore_vk: vk::Semaphore,
+    ) -> vk::ImportSemaphoreWin32HandleInfoKHR<'static> {
         let &Self {
             flags,
             handle_type,
@@ -1836,7 +1834,7 @@ impl ImportSemaphoreWin32HandleInfo {
             _ne: _,
         } = self;
 
-        ash::vk::ImportSemaphoreWin32HandleInfoKHR::default()
+        vk::ImportSemaphoreWin32HandleInfoKHR::default()
             .semaphore(semaphore_vk)
             .flags(flags.into())
             .handle_type(handle_type.into())
@@ -1862,7 +1860,7 @@ pub struct ImportSemaphoreZirconHandleInfo {
     /// The handle to import the semaphore from.
     ///
     /// The default value is `ZX_HANDLE_INVALID`, which must be overridden.
-    pub zircon_handle: ash::vk::zx_handle_t,
+    pub zircon_handle: vk::zx_handle_t,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1926,8 +1924,8 @@ impl ImportSemaphoreZirconHandleInfo {
 
     pub(crate) fn to_vk(
         &self,
-        semaphore_vk: ash::vk::Semaphore,
-    ) -> ash::vk::ImportSemaphoreZirconHandleInfoFUCHSIA<'static> {
+        semaphore_vk: vk::Semaphore,
+    ) -> vk::ImportSemaphoreZirconHandleInfoFUCHSIA<'static> {
         let &Self {
             flags,
             handle_type,
@@ -1935,7 +1933,7 @@ impl ImportSemaphoreZirconHandleInfo {
             _ne: _,
         } = self;
 
-        ash::vk::ImportSemaphoreZirconHandleInfoFUCHSIA::default()
+        vk::ImportSemaphoreZirconHandleInfoFUCHSIA::default()
             .semaphore(semaphore_vk)
             .flags(flags.into())
             .handle_type(handle_type.into())
@@ -2034,7 +2032,7 @@ impl ExternalSemaphoreInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         extensions_vk: &'a mut ExternalSemaphoreInfoExtensionsVk,
-    ) -> ash::vk::PhysicalDeviceExternalSemaphoreInfo<'a> {
+    ) -> vk::PhysicalDeviceExternalSemaphoreInfo<'a> {
         let &Self {
             handle_type,
             semaphore_type: _,
@@ -2043,7 +2041,7 @@ impl ExternalSemaphoreInfo {
         } = self;
 
         let mut val_vk =
-            ash::vk::PhysicalDeviceExternalSemaphoreInfo::default().handle_type(handle_type.into());
+            vk::PhysicalDeviceExternalSemaphoreInfo::default().handle_type(handle_type.into());
 
         let ExternalSemaphoreInfoExtensionsVk { type_vk } = extensions_vk;
 
@@ -2063,7 +2061,7 @@ impl ExternalSemaphoreInfo {
         } = self;
 
         let type_vk = (semaphore_type != SemaphoreType::Binary).then(|| {
-            ash::vk::SemaphoreTypeCreateInfo::default()
+            vk::SemaphoreTypeCreateInfo::default()
                 .semaphore_type(semaphore_type.into())
                 .initial_value(initial_value)
         });
@@ -2073,7 +2071,7 @@ impl ExternalSemaphoreInfo {
 }
 
 pub(crate) struct ExternalSemaphoreInfoExtensionsVk {
-    pub(crate) type_vk: Option<ash::vk::SemaphoreTypeCreateInfo<'static>>,
+    pub(crate) type_vk: Option<vk::SemaphoreTypeCreateInfo<'static>>,
 }
 
 /// The properties for exporting or importing external handles, when a semaphore is created
@@ -2099,12 +2097,12 @@ pub struct ExternalSemaphoreProperties {
 }
 
 impl ExternalSemaphoreProperties {
-    pub(crate) fn to_mut_vk() -> ash::vk::ExternalSemaphoreProperties<'static> {
-        ash::vk::ExternalSemaphoreProperties::default()
+    pub(crate) fn to_mut_vk() -> vk::ExternalSemaphoreProperties<'static> {
+        vk::ExternalSemaphoreProperties::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalSemaphoreProperties<'_>) -> Self {
-        let &ash::vk::ExternalSemaphoreProperties {
+    pub(crate) fn from_vk(val_vk: &vk::ExternalSemaphoreProperties<'_>) -> Self {
+        let &vk::ExternalSemaphoreProperties {
             export_from_imported_handle_types,
             compatible_handle_types,
             external_semaphore_features,
@@ -2113,9 +2111,9 @@ impl ExternalSemaphoreProperties {
 
         ExternalSemaphoreProperties {
             exportable: external_semaphore_features
-                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
+                .intersects(vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
             importable: external_semaphore_features
-                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
+                .intersects(vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
             export_from_imported_handle_types: export_from_imported_handle_types.into(),
             compatible_handle_types: compatible_handle_types.into(),
         }

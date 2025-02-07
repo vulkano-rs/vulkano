@@ -12,6 +12,7 @@ use crate::{
     sync::PipelineStageAccessFlags,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{
     cmp::{max, min},
@@ -1897,8 +1898,8 @@ impl CopyBufferInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::BufferCopy2<'static>],
-    ) -> ash::vk::CopyBufferInfo2<'a> {
+        regions_vk: &'a [vk::BufferCopy2<'static>],
+    ) -> vk::CopyBufferInfo2<'a> {
         let &Self {
             ref src_buffer,
             ref dst_buffer,
@@ -1906,13 +1907,13 @@ impl CopyBufferInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyBufferInfo2::default()
+        vk::CopyBufferInfo2::default()
             .src_buffer(src_buffer.buffer().handle())
             .dst_buffer(dst_buffer.buffer().handle())
             .regions(regions_vk)
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferCopy2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferCopy2<'static>; 8]> {
         let &Self {
             ref src_buffer,
             ref dst_buffer,
@@ -1945,7 +1946,7 @@ impl CopyBufferInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferCopy; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferCopy; 8]> {
         let &Self {
             ref src_buffer,
             ref dst_buffer,
@@ -1966,8 +1967,8 @@ impl CopyBufferInfo {
 }
 
 pub(crate) struct CopyBufferInfoVk {
-    pub(crate) src_buffer_vk: ash::vk::Buffer,
-    pub(crate) dst_buffer_vk: ash::vk::Buffer,
+    pub(crate) src_buffer_vk: vk::Buffer,
+    pub(crate) dst_buffer_vk: vk::Buffer,
 }
 
 /// Parameters to copy data from a buffer to another buffer, with type information.
@@ -2091,7 +2092,7 @@ impl BufferCopy {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> ash::vk::BufferCopy2<'static> {
+    pub(crate) fn to_vk2(&self) -> vk::BufferCopy2<'static> {
         let &Self {
             src_offset,
             dst_offset,
@@ -2099,13 +2100,13 @@ impl BufferCopy {
             _ne,
         } = self;
 
-        ash::vk::BufferCopy2::default()
+        vk::BufferCopy2::default()
             .src_offset(src_offset)
             .dst_offset(dst_offset)
             .size(size)
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::BufferCopy {
+    pub(crate) fn to_vk(&self) -> vk::BufferCopy {
         let &Self {
             src_offset,
             dst_offset,
@@ -2113,7 +2114,7 @@ impl BufferCopy {
             _ne,
         } = self;
 
-        ash::vk::BufferCopy {
+        vk::BufferCopy {
             src_offset,
             dst_offset,
             size,
@@ -3380,8 +3381,8 @@ impl CopyImageInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::ImageCopy2<'static>],
-    ) -> ash::vk::CopyImageInfo2<'a> {
+        regions_vk: &'a [vk::ImageCopy2<'static>],
+    ) -> vk::CopyImageInfo2<'a> {
         let &Self {
             ref src_image,
             src_image_layout,
@@ -3391,7 +3392,7 @@ impl CopyImageInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyImageInfo2::default()
+        vk::CopyImageInfo2::default()
             .src_image(src_image.handle())
             .src_image_layout(src_image_layout.into())
             .dst_image(dst_image.handle())
@@ -3399,7 +3400,7 @@ impl CopyImageInfo {
             .regions(regions_vk)
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageCopy2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageCopy2<'static>; 8]> {
         self.regions.iter().map(ImageCopy::to_vk2).collect()
     }
 
@@ -3421,16 +3422,16 @@ impl CopyImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageCopy; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageCopy; 8]> {
         self.regions.iter().map(ImageCopy::to_vk).collect()
     }
 }
 
 pub(crate) struct CopyImageInfoVk {
-    pub(crate) src_image_vk: ash::vk::Image,
-    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
-    pub(crate) dst_image_vk: ash::vk::Image,
-    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) src_image_vk: vk::Image,
+    pub(crate) src_image_layout_vk: vk::ImageLayout,
+    pub(crate) dst_image_vk: vk::Image,
+    pub(crate) dst_image_layout_vk: vk::ImageLayout,
 }
 
 /// A region of data to copy between images.
@@ -3560,7 +3561,7 @@ impl ImageCopy {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> ash::vk::ImageCopy2<'static> {
+    pub(crate) fn to_vk2(&self) -> vk::ImageCopy2<'static> {
         let &Self {
             ref src_subresource,
             src_offset,
@@ -3570,27 +3571,27 @@ impl ImageCopy {
             _ne: _,
         } = self;
 
-        ash::vk::ImageCopy2::default()
+        vk::ImageCopy2::default()
             .src_subresource(src_subresource.to_vk())
-            .src_offset(ash::vk::Offset3D {
+            .src_offset(vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             })
             .dst_subresource(dst_subresource.to_vk())
-            .dst_offset(ash::vk::Offset3D {
+            .dst_offset(vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
                 z: dst_offset[2] as i32,
             })
-            .extent(ash::vk::Extent3D {
+            .extent(vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],
             })
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::ImageCopy {
+    pub(crate) fn to_vk(&self) -> vk::ImageCopy {
         let &Self {
             ref src_subresource,
             src_offset,
@@ -3600,20 +3601,20 @@ impl ImageCopy {
             _ne: _,
         } = self;
 
-        ash::vk::ImageCopy {
+        vk::ImageCopy {
             src_subresource: src_subresource.to_vk(),
-            src_offset: ash::vk::Offset3D {
+            src_offset: vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             },
             dst_subresource: dst_subresource.to_vk(),
-            dst_offset: ash::vk::Offset3D {
+            dst_offset: vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
                 z: dst_offset[2] as i32,
             },
-            extent: ash::vk::Extent3D {
+            extent: vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],
@@ -4232,8 +4233,8 @@ impl CopyBufferToImageInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::BufferImageCopy2<'static>],
-    ) -> ash::vk::CopyBufferToImageInfo2<'a> {
+        regions_vk: &'a [vk::BufferImageCopy2<'static>],
+    ) -> vk::CopyBufferToImageInfo2<'a> {
         let &Self {
             ref src_buffer,
             ref dst_image,
@@ -4242,14 +4243,14 @@ impl CopyBufferToImageInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyBufferToImageInfo2::default()
+        vk::CopyBufferToImageInfo2::default()
             .src_buffer(src_buffer.buffer().handle())
             .dst_image(dst_image.handle())
             .dst_image_layout(dst_image_layout.into())
             .regions(regions_vk)
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferImageCopy2<'static>; 8]> {
         let Self {
             src_buffer,
             regions,
@@ -4282,7 +4283,7 @@ impl CopyBufferToImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferImageCopy; 8]> {
         let Self {
             src_buffer,
             regions,
@@ -4301,9 +4302,9 @@ impl CopyBufferToImageInfo {
 }
 
 pub(crate) struct CopyBufferToImageInfoVk {
-    pub(crate) src_buffer_vk: ash::vk::Buffer,
-    pub(crate) dst_image_vk: ash::vk::Image,
-    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) src_buffer_vk: vk::Buffer,
+    pub(crate) dst_image_vk: vk::Image,
+    pub(crate) dst_image_layout_vk: vk::ImageLayout,
 }
 
 /// Parameters to copy data from an image to a buffer.
@@ -4913,8 +4914,8 @@ impl CopyImageToBufferInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::BufferImageCopy2<'static>],
-    ) -> ash::vk::CopyImageToBufferInfo2<'a> {
+        regions_vk: &'a [vk::BufferImageCopy2<'static>],
+    ) -> vk::CopyImageToBufferInfo2<'a> {
         let &Self {
             ref src_image,
             src_image_layout,
@@ -4923,14 +4924,14 @@ impl CopyImageToBufferInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyImageToBufferInfo2::default()
+        vk::CopyImageToBufferInfo2::default()
             .src_image(src_image.handle())
             .src_image_layout(src_image_layout.into())
             .dst_buffer(dst_buffer.buffer().handle())
             .regions(regions_vk)
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferImageCopy2<'static>; 8]> {
         let Self {
             dst_buffer,
             regions,
@@ -4963,7 +4964,7 @@ impl CopyImageToBufferInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferImageCopy; 8]> {
         let Self {
             dst_buffer,
             regions,
@@ -4982,9 +4983,9 @@ impl CopyImageToBufferInfo {
 }
 
 pub(crate) struct CopyImageToBufferInfoVk {
-    pub(crate) src_image_vk: ash::vk::Image,
-    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
-    pub(crate) dst_buffer_vk: ash::vk::Buffer,
+    pub(crate) src_image_vk: vk::Image,
+    pub(crate) src_image_layout_vk: vk::ImageLayout,
+    pub(crate) dst_buffer_vk: vk::Buffer,
 }
 
 /// A region of data to copy between a buffer and an image.
@@ -5167,7 +5168,7 @@ impl BufferImageCopy {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> ash::vk::BufferImageCopy2<'static> {
+    pub(crate) fn to_vk2(&self) -> vk::BufferImageCopy2<'static> {
         let &Self {
             buffer_offset,
             buffer_row_length,
@@ -5178,24 +5179,24 @@ impl BufferImageCopy {
             _ne: _,
         } = self;
 
-        ash::vk::BufferImageCopy2::default()
+        vk::BufferImageCopy2::default()
             .buffer_offset(buffer_offset)
             .buffer_row_length(buffer_row_length)
             .buffer_image_height(buffer_image_height)
             .image_subresource(image_subresource.to_vk())
-            .image_offset(ash::vk::Offset3D {
+            .image_offset(vk::Offset3D {
                 x: image_offset[0] as i32,
                 y: image_offset[1] as i32,
                 z: image_offset[2] as i32,
             })
-            .image_extent(ash::vk::Extent3D {
+            .image_extent(vk::Extent3D {
                 width: image_extent[0],
                 height: image_extent[1],
                 depth: image_extent[2],
             })
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::BufferImageCopy {
+    pub(crate) fn to_vk(&self) -> vk::BufferImageCopy {
         let &Self {
             buffer_offset,
             buffer_row_length,
@@ -5206,17 +5207,17 @@ impl BufferImageCopy {
             _ne: _,
         } = self;
 
-        ash::vk::BufferImageCopy {
+        vk::BufferImageCopy {
             buffer_offset,
             buffer_row_length,
             buffer_image_height,
             image_subresource: image_subresource.to_vk(),
-            image_offset: ash::vk::Offset3D {
+            image_offset: vk::Offset3D {
                 x: image_offset[0] as i32,
                 y: image_offset[1] as i32,
                 z: image_offset[2] as i32,
             },
-            image_extent: ash::vk::Extent3D {
+            image_extent: vk::Extent3D {
                 width: image_extent[0],
                 height: image_extent[1],
                 depth: image_extent[2],
@@ -6037,8 +6038,8 @@ impl BlitImageInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::ImageBlit2<'static>],
-    ) -> ash::vk::BlitImageInfo2<'a> {
+        regions_vk: &'a [vk::ImageBlit2<'static>],
+    ) -> vk::BlitImageInfo2<'a> {
         let &Self {
             ref src_image,
             src_image_layout,
@@ -6049,7 +6050,7 @@ impl BlitImageInfo {
             _ne: _,
         } = self;
 
-        ash::vk::BlitImageInfo2::default()
+        vk::BlitImageInfo2::default()
             .src_image(src_image.handle())
             .src_image_layout(src_image_layout.into())
             .dst_image(dst_image.handle())
@@ -6058,7 +6059,7 @@ impl BlitImageInfo {
             .filter(filter.into())
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageBlit2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageBlit2<'static>; 8]> {
         self.regions.iter().map(ImageBlit::to_vk2).collect()
     }
 
@@ -6082,17 +6083,17 @@ impl BlitImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageBlit; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageBlit; 8]> {
         self.regions.iter().map(ImageBlit::to_vk).collect()
     }
 }
 
 pub(crate) struct BlitImageInfoVk {
-    pub(crate) src_image_vk: ash::vk::Image,
-    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
-    pub(crate) dst_image_vk: ash::vk::Image,
-    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
-    pub(crate) filter_vk: ash::vk::Filter,
+    pub(crate) src_image_vk: vk::Image,
+    pub(crate) src_image_layout_vk: vk::ImageLayout,
+    pub(crate) dst_image_vk: vk::Image,
+    pub(crate) dst_image_layout_vk: vk::ImageLayout,
+    pub(crate) filter_vk: vk::Filter,
 }
 
 /// A region of data to blit between images.
@@ -6188,7 +6189,7 @@ impl ImageBlit {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> ash::vk::ImageBlit2<'static> {
+    pub(crate) fn to_vk2(&self) -> vk::ImageBlit2<'static> {
         let &Self {
             ref src_subresource,
             src_offsets,
@@ -6197,15 +6198,15 @@ impl ImageBlit {
             _ne: _,
         } = self;
 
-        ash::vk::ImageBlit2::default()
+        vk::ImageBlit2::default()
             .src_subresource(src_subresource.to_vk())
             .src_offsets([
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: src_offsets[0][0] as i32,
                     y: src_offsets[0][1] as i32,
                     z: src_offsets[0][2] as i32,
                 },
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: src_offsets[1][0] as i32,
                     y: src_offsets[1][1] as i32,
                     z: src_offsets[1][2] as i32,
@@ -6213,12 +6214,12 @@ impl ImageBlit {
             ])
             .dst_subresource(dst_subresource.to_vk())
             .dst_offsets([
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: dst_offsets[0][0] as i32,
                     y: dst_offsets[0][1] as i32,
                     z: dst_offsets[0][2] as i32,
                 },
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: dst_offsets[1][0] as i32,
                     y: dst_offsets[1][1] as i32,
                     z: dst_offsets[1][2] as i32,
@@ -6226,7 +6227,7 @@ impl ImageBlit {
             ])
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::ImageBlit {
+    pub(crate) fn to_vk(&self) -> vk::ImageBlit {
         let &Self {
             ref src_subresource,
             src_offsets,
@@ -6235,15 +6236,15 @@ impl ImageBlit {
             _ne: _,
         } = self;
 
-        ash::vk::ImageBlit {
+        vk::ImageBlit {
             src_subresource: src_subresource.to_vk(),
             src_offsets: [
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: src_offsets[0][0] as i32,
                     y: src_offsets[0][1] as i32,
                     z: src_offsets[0][2] as i32,
                 },
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: src_offsets[1][0] as i32,
                     y: src_offsets[1][1] as i32,
                     z: src_offsets[1][2] as i32,
@@ -6251,12 +6252,12 @@ impl ImageBlit {
             ],
             dst_subresource: dst_subresource.to_vk(),
             dst_offsets: [
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: dst_offsets[0][0] as i32,
                     y: dst_offsets[0][1] as i32,
                     z: dst_offsets[0][2] as i32,
                 },
-                ash::vk::Offset3D {
+                vk::Offset3D {
                     x: dst_offsets[1][0] as i32,
                     y: dst_offsets[1][1] as i32,
                     z: dst_offsets[1][2] as i32,
@@ -6855,8 +6856,8 @@ impl ResolveImageInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        regions_vk: &'a [ash::vk::ImageResolve2<'static>],
-    ) -> ash::vk::ResolveImageInfo2<'a> {
+        regions_vk: &'a [vk::ImageResolve2<'static>],
+    ) -> vk::ResolveImageInfo2<'a> {
         let &Self {
             ref src_image,
             src_image_layout,
@@ -6866,7 +6867,7 @@ impl ResolveImageInfo {
             _ne: _,
         } = self;
 
-        ash::vk::ResolveImageInfo2::default()
+        vk::ResolveImageInfo2::default()
             .src_image(src_image.handle())
             .src_image_layout(src_image_layout.into())
             .dst_image(dst_image.handle())
@@ -6874,7 +6875,7 @@ impl ResolveImageInfo {
             .regions(regions_vk)
     }
 
-    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageResolve2<'static>; 8]> {
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageResolve2<'static>; 8]> {
         self.regions.iter().map(ImageResolve::to_vk2).collect()
     }
 
@@ -6896,16 +6897,16 @@ impl ResolveImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageResolve; 8]> {
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageResolve; 8]> {
         self.regions.iter().map(ImageResolve::to_vk).collect()
     }
 }
 
 pub(crate) struct ResolveImageInfoVk {
-    pub(crate) src_image_vk: ash::vk::Image,
-    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
-    pub(crate) dst_image_vk: ash::vk::Image,
-    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) src_image_vk: vk::Image,
+    pub(crate) src_image_layout_vk: vk::ImageLayout,
+    pub(crate) dst_image_vk: vk::Image,
+    pub(crate) dst_image_layout_vk: vk::ImageLayout,
 }
 
 /// A region of data to resolve between images.
@@ -7009,7 +7010,7 @@ impl ImageResolve {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> ash::vk::ImageResolve2<'static> {
+    pub(crate) fn to_vk2(&self) -> vk::ImageResolve2<'static> {
         let &Self {
             ref src_subresource,
             src_offset,
@@ -7019,27 +7020,27 @@ impl ImageResolve {
             _ne: _,
         } = self;
 
-        ash::vk::ImageResolve2::default()
+        vk::ImageResolve2::default()
             .src_subresource(src_subresource.to_vk())
-            .src_offset(ash::vk::Offset3D {
+            .src_offset(vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             })
             .dst_subresource(dst_subresource.to_vk())
-            .dst_offset(ash::vk::Offset3D {
+            .dst_offset(vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
                 z: dst_offset[2] as i32,
             })
-            .extent(ash::vk::Extent3D {
+            .extent(vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],
             })
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::ImageResolve {
+    pub(crate) fn to_vk(&self) -> vk::ImageResolve {
         let &Self {
             ref src_subresource,
             src_offset,
@@ -7049,20 +7050,20 @@ impl ImageResolve {
             _ne: _,
         } = self;
 
-        ash::vk::ImageResolve {
+        vk::ImageResolve {
             src_subresource: src_subresource.to_vk(),
-            src_offset: ash::vk::Offset3D {
+            src_offset: vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             },
             dst_subresource: dst_subresource.to_vk(),
-            dst_offset: ash::vk::Offset3D {
+            dst_offset: vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
                 z: dst_offset[2] as i32,
             },
-            extent: ash::vk::Extent3D {
+            extent: vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],

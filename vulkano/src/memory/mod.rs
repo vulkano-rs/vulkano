@@ -101,6 +101,7 @@ use crate::{
     sync::HostAccessError,
     DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{
     cmp,
     mem::ManuallyDrop,
@@ -460,15 +461,15 @@ impl ResourceMemory {
 
     pub(crate) fn to_vk_bind_buffer_memory_info(
         &self,
-        buffer_vk: ash::vk::Buffer,
-    ) -> ash::vk::BindBufferMemoryInfo<'static> {
+        buffer_vk: vk::Buffer,
+    ) -> vk::BindBufferMemoryInfo<'static> {
         let &Self {
             ref device_memory,
             offset,
             ..
         } = self;
 
-        ash::vk::BindBufferMemoryInfo::default()
+        vk::BindBufferMemoryInfo::default()
             .buffer(buffer_vk)
             .memory(device_memory.handle())
             .memory_offset(offset)
@@ -476,15 +477,15 @@ impl ResourceMemory {
 
     pub(crate) fn to_vk_bind_image_memory_info(
         &self,
-        image_vk: ash::vk::Image,
-    ) -> ash::vk::BindImageMemoryInfo<'static> {
+        image_vk: vk::Image,
+    ) -> vk::BindImageMemoryInfo<'static> {
         let &Self {
             ref device_memory,
             offset,
             ..
         } = self;
 
-        ash::vk::BindImageMemoryInfo::default()
+        vk::BindImageMemoryInfo::default()
             .image(image_vk)
             .memory(device_memory.handle())
             .memory_offset(offset)
@@ -528,12 +529,12 @@ pub struct MemoryProperties {
 }
 
 impl MemoryProperties {
-    pub(crate) fn to_mut_vk2() -> ash::vk::PhysicalDeviceMemoryProperties2KHR<'static> {
-        ash::vk::PhysicalDeviceMemoryProperties2KHR::default()
+    pub(crate) fn to_mut_vk2() -> vk::PhysicalDeviceMemoryProperties2KHR<'static> {
+        vk::PhysicalDeviceMemoryProperties2KHR::default()
     }
 
-    pub(crate) fn from_vk2(val_vk: &ash::vk::PhysicalDeviceMemoryProperties2<'_>) -> Self {
-        let &ash::vk::PhysicalDeviceMemoryProperties2 {
+    pub(crate) fn from_vk2(val_vk: &vk::PhysicalDeviceMemoryProperties2<'_>) -> Self {
+        let &vk::PhysicalDeviceMemoryProperties2 {
             ref memory_properties,
             ..
         } = val_vk;
@@ -541,7 +542,7 @@ impl MemoryProperties {
         Self::from_vk(memory_properties)
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::PhysicalDeviceMemoryProperties) -> Self {
+    pub(crate) fn from_vk(val_vk: &vk::PhysicalDeviceMemoryProperties) -> Self {
         let memory_types_vk = val_vk.memory_types_as_slice();
         let memory_heaps_vk = val_vk.memory_heaps_as_slice();
 
@@ -565,8 +566,8 @@ pub struct MemoryType {
 
 impl MemoryType {
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn from_vk(val_vk: &ash::vk::MemoryType) -> Self {
-        let &ash::vk::MemoryType {
+    pub(crate) fn from_vk(val_vk: &vk::MemoryType) -> Self {
+        let &vk::MemoryType {
             property_flags,
             heap_index,
         } = val_vk;
@@ -710,8 +711,8 @@ pub struct MemoryHeap {
 }
 
 impl MemoryHeap {
-    pub(crate) fn from_vk(val_vk: &ash::vk::MemoryHeap) -> Self {
-        let &ash::vk::MemoryHeap { size, flags } = val_vk;
+    pub(crate) fn from_vk(val_vk: &vk::MemoryHeap) -> Self {
+        let &vk::MemoryHeap { size, flags } = val_vk;
 
         Self {
             size,
@@ -767,8 +768,8 @@ pub struct MemoryRequirements {
 impl MemoryRequirements {
     pub(crate) fn to_mut_vk2(
         extensions_vk: &mut MemoryRequirements2ExtensionsVk,
-    ) -> ash::vk::MemoryRequirements2<'_> {
-        let mut val_vk = ash::vk::MemoryRequirements2::default();
+    ) -> vk::MemoryRequirements2<'_> {
+        let mut val_vk = vk::MemoryRequirements2::default();
 
         let MemoryRequirements2ExtensionsVk { dedicated_vk } = extensions_vk;
 
@@ -788,19 +789,19 @@ impl MemoryRequirements {
                         || device.enabled_extensions().khr_get_memory_requirements2
                 );
 
-                ash::vk::MemoryDedicatedRequirements::default()
+                vk::MemoryDedicatedRequirements::default()
             });
 
         MemoryRequirements2ExtensionsVk { dedicated_vk }
     }
 
     pub(crate) fn from_vk2(
-        val_vk: &ash::vk::MemoryRequirements2<'_>,
+        val_vk: &vk::MemoryRequirements2<'_>,
         extensions_vk: &MemoryRequirements2ExtensionsVk,
     ) -> Self {
-        let &ash::vk::MemoryRequirements2 {
+        let &vk::MemoryRequirements2 {
             memory_requirements:
-                ash::vk::MemoryRequirements {
+                vk::MemoryRequirements {
                     size,
                     alignment,
                     memory_type_bits,
@@ -818,7 +819,7 @@ impl MemoryRequirements {
         let MemoryRequirements2ExtensionsVk { dedicated_vk } = extensions_vk;
 
         if let Some(val_vk) = dedicated_vk {
-            let &ash::vk::MemoryDedicatedRequirements {
+            let &vk::MemoryDedicatedRequirements {
                 prefers_dedicated_allocation,
                 requires_dedicated_allocation,
                 ..
@@ -836,7 +837,7 @@ impl MemoryRequirements {
 }
 
 pub(crate) struct MemoryRequirements2ExtensionsVk {
-    pub(crate) dedicated_vk: Option<ash::vk::MemoryDedicatedRequirements<'static>>,
+    pub(crate) dedicated_vk: Option<vk::MemoryDedicatedRequirements<'static>>,
 }
 
 /// Indicates a specific resource to allocate memory for.
@@ -896,8 +897,8 @@ pub struct ExternalMemoryProperties {
 }
 
 impl ExternalMemoryProperties {
-    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalMemoryProperties) -> Self {
-        let &ash::vk::ExternalMemoryProperties {
+    pub(crate) fn from_vk(val_vk: &vk::ExternalMemoryProperties) -> Self {
+        let &vk::ExternalMemoryProperties {
             external_memory_features,
             export_from_imported_handle_types,
             compatible_handle_types,
@@ -905,11 +906,11 @@ impl ExternalMemoryProperties {
 
         Self {
             dedicated_only: external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::DEDICATED_ONLY),
+                .intersects(vk::ExternalMemoryFeatureFlags::DEDICATED_ONLY),
             exportable: external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::EXPORTABLE),
+                .intersects(vk::ExternalMemoryFeatureFlags::EXPORTABLE),
             importable: external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::IMPORTABLE),
+                .intersects(vk::ExternalMemoryFeatureFlags::IMPORTABLE),
             export_from_imported_handle_types: export_from_imported_handle_types.into(),
             compatible_handle_types: compatible_handle_types.into(),
         }
@@ -925,12 +926,12 @@ pub struct MemoryFdProperties {
 }
 
 impl MemoryFdProperties {
-    pub(crate) fn to_mut_vk() -> ash::vk::MemoryFdPropertiesKHR<'static> {
-        ash::vk::MemoryFdPropertiesKHR::default()
+    pub(crate) fn to_mut_vk() -> vk::MemoryFdPropertiesKHR<'static> {
+        vk::MemoryFdPropertiesKHR::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::MemoryFdPropertiesKHR<'_>) -> Self {
-        let &ash::vk::MemoryFdPropertiesKHR {
+    pub(crate) fn from_vk(val_vk: &vk::MemoryFdPropertiesKHR<'_>) -> Self {
+        let &vk::MemoryFdPropertiesKHR {
             memory_type_bits, ..
         } = val_vk;
 

@@ -10,6 +10,7 @@ use crate::{
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -30,7 +31,7 @@ use std::{
 ///
 /// Creating a `Surface` is platform-specific.
 pub struct Surface {
-    handle: ash::vk::SurfaceKHR,
+    handle: vk::SurfaceKHR,
     instance: DebugWrapper<Arc<Instance>>,
     id: NonZeroU64,
     api: SurfaceApi,
@@ -39,10 +40,10 @@ pub struct Surface {
     // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
     // `Surface` is destroyed.
     pub(crate) surface_formats:
-        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
+        OnceCache<(vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
     pub(crate) surface_present_modes:
-        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<PresentMode>>,
-    pub(crate) surface_support: OnceCache<(ash::vk::PhysicalDevice, u32), bool>,
+        OnceCache<(vk::PhysicalDevice, SurfaceInfo), Vec<PresentMode>>,
+    pub(crate) surface_support: OnceCache<(vk::PhysicalDevice, u32), bool>,
 }
 
 impl Surface {
@@ -126,8 +127,8 @@ impl Surface {
             (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => unsafe {
                 Self::from_win32(
                     instance,
-                    window.hinstance.unwrap().get() as ash::vk::HINSTANCE,
-                    window.hwnd.get() as ash::vk::HWND,
+                    window.hinstance.unwrap().get() as vk::HINSTANCE,
+                    window.hwnd.get() as vk::HWND,
                     None,
                 )
             },
@@ -135,7 +136,7 @@ impl Surface {
                 Self::from_xcb(
                     instance,
                     display.connection.unwrap().as_ptr().cast(),
-                    window.window.get() as ash::vk::xcb_window_t,
+                    window.window.get() as vk::xcb_window_t,
                     None,
                 )
             },
@@ -143,7 +144,7 @@ impl Surface {
                 Self::from_xlib(
                     instance,
                     display.display.unwrap().as_ptr().cast(),
-                    window.window as ash::vk::Window,
+                    window.window as vk::Window,
                     None,
                 )
             },
@@ -165,7 +166,7 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
-        handle: ash::vk::SurfaceKHR,
+        handle: vk::SurfaceKHR,
         api: SurfaceApi,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
@@ -213,8 +214,8 @@ impl Surface {
         instance: Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::HeadlessSurfaceCreateInfoEXT::default()
-            .flags(ash::vk::HeadlessSurfaceCreateFlagsEXT::empty());
+        let create_info_vk = vk::HeadlessSurfaceCreateInfoEXT::default()
+            .flags(vk::HeadlessSurfaceCreateFlagsEXT::empty());
 
         let handle = {
             let fns = instance.fns();
@@ -397,7 +398,7 @@ impl Surface {
     ///   parameter can be used to ensure this.
     pub unsafe fn from_android(
         instance: Arc<Instance>,
-        window: *mut ash::vk::ANativeWindow,
+        window: *mut vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_android(&instance, window)?;
@@ -407,7 +408,7 @@ impl Surface {
 
     fn validate_from_android(
         instance: &Instance,
-        _window: *mut ash::vk::ANativeWindow,
+        _window: *mut vk::ANativeWindow,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_android_surface {
             return Err(Box::new(ValidationError {
@@ -427,11 +428,11 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_android_unchecked(
         instance: Arc<Instance>,
-        window: *mut ash::vk::ANativeWindow,
+        window: *mut vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::AndroidSurfaceCreateInfoKHR::default()
-            .flags(ash::vk::AndroidSurfaceCreateFlagsKHR::empty())
+        let create_info_vk = vk::AndroidSurfaceCreateInfoKHR::default()
+            .flags(vk::AndroidSurfaceCreateFlagsKHR::empty())
             .window(window);
 
         let handle = {
@@ -465,8 +466,8 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_directfb(
         instance: Arc<Instance>,
-        dfb: *mut ash::vk::IDirectFB,
-        surface: *mut ash::vk::IDirectFBSurface,
+        dfb: *mut vk::IDirectFB,
+        surface: *mut vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_directfb(&instance, dfb, surface)?;
@@ -476,8 +477,8 @@ impl Surface {
 
     fn validate_from_directfb(
         instance: &Instance,
-        _dfb: *mut ash::vk::IDirectFB,
-        _surface: *mut ash::vk::IDirectFBSurface,
+        _dfb: *mut vk::IDirectFB,
+        _surface: *mut vk::IDirectFBSurface,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_directfb_surface {
             return Err(Box::new(ValidationError {
@@ -500,12 +501,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_directfb_unchecked(
         instance: Arc<Instance>,
-        dfb: *mut ash::vk::IDirectFB,
-        surface: *mut ash::vk::IDirectFBSurface,
+        dfb: *mut vk::IDirectFB,
+        surface: *mut vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::DirectFBSurfaceCreateInfoEXT::default()
-            .flags(ash::vk::DirectFBSurfaceCreateFlagsEXT::empty())
+        let create_info_vk = vk::DirectFBSurfaceCreateInfoEXT::default()
+            .flags(vk::DirectFBSurfaceCreateFlagsEXT::empty())
             .dfb(dfb)
             .surface(surface);
 
@@ -539,7 +540,7 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_fuchsia_image_pipe(
         instance: Arc<Instance>,
-        image_pipe_handle: ash::vk::zx_handle_t,
+        image_pipe_handle: vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
@@ -553,7 +554,7 @@ impl Surface {
 
     fn validate_from_fuchsia_image_pipe(
         instance: &Instance,
-        _image_pipe_handle: ash::vk::zx_handle_t,
+        _image_pipe_handle: vk::zx_handle_t,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().fuchsia_imagepipe_surface {
             return Err(Box::new(ValidationError {
@@ -573,11 +574,11 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_fuchsia_image_pipe_unchecked(
         instance: Arc<Instance>,
-        image_pipe_handle: ash::vk::zx_handle_t,
+        image_pipe_handle: vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA::default()
-            .flags(ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty())
+        let create_info_vk = vk::ImagePipeSurfaceCreateInfoFUCHSIA::default()
+            .flags(vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty())
             .image_pipe_handle(image_pipe_handle);
 
         let handle = {
@@ -611,7 +612,7 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_ggp_stream_descriptor(
         instance: Arc<Instance>,
-        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        stream_descriptor: vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
@@ -623,7 +624,7 @@ impl Surface {
 
     fn validate_from_ggp_stream_descriptor(
         instance: &Instance,
-        _stream_descriptor: ash::vk::GgpStreamDescriptor,
+        _stream_descriptor: vk::GgpStreamDescriptor,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ggp_stream_descriptor_surface {
             return Err(Box::new(ValidationError {
@@ -643,11 +644,11 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_ggp_stream_descriptor_unchecked(
         instance: Arc<Instance>,
-        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        stream_descriptor: vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::StreamDescriptorSurfaceCreateInfoGGP::default()
-            .flags(ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty())
+        let create_info_vk = vk::StreamDescriptorSurfaceCreateInfoGGP::default()
+            .flags(vk::StreamDescriptorSurfaceCreateFlagsGGP::empty())
             .stream_descriptor(stream_descriptor);
 
         let handle = {
@@ -718,8 +719,8 @@ impl Surface {
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::IOSSurfaceCreateInfoMVK::default()
-            .flags(ash::vk::IOSSurfaceCreateFlagsMVK::empty())
+        let create_info_vk = vk::IOSSurfaceCreateInfoMVK::default()
+            .flags(vk::IOSSurfaceCreateFlagsMVK::empty())
             .view(view);
 
         let handle = {
@@ -789,8 +790,8 @@ impl Surface {
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::MacOSSurfaceCreateInfoMVK::default()
-            .flags(ash::vk::MacOSSurfaceCreateFlagsMVK::empty())
+        let create_info_vk = vk::MacOSSurfaceCreateInfoMVK::default()
+            .flags(vk::MacOSSurfaceCreateFlagsMVK::empty())
             .view(view);
 
         let handle = {
@@ -830,7 +831,7 @@ impl Surface {
     /// keep the source from where this came from alive.
     pub unsafe fn from_metal(
         instance: Arc<Instance>,
-        layer: *const ash::vk::CAMetalLayer,
+        layer: *const vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_metal(&instance, layer)?;
@@ -840,7 +841,7 @@ impl Surface {
 
     fn validate_from_metal(
         instance: &Instance,
-        layer: *const ash::vk::CAMetalLayer,
+        layer: *const vk::CAMetalLayer,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(Box::new(ValidationError {
@@ -859,11 +860,11 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_metal_unchecked(
         instance: Arc<Instance>,
-        layer: *const ash::vk::CAMetalLayer,
+        layer: *const vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::MetalSurfaceCreateInfoEXT::default()
-            .flags(ash::vk::MetalSurfaceCreateFlagsEXT::empty())
+        let create_info_vk = vk::MetalSurfaceCreateInfoEXT::default()
+            .flags(vk::MetalSurfaceCreateFlagsEXT::empty())
             .layer(layer);
 
         let handle = {
@@ -897,8 +898,8 @@ impl Surface {
     ///   parameter can be used to ensure this.
     pub unsafe fn from_qnx_screen(
         instance: Arc<Instance>,
-        context: *mut ash::vk::_screen_context,
-        window: *mut ash::vk::_screen_window,
+        context: *mut vk::_screen_context,
+        window: *mut vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_qnx_screen(&instance, context, window)?;
@@ -908,8 +909,8 @@ impl Surface {
 
     fn validate_from_qnx_screen(
         instance: &Instance,
-        _context: *mut ash::vk::_screen_context,
-        _window: *mut ash::vk::_screen_window,
+        _context: *mut vk::_screen_context,
+        _window: *mut vk::_screen_window,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().qnx_screen_surface {
             return Err(Box::new(ValidationError {
@@ -932,12 +933,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_qnx_screen_unchecked(
         instance: Arc<Instance>,
-        context: *mut ash::vk::_screen_context,
-        window: *mut ash::vk::_screen_window,
+        context: *mut vk::_screen_context,
+        window: *mut vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::ScreenSurfaceCreateInfoQNX {
-            flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
+        let create_info_vk = vk::ScreenSurfaceCreateInfoQNX {
+            flags: vk::ScreenSurfaceCreateFlagsQNX::empty(),
             context,
             window,
             ..Default::default()
@@ -1006,8 +1007,8 @@ impl Surface {
         window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::ViSurfaceCreateInfoNN::default()
-            .flags(ash::vk::ViSurfaceCreateFlagsNN::empty())
+        let create_info_vk = vk::ViSurfaceCreateInfoNN::default()
+            .flags(vk::ViSurfaceCreateFlagsNN::empty())
             .window(window);
 
         let handle = {
@@ -1043,8 +1044,8 @@ impl Surface {
     ///   The `object` parameter can be used to ensure this.
     pub unsafe fn from_wayland(
         instance: Arc<Instance>,
-        display: *mut ash::vk::wl_display,
-        surface: *mut ash::vk::wl_surface,
+        display: *mut vk::wl_display,
+        surface: *mut vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_wayland(&instance, display, surface)?;
@@ -1054,8 +1055,8 @@ impl Surface {
 
     fn validate_from_wayland(
         instance: &Instance,
-        _display: *mut ash::vk::wl_display,
-        _surface: *mut ash::vk::wl_surface,
+        _display: *mut vk::wl_display,
+        _surface: *mut vk::wl_surface,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_wayland_surface {
             return Err(Box::new(ValidationError {
@@ -1078,12 +1079,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_wayland_unchecked(
         instance: Arc<Instance>,
-        display: *mut ash::vk::wl_display,
-        surface: *mut ash::vk::wl_surface,
+        display: *mut vk::wl_display,
+        surface: *mut vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::WaylandSurfaceCreateInfoKHR::default()
-            .flags(ash::vk::WaylandSurfaceCreateFlagsKHR::empty())
+        let create_info_vk = vk::WaylandSurfaceCreateInfoKHR::default()
+            .flags(vk::WaylandSurfaceCreateFlagsKHR::empty())
             .display(display)
             .surface(surface);
 
@@ -1120,8 +1121,8 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_win32(
         instance: Arc<Instance>,
-        hinstance: ash::vk::HINSTANCE,
-        hwnd: ash::vk::HWND,
+        hinstance: vk::HINSTANCE,
+        hwnd: vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_win32(&instance, hinstance, hwnd)?;
@@ -1131,8 +1132,8 @@ impl Surface {
 
     fn validate_from_win32(
         instance: &Instance,
-        _hinstance: ash::vk::HINSTANCE,
-        _hwnd: ash::vk::HWND,
+        _hinstance: vk::HINSTANCE,
+        _hwnd: vk::HWND,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_win32_surface {
             return Err(Box::new(ValidationError {
@@ -1155,12 +1156,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_win32_unchecked(
         instance: Arc<Instance>,
-        hinstance: ash::vk::HINSTANCE,
-        hwnd: ash::vk::HWND,
+        hinstance: vk::HINSTANCE,
+        hwnd: vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::Win32SurfaceCreateInfoKHR::default()
-            .flags(ash::vk::Win32SurfaceCreateFlagsKHR::empty())
+        let create_info_vk = vk::Win32SurfaceCreateInfoKHR::default()
+            .flags(vk::Win32SurfaceCreateFlagsKHR::empty())
             .hinstance(hinstance)
             .hwnd(hwnd);
 
@@ -1197,8 +1198,8 @@ impl Surface {
     ///   The `object` parameter can be used to ensure this.
     pub unsafe fn from_xcb(
         instance: Arc<Instance>,
-        connection: *mut ash::vk::xcb_connection_t,
-        window: ash::vk::xcb_window_t,
+        connection: *mut vk::xcb_connection_t,
+        window: vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_xcb(&instance, connection, window)?;
@@ -1208,8 +1209,8 @@ impl Surface {
 
     fn validate_from_xcb(
         instance: &Instance,
-        _connection: *mut ash::vk::xcb_connection_t,
-        _window: ash::vk::xcb_window_t,
+        _connection: *mut vk::xcb_connection_t,
+        _window: vk::xcb_window_t,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_xcb_surface {
             return Err(Box::new(ValidationError {
@@ -1232,12 +1233,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_xcb_unchecked(
         instance: Arc<Instance>,
-        connection: *mut ash::vk::xcb_connection_t,
-        window: ash::vk::xcb_window_t,
+        connection: *mut vk::xcb_connection_t,
+        window: vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::XcbSurfaceCreateInfoKHR::default()
-            .flags(ash::vk::XcbSurfaceCreateFlagsKHR::empty())
+        let create_info_vk = vk::XcbSurfaceCreateInfoKHR::default()
+            .flags(vk::XcbSurfaceCreateFlagsKHR::empty())
             .connection(connection)
             .window(window);
 
@@ -1274,8 +1275,8 @@ impl Surface {
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_xlib(
         instance: Arc<Instance>,
-        display: *mut ash::vk::Display,
-        window: ash::vk::Window,
+        display: *mut vk::Display,
+        window: vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_xlib(&instance, display, window)?;
@@ -1285,8 +1286,8 @@ impl Surface {
 
     fn validate_from_xlib(
         instance: &Instance,
-        _display: *mut ash::vk::Display,
-        _window: ash::vk::Window,
+        _display: *mut vk::Display,
+        _window: vk::Window,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_xlib_surface {
             return Err(Box::new(ValidationError {
@@ -1309,12 +1310,12 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_xlib_unchecked(
         instance: Arc<Instance>,
-        display: *mut ash::vk::Display,
-        window: ash::vk::Window,
+        display: *mut vk::Display,
+        window: vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::XlibSurfaceCreateInfoKHR::default()
-            .flags(ash::vk::XlibSurfaceCreateFlagsKHR::empty())
+        let create_info_vk = vk::XlibSurfaceCreateInfoKHR::default()
+            .flags(vk::XlibSurfaceCreateFlagsKHR::empty())
             .dpy(display)
             .window(window);
 
@@ -1370,7 +1371,7 @@ impl Drop for Surface {
 }
 
 unsafe impl VulkanObject for Surface {
-    type Handle = ash::vk::SurfaceKHR;
+    type Handle = vk::SurfaceKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1547,8 +1548,8 @@ impl DisplaySurfaceCreateInfo {
 
     pub(crate) fn to_vk(
         &self,
-        display_mode_vk: ash::vk::DisplayModeKHR,
-    ) -> ash::vk::DisplaySurfaceCreateInfoKHR<'static> {
+        display_mode_vk: vk::DisplayModeKHR,
+    ) -> vk::DisplaySurfaceCreateInfoKHR<'static> {
         let &Self {
             plane_index,
             plane_stack_index,
@@ -1559,15 +1560,15 @@ impl DisplaySurfaceCreateInfo {
             _ne: _,
         } = self;
 
-        ash::vk::DisplaySurfaceCreateInfoKHR::default()
-            .flags(ash::vk::DisplaySurfaceCreateFlagsKHR::empty())
+        vk::DisplaySurfaceCreateInfoKHR::default()
+            .flags(vk::DisplaySurfaceCreateFlagsKHR::empty())
             .display_mode(display_mode_vk)
             .plane_index(plane_index)
             .plane_stack_index(plane_stack_index)
             .transform(transform.into())
             .alpha_mode(alpha_mode.into())
             .global_alpha(global_alpha)
-            .image_extent(ash::vk::Extent2D {
+            .image_extent(vk::Extent2D {
                 width: image_extent[0],
                 height: image_extent[1],
             })
@@ -2104,10 +2105,10 @@ impl SurfaceInfo {
 
     pub(crate) fn to_vk2<'a>(
         &self,
-        surface_vk: ash::vk::SurfaceKHR,
+        surface_vk: vk::SurfaceKHR,
         extensions_vk: &'a mut SurfaceInfo2ExtensionsVk,
-    ) -> ash::vk::PhysicalDeviceSurfaceInfo2KHR<'a> {
-        let mut val_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR::default().surface(surface_vk);
+    ) -> vk::PhysicalDeviceSurfaceInfo2KHR<'a> {
+        let mut val_vk = vk::PhysicalDeviceSurfaceInfo2KHR::default().surface(surface_vk);
 
         let SurfaceInfo2ExtensionsVk {
             full_screen_exclusive_vk,
@@ -2140,16 +2141,16 @@ impl SurfaceInfo {
 
         let full_screen_exclusive_vk = (full_screen_exclusive != FullScreenExclusive::Default)
             .then(|| {
-                ash::vk::SurfaceFullScreenExclusiveInfoEXT::default()
+                vk::SurfaceFullScreenExclusiveInfoEXT::default()
                     .full_screen_exclusive(full_screen_exclusive.into())
             });
 
         let full_screen_exclusive_win32_vk = win32_monitor.map(|win32_monitor| {
-            ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT::default().hmonitor(win32_monitor.0)
+            vk::SurfaceFullScreenExclusiveWin32InfoEXT::default().hmonitor(win32_monitor.0)
         });
 
         let present_mode_vk = present_mode.map(|present_mode| {
-            ash::vk::SurfacePresentModeEXT::default().present_mode(present_mode.into())
+            vk::SurfacePresentModeEXT::default().present_mode(present_mode.into())
         });
 
         SurfaceInfo2ExtensionsVk {
@@ -2161,11 +2162,10 @@ impl SurfaceInfo {
 }
 
 pub(crate) struct SurfaceInfo2ExtensionsVk {
-    pub(crate) full_screen_exclusive_vk:
-        Option<ash::vk::SurfaceFullScreenExclusiveInfoEXT<'static>>,
+    pub(crate) full_screen_exclusive_vk: Option<vk::SurfaceFullScreenExclusiveInfoEXT<'static>>,
     pub(crate) full_screen_exclusive_win32_vk:
-        Option<ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
-    pub(crate) present_mode_vk: Option<ash::vk::SurfacePresentModeEXT<'static>>,
+        Option<vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
+    pub(crate) present_mode_vk: Option<vk::SurfacePresentModeEXT<'static>>,
 }
 
 /// The capabilities of a surface when used by a physical device.
@@ -2262,8 +2262,8 @@ pub struct SurfaceCapabilities {
 impl SurfaceCapabilities {
     pub(crate) fn to_mut_vk2<'a>(
         extensions_vk: &'a mut SurfaceCapabilities2ExtensionsVk<'_>,
-    ) -> ash::vk::SurfaceCapabilities2KHR<'a> {
-        let mut val_vk = ash::vk::SurfaceCapabilities2KHR::default();
+    ) -> vk::SurfaceCapabilities2KHR<'a> {
+        let mut val_vk = vk::SurfaceCapabilities2KHR::default();
 
         let SurfaceCapabilities2ExtensionsVk {
             full_screen_exclusive_vk,
@@ -2300,20 +2300,20 @@ impl SurfaceCapabilities {
 
         let full_screen_exclusive_vk = (surface_info.full_screen_exclusive
             != FullScreenExclusive::Default)
-            .then(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default);
+            .then(vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default);
 
         let present_mode_compatibility_vk = (surface_info.present_mode.is_some()).then(|| {
-            ash::vk::SurfacePresentModeCompatibilityEXT::default().present_modes(present_modes_vk)
+            vk::SurfacePresentModeCompatibilityEXT::default().present_modes(present_modes_vk)
         });
 
         let present_scaling_vk = (surface_info.present_mode.is_some())
-            .then(ash::vk::SurfacePresentScalingCapabilitiesEXT::default);
+            .then(vk::SurfacePresentScalingCapabilitiesEXT::default);
 
         let protected_vk = (physical_device
             .instance()
             .enabled_extensions()
             .khr_surface_protected_capabilities)
-            .then(ash::vk::SurfaceProtectedCapabilitiesKHR::default);
+            .then(vk::SurfaceProtectedCapabilitiesKHR::default);
 
         SurfaceCapabilities2ExtensionsVk {
             full_screen_exclusive_vk,
@@ -2330,13 +2330,13 @@ impl SurfaceCapabilities {
     }
 
     pub(crate) fn from_vk2(
-        val_vk: &ash::vk::SurfaceCapabilities2KHR<'_>,
+        val_vk: &vk::SurfaceCapabilities2KHR<'_>,
         fields1_vk: &SurfaceCapabilities2Fields1Vk,
         extensions_vk: &SurfaceCapabilities2ExtensionsVk<'_>,
     ) -> Self {
-        let &ash::vk::SurfaceCapabilities2KHR {
+        let &vk::SurfaceCapabilities2KHR {
             surface_capabilities:
-                ash::vk::SurfaceCapabilitiesKHR {
+                vk::SurfaceCapabilitiesKHR {
                     min_image_count,
                     max_image_count,
                     current_extent,
@@ -2384,7 +2384,7 @@ impl SurfaceCapabilities {
         let SurfaceCapabilities2Fields1Vk { present_modes_vk } = fields1_vk;
 
         if let Some(val_vk) = full_screen_exclusive_vk {
-            let &ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT {
+            let &vk::SurfaceCapabilitiesFullScreenExclusiveEXT {
                 full_screen_exclusive_supported,
                 ..
             } = val_vk;
@@ -2396,7 +2396,7 @@ impl SurfaceCapabilities {
         }
 
         if let Some(val_vk) = present_mode_compatibility_vk {
-            let &ash::vk::SurfacePresentModeCompatibilityEXT {
+            let &vk::SurfacePresentModeCompatibilityEXT {
                 present_mode_count, ..
             } = val_vk;
 
@@ -2412,7 +2412,7 @@ impl SurfaceCapabilities {
         }
 
         if let Some(val_vk) = present_scaling_vk {
-            let &ash::vk::SurfacePresentScalingCapabilitiesEXT {
+            let &vk::SurfacePresentScalingCapabilitiesEXT {
                 supported_present_scaling,
                 supported_present_gravity_x,
                 supported_present_gravity_y,
@@ -2434,7 +2434,7 @@ impl SurfaceCapabilities {
         }
 
         if let Some(val_vk) = protected_vk {
-            let &ash::vk::SurfaceProtectedCapabilitiesKHR {
+            let &vk::SurfaceProtectedCapabilitiesKHR {
                 supports_protected, ..
             } = val_vk;
 
@@ -2450,11 +2450,10 @@ impl SurfaceCapabilities {
 
 pub(crate) struct SurfaceCapabilities2ExtensionsVk<'a> {
     pub(crate) full_screen_exclusive_vk:
-        Option<ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT<'static>>,
-    pub(crate) present_mode_compatibility_vk:
-        Option<ash::vk::SurfacePresentModeCompatibilityEXT<'a>>,
-    pub(crate) present_scaling_vk: Option<ash::vk::SurfacePresentScalingCapabilitiesEXT<'static>>,
-    pub(crate) protected_vk: Option<ash::vk::SurfaceProtectedCapabilitiesKHR<'static>>,
+        Option<vk::SurfaceCapabilitiesFullScreenExclusiveEXT<'static>>,
+    pub(crate) present_mode_compatibility_vk: Option<vk::SurfacePresentModeCompatibilityEXT<'a>>,
+    pub(crate) present_scaling_vk: Option<vk::SurfacePresentScalingCapabilitiesEXT<'static>>,
+    pub(crate) protected_vk: Option<vk::SurfaceProtectedCapabilitiesKHR<'static>>,
 }
 
 impl SurfaceCapabilities2ExtensionsVk<'_> {
@@ -2466,12 +2465,11 @@ impl SurfaceCapabilities2ExtensionsVk<'_> {
             protected_vk,
         } = self;
 
-        let present_mode_compatibility_vk = present_mode_compatibility_vk.map(|val_vk| {
-            ash::vk::SurfacePresentModeCompatibilityEXT {
+        let present_mode_compatibility_vk =
+            present_mode_compatibility_vk.map(|val_vk| vk::SurfacePresentModeCompatibilityEXT {
                 _marker: PhantomData,
                 ..val_vk
-            }
-        });
+            });
 
         SurfaceCapabilities2ExtensionsVk {
             full_screen_exclusive_vk,
@@ -2483,10 +2481,10 @@ impl SurfaceCapabilities2ExtensionsVk<'_> {
 }
 
 pub(crate) struct SurfaceCapabilities2Fields1Vk {
-    pub(crate) present_modes_vk: [ash::vk::PresentModeKHR; PresentMode::COUNT],
+    pub(crate) present_modes_vk: [vk::PresentModeKHR; PresentMode::COUNT],
 }
 
-fn filter_max(extent: ash::vk::Extent2D) -> Option<[u32; 2]> {
+fn filter_max(extent: vk::Extent2D) -> Option<[u32; 2]> {
     if extent.width == u32::MAX && extent.height == u32::MAX {
         None
     } else {

@@ -14,6 +14,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -26,7 +27,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 /// safe. In other words, you can only use a pool from one thread at a time.
 #[derive(Debug)]
 pub struct CommandPool {
-    handle: ash::vk::CommandPool,
+    handle: vk::CommandPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -34,7 +35,7 @@ pub struct CommandPool {
     queue_family_index: u32,
 
     // Unimplement `Sync`, as Vulkan command pools are not thread-safe.
-    _marker: PhantomData<Cell<ash::vk::CommandPool>>,
+    _marker: PhantomData<Cell<vk::CommandPool>>,
 }
 
 impl CommandPool {
@@ -94,7 +95,7 @@ impl CommandPool {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::CommandPool,
+        handle: vk::CommandPool,
         create_info: CommandPoolCreateInfo,
     ) -> CommandPool {
         let CommandPoolCreateInfo {
@@ -294,7 +295,7 @@ impl CommandPool {
                 (fns.v1_1.trim_command_pool)(
                     self.device.handle(),
                     self.handle,
-                    ash::vk::CommandPoolTrimFlags::empty(),
+                    vk::CommandPoolTrimFlags::empty(),
                 )
             };
         } else {
@@ -302,7 +303,7 @@ impl CommandPool {
                 (fns.khr_maintenance1.trim_command_pool_khr)(
                     self.device.handle(),
                     self.handle,
-                    ash::vk::CommandPoolTrimFlagsKHR::empty(),
+                    vk::CommandPoolTrimFlagsKHR::empty(),
                 )
             };
         }
@@ -318,7 +319,7 @@ impl Drop for CommandPool {
 }
 
 unsafe impl VulkanObject for CommandPool {
-    type Handle = ash::vk::CommandPool;
+    type Handle = vk::CommandPool;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -389,14 +390,14 @@ impl CommandPoolCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::CommandPoolCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::CommandPoolCreateInfo<'static> {
         let &Self {
             flags,
             queue_family_index,
             _ne: _,
         } = self;
 
-        ash::vk::CommandPoolCreateInfo::default()
+        vk::CommandPoolCreateInfo::default()
             .flags(flags.into())
             .queue_family_index(queue_family_index)
     }
@@ -453,15 +454,15 @@ pub struct CommandBufferAllocateInfo {
 impl CommandBufferAllocateInfo {
     pub(crate) fn to_vk(
         &self,
-        command_pool_vk: ash::vk::CommandPool,
-    ) -> ash::vk::CommandBufferAllocateInfo<'static> {
+        command_pool_vk: vk::CommandPool,
+    ) -> vk::CommandBufferAllocateInfo<'static> {
         let &Self {
             level,
             command_buffer_count,
             _ne: _,
         } = self;
 
-        ash::vk::CommandBufferAllocateInfo::default()
+        vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool_vk)
             .level(level.into())
             .command_buffer_count(command_buffer_count)
@@ -482,7 +483,7 @@ impl Default for CommandBufferAllocateInfo {
 /// Opaque type that represents a command buffer allocated from a pool.
 #[derive(Debug)]
 pub struct CommandPoolAlloc {
-    handle: ash::vk::CommandBuffer,
+    handle: vk::CommandBuffer,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     level: CommandBufferLevel,
@@ -497,7 +498,7 @@ impl CommandPoolAlloc {
 }
 
 unsafe impl VulkanObject for CommandPoolAlloc {
-    type Handle = ash::vk::CommandBuffer;
+    type Handle = vk::CommandBuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

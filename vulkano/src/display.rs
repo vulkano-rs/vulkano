@@ -30,6 +30,7 @@ use crate::{
     swapchain::SurfaceTransforms,
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -41,7 +42,7 @@ use std::{
 #[derive(Debug)]
 pub struct Display {
     physical_device: InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>,
-    handle: ash::vk::DisplayKHR,
+    handle: vk::DisplayKHR,
 
     name: Option<String>,
     physical_dimensions: [u32; 2],
@@ -50,7 +51,7 @@ pub struct Display {
     plane_reorder_possible: bool,
     persistent_content: bool,
 
-    display_modes: WeakArcOnceCache<ash::vk::DisplayModeKHR, DisplayMode>,
+    display_modes: WeakArcOnceCache<vk::DisplayModeKHR, DisplayMode>,
 }
 
 impl Display {
@@ -62,7 +63,7 @@ impl Display {
     #[inline]
     pub fn from_handle(
         physical_device: Arc<PhysicalDevice>,
-        handle: ash::vk::DisplayKHR,
+        handle: vk::DisplayKHR,
         properties: DisplayProperties,
     ) -> Arc<Self> {
         let DisplayProperties {
@@ -156,7 +157,7 @@ impl Display {
                 .map_err(VulkanError::from)?;
 
                 let mut properties_vk =
-                    vec![ash::vk::DisplayModeProperties2KHR::default(); count as usize];
+                    vec![vk::DisplayModeProperties2KHR::default(); count as usize];
                 let result = unsafe {
                     (fns.khr_get_display_properties2
                         .get_display_mode_properties2_khr)(
@@ -168,11 +169,11 @@ impl Display {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties_vk.set_len(count as usize) };
                         break properties_vk;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -218,11 +219,11 @@ impl Display {
                 };
 
                 match result {
-                    ash::vk::Result::SUCCESS => {
+                    vk::Result::SUCCESS => {
                         unsafe { properties.set_len(count as usize) };
                         break properties;
                     }
-                    ash::vk::Result::INCOMPLETE => (),
+                    vk::Result::INCOMPLETE => (),
                     err => return Err(VulkanError::from(err)),
                 }
             };
@@ -247,7 +248,7 @@ impl Display {
 }
 
 unsafe impl VulkanObject for Display {
-    type Handle = ash::vk::DisplayKHR;
+    type Handle = vk::DisplayKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -303,13 +304,13 @@ pub struct DisplayProperties {
 }
 
 impl DisplayProperties {
-    pub(crate) fn to_mut_vk2() -> ash::vk::DisplayProperties2KHR<'static> {
-        ash::vk::DisplayProperties2KHR::default()
+    pub(crate) fn to_mut_vk2() -> vk::DisplayProperties2KHR<'static> {
+        vk::DisplayProperties2KHR::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::DisplayPropertiesKHR<'_>) -> Self {
+    pub(crate) fn from_vk(val_vk: &vk::DisplayPropertiesKHR<'_>) -> Self {
         let display_name_vk = unsafe { val_vk.display_name_as_c_str() };
-        let &ash::vk::DisplayPropertiesKHR {
+        let &vk::DisplayPropertiesKHR {
             display: _,
             display_name: _,
             physical_dimensions,
@@ -329,8 +330,8 @@ impl DisplayProperties {
             physical_dimensions: [physical_dimensions.width, physical_dimensions.height],
             physical_resolution: [physical_resolution.width, physical_resolution.height],
             supported_transforms: supported_transforms.into(),
-            plane_reorder_possible: plane_reorder_possible != ash::vk::FALSE,
-            persistent_content: persistent_content != ash::vk::FALSE,
+            plane_reorder_possible: plane_reorder_possible != vk::FALSE,
+            persistent_content: persistent_content != vk::FALSE,
         }
     }
 }
@@ -341,7 +342,7 @@ impl DisplayProperties {
 #[derive(Debug)]
 pub struct DisplayMode {
     display: InstanceOwnedDebugWrapper<Arc<Display>>,
-    handle: ash::vk::DisplayModeKHR,
+    handle: vk::DisplayModeKHR,
 
     visible_region: [u32; 2],
     refresh_rate: u32,
@@ -412,7 +413,7 @@ impl DisplayMode {
     #[inline]
     pub fn from_handle(
         display: Arc<Display>,
-        handle: ash::vk::DisplayModeKHR,
+        handle: vk::DisplayModeKHR,
         create_info: DisplayModeCreateInfo,
     ) -> Arc<Self> {
         let DisplayModeCreateInfo {
@@ -504,7 +505,7 @@ impl DisplayMode {
                     .enabled_extensions()
                     .khr_get_display_properties2
                 {
-                    let info_vk = ash::vk::DisplayPlaneInfo2KHR::default()
+                    let info_vk = vk::DisplayPlaneInfo2KHR::default()
                         .mode(self.handle)
                         .plane_index(plane_index);
 
@@ -537,7 +538,7 @@ impl DisplayMode {
 }
 
 unsafe impl VulkanObject for DisplayMode {
-    type Handle = ash::vk::DisplayModeKHR;
+    type Handle = vk::DisplayModeKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -638,17 +639,17 @@ impl DisplayModeCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::DisplayModeCreateInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::DisplayModeCreateInfoKHR<'static> {
         let &Self {
             visible_region,
             refresh_rate,
             _ne: _,
         } = self;
 
-        ash::vk::DisplayModeCreateInfoKHR::default()
-            .flags(ash::vk::DisplayModeCreateFlagsKHR::empty())
-            .parameters(ash::vk::DisplayModeParametersKHR {
-                visible_region: ash::vk::Extent2D {
+        vk::DisplayModeCreateInfoKHR::default()
+            .flags(vk::DisplayModeCreateFlagsKHR::empty())
+            .parameters(vk::DisplayModeParametersKHR {
+                visible_region: vk::Extent2D {
                     width: visible_region[0],
                     height: visible_region[1],
                 },
@@ -656,8 +657,8 @@ impl DisplayModeCreateInfo {
             })
     }
 
-    pub(crate) fn from_vk_parameters(val_vk: &ash::vk::DisplayModeParametersKHR) -> Self {
-        let &ash::vk::DisplayModeParametersKHR {
+    pub(crate) fn from_vk_parameters(val_vk: &vk::DisplayModeParametersKHR) -> Self {
+        let &vk::DisplayModeParametersKHR {
             visible_region,
             refresh_rate,
         } = val_vk;
@@ -683,23 +684,23 @@ pub struct DisplayPlaneProperties {
 
 #[derive(Clone, Debug)]
 pub(crate) struct DisplayPlanePropertiesRaw {
-    pub(crate) current_display: Option<ash::vk::DisplayKHR>,
+    pub(crate) current_display: Option<vk::DisplayKHR>,
     pub(crate) current_stack_index: u32,
 }
 
 impl DisplayPlanePropertiesRaw {
-    pub(crate) fn to_mut_vk2() -> ash::vk::DisplayPlaneProperties2KHR<'static> {
-        ash::vk::DisplayPlaneProperties2KHR::default()
+    pub(crate) fn to_mut_vk2() -> vk::DisplayPlaneProperties2KHR<'static> {
+        vk::DisplayPlaneProperties2KHR::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::DisplayPlanePropertiesKHR) -> Self {
-        let &ash::vk::DisplayPlanePropertiesKHR {
+    pub(crate) fn from_vk(val_vk: &vk::DisplayPlanePropertiesKHR) -> Self {
+        let &vk::DisplayPlanePropertiesKHR {
             current_display,
             current_stack_index,
         } = val_vk;
 
         DisplayPlanePropertiesRaw {
-            current_display: Some(current_display).filter(|&x| x != ash::vk::DisplayKHR::null()),
+            current_display: Some(current_display).filter(|&x| x != vk::DisplayKHR::null()),
             current_stack_index,
         }
     }
@@ -738,14 +739,14 @@ pub struct DisplayPlaneCapabilities {
 }
 
 impl DisplayPlaneCapabilities {
-    pub(crate) fn to_mut_vk2() -> ash::vk::DisplayPlaneCapabilities2KHR<'static> {
-        ash::vk::DisplayPlaneCapabilities2KHR::default()
+    pub(crate) fn to_mut_vk2() -> vk::DisplayPlaneCapabilities2KHR<'static> {
+        vk::DisplayPlaneCapabilities2KHR::default()
     }
 
-    pub(crate) fn from_vk2(val_vk: &ash::vk::DisplayPlaneCapabilities2KHR<'_>) -> Self {
-        let &ash::vk::DisplayPlaneCapabilities2KHR {
+    pub(crate) fn from_vk2(val_vk: &vk::DisplayPlaneCapabilities2KHR<'_>) -> Self {
+        let &vk::DisplayPlaneCapabilities2KHR {
             capabilities:
-                ash::vk::DisplayPlaneCapabilitiesKHR {
+                vk::DisplayPlaneCapabilitiesKHR {
                     supported_alpha,
                     min_src_position,
                     max_src_position,

@@ -18,6 +18,7 @@ use crate::{
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
@@ -1329,11 +1330,11 @@ impl WriteDescriptorSet {
 
     pub(crate) fn to_vk<'a>(
         &self,
-        dst_set: ash::vk::DescriptorSet,
+        dst_set: vk::DescriptorSet,
         descriptor_type: DescriptorType,
         fields1_vk: &'a WriteDescriptorSetFields1,
         extensions_vk: &'a mut WriteDescriptorSetExtensionsVk<'_>,
-    ) -> ash::vk::WriteDescriptorSet<'a> {
+    ) -> vk::WriteDescriptorSet<'a> {
         let &Self {
             binding,
             first_array_element,
@@ -1343,7 +1344,7 @@ impl WriteDescriptorSet {
             descriptor_infos_vk,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::WriteDescriptorSet::default()
+        let mut val_vk = vk::WriteDescriptorSet::default()
             .dst_set(dst_set)
             .dst_binding(binding)
             .dst_array_element(first_array_element)
@@ -1391,13 +1392,13 @@ impl WriteDescriptorSet {
             | DescriptorInfosVk::BufferView(_) => None,
             DescriptorInfosVk::AccelerationStructure(info) => {
                 Some(DescriptorTypeExtensionVk::AccelerationStructure(
-                    ash::vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                    vk::WriteDescriptorSetAccelerationStructureKHR::default()
                         .acceleration_structures(info),
                 ))
             }
             DescriptorInfosVk::InlineUniformBlock(data) => {
                 Some(DescriptorTypeExtensionVk::InlineUniformBlock(
-                    ash::vk::WriteDescriptorSetInlineUniformBlock::default().data(data),
+                    vk::WriteDescriptorSetInlineUniformBlock::default().data(data),
                 ))
             }
         };
@@ -1413,7 +1414,7 @@ impl WriteDescriptorSet {
     ) -> WriteDescriptorSetFields1 {
         let descriptor_infos_vk = match &self.elements {
             WriteDescriptorSetElements::None(num_elements) => DescriptorInfosVk::Image(
-                std::iter::repeat_with(ash::vk::DescriptorImageInfo::default)
+                std::iter::repeat_with(vk::DescriptorImageInfo::default)
                     .take(*num_elements as usize)
                     .collect(),
             ),
@@ -1432,7 +1433,7 @@ impl WriteDescriptorSet {
             WriteDescriptorSetElements::ImageViewSampler(elements) => DescriptorInfosVk::Image(
                 elements
                     .iter()
-                    .map(|(image_view_info, sampler)| ash::vk::DescriptorImageInfo {
+                    .map(|(image_view_info, sampler)| vk::DescriptorImageInfo {
                         sampler: sampler.handle(),
                         ..image_view_info.to_vk(default_image_layout)
                     })
@@ -1441,7 +1442,7 @@ impl WriteDescriptorSet {
             WriteDescriptorSetElements::Sampler(elements) => DescriptorInfosVk::Image(
                 elements
                     .iter()
-                    .map(|sampler| ash::vk::DescriptorImageInfo {
+                    .map(|sampler| vk::DescriptorImageInfo {
                         sampler: sampler.handle(),
                         ..Default::default()
                     })
@@ -1468,8 +1469,8 @@ pub(crate) struct WriteDescriptorSetExtensionsVk<'a> {
 }
 
 pub(crate) enum DescriptorTypeExtensionVk<'a> {
-    AccelerationStructure(ash::vk::WriteDescriptorSetAccelerationStructureKHR<'a>),
-    InlineUniformBlock(ash::vk::WriteDescriptorSetInlineUniformBlock<'a>),
+    AccelerationStructure(vk::WriteDescriptorSetAccelerationStructureKHR<'a>),
+    InlineUniformBlock(vk::WriteDescriptorSetInlineUniformBlock<'a>),
 }
 
 pub(crate) struct WriteDescriptorSetFields1 {
@@ -1477,11 +1478,11 @@ pub(crate) struct WriteDescriptorSetFields1 {
 }
 
 pub(crate) enum DescriptorInfosVk {
-    Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
-    Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
-    BufferView(SmallVec<[ash::vk::BufferView; 1]>),
+    Image(SmallVec<[vk::DescriptorImageInfo; 1]>),
+    Buffer(SmallVec<[vk::DescriptorBufferInfo; 1]>),
+    BufferView(SmallVec<[vk::BufferView; 1]>),
     InlineUniformBlock(Vec<u8>),
-    AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
+    AccelerationStructure(SmallVec<[vk::AccelerationStructureKHR; 1]>),
 }
 
 /// The elements held by a `WriteDescriptorSet`.
@@ -1532,13 +1533,13 @@ pub struct DescriptorBufferInfo {
 }
 
 impl DescriptorBufferInfo {
-    pub(crate) fn to_vk(&self) -> ash::vk::DescriptorBufferInfo {
+    pub(crate) fn to_vk(&self) -> vk::DescriptorBufferInfo {
         let Self { buffer, range } = self;
 
         debug_assert!(!range.is_empty());
         debug_assert!(range.end <= buffer.buffer().size());
 
-        ash::vk::DescriptorBufferInfo {
+        vk::DescriptorBufferInfo {
             buffer: buffer.buffer().handle(),
             offset: buffer.offset() + range.start,
             range: range.end - range.start,
@@ -1573,14 +1574,14 @@ pub struct DescriptorImageViewInfo {
 }
 
 impl DescriptorImageViewInfo {
-    pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> ash::vk::DescriptorImageInfo {
+    pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> vk::DescriptorImageInfo {
         let &Self {
             ref image_view,
             image_layout,
         } = self;
 
-        ash::vk::DescriptorImageInfo {
-            sampler: ash::vk::Sampler::null(),
+        vk::DescriptorImageInfo {
+            sampler: vk::Sampler::null(),
             image_view: image_view.handle(),
             image_layout: if image_layout == ImageLayout::Undefined {
                 default_image_layout.into()
@@ -1850,10 +1851,7 @@ impl CopyDescriptorSet {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-        dst_set: ash::vk::DescriptorSet,
-    ) -> ash::vk::CopyDescriptorSet<'static> {
+    pub(crate) fn to_vk(&self, dst_set: vk::DescriptorSet) -> vk::CopyDescriptorSet<'static> {
         let &Self {
             ref src_set,
             src_binding,
@@ -1864,7 +1862,7 @@ impl CopyDescriptorSet {
             _ne: _,
         } = self;
 
-        ash::vk::CopyDescriptorSet::default()
+        vk::CopyDescriptorSet::default()
             .src_set(src_set.handle())
             .src_binding(src_binding)
             .src_array_element(src_first_array_element)

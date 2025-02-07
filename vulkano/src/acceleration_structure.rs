@@ -93,6 +93,7 @@ use crate::{
     DeviceAddress, DeviceSize, NonNullDeviceAddress, Packed24_8, Requires, RequiresAllOf,
     RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -100,7 +101,7 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 #[derive(Debug)]
 pub struct AccelerationStructure {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::AccelerationStructureKHR,
+    handle: vk::AccelerationStructureKHR,
     id: NonZeroU64,
 
     create_flags: AccelerationStructureCreateFlags,
@@ -195,7 +196,7 @@ impl AccelerationStructure {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::AccelerationStructureKHR,
+        handle: vk::AccelerationStructureKHR,
         create_info: AccelerationStructureCreateInfo,
     ) -> Arc<Self> {
         let AccelerationStructureCreateInfo {
@@ -245,7 +246,7 @@ impl AccelerationStructure {
     /// The device address of the acceleration structure may be different from the device address
     /// of the underlying buffer.
     pub fn device_address(&self) -> NonNullDeviceAddress {
-        let info_vk = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
+        let info_vk = vk::AccelerationStructureDeviceAddressInfoKHR::default()
             .acceleration_structure(self.handle);
         let fns = self.device.fns();
         let ptr = unsafe {
@@ -273,7 +274,7 @@ impl Drop for AccelerationStructure {
 }
 
 unsafe impl VulkanObject for AccelerationStructure {
-    type Handle = ash::vk::AccelerationStructureKHR;
+    type Handle = vk::AccelerationStructureKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -409,7 +410,7 @@ impl AccelerationStructureCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureCreateInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureCreateInfoKHR<'static> {
         let &Self {
             create_flags,
             ref buffer,
@@ -417,7 +418,7 @@ impl AccelerationStructureCreateInfo {
             _ne: _,
         } = self;
 
-        ash::vk::AccelerationStructureCreateInfoKHR::default()
+        vk::AccelerationStructureCreateInfoKHR::default()
             .create_flags(create_flags.into())
             .buffer(buffer.buffer().handle())
             .offset(buffer.offset())
@@ -611,7 +612,7 @@ impl AccelerationStructureBuildGeometryInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a AccelerationStructureBuildGeometryInfoFields1Vk,
-    ) -> ash::vk::AccelerationStructureBuildGeometryInfoKHR<'a> {
+    ) -> vk::AccelerationStructureBuildGeometryInfoKHR<'a> {
         let &Self {
             flags,
             ref mode,
@@ -622,7 +623,7 @@ impl AccelerationStructureBuildGeometryInfo {
         } = self;
         let AccelerationStructureBuildGeometryInfoFields1Vk { geometries_vk } = fields1_vk;
 
-        ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
+        vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .ty(geometries.to_vk_ty())
             .flags(flags.into())
             .mode(mode.to_vk())
@@ -669,7 +670,7 @@ impl AccelerationStructureBuildGeometryInfo {
 }
 
 pub(crate) struct AccelerationStructureBuildGeometryInfoFields1Vk {
-    pub(crate) geometries_vk: Vec<ash::vk::AccelerationStructureGeometryKHR<'static>>,
+    pub(crate) geometries_vk: Vec<vk::AccelerationStructureGeometryKHR<'static>>,
 }
 
 vulkan_bitflags! {
@@ -741,7 +742,7 @@ vulkan_bitflags! {
 #[repr(i32)]
 pub enum BuildAccelerationStructureMode {
     /// Build a new acceleration structure from scratch.
-    Build = ash::vk::BuildAccelerationStructureModeKHR::BUILD.as_raw(),
+    Build = vk::BuildAccelerationStructureModeKHR::BUILD.as_raw(),
 
     /// Update a previously built source acceleration structure with new data, storing the
     /// updated structure in the destination. The source and destination acceleration structures
@@ -749,18 +750,15 @@ pub enum BuildAccelerationStructureMode {
     ///
     /// The destination acceleration structure must have been built with the
     /// [`BuildAccelerationStructureFlags::ALLOW_UPDATE`] flag.
-    Update(Arc<AccelerationStructure>) =
-        ash::vk::BuildAccelerationStructureModeKHR::UPDATE.as_raw(),
+    Update(Arc<AccelerationStructure>) = vk::BuildAccelerationStructureModeKHR::UPDATE.as_raw(),
 }
 
 impl BuildAccelerationStructureMode {
-    pub(crate) fn to_vk(&self) -> ash::vk::BuildAccelerationStructureModeKHR {
+    pub(crate) fn to_vk(&self) -> vk::BuildAccelerationStructureModeKHR {
         match self {
-            BuildAccelerationStructureMode::Build => {
-                ash::vk::BuildAccelerationStructureModeKHR::BUILD
-            }
+            BuildAccelerationStructureMode::Build => vk::BuildAccelerationStructureModeKHR::BUILD,
             BuildAccelerationStructureMode::Update(_) => {
-                ash::vk::BuildAccelerationStructureModeKHR::UPDATE
+                vk::BuildAccelerationStructureModeKHR::UPDATE
             }
         }
     }
@@ -790,16 +788,16 @@ impl AccelerationStructureGeometries {
         }
     }
 
-    pub(crate) fn to_vk_ty(&self) -> ash::vk::AccelerationStructureTypeKHR {
+    pub(crate) fn to_vk_ty(&self) -> vk::AccelerationStructureTypeKHR {
         match self {
             AccelerationStructureGeometries::Triangles(_) => {
-                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
             }
             AccelerationStructureGeometries::Aabbs(_) => {
-                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
             }
             AccelerationStructureGeometries::Instances(_) => {
-                ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL
+                vk::AccelerationStructureTypeKHR::TOP_LEVEL
             }
         }
     }
@@ -986,7 +984,7 @@ impl AccelerationStructureGeometryTrianglesData {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
         let &AccelerationStructureGeometryTrianglesData {
             flags,
             vertex_format,
@@ -998,10 +996,10 @@ impl AccelerationStructureGeometryTrianglesData {
             _ne,
         } = self;
 
-        ash::vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+        vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                     .vertex_format(vertex_format.into())
                     .vertex_data(vertex_data.as_ref().map_or_else(
                         Default::default,
@@ -1012,7 +1010,7 @@ impl AccelerationStructureGeometryTrianglesData {
                     .index_type(
                         index_data
                             .as_ref()
-                            .map_or(ash::vk::IndexType::NONE_KHR, |index_data| {
+                            .map_or(vk::IndexType::NONE_KHR, |index_data| {
                                 index_data.index_type().into()
                             }),
                     )
@@ -1098,7 +1096,7 @@ impl AccelerationStructureGeometryAabbsData {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
         let &Self {
             flags,
             ref data,
@@ -1106,10 +1104,10 @@ impl AccelerationStructureGeometryAabbsData {
             _ne: _,
         } = self;
 
-        ash::vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(ash::vk::GeometryTypeKHR::AABBS)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                aabbs: ash::vk::AccelerationStructureGeometryAabbsDataKHR::default()
+        vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(vk::GeometryTypeKHR::AABBS)
+            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR::default()
                     .data(data.as_ref().map_or_else(
                         Default::default,
                         Subbuffer::to_vk_device_or_host_address_const,
@@ -1179,7 +1177,7 @@ impl AccelerationStructureGeometryInstancesData {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
         let &Self {
             flags,
             ref data,
@@ -1188,10 +1186,10 @@ impl AccelerationStructureGeometryInstancesData {
 
         let (array_of_pointers_vk, data_vk) = data.to_vk();
 
-        ash::vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
+        vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(vk::GeometryTypeKHR::INSTANCES)
+            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                instances: vk::AccelerationStructureGeometryInstancesDataKHR::default()
                     .array_of_pointers(array_of_pointers_vk)
                     .data(data_vk),
             })
@@ -1217,7 +1215,7 @@ pub enum AccelerationStructureGeometryInstancesDataType {
 }
 
 impl AccelerationStructureGeometryInstancesDataType {
-    pub(crate) fn to_vk(&self) -> (bool, ash::vk::DeviceOrHostAddressConstKHR) {
+    pub(crate) fn to_vk(&self) -> (bool, vk::DeviceOrHostAddressConstKHR) {
         match self {
             AccelerationStructureGeometryInstancesDataType::Values(data) => (
                 false,
@@ -1374,7 +1372,7 @@ pub struct AccelerationStructureBuildRangeInfo {
 
 impl AccelerationStructureBuildRangeInfo {
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureBuildRangeInfoKHR {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureBuildRangeInfoKHR {
         let &Self {
             primitive_count,
             primitive_offset,
@@ -1382,7 +1380,7 @@ impl AccelerationStructureBuildRangeInfo {
             transform_offset,
         } = self;
 
-        ash::vk::AccelerationStructureBuildRangeInfoKHR {
+        vk::AccelerationStructureBuildRangeInfoKHR {
             primitive_count,
             primitive_offset,
             first_vertex,
@@ -1472,7 +1470,7 @@ impl CopyAccelerationStructureInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::CopyAccelerationStructureInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::CopyAccelerationStructureInfoKHR<'static> {
         let &Self {
             ref src,
             ref dst,
@@ -1480,7 +1478,7 @@ impl CopyAccelerationStructureInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyAccelerationStructureInfoKHR::default()
+        vk::CopyAccelerationStructureInfoKHR::default()
             .src(src.handle())
             .dst(dst.handle())
             .mode(mode.into())
@@ -1554,7 +1552,7 @@ impl CopyAccelerationStructureToMemoryInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::CopyAccelerationStructureToMemoryInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::CopyAccelerationStructureToMemoryInfoKHR<'static> {
         let &Self {
             ref src,
             ref dst,
@@ -1562,7 +1560,7 @@ impl CopyAccelerationStructureToMemoryInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyAccelerationStructureToMemoryInfoKHR::default()
+        vk::CopyAccelerationStructureToMemoryInfoKHR::default()
             .src(src.handle())
             .dst(dst.to_vk_device_or_host_address())
             .mode(mode.into())
@@ -1639,7 +1637,7 @@ impl CopyMemoryToAccelerationStructureInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::CopyMemoryToAccelerationStructureInfoKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::CopyMemoryToAccelerationStructureInfoKHR<'static> {
         let &Self {
             ref src,
             ref dst,
@@ -1647,7 +1645,7 @@ impl CopyMemoryToAccelerationStructureInfo {
             _ne: _,
         } = self;
 
-        ash::vk::CopyMemoryToAccelerationStructureInfoKHR::default()
+        vk::CopyMemoryToAccelerationStructureInfoKHR::default()
             .src(src.to_vk_device_or_host_address_const())
             .dst(dst.handle())
             .mode(mode.into())
@@ -1717,12 +1715,12 @@ pub struct AccelerationStructureBuildSizesInfo {
 }
 
 impl AccelerationStructureBuildSizesInfo {
-    pub(crate) fn to_mut_vk() -> ash::vk::AccelerationStructureBuildSizesInfoKHR<'static> {
-        ash::vk::AccelerationStructureBuildSizesInfoKHR::default()
+    pub(crate) fn to_mut_vk() -> vk::AccelerationStructureBuildSizesInfoKHR<'static> {
+        vk::AccelerationStructureBuildSizesInfoKHR::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::AccelerationStructureBuildSizesInfoKHR<'_>) -> Self {
-        let &ash::vk::AccelerationStructureBuildSizesInfoKHR {
+    pub(crate) fn from_vk(val_vk: &vk::AccelerationStructureBuildSizesInfoKHR<'_>) -> Self {
+        let &vk::AccelerationStructureBuildSizesInfoKHR {
             acceleration_structure_size,
             update_scratch_size,
             build_scratch_size,

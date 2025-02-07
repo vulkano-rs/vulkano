@@ -19,6 +19,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -28,7 +29,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct PipelineCache {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::PipelineCache,
+    handle: vk::PipelineCache,
     id: NonZeroU64,
 
     flags: PipelineCacheCreateFlags,
@@ -135,7 +136,7 @@ impl PipelineCache {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::PipelineCache,
+        handle: vk::PipelineCache,
         create_info: PipelineCacheCreateInfo,
     ) -> Arc<PipelineCache> {
         let PipelineCacheCreateInfo {
@@ -209,11 +210,11 @@ impl PipelineCache {
             };
 
             match result {
-                ash::vk::Result::SUCCESS => {
+                vk::Result::SUCCESS => {
                     unsafe { data.set_len(count) };
                     break data;
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -286,7 +287,7 @@ impl Drop for PipelineCache {
 }
 
 unsafe impl VulkanObject for PipelineCache {
-    type Handle = ash::vk::PipelineCache;
+    type Handle = vk::PipelineCache;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -353,14 +354,14 @@ impl PipelineCacheCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PipelineCacheCreateInfo<'_> {
+    pub(crate) fn to_vk(&self) -> vk::PipelineCacheCreateInfo<'_> {
         let &Self {
             flags,
             ref initial_data,
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::PipelineCacheCreateInfo::default().flags(flags.into());
+        let mut val_vk = vk::PipelineCacheCreateInfo::default().flags(flags.into());
 
         if !initial_data.is_empty() {
             val_vk = val_vk.initial_data(initial_data);

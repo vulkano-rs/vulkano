@@ -75,6 +75,7 @@ use crate::{
     sync::PipelineStageAccessFlags,
     DeviceSize, ValidationError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
@@ -95,7 +96,7 @@ pub struct PrimaryAutoCommandBuffer {
 }
 
 unsafe impl VulkanObject for PrimaryAutoCommandBuffer {
-    type Handle = ash::vk::CommandBuffer;
+    type Handle = vk::CommandBuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -151,7 +152,7 @@ pub struct SecondaryAutoCommandBuffer {
 }
 
 unsafe impl VulkanObject for SecondaryAutoCommandBuffer {
-    type Handle = ash::vk::CommandBuffer;
+    type Handle = vk::CommandBuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

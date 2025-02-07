@@ -39,6 +39,7 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 
 use crate::{device::Device, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version};
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::ops::RangeInclusive;
 
@@ -229,14 +230,14 @@ impl ViewportState {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a ViewportStateFields1Vk,
-    ) -> ash::vk::PipelineViewportStateCreateInfo<'a> {
+    ) -> vk::PipelineViewportStateCreateInfo<'a> {
         let ViewportStateFields1Vk {
             viewports_vk,
             scissors_vk,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::PipelineViewportStateCreateInfo::default()
-            .flags(ash::vk::PipelineViewportStateCreateFlags::empty());
+        let mut val_vk = vk::PipelineViewportStateCreateInfo::default()
+            .flags(vk::PipelineViewportStateCreateFlags::empty());
 
         if !viewports_vk.is_empty() {
             val_vk = val_vk.viewports(viewports_vk);
@@ -267,8 +268,8 @@ impl ViewportState {
 }
 
 pub(crate) struct ViewportStateFields1Vk {
-    pub(crate) viewports_vk: SmallVec<[ash::vk::Viewport; 2]>,
-    pub(crate) scissors_vk: SmallVec<[ash::vk::Rect2D; 2]>,
+    pub(crate) viewports_vk: SmallVec<[vk::Viewport; 2]>,
+    pub(crate) scissors_vk: SmallVec<[vk::Rect2D; 2]>,
 }
 
 /// State of a single viewport.
@@ -443,14 +444,14 @@ impl Viewport {
     }
 
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::Viewport {
+    pub fn to_vk(&self) -> vk::Viewport {
         let &Self {
             offset,
             extent,
             ref depth_range,
         } = self;
 
-        ash::vk::Viewport {
+        vk::Viewport {
             x: offset[0],
             y: offset[1],
             width: extent[0],
@@ -496,15 +497,15 @@ impl Scissor {
 
     #[allow(clippy::wrong_self_convention)]
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::Rect2D {
+    pub fn to_vk(&self) -> vk::Rect2D {
         let &Self { offset, extent } = self;
 
-        ash::vk::Rect2D {
-            offset: ash::vk::Offset2D {
+        vk::Rect2D {
+            offset: vk::Offset2D {
                 x: offset[0] as i32,
                 y: offset[1] as i32,
             },
-            extent: ash::vk::Extent2D {
+            extent: vk::Extent2D {
                 width: extent[0],
                 height: extent[1],
             },

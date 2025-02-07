@@ -3,6 +3,7 @@
 use crate::{
     device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Debug)]
@@ -180,15 +181,15 @@ impl InputAssemblyState {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PipelineInputAssemblyStateCreateInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PipelineInputAssemblyStateCreateInfo<'static> {
         let &Self {
             topology,
             primitive_restart_enable,
             _ne: _,
         } = self;
 
-        ash::vk::PipelineInputAssemblyStateCreateInfo::default()
-            .flags(ash::vk::PipelineInputAssemblyStateCreateFlags::empty())
+        vk::PipelineInputAssemblyStateCreateInfo::default()
+            .flags(vk::PipelineInputAssemblyStateCreateFlags::empty())
             .topology(topology.into())
             .primitive_restart_enable(primitive_restart_enable)
     }

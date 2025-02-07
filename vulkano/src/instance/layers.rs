@@ -1,9 +1,10 @@
 use crate::Version;
+use ash::vk;
 
 /// Properties of a layer.
 #[derive(Clone)]
 pub struct LayerProperties {
-    pub(crate) props: ash::vk::LayerProperties,
+    pub(crate) props: vk::LayerProperties,
 }
 
 impl LayerProperties {

@@ -5,6 +5,7 @@
 use crate::{
     device::Device, macros::vulkan_enum, pipeline::graphics::viewport::Scissor, ValidationError,
 };
+use ash::vk;
 use smallvec::SmallVec;
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
@@ -87,7 +88,7 @@ impl DiscardRectangleState {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a DiscardRectangleStateFields1Vk,
-    ) -> ash::vk::PipelineDiscardRectangleStateCreateInfoEXT<'a> {
+    ) -> vk::PipelineDiscardRectangleStateCreateInfoEXT<'a> {
         let &Self {
             mode,
             rectangles: _,
@@ -97,8 +98,8 @@ impl DiscardRectangleState {
             discard_rectangles_vk,
         } = fields1_vk;
 
-        ash::vk::PipelineDiscardRectangleStateCreateInfoEXT::default()
-            .flags(ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty())
+        vk::PipelineDiscardRectangleStateCreateInfoEXT::default()
+            .flags(vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty())
             .discard_rectangle_mode(mode.into())
             .discard_rectangles(discard_rectangles_vk)
     }
@@ -119,7 +120,7 @@ impl DiscardRectangleState {
 }
 
 pub(crate) struct DiscardRectangleStateFields1Vk {
-    pub(crate) discard_rectangles_vk: SmallVec<[ash::vk::Rect2D; 2]>,
+    pub(crate) discard_rectangles_vk: SmallVec<[vk::Rect2D; 2]>,
 }
 
 vulkan_enum! {

@@ -162,15 +162,15 @@ impl FragmentShadingRateState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(&self) -> ash::vk::PipelineFragmentShadingRateStateCreateInfoKHR<'a> {
+    pub(crate) fn to_vk<'a>(&self) -> vk::PipelineFragmentShadingRateStateCreateInfoKHR<'a> {
         let fragment_size = vk::Extent2D {
             width: self.fragment_size[0],
             height: self.fragment_size[1],
         };
-        let combiner_ops: [ash::vk::FragmentShadingRateCombinerOpKHR; 2] =
+        let combiner_ops: [vk::FragmentShadingRateCombinerOpKHR; 2] =
             [self.combiner_ops[0].into(), self.combiner_ops[1].into()];
 
-        ash::vk::PipelineFragmentShadingRateStateCreateInfoKHR::default()
+        vk::PipelineFragmentShadingRateStateCreateInfoKHR::default()
             .fragment_size(fragment_size)
             .combiner_ops(combiner_ops)
     }
