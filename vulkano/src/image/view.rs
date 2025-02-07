@@ -22,7 +22,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A wrapper around an image that makes it available to shaders or framebuffers.
 ///
@@ -33,7 +33,7 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 pub struct ImageView {
     handle: vk::ImageView,
     image: DeviceOwnedDebugWrapper<Arc<Image>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     view_type: ImageViewType,
     format: Format,

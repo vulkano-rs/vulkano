@@ -26,7 +26,7 @@ use std::{
     cell::UnsafeCell,
     fmt::{Debug, Error as FmtError, Formatter},
     mem,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -175,7 +175,7 @@ impl AllocationHandle {
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    pools: ThreadLocal<UnsafeCell<SortedMap<NonZeroU64, Entry>>>,
+    pools: ThreadLocal<UnsafeCell<SortedMap<NonZero<u64>, Entry>>>,
     create_info: StandardDescriptorSetAllocatorCreateInfo,
 }
 

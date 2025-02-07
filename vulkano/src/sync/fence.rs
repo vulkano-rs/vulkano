@@ -38,7 +38,7 @@ use std::{
     fs::File,
     future::Future,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     pin::Pin,
     ptr,
     sync::Arc,
@@ -52,7 +52,7 @@ use std::{
 pub struct Fence {
     handle: vk::Fence,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: FenceCreateFlags,
     export_handle_types: ExternalFenceHandleTypes,

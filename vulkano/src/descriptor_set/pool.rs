@@ -12,7 +12,7 @@ use crate::{
 use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Pool that descriptors are allocated from.
 ///
@@ -22,7 +22,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 pub struct DescriptorPool {
     handle: vk::DescriptorPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: DescriptorPoolCreateFlags,
     max_sets: u32,
@@ -697,7 +697,7 @@ impl DescriptorSetAllocateInfo {
 #[derive(Debug)]
 pub struct DescriptorPoolAlloc {
     handle: vk::DescriptorSet,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
     variable_descriptor_count: u32,
 }

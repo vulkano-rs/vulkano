@@ -34,7 +34,7 @@ use std::{
     cmp::max,
     collections::hash_map::Entry,
     mem::{replace, MaybeUninit},
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -103,7 +103,7 @@ mod framebuffer;
 pub struct RenderPass {
     handle: vk::RenderPass,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: RenderPassCreateFlags,
     attachments: Vec<AttachmentDescription>,

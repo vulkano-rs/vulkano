@@ -74,7 +74,7 @@ use crate::{
 use ash::vk;
 use core::slice;
 use smallvec::SmallVec;
-use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Duration};
+use std::{fs::File, mem::MaybeUninit, num::NonZero, ptr, sync::Arc, time::Duration};
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -84,7 +84,7 @@ use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Dur
 pub struct Semaphore {
     handle: vk::Semaphore,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     semaphore_type: SemaphoreType,
     export_handle_types: ExternalSemaphoreHandleTypes,

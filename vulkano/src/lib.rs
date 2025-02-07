@@ -128,7 +128,7 @@ use std::{
     borrow::Cow,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    num::NonZeroU64,
+    num::NonZero,
     ops::Deref,
     sync::Arc,
 };
@@ -171,13 +171,13 @@ pub mod sync;
 pub use vk::DeviceSize;
 
 /// A [`DeviceSize`] that is known not to equal zero.
-pub type NonZeroDeviceSize = NonZeroU64;
+pub type NonZeroDeviceSize = NonZero<DeviceSize>;
 
 /// Represents an address (pointer) on a Vulkan device.
 pub use vk::DeviceAddress;
 
 /// A [`DeviceAddress`] that is known not to equal zero.
-pub type NonNullDeviceAddress = NonZeroU64;
+pub type NonNullDeviceAddress = NonZero<DeviceAddress>;
 
 /// Represents a region of device addresses with a stride.
 #[derive(Debug, Copy, Clone, Default)]

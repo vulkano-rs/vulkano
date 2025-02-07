@@ -126,7 +126,7 @@ use std::{
     fs::File,
     marker::PhantomData,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ops::Deref,
     ptr, slice,
     sync::{
@@ -149,7 +149,7 @@ pub struct Device {
     handle: vk::Device,
     // NOTE: `physical_devices` always contains this.
     physical_device: InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     enabled_extensions: DeviceExtensions,
     enabled_features: DeviceFeatures,

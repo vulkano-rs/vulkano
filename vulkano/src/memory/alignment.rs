@@ -1,10 +1,11 @@
-use crate::{DeviceSize, NonZeroDeviceSize};
+use crate::DeviceSize;
 use std::{
     cmp::Ordering,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
     mem,
+    num::NonZero,
 };
 
 /// Vulkan analog of std's [`Alignment`], stored as a [`DeviceSize`] that is guaranteed to be a
@@ -70,11 +71,11 @@ impl DeviceAlignment {
         self.0 as DeviceSize
     }
 
-    /// Returns the alignment as a [`NonZeroDeviceSize`].
+    /// Returns the alignment as a `NonZero<DeviceSize>`.
     #[inline]
-    pub const fn as_nonzero(self) -> NonZeroDeviceSize {
+    pub const fn as_nonzero(self) -> NonZero<DeviceSize> {
         // SAFETY: All the discriminants are non-zero.
-        unsafe { NonZeroDeviceSize::new_unchecked(self.as_devicesize()) }
+        unsafe { NonZero::new_unchecked(self.as_devicesize()) }
     }
 
     /// Returns the base-2 logarithm of the alignment.
@@ -107,11 +108,11 @@ impl Default for DeviceAlignment {
     }
 }
 
-impl TryFrom<NonZeroDeviceSize> for DeviceAlignment {
+impl TryFrom<NonZero<DeviceSize>> for DeviceAlignment {
     type Error = TryFromIntError;
 
     #[inline]
-    fn try_from(alignment: NonZeroDeviceSize) -> Result<Self, Self::Error> {
+    fn try_from(alignment: NonZero<DeviceSize>) -> Result<Self, Self::Error> {
         if alignment.is_power_of_two() {
             Ok(unsafe { DeviceAlignment::new_unchecked(alignment.get()) })
         } else {
@@ -129,7 +130,7 @@ impl TryFrom<DeviceSize> for DeviceAlignment {
     }
 }
 
-impl From<DeviceAlignment> for NonZeroDeviceSize {
+impl From<DeviceAlignment> for NonZero<DeviceSize> {
     #[inline]
     fn from(alignment: DeviceAlignment) -> Self {
         alignment.as_nonzero()

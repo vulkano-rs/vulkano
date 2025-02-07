@@ -33,7 +33,7 @@ use std::{
     fmt::{Debug, Error as FmtError, Formatter},
     marker::PhantomData,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -62,7 +62,7 @@ use std::{
 pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     instance: DebugWrapper<Arc<Instance>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     // Data queried at `PhysicalDevice` creation.
     api_version: Version,

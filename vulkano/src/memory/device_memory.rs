@@ -14,7 +14,7 @@ use std::{
     ffi::c_void,
     fs::File,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ops::Range,
     ptr::{self, NonNull},
     slice,
@@ -48,7 +48,7 @@ use std::{
 pub struct DeviceMemory {
     handle: vk::DeviceMemory,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     allocation_size: DeviceSize,
     memory_type_index: u32,

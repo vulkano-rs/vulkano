@@ -14,14 +14,14 @@ use crate::{
 use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
     handle: vk::DescriptorSetLayout,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: DescriptorSetLayoutCreateFlags,
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,

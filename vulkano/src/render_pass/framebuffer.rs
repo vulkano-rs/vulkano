@@ -10,7 +10,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
 
 /// The image views that are attached to a render pass during drawing.
 ///
@@ -40,7 +40,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 pub struct Framebuffer {
     handle: vk::Framebuffer,
     render_pass: DeviceOwnedDebugWrapper<Arc<RenderPass>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: FramebufferCreateFlags,
     attachments: Vec<DeviceOwnedDebugWrapper<Arc<ImageView>>>,
