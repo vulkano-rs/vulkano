@@ -11,9 +11,11 @@ use crate::{
 };
 use ash::vk;
 use foldhash::HashMap;
-use once_cell::sync::Lazy;
 use smallvec::SmallVec;
-use std::{ops::Range, sync::Arc};
+use std::{
+    ops::Range,
+    sync::{Arc, LazyLock},
+};
 
 vulkan_bitflags_enum! {
     #[non_exhaustive]
@@ -1402,9 +1404,9 @@ impl PipelineStageAccess {
         stages_read: ShaderStages,
         stages_write: ShaderStages,
     ) -> impl Iterator<Item = Self> + 'static {
-        static MAP_READ: Lazy<
+        static MAP_READ: LazyLock<
             HashMap<DescriptorType, HashMap<PipelineStage, PipelineStageAccess>>,
-        > = Lazy::new(|| {
+        > = LazyLock::new(|| {
             let uniform_read = [
                 DescriptorType::UniformBuffer,
                 DescriptorType::UniformBufferDynamic,
@@ -1582,9 +1584,9 @@ impl PipelineStageAccess {
                 .chain(input_attachment_read)
                 .collect()
         });
-        static MAP_WRITE: Lazy<
+        static MAP_WRITE: LazyLock<
             HashMap<DescriptorType, HashMap<PipelineStage, PipelineStageAccess>>,
-        > = Lazy::new(|| {
+        > = LazyLock::new(|| {
             let shader_storage_write = [
                 DescriptorType::StorageImage,
                 DescriptorType::StorageTexelBuffer,

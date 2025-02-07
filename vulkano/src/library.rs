@@ -18,7 +18,7 @@ use ash::vk;
 use libloading::{Error as LibloadingError, Library};
 use std::{
     error::Error,
-    ffi::{CStr, CString},
+    ffi::CString,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::transmute,
     os::raw::c_char,
@@ -114,8 +114,12 @@ impl VulkanLibrary {
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
         // to determine the version of Vulkan.
 
-        let name = unsafe { CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0") };
-        let func = unsafe { loader.get_instance_proc_addr(vk::Instance::null(), name.as_ptr()) };
+        let func = unsafe {
+            loader.get_instance_proc_addr(
+                vk::Instance::null(),
+                c"vkEnumerateInstanceVersion".as_ptr(),
+            )
+        };
 
         let version = if let Some(func) = func {
             let func: vk::PFN_vkEnumerateInstanceVersion = unsafe { transmute(func) };

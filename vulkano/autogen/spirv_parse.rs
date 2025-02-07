@@ -1,15 +1,14 @@
 use super::{write_file, SpirvGrammar};
 use foldhash::{HashMap, HashSet};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::LazyLock};
 
 // From the documentation of the OpSpecConstantOp instruction.
 // The instructions requiring the Kernel capability are not listed,
 // as this capability is not supported by Vulkan.
-static SPEC_CONSTANT_OP: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+static SPEC_CONSTANT_OP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from_iter([
         "SConvert",
         "UConvert",
