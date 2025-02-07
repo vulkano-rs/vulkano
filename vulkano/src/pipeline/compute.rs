@@ -27,7 +27,7 @@ use crate::{
 };
 use ash::vk;
 use foldhash::HashMap;
-use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -41,7 +41,7 @@ use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 pub struct ComputePipeline {
     handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,

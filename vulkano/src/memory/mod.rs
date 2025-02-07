@@ -105,7 +105,7 @@ use ash::vk;
 use std::{
     cmp,
     mem::ManuallyDrop,
-    num::NonZeroU64,
+    num::NonZero,
     ops::{Bound, Range, RangeBounds, RangeTo},
     ptr::NonNull,
     sync::Arc,
@@ -858,8 +858,8 @@ pub enum DedicatedAllocation<'a> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DedicatedTo {
-    Buffer(NonZeroU64),
-    Image(NonZeroU64),
+    Buffer(NonZero<u64>),
+    Image(NonZero<u64>),
 }
 
 impl From<DedicatedAllocation<'_>> for DedicatedTo {

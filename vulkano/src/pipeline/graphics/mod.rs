@@ -118,7 +118,7 @@ use foldhash::{HashMap, HashSet};
 use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
-    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc,
+    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZero, ptr, sync::Arc,
 };
 
 pub mod color_blend;
@@ -143,7 +143,7 @@ pub mod viewport;
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
     shader_stages: ShaderStages,

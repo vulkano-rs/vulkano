@@ -6,9 +6,9 @@ use crate::{
         allocator::{align_up, array_vec::ArrayVec, AllocationHandle, DeviceLayout},
         is_aligned, DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize,
+    DeviceSize,
 };
-use std::cmp;
+use std::{cmp, num::NonZero};
 
 /// A [suballocator] whose structure forms a binary tree of power-of-two-sized suballocations.
 ///
@@ -123,7 +123,7 @@ unsafe impl Suballocator for BuddyAllocator {
         fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
             const MAX_POWER_OF_TWO: DeviceSize = DeviceAlignment::MAX.as_devicesize();
 
-            if let Some(val) = NonZeroDeviceSize::new(val) {
+            if let Some(val) = NonZero::new(val) {
                 // This can't overflow because `val` is non-zero, which means it has fewer leading
                 // zeroes than the total number of bits.
                 MAX_POWER_OF_TWO >> val.leading_zeros()

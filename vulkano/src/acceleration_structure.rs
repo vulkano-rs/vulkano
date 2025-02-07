@@ -90,19 +90,19 @@ use crate::{
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceAddress, DeviceSize, NonNullDeviceAddress, Packed24_8, Requires, RequiresAllOf,
-    RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
+    DeviceAddress, DeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// An opaque data structure that is used to accelerate spatial queries on geometry data.
 #[derive(Debug)]
 pub struct AccelerationStructure {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: vk::AccelerationStructureKHR,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     create_flags: AccelerationStructureCreateFlags,
     buffer: Subbuffer<[u8]>,
@@ -245,7 +245,7 @@ impl AccelerationStructure {
     ///
     /// The device address of the acceleration structure may be different from the device address
     /// of the underlying buffer.
-    pub fn device_address(&self) -> NonNullDeviceAddress {
+    pub fn device_address(&self) -> NonZero<DeviceAddress> {
         let info_vk = vk::AccelerationStructureDeviceAddressInfoKHR::default()
             .acceleration_structure(self.handle);
         let fns = self.device.fns();
@@ -256,7 +256,7 @@ impl AccelerationStructure {
             )
         };
 
-        NonNullDeviceAddress::new(ptr).unwrap()
+        NonZero::new(ptr).unwrap()
     }
 }
 

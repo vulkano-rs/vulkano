@@ -83,8 +83,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonNullDeviceAddress, Requires, RequiresAllOf, RequiresOneOf, Validated,
-    ValidationError, Version, VulkanError, VulkanObject,
+    DeviceAddress, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
+    Version, VulkanError, VulkanObject,
 };
 use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
@@ -94,6 +94,7 @@ use std::{
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
+    num::NonZero,
     ops::Range,
     sync::Arc,
 };
@@ -470,7 +471,7 @@ impl Buffer {
 
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
         self.validate_device_address()?;
 
         Ok(unsafe { self.device_address_unchecked() })
@@ -502,7 +503,7 @@ impl Buffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
+    pub unsafe fn device_address_unchecked(&self) -> NonZero<DeviceAddress> {
         let device = self.device();
 
         let info_vk = vk::BufferDeviceAddressInfo::default().buffer(self.handle());
@@ -519,7 +520,7 @@ impl Buffer {
             unsafe { func(device.handle(), &info_vk) }
         };
 
-        NonNullDeviceAddress::new(ptr).unwrap()
+        NonZero::new(ptr).unwrap()
     }
 
     pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {

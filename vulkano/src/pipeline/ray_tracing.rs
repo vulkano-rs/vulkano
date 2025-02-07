@@ -66,7 +66,7 @@ use crate::{
 use ash::vk;
 use foldhash::{HashMap, HashSet};
 use smallvec::SmallVec;
-use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Defines how the implementation should perform ray tracing operations.
 ///
@@ -75,7 +75,7 @@ use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, 
 pub struct RayTracingPipeline {
     handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,

@@ -15,7 +15,7 @@ use crate::{
 use ash::vk;
 use std::{
     mem::{size_of_val, MaybeUninit},
-    num::NonZeroU64,
+    num::NonZero,
     ops::Range,
     ptr,
     sync::Arc,
@@ -26,7 +26,7 @@ use std::{
 pub struct QueryPool {
     handle: vk::QueryPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     query_type: QueryType,
     query_count: u32,

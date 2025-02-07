@@ -22,7 +22,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -34,7 +34,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 pub struct Event {
     handle: vk::Event,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     must_put_in_pool: bool,
 
     flags: EventCreateFlags,

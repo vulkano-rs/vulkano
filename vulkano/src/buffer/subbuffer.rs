@@ -10,7 +10,7 @@ use crate::{
         is_aligned, DeviceAlignment, MappedMemoryRange,
     },
     sync::HostAccessError,
-    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, ValidationError,
+    DeviceAddress, DeviceSize, ValidationError,
 };
 use ash::vk;
 use bytemuck::AnyBitPattern;
@@ -20,6 +20,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{self, align_of, size_of},
+    num::NonZero,
     ops::{Deref, DerefMut, Range, RangeBounds},
     ptr::{self, NonNull},
     sync::Arc,
@@ -129,23 +130,23 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     /// Returns the device address for this subbuffer.
-    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
         self.buffer().device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
             // in range.
-            unsafe { NonNullDeviceAddress::new_unchecked(ptr.get() + self.offset) }
+            unsafe { NonZero::new_unchecked(ptr.get() + self.offset) }
         })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
+    pub unsafe fn device_address_unchecked(&self) -> NonZero<DeviceAddress> {
         let buffer_device_address = unsafe { self.buffer().device_address_unchecked() };
 
         // SAFETY: The original address came from the Vulkan implementation, and allocation
         // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
         // in range.
-        unsafe { NonNullDeviceAddress::new_unchecked(buffer_device_address.get() + self.offset) }
+        unsafe { NonZero::new_unchecked(buffer_device_address.get() + self.offset) }
     }
 
     /// Casts the subbuffer to a slice of raw bytes.
@@ -1095,8 +1096,7 @@ impl BufferContentsLayout {
                 // SAFETY: `BufferContentsLayout`'s invariant guarantees that the alignment of the
                 // element type doesn't exceed 64, which together with the overflow invariant of
                 // `DeviceLayout` means that this can't overflow.
-                let padded_head_size =
-                    unsafe { NonZeroDeviceSize::new_unchecked(padded_head_size) };
+                let padded_head_size = unsafe { NonZero::new_unchecked(padded_head_size) };
 
                 // We have to align the head to the alignment of the element type, so that the
                 // struct as a whole is aligned correctly when a different struct is extended with

@@ -16,7 +16,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -748,7 +748,7 @@ pub struct SwapchainPresentInfo {
     /// used for `swapchain`. If a swapchain is recreated, this resets.
     ///
     /// The default value is `None`.
-    pub present_id: Option<NonZeroU64>,
+    pub present_id: Option<NonZero<u64>>,
 
     /// The new present mode to use for presenting. This mode will be used for the current
     /// present, and any future presents where this value is `None`.

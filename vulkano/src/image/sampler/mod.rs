@@ -49,7 +49,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ops::RangeInclusive, ptr, sync::Arc};
 
 pub mod ycbcr;
 
@@ -92,7 +92,7 @@ pub mod ycbcr;
 pub struct Sampler {
     handle: vk::Sampler,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     address_mode: [SamplerAddressMode; 3],
     anisotropy: Option<f32>,
