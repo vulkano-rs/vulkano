@@ -91,7 +91,7 @@ clippy.missing_safety_doc = "allow"                               # TODO: warn e
 clippy.multiple_unsafe_ops_per_block = "warn"
 clippy.ptr_as_ptr = "warn"
 clippy.ptr_cast_constness = "warn"
-# clippy.ref_as_ptr = "warn"                 # TODO: enable once it's stable
+clippy.ref_as_ptr = "warn"
 clippy.trivially_copy_pass_by_ref = "warn"
 # These lints are a bit too pedantic, so they're disabled here.
 # They can be removed if they no longer happen in the future.
