@@ -179,6 +179,7 @@ pub struct DebugUtilsMessengerCreateInfo {
 
 impl DebugUtilsMessengerCreateInfo {
     /// Returns a default `DebugUtilsMessengerCreateInfo` with the provided `user_callback`.
+    // TODO: make const
     #[inline]
     pub fn new(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
         Self {

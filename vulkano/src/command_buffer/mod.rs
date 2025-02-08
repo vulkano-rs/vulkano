@@ -550,7 +550,7 @@ pub struct CommandBufferInheritanceRenderPassInfo {
 impl CommandBufferInheritanceRenderPassInfo {
     /// Returns a default `CommandBufferInheritanceRenderPassInfo` with the provided `subpass`.
     #[inline]
-    pub fn new(subpass: Subpass) -> Self {
+    pub const fn new(subpass: Subpass) -> Self {
         Self {
             subpass,
             framebuffer: None,
@@ -1203,7 +1203,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a default `CommandBufferSubmitInfo` with the provided `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
+    pub const fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),
@@ -1285,7 +1285,7 @@ pub struct SemaphoreSubmitInfo {
 impl SemaphoreSubmitInfo {
     /// Returns a default `SemaphoreSubmitInfo` with the provided `semaphore`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             value: 0,

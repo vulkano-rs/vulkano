@@ -717,7 +717,7 @@ pub struct ShaderModuleCreateInfo<'a> {
 impl<'a> ShaderModuleCreateInfo<'a> {
     /// Returns a default `ShaderModuleCreateInfo` with the provided `code`.
     #[inline]
-    pub fn new(code: &'a [u32]) -> Self {
+    pub const fn new(code: &'a [u32]) -> Self {
         Self {
             code,
             _ne: crate::NonExhaustive(()),

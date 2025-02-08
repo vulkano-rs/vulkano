@@ -783,7 +783,7 @@ pub struct SwapchainPresentInfo {
 impl SwapchainPresentInfo {
     /// Returns a default `SwapchainPresentInfo` with the provided `swapchain` and `image_index`.
     #[inline]
-    pub fn new(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
+    pub const fn new(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
         Self {
             swapchain,
             image_index,
@@ -982,7 +982,7 @@ pub struct SemaphorePresentInfo {
 impl SemaphorePresentInfo {
     /// Returns a default `SemaphorePresentInfo` with the provided `semaphore`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             _ne: crate::NonExhaustive(()),

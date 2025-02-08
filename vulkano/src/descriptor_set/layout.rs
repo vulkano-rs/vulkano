@@ -627,7 +627,7 @@ pub struct DescriptorSetLayoutBinding {
 impl DescriptorSetLayoutBinding {
     /// Returns a default `DescriptorSetLayoutBinding` with the provided `descriptor_type`.
     #[inline]
-    pub fn new(descriptor_type: DescriptorType) -> Self {
+    pub const fn new(descriptor_type: DescriptorType) -> Self {
         Self {
             binding_flags: DescriptorBindingFlags::empty(),
             descriptor_type,

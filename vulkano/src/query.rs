@@ -426,7 +426,7 @@ pub struct QueryPoolCreateInfo {
 impl QueryPoolCreateInfo {
     /// Returns a default `QueryPoolCreateInfo` with the provided `query_type`.
     #[inline]
-    pub fn new(query_type: QueryType) -> Self {
+    pub const fn new(query_type: QueryType) -> Self {
         Self {
             query_type,
             query_count: 0,

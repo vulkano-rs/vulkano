@@ -649,7 +649,7 @@ pub struct DescriptorSetAllocateInfo {
 impl DescriptorSetAllocateInfo {
     /// Returns a default `DescriptorSetAllocateInfo` with the provided `layout`.
     #[inline]
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+    pub const fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         Self {
             layout,
             variable_descriptor_count: 0,

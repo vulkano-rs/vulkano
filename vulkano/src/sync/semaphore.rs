@@ -1576,7 +1576,7 @@ pub struct SemaphoreWaitValueInfo {
 impl SemaphoreWaitValueInfo {
     /// Returns a default `SemaphoreWaitValueInfo` with the provided `semaphore` and `value`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>, value: u64) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>, value: u64) -> Self {
         Self {
             semaphore,
             value,
@@ -1647,7 +1647,7 @@ pub struct ImportSemaphoreFdInfo {
 impl ImportSemaphoreFdInfo {
     /// Returns a default `ImportSemaphoreFdInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
@@ -1768,7 +1768,7 @@ pub struct ImportSemaphoreWin32HandleInfo {
 impl ImportSemaphoreWin32HandleInfo {
     /// Returns a default `ImportSemaphoreWin32HandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
@@ -1880,7 +1880,7 @@ pub struct ImportSemaphoreZirconHandleInfo {
 impl ImportSemaphoreZirconHandleInfo {
     /// Returns a default `ImportSemaphoreZirconHandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
@@ -1984,7 +1984,7 @@ pub struct ExternalSemaphoreInfo {
 impl ExternalSemaphoreInfo {
     /// Returns a default `ExternalSemaphoreInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             handle_type,
             semaphore_type: SemaphoreType::Binary,

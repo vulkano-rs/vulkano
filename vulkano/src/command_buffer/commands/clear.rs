@@ -654,6 +654,7 @@ pub struct ClearColorImageInfo {
 
 impl ClearColorImageInfo {
     /// Returns a default `ClearColorImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
     pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
@@ -868,6 +869,7 @@ pub struct ClearDepthStencilImageInfo {
 
 impl ClearDepthStencilImageInfo {
     /// Returns a default `ClearDepthStencilImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
     pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();

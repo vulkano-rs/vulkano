@@ -415,6 +415,7 @@ pub struct RayTracingPipelineCreateInfo {
 
 impl RayTracingPipelineCreateInfo {
     /// Returns a default `RayTracingPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
     pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {

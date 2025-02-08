@@ -872,7 +872,7 @@ pub struct ExternalBufferInfo {
 impl ExternalBufferInfo {
     /// Returns a default `ExternalBufferInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalMemoryHandleType) -> Self {
+    pub const fn new(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
             flags: BufferCreateFlags::empty(),
             usage: BufferUsage::empty(),

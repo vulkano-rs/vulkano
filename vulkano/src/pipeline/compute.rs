@@ -254,7 +254,7 @@ pub struct ComputePipelineCreateInfo {
 impl ComputePipelineCreateInfo {
     /// Returns a default `ComputePipelineCreateInfo` with the provided `stage` and `layout`.
     #[inline]
-    pub fn new(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
+    pub const fn new(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stage,

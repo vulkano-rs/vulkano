@@ -857,7 +857,7 @@ impl Default for MemoryAllocateInfo<'static> {
 impl<'d> MemoryAllocateInfo<'d> {
     /// Returns a default `MemoryAllocateInfo` with the provided `dedicated_allocation`.
     #[inline]
-    pub fn new(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
+    pub const fn new(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
         Self {
             allocation_size: 0,
             memory_type_index: u32::MAX,

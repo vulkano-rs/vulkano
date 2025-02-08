@@ -994,7 +994,7 @@ pub struct ImportFenceFdInfo {
 impl ImportFenceFdInfo {
     /// Returns a default `ImportFenceFdInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
+    pub const fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             flags: FenceImportFlags::empty(),
             handle_type,
@@ -1110,7 +1110,7 @@ pub struct ImportFenceWin32HandleInfo {
 impl ImportFenceWin32HandleInfo {
     /// Returns a default `ImportFenceWin32HandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
+    pub const fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             flags: FenceImportFlags::empty(),
             handle_type,
@@ -1203,7 +1203,7 @@ pub struct ExternalFenceInfo {
 impl ExternalFenceInfo {
     /// Returns a default `ExternalFenceInfo` with the provided `handle_type`.
     #[inline]
-    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
+    pub const fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             handle_type,
             _ne: crate::NonExhaustive(()),

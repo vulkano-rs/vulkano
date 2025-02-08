@@ -2892,6 +2892,7 @@ pub struct RenderingAttachmentInfo {
 
 impl RenderingAttachmentInfo {
     /// Returns a default `RenderingAttachmentInfo` with the provided `image_view`.
+    // TODO: make const
     #[inline]
     pub fn new(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().aspects();
@@ -3090,6 +3091,7 @@ pub struct RenderingAttachmentResolveInfo {
 
 impl RenderingAttachmentResolveInfo {
     /// Returns a default `RenderingAttachmentResolveInfo` with the provided `image_view`.
+    // TODO: make const
     #[inline]
     pub fn new(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().aspects();

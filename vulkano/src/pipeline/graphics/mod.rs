@@ -750,6 +750,7 @@ pub struct GraphicsPipelineCreateInfo {
 
 impl GraphicsPipelineCreateInfo {
     /// Returns a default `GraphicsPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
     pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {

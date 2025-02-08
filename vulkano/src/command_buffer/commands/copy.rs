@@ -1756,6 +1756,7 @@ pub struct CopyBufferInfo {
 
 impl CopyBufferInfo {
     /// Returns a default `CopyBufferInfo` with the provided `src_buffer` and `dst_buffer`.
+    // TODO: make const
     #[inline]
     pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferCopy {
@@ -2003,6 +2004,7 @@ pub struct CopyBufferInfoTyped<T> {
 
 impl<T> CopyBufferInfoTyped<T> {
     /// Returns a default `CopyBufferInfoTyped` with the provided `src_buffer` and `dst_buffer`.
+    // TODO: make const
     #[inline]
     pub fn new(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
         let region = BufferCopy {
@@ -2178,6 +2180,7 @@ pub struct CopyImageInfo {
 
 impl CopyImageInfo {
     /// Returns a default `CopyImageInfo` with the provided `src_image` and `dst_image`.
+    // TODO: make const
     #[inline]
     pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
@@ -3676,6 +3679,7 @@ pub struct CopyBufferToImageInfo {
 impl CopyBufferToImageInfo {
     /// Returns a default `CopyBufferToImageInfo` with the provided `src_buffer` and
     /// `dst_image`.
+    // TODO: make const
     #[inline]
     pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
         let region = BufferImageCopy {
@@ -4366,6 +4370,7 @@ pub struct CopyImageToBufferInfo {
 impl CopyImageToBufferInfo {
     /// Returns a default `CopyImageToBufferInfo` with the provided `src_image` and
     /// `dst_buffer`.
+    // TODO: make const
     #[inline]
     pub fn new(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferImageCopy {
@@ -5307,6 +5312,7 @@ pub struct BlitImageInfo {
 
 impl BlitImageInfo {
     /// Returns a default `BlitImageInfo` with the provided `src_image` and `dst_image`.
+    // TODO: make const
     #[inline]
     pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
@@ -6347,6 +6353,7 @@ pub struct ResolveImageInfo {
 
 impl ResolveImageInfo {
     /// Returns a default `ResolveImageInfo` with the provided `src_image` and `dst_image`.
+    // TODO: make const
     #[inline]
     pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
