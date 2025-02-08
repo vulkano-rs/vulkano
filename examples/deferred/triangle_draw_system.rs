@@ -109,7 +109,7 @@ impl TriangleDrawSystem {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
+                    ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()

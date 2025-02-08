@@ -248,7 +248,7 @@
 //!         .unwrap()
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap();
@@ -309,7 +309,7 @@
 //!         // .then_execute(...)
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap(); // TODO: PresentError?

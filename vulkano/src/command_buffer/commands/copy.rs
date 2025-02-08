@@ -1755,9 +1755,9 @@ pub struct CopyBufferInfo {
 }
 
 impl CopyBufferInfo {
-    /// Returns a `CopyBufferInfo` with the specified `src_buffer` and `dst_buffer`.
+    /// Returns a default `CopyBufferInfo` with the provided `src_buffer` and `dst_buffer`.
     #[inline]
-    pub fn buffers(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
+    pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferCopy {
             src_offset: 0,
             dst_offset: 0,
@@ -1771,6 +1771,12 @@ impl CopyBufferInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn buffers(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
+        Self::new(src_buffer, dst_buffer)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1996,8 +2002,9 @@ pub struct CopyBufferInfoTyped<T> {
 }
 
 impl<T> CopyBufferInfoTyped<T> {
-    /// Returns a `CopyBufferInfoTyped` with the specified `src_buffer` and `dst_buffer`.
-    pub fn buffers(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
+    /// Returns a default `CopyBufferInfoTyped` with the provided `src_buffer` and `dst_buffer`.
+    #[inline]
+    pub fn new(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
         let region = BufferCopy {
             size: min(src_buffer.len(), dst_buffer.len()),
             ..Default::default()
@@ -2009,6 +2016,12 @@ impl<T> CopyBufferInfoTyped<T> {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn buffers(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
+        Self::new(src_buffer, dst_buffer)
     }
 }
 
@@ -2164,9 +2177,9 @@ pub struct CopyImageInfo {
 }
 
 impl CopyImageInfo {
-    /// Returns a `CopyImageInfo` with the specified `src_image` and `dst_image`.
+    /// Returns a default `CopyImageInfo` with the provided `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageCopy {
             src_subresource: ImageSubresourceLayers {
@@ -2198,6 +2211,12 @@ impl CopyImageInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+        Self::new(src_image, dst_image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -3655,10 +3674,10 @@ pub struct CopyBufferToImageInfo {
 }
 
 impl CopyBufferToImageInfo {
-    /// Returns a `CopyBufferToImageInfo` with the specified `src_buffer` and
+    /// Returns a default `CopyBufferToImageInfo` with the provided `src_buffer` and
     /// `dst_image`.
     #[inline]
-    pub fn buffer_image(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
+    pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
         let region = BufferImageCopy {
             image_subresource: dst_image.subresource_layers(),
             image_extent: dst_image.extent(),
@@ -3672,6 +3691,12 @@ impl CopyBufferToImageInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn buffer_image(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
+        Self::new(src_buffer, dst_image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -4339,10 +4364,10 @@ pub struct CopyImageToBufferInfo {
 }
 
 impl CopyImageToBufferInfo {
-    /// Returns a `CopyImageToBufferInfo` with the specified `src_image` and
+    /// Returns a default `CopyImageToBufferInfo` with the provided `src_image` and
     /// `dst_buffer`.
     #[inline]
-    pub fn image_buffer(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
+    pub fn new(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferImageCopy {
             image_subresource: src_image.subresource_layers(),
             image_extent: src_image.extent(),
@@ -4356,6 +4381,12 @@ impl CopyImageToBufferInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image_buffer(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
+        Self::new(src_image, dst_buffer)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -5275,9 +5306,9 @@ pub struct BlitImageInfo {
 }
 
 impl BlitImageInfo {
-    /// Returns a `BlitImageInfo` with the specified `src_image` and `dst_image`.
+    /// Returns a default `BlitImageInfo` with the provided `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageBlit {
             src_subresource: ImageSubresourceLayers {
@@ -5302,6 +5333,12 @@ impl BlitImageInfo {
             filter: Filter::Nearest,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+        Self::new(src_image, dst_image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -6309,9 +6346,9 @@ pub struct ResolveImageInfo {
 }
 
 impl ResolveImageInfo {
-    /// Returns a `ResolveImageInfo` with the specified `src_image` and `dst_image`.
+    /// Returns a default `ResolveImageInfo` with the provided `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageResolve {
             src_subresource: ImageSubresourceLayers {
@@ -6343,6 +6380,12 @@ impl ResolveImageInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
+        Self::new(src_image, dst_image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

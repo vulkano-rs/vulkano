@@ -247,7 +247,7 @@ fn main() {
                     ColorBlendAttachmentState::default(),
                 )),
                 subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                ..GraphicsPipelineCreateInfo::new(layout)
             },
         )
         .unwrap()
@@ -306,7 +306,7 @@ fn main() {
     // the device. This step copies the output image into a host-readable linear output buffer
     // where consecutive pixels in the image are laid out consecutively in memory.
     builder
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
+        .copy_image_to_buffer(CopyImageToBufferInfo::new(
             render_output_image.clone(),
             render_output_buf.clone(),
         ))

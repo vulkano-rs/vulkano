@@ -443,7 +443,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -491,7 +491,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -535,7 +535,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -585,7 +585,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -604,7 +604,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };

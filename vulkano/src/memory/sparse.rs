@@ -249,7 +249,7 @@ pub struct SparseBufferMemoryBindInfo {
 }
 
 impl SparseBufferMemoryBindInfo {
-    /// Returns a `SparseBufferMemoryBindInfo` with the specified `buffer`.
+    /// Returns a default `SparseBufferMemoryBindInfo` with the provided `buffer`.
     #[inline]
     pub fn new(buffer: Arc<Buffer>) -> Self {
         Self {
@@ -583,7 +583,7 @@ pub struct SparseImageOpaqueMemoryBindInfo {
 }
 
 impl SparseImageOpaqueMemoryBindInfo {
-    /// Returns a `SparseImageOpaqueMemoryBindInfo` with the specified `image`.
+    /// Returns a default `SparseImageOpaqueMemoryBindInfo` with the provided `image`.
     #[inline]
     pub fn new(image: Arc<Image>) -> Self {
         Self {
@@ -1052,7 +1052,7 @@ pub struct SparseImageMemoryBindInfo {
 }
 
 impl SparseImageMemoryBindInfo {
-    /// Returns a `SparseImageMemoryBindInfo` with the specified `image`.
+    /// Returns a default `SparseImageMemoryBindInfo` with the provided `image`.
     #[inline]
     pub fn new(image: Arc<Image>) -> Self {
         Self {

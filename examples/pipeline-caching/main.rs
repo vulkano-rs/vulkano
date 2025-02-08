@@ -139,7 +139,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             Some(pipeline_cache.clone()),
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };

@@ -647,7 +647,7 @@ pub struct DescriptorSetAllocateInfo {
 }
 
 impl DescriptorSetAllocateInfo {
-    /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
+    /// Returns a default `DescriptorSetAllocateInfo` with the provided `layout`.
     #[inline]
     pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         Self {
@@ -803,7 +803,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),
@@ -839,7 +839,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),

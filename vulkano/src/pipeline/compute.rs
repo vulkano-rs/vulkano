@@ -252,9 +252,9 @@ pub struct ComputePipelineCreateInfo {
 }
 
 impl ComputePipelineCreateInfo {
-    /// Returns a `ComputePipelineCreateInfo` with the specified `stage` and `layout`.
+    /// Returns a default `ComputePipelineCreateInfo` with the provided `stage` and `layout`.
     #[inline]
-    pub fn stage_layout(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stage,
@@ -262,6 +262,12 @@ impl ComputePipelineCreateInfo {
             base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn stage_layout(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
+        Self::new(stage, layout)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -509,7 +515,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -658,7 +664,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };

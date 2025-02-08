@@ -338,7 +338,7 @@ pub struct AccelerationStructureCreateInfo {
 }
 
 impl AccelerationStructureCreateInfo {
-    /// Returns a `AccelerationStructureCreateInfo` with the specified `buffer`.
+    /// Returns a default `AccelerationStructureCreateInfo` with the provided `buffer`.
     #[inline]
     pub fn new(buffer: Subbuffer<[u8]>) -> Self {
         Self {
@@ -498,7 +498,7 @@ pub struct AccelerationStructureBuildGeometryInfo {
 }
 
 impl AccelerationStructureBuildGeometryInfo {
-    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified `geometries`.
+    /// Returns a default `AccelerationStructureBuildGeometryInfo` with the provided `geometries`.
     #[inline]
     pub fn new(geometries: AccelerationStructureGeometries) -> Self {
         Self {
@@ -891,7 +891,7 @@ pub struct AccelerationStructureGeometryTrianglesData {
 }
 
 impl AccelerationStructureGeometryTrianglesData {
-    /// Returns a `AccelerationStructureGeometryTrianglesData` with the specified
+    /// Returns a default `AccelerationStructureGeometryTrianglesData` with the provided
     /// `vertex_format`.
     #[inline]
     pub fn new(vertex_format: Format) -> Self {
@@ -1152,7 +1152,7 @@ pub struct AccelerationStructureGeometryInstancesData {
 }
 
 impl AccelerationStructureGeometryInstancesData {
-    /// Returns a `AccelerationStructureGeometryInstancesData` with the specified `data`.
+    /// Returns a default `AccelerationStructureGeometryInstancesData` with the provided `data`.
     #[inline]
     pub fn new(data: AccelerationStructureGeometryInstancesDataType) -> Self {
         Self {
@@ -1411,7 +1411,7 @@ pub struct CopyAccelerationStructureInfo {
 }
 
 impl CopyAccelerationStructureInfo {
-    /// Returns a `CopyAccelerationStructureInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyAccelerationStructureInfo` with the provided `src` and `dst`.
     #[inline]
     pub fn new(src: Arc<AccelerationStructure>, dst: Arc<AccelerationStructure>) -> Self {
         Self {
@@ -1507,7 +1507,8 @@ pub struct CopyAccelerationStructureToMemoryInfo {
 }
 
 impl CopyAccelerationStructureToMemoryInfo {
-    /// Returns a `CopyAccelerationStructureToMemoryInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyAccelerationStructureToMemoryInfo` with the provided `src` and
+    /// `dst`.
     #[inline]
     pub fn new(src: Arc<AccelerationStructure>, dst: Subbuffer<[u8]>) -> Self {
         Self {
@@ -1589,7 +1590,8 @@ pub struct CopyMemoryToAccelerationStructureInfo {
 }
 
 impl CopyMemoryToAccelerationStructureInfo {
-    /// Returns a `CopyMemoryToAccelerationStructureInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyMemoryToAccelerationStructureInfo` with the specified `src` and
+    /// `dst`.
     #[inline]
     pub fn new(src: Subbuffer<[u8]>, dst: Arc<AccelerationStructure>) -> Self {
         Self {

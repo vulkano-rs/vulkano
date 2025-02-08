@@ -819,9 +819,7 @@ impl FenceCreateInfo {
                 let external_fence_properties = unsafe {
                     device
                         .physical_device()
-                        .external_fence_properties_unchecked(ExternalFenceInfo::handle_type(
-                            handle_type,
-                        ))
+                        .external_fence_properties_unchecked(ExternalFenceInfo::new(handle_type))
                 };
 
                 if !external_fence_properties.exportable {
@@ -994,15 +992,21 @@ pub struct ImportFenceFdInfo {
 }
 
 impl ImportFenceFdInfo {
-    /// Returns an `ImportFenceFdInfo` with the specified `handle_type`.
+    /// Returns a default `ImportFenceFdInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             flags: FenceImportFlags::empty(),
             handle_type,
             file: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1104,15 +1108,21 @@ pub struct ImportFenceWin32HandleInfo {
 }
 
 impl ImportFenceWin32HandleInfo {
-    /// Returns an `ImportFenceWin32HandleInfo` with the specified `handle_type`.
+    /// Returns a default `ImportFenceWin32HandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             flags: FenceImportFlags::empty(),
             handle_type,
             handle: 0,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1191,13 +1201,19 @@ pub struct ExternalFenceInfo {
 }
 
 impl ExternalFenceInfo {
-    /// Returns an `ExternalFenceInfo` with the specified `handle_type`.
+    /// Returns a default `ExternalFenceInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+    pub fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             handle_type,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(

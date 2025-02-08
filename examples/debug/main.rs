@@ -76,7 +76,7 @@ fn main() {
                 message_type: DebugUtilsMessageType::GENERAL
                     | DebugUtilsMessageType::VALIDATION
                     | DebugUtilsMessageType::PERFORMANCE,
-                ..DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+                ..DebugUtilsMessengerCreateInfo::new(DebugUtilsMessengerCallback::new(
                     |message_severity, message_type, callback_data| {
                         let severity = if message_severity
                             .intersects(DebugUtilsMessageSeverity::ERROR)

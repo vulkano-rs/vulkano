@@ -287,7 +287,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 Ok(())
             }
 
-            /// Returns a `DeviceFeatures` object with none of the members set.
+            /// Returns a `DeviceFeatures` with none of the members set.
             #[inline]
             pub const fn empty() -> Self {
                 Self {
@@ -296,7 +296,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Returns a `DeviceFeatures` object with all of the members set.
+            /// Returns a `DeviceFeatures` with all of the members set.
             #[cfg(test)]
             pub(crate) const fn all() -> DeviceFeatures {
                 Self {

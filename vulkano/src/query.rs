@@ -424,15 +424,21 @@ pub struct QueryPoolCreateInfo {
 }
 
 impl QueryPoolCreateInfo {
-    /// Returns a `QueryPoolCreateInfo` with the specified `query_type`.
+    /// Returns a default `QueryPoolCreateInfo` with the provided `query_type`.
     #[inline]
-    pub fn query_type(query_type: QueryType) -> Self {
+    pub fn new(query_type: QueryType) -> Self {
         Self {
             query_type,
             query_count: 0,
             pipeline_statistics: QueryPipelineStatisticFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn query_type(query_type: QueryType) -> Self {
+        Self::new(query_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -788,7 +794,7 @@ mod tests {
                 device,
                 QueryPoolCreateInfo {
                     query_count: 256,
-                    ..QueryPoolCreateInfo::query_type(QueryType::PipelineStatistics)
+                    ..QueryPoolCreateInfo::new(QueryType::PipelineStatistics)
                 },
             ),
             Err(Validated::ValidationError(_)),

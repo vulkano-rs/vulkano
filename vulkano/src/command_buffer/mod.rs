@@ -548,13 +548,19 @@ pub struct CommandBufferInheritanceRenderPassInfo {
 }
 
 impl CommandBufferInheritanceRenderPassInfo {
-    /// Returns a `CommandBufferInheritanceRenderPassInfo` with the specified `subpass`.
+    /// Returns a default `CommandBufferInheritanceRenderPassInfo` with the provided `subpass`.
     #[inline]
-    pub fn subpass(subpass: Subpass) -> Self {
+    pub fn new(subpass: Subpass) -> Self {
         Self {
             subpass,
             framebuffer: None,
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn subpass(subpass: Subpass) -> Self {
+        Self::new(subpass)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1195,7 +1201,7 @@ pub struct CommandBufferSubmitInfo {
 }
 
 impl CommandBufferSubmitInfo {
-    /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
+    /// Returns a default `CommandBufferSubmitInfo` with the provided `command_buffer`.
     #[inline]
     pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
@@ -1277,7 +1283,7 @@ pub struct SemaphoreSubmitInfo {
 }
 
 impl SemaphoreSubmitInfo {
-    /// Returns a `SemaphoreSubmitInfo` with the specified `semaphore`.
+    /// Returns a default `SemaphoreSubmitInfo` with the provided `semaphore`.
     #[inline]
     pub fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
