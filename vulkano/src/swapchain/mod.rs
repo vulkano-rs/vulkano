@@ -1828,6 +1828,15 @@ pub struct SwapchainCreateInfo {
 impl Default for SwapchainCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SwapchainCreateInfo {
+    /// Returns a default `SwapchainCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             flags: SwapchainCreateFlags::empty(),
             min_image_count: 2,
@@ -1850,9 +1859,7 @@ impl Default for SwapchainCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SwapchainCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

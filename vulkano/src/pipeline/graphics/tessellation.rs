@@ -30,20 +30,19 @@ pub struct TessellationState {
 impl Default for TessellationState {
     #[inline]
     fn default() -> Self {
-        Self {
-            patch_control_points: 3,
-            domain_origin: TessellationDomainOrigin::default(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl TessellationState {
-    /// Creates a new `TessellationState` with 3 patch control points.
+    /// Returns a default `TessellationState`.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `TessellationState::default` instead")]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            patch_control_points: 3,
+            domain_origin: TessellationDomainOrigin::UpperLeft,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 
     /// Sets the number of patch control points.

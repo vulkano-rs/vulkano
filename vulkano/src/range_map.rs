@@ -54,7 +54,7 @@ where
 {
     /// Makes a new empty `RangeMap`.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         RangeMap {
             btm: BTreeMap::new(),
         }

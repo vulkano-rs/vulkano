@@ -1089,6 +1089,14 @@ pub struct SemaphoreCreateInfo {
 impl Default for SemaphoreCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemaphoreCreateInfo {
+    /// Returns a default `SemaphoreCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             semaphore_type: SemaphoreType::Binary,
             initial_value: 0,
@@ -1096,9 +1104,7 @@ impl Default for SemaphoreCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SemaphoreCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             semaphore_type,
@@ -1356,14 +1362,20 @@ pub struct SemaphoreSignalInfo {
 impl Default for SemaphoreSignalInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemaphoreSignalInfo {
+    /// Returns a default `SemaphoreSignalInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             value: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SemaphoreSignalInfo {
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { value: _, _ne: _ } = self;
 
@@ -1403,15 +1415,21 @@ pub struct SemaphoreWaitInfo {
 impl Default for SemaphoreWaitInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemaphoreWaitInfo {
+    /// Returns a default `SemaphoreWaitInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: SemaphoreWaitFlags::empty(),
             value: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SemaphoreWaitInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -1463,15 +1481,21 @@ pub struct SemaphoreWaitMultipleInfo {
 impl Default for SemaphoreWaitMultipleInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemaphoreWaitMultipleInfo {
+    /// Returns a default `SemaphoreWaitMultipleInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: SemaphoreWaitFlags::empty(),
             semaphores: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SemaphoreWaitMultipleInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

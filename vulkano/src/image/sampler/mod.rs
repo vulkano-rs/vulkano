@@ -680,6 +680,14 @@ pub struct SamplerCreateInfo {
 impl Default for SamplerCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SamplerCreateInfo {
+    /// Returns a default `SamplerCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             mag_filter: Filter::Nearest,
             min_filter: Filter::Nearest,
@@ -696,9 +704,7 @@ impl Default for SamplerCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SamplerCreateInfo {
     /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
     /// mode for borders.
     #[inline]
@@ -1171,8 +1177,13 @@ pub struct ComponentMapping {
 impl ComponentMapping {
     /// Creates a `ComponentMapping` with all components identity swizzled.
     #[inline]
-    pub fn identity() -> Self {
-        Self::default()
+    pub const fn identity() -> Self {
+        Self {
+            r: ComponentSwizzle::Identity,
+            g: ComponentSwizzle::Identity,
+            b: ComponentSwizzle::Identity,
+            a: ComponentSwizzle::Identity,
+        }
     }
 
     /// Returns `true` if all components are identity swizzled,

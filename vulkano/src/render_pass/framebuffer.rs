@@ -436,6 +436,14 @@ pub struct FramebufferCreateInfo {
 impl Default for FramebufferCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FramebufferCreateInfo {
+    /// Returns a default `FramebufferCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: FramebufferCreateFlags::empty(),
             attachments: Vec::new(),
@@ -444,9 +452,7 @@ impl Default for FramebufferCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl FramebufferCreateInfo {
     fn set_auto_extent_layers(&mut self, render_pass: &RenderPass) {
         let Self {
             flags: _,

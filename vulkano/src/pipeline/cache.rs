@@ -330,15 +330,21 @@ pub struct PipelineCacheCreateInfo {
 impl Default for PipelineCacheCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PipelineCacheCreateInfo {
+    /// Returns a default `PipelineCacheCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: PipelineCacheCreateFlags::empty(),
             initial_data: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PipelineCacheCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

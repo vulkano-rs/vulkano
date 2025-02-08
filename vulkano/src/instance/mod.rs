@@ -865,6 +865,14 @@ pub struct InstanceCreateInfo {
 impl Default for InstanceCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InstanceCreateInfo {
+    /// Returns a default `InstanceCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: InstanceCreateFlags::empty(),
             application_name: None,
@@ -880,9 +888,7 @@ impl Default for InstanceCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl InstanceCreateInfo {
     /// Returns an `InstanceCreateInfo` with the `application_name` and `application_version` set
     /// from information in your crate's Cargo.toml file.
     ///

@@ -774,15 +774,21 @@ pub struct FenceCreateInfo {
 impl Default for FenceCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FenceCreateInfo {
+    /// Returns a default `FenceCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: FenceCreateFlags::empty(),
             export_handle_types: ExternalFenceHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl FenceCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

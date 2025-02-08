@@ -844,6 +844,14 @@ pub struct ImageViewCreateInfo {
 impl Default for ImageViewCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageViewCreateInfo {
+    /// Returns a default `ImageViewCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_type: ImageViewType::Dim2d,
             format: Format::UNDEFINED,
@@ -858,9 +866,7 @@ impl Default for ImageViewCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
     /// array layers, and `subresource_range` determined from the image format and covering the
     /// whole image.

@@ -666,6 +666,14 @@ pub struct BufferCreateInfo {
 impl Default for BufferCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferCreateInfo {
+    /// Returns a default `BufferCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: BufferCreateFlags::empty(),
             sharing: Sharing::Exclusive,
@@ -675,9 +683,7 @@ impl Default for BufferCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BufferCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

@@ -1756,6 +1756,14 @@ pub struct ImageFormatInfo {
 impl Default for ImageFormatInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageFormatInfo {
+    /// Returns a default `ImageFormatInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
             format: Format::UNDEFINED,
@@ -1770,9 +1778,7 @@ impl Default for ImageFormatInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageFormatInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -2160,15 +2166,21 @@ pub struct ImageDrmFormatModifierInfo {
 impl Default for ImageDrmFormatModifierInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageDrmFormatModifierInfo {
+    /// Returns a default `ImageDrmFormatModifierInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             drm_format_modifier: 0,
             sharing: Sharing::Exclusive,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageDrmFormatModifierInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -2425,6 +2437,14 @@ pub struct SparseImageFormatInfo {
 impl Default for SparseImageFormatInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseImageFormatInfo {
+    /// Returns a default `SparseImageFormatInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             image_type: ImageType::Dim2d,
@@ -2434,9 +2454,7 @@ impl Default for SparseImageFormatInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SparseImageFormatInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,

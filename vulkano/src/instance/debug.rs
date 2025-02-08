@@ -545,6 +545,16 @@ impl Default for DebugUtilsLabel {
 }
 
 impl DebugUtilsLabel {
+    /// Returns a default `DebugUtilsLabel`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            label_name: String::new(),
+            color: [0.0; 4],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a DebugUtilsLabelFields1Vk,

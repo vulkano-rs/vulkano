@@ -803,19 +803,6 @@ pub struct FormatProperties {
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for FormatProperties {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            linear_tiling_features: Default::default(),
-            optimal_tiling_features: Default::default(),
-            buffer_features: Default::default(),
-            drm_format_modifier_properties: Default::default(),
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
 impl FormatProperties {
     /// Returns the format features for the specified tiling.
     pub fn format_features(

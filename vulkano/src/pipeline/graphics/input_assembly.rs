@@ -40,20 +40,14 @@ impl Default for InputAssemblyState {
     /// Returns [`InputAssemblyState::new()`].
     #[inline]
     fn default() -> Self {
-        Self {
-            topology: PrimitiveTopology::TriangleList,
-            primitive_restart_enable: false,
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl InputAssemblyState {
-    /// Creates an `InputAssemblyState` with the `TriangleList` topology and primitive restart
-    /// disabled.
+    /// Returns a default `InputAssemblyState`.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `InputAssemblyState::default` instead")]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             topology: PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,

@@ -356,15 +356,21 @@ pub struct CommandPoolCreateInfo {
 impl Default for CommandPoolCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandPoolCreateInfo {
+    /// Returns a default `CommandPoolCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: CommandPoolCreateFlags::empty(),
             queue_family_index: u32::MAX,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl CommandPoolCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -472,6 +478,14 @@ impl CommandBufferAllocateInfo {
 impl Default for CommandBufferAllocateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferAllocateInfo {
+    /// Returns a default `CommandBufferAllocateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             level: CommandBufferLevel::Primary,
             command_buffer_count: 1,

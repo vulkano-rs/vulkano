@@ -256,13 +256,19 @@ pub struct PrivateDataSlotCreateInfo {
 impl Default for PrivateDataSlotCreateInfo {
     #[inline]
     fn default() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl PrivateDataSlotCreateInfo {
+    /// Returns a default `PrivateDataSlotCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         Ok(())
     }

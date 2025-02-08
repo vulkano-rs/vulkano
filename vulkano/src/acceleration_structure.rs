@@ -1061,6 +1061,14 @@ pub struct AccelerationStructureGeometryAabbsData {
 impl Default for AccelerationStructureGeometryAabbsData {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AccelerationStructureGeometryAabbsData {
+    /// Returns a default `AccelerationStructureGeometryAabbsData`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: GeometryFlags::empty(),
             data: None,
@@ -1068,9 +1076,7 @@ impl Default for AccelerationStructureGeometryAabbsData {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl AccelerationStructureGeometryAabbsData {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -1286,6 +1292,15 @@ pub struct AccelerationStructureInstance {
 impl Default for AccelerationStructureInstance {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AccelerationStructureInstance {
+    /// Returns a default `AccelerationStructureInstance`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             transform: [
                 [1.0, 0.0, 0.0, 0.0],

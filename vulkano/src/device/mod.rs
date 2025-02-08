@@ -1466,6 +1466,15 @@ pub struct DeviceCreateInfo {
 impl Default for DeviceCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DeviceCreateInfo {
+    /// Returns a default `DeviceCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             queue_create_infos: Vec::new(),
             enabled_extensions: DeviceExtensions::empty(),
@@ -1475,9 +1484,7 @@ impl Default for DeviceCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DeviceCreateInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -1961,6 +1968,15 @@ pub struct QueueCreateInfo {
 impl Default for QueueCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl QueueCreateInfo {
+    /// Returns a default `QueueCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             flags: QueueCreateFlags::empty(),
             queue_family_index: 0,
@@ -1968,9 +1984,7 @@ impl Default for QueueCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl QueueCreateInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,

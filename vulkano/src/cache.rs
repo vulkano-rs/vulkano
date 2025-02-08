@@ -17,16 +17,17 @@ pub(crate) struct OnceCache<K, V> {
 
 impl<K, V> Default for OnceCache<K, V> {
     fn default() -> Self {
-        Self {
-            inner: RwLock::new(HashMap::default()),
-        }
+        Self::new()
     }
 }
 
 impl<K, V> OnceCache<K, V> {
     /// Creates a new `OnceCache`.
+    // TODO: make const
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: RwLock::new(HashMap::default()),
+        }
     }
 }
 
@@ -98,16 +99,17 @@ pub(crate) struct WeakArcOnceCache<K, V> {
 
 impl<K, V> Default for WeakArcOnceCache<K, V> {
     fn default() -> Self {
-        Self {
-            inner: RwLock::new(HashMap::default()),
-        }
+        Self::new()
     }
 }
 
 impl<K, V> WeakArcOnceCache<K, V> {
     /// Creates a new `OnceCache`.
+    // TODO: make const
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: RwLock::new(HashMap::default()),
+        }
     }
 }
 

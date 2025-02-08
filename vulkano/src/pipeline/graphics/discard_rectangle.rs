@@ -37,23 +37,19 @@ pub struct DiscardRectangleState {
 impl Default for DiscardRectangleState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DiscardRectangleState {
+    /// Returns a default `DiscardRectangleState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl DiscardRectangleState {
-    /// Creates a `DiscardRectangleState` in exclusive mode with zero rectangles.
-    #[inline]
-    #[deprecated(
-        since = "0.34.0",
-        note = "use `DiscardRectangleState::default` instead"
-    )]
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

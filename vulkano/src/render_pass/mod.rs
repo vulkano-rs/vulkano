@@ -822,6 +822,14 @@ pub struct RenderPassCreateInfo {
 impl Default for RenderPassCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderPassCreateInfo {
+    /// Returns a default `RenderPassCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: RenderPassCreateFlags::empty(),
             attachments: Vec::new(),
@@ -831,9 +839,7 @@ impl Default for RenderPassCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl RenderPassCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -2095,6 +2101,14 @@ pub struct AttachmentDescription {
 impl Default for AttachmentDescription {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AttachmentDescription {
+    /// Returns a default `AttachmentDescription`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: AttachmentDescriptionFlags::empty(),
             format: Format::UNDEFINED,
@@ -2110,9 +2124,7 @@ impl Default for AttachmentDescription {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl AttachmentDescription {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -2775,6 +2787,14 @@ pub struct SubpassDescription {
 impl Default for SubpassDescription {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubpassDescription {
+    /// Returns a default `SubpassDescription`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: SubpassDescriptionFlags::empty(),
             view_mask: 0,
@@ -2789,9 +2809,7 @@ impl Default for SubpassDescription {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SubpassDescription {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let properties = device.physical_device().properties();
 
@@ -3937,6 +3955,14 @@ pub struct AttachmentReference {
 impl Default for AttachmentReference {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AttachmentReference {
+    /// Returns a default `AttachmentReference`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             attachment: 0,
             layout: ImageLayout::Undefined,
@@ -3945,9 +3971,7 @@ impl Default for AttachmentReference {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl AttachmentReference {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             attachment: _,
@@ -4210,6 +4234,14 @@ pub struct SubpassDependency {
 impl Default for SubpassDependency {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubpassDependency {
+    /// Returns a default `SubpassDependency`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subpass: None,
             dst_subpass: None,
@@ -4222,9 +4254,7 @@ impl Default for SubpassDependency {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SubpassDependency {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             src_subpass,

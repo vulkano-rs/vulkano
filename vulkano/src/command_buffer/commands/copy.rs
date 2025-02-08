@@ -2062,6 +2062,14 @@ pub struct BufferCopy {
 impl Default for BufferCopy {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferCopy {
+    /// Returns a default `BufferCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_offset: 0,
             dst_offset: 0,
@@ -2069,9 +2077,7 @@ impl Default for BufferCopy {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BufferCopy {
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             src_offset: _,
@@ -3468,6 +3474,14 @@ pub struct ImageCopy {
 impl Default for ImageCopy {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageCopy {
+    /// Returns a default `ImageCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
@@ -3485,9 +3499,7 @@ impl Default for ImageCopy {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageCopy {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_subresource,
@@ -5031,6 +5043,14 @@ pub struct BufferImageCopy {
 impl Default for BufferImageCopy {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferImageCopy {
+    /// Returns a default `BufferImageCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             buffer_offset: 0,
             buffer_row_length: 0,
@@ -5045,9 +5065,7 @@ impl Default for BufferImageCopy {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BufferImageCopy {
     // Following
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
     pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
@@ -6131,6 +6149,14 @@ pub struct ImageBlit {
 impl Default for ImageBlit {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageBlit {
+    /// Returns a default `ImageBlit`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
@@ -6147,9 +6173,7 @@ impl Default for ImageBlit {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageBlit {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_subresource,
@@ -6943,6 +6967,14 @@ pub struct ImageResolve {
 impl Default for ImageResolve {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageResolve {
+    /// Returns a default `ImageResolve`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
@@ -6960,9 +6992,7 @@ impl Default for ImageResolve {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageResolve {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_subresource,

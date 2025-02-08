@@ -410,6 +410,14 @@ pub struct PipelineLayoutCreateInfo {
 impl Default for PipelineLayoutCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PipelineLayoutCreateInfo {
+    /// Returns a default `PipelineLayoutCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: PipelineLayoutCreateFlags::empty(),
             set_layouts: Vec::new(),
@@ -417,9 +425,7 @@ impl Default for PipelineLayoutCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PipelineLayoutCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let properties = device.physical_device().properties();
 
@@ -973,15 +979,21 @@ pub struct PushConstantRange {
 impl Default for PushConstantRange {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PushConstantRange {
+    /// Returns a default `PushConstantRange`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             stages: ShaderStages::empty(),
             offset: 0,
             size: 0,
         }
     }
-}
 
-impl PushConstantRange {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             stages,
