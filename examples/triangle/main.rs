@@ -719,10 +719,7 @@ impl ApplicationHandler for App {
                     // that draws the triangle.
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::new(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

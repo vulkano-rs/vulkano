@@ -490,10 +490,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::new(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
