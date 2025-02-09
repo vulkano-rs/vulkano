@@ -1023,7 +1023,15 @@ pub struct CopyBufferInfo<'a> {
 impl Default for CopyBufferInfo<'_> {
     #[inline]
     fn default() -> Self {
-        CopyBufferInfo {
+        Self::new()
+    }
+}
+
+impl CopyBufferInfo<'_> {
+    /// Returns a default `CopyBufferInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_buffer: Id::INVALID,
             dst_buffer: Id::INVALID,
             regions: &[],
@@ -1058,6 +1066,14 @@ pub struct BufferCopy<'a> {
 impl Default for BufferCopy<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferCopy<'_> {
+    /// Returns a default `BufferCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_offset: 0,
             dst_offset: 0,
@@ -1103,7 +1119,15 @@ pub struct CopyImageInfo<'a> {
 impl Default for CopyImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        CopyImageInfo {
+        Self::new()
+    }
+}
+
+impl CopyImageInfo<'_> {
+    /// Returns a default `CopyImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_image: Id::INVALID,
             src_image_layout: ImageLayoutType::Optimal,
             dst_image: Id::INVALID,
@@ -1148,6 +1172,14 @@ pub struct ImageCopy<'a> {
 impl Default for ImageCopy<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageCopy<'_> {
+    /// Returns a default `ImageCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
@@ -1197,7 +1229,15 @@ pub struct CopyBufferToImageInfo<'a> {
 impl Default for CopyBufferToImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        CopyBufferToImageInfo {
+        Self::new()
+    }
+}
+
+impl CopyBufferToImageInfo<'_> {
+    /// Returns a default `CopyBufferToImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_buffer: Id::INVALID,
             dst_image: Id::INVALID,
             dst_image_layout: ImageLayoutType::Optimal,
@@ -1237,7 +1277,15 @@ pub struct CopyImageToBufferInfo<'a> {
 impl Default for CopyImageToBufferInfo<'_> {
     #[inline]
     fn default() -> Self {
-        CopyImageToBufferInfo {
+        Self::new()
+    }
+}
+
+impl CopyImageToBufferInfo<'_> {
+    /// Returns a default `CopyImageToBufferInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_image: Id::INVALID,
             src_image_layout: ImageLayoutType::Optimal,
             dst_buffer: Id::INVALID,
@@ -1290,6 +1338,14 @@ pub struct BufferImageCopy<'a> {
 impl Default for BufferImageCopy<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferImageCopy<'_> {
+    /// Returns a default `BufferImageCopy`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             buffer_offset: 0,
             buffer_row_length: 0,
@@ -1349,7 +1405,15 @@ pub struct BlitImageInfo<'a> {
 impl Default for BlitImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        BlitImageInfo {
+        Self::new()
+    }
+}
+
+impl BlitImageInfo<'_> {
+    /// Returns a default `BlitImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_image: Id::INVALID,
             src_image_layout: ImageLayoutType::Optimal,
             dst_image: Id::INVALID,
@@ -1396,6 +1460,14 @@ pub struct ImageBlit<'a> {
 impl Default for ImageBlit<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageBlit<'_> {
+    /// Returns a default `ImageBlit`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
@@ -1450,7 +1522,15 @@ pub struct ResolveImageInfo<'a> {
 impl Default for ResolveImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        ResolveImageInfo {
+        Self::new()
+    }
+}
+
+impl ResolveImageInfo<'_> {
+    /// Returns a default `ResolveImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_image: Id::INVALID,
             src_image_layout: ImageLayoutType::Optimal,
             dst_image: Id::INVALID,
@@ -1495,6 +1575,14 @@ pub struct ImageResolve<'a> {
 impl Default for ImageResolve<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageResolve<'_> {
+    /// Returns a default `ImageResolve`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),

@@ -249,7 +249,15 @@ pub struct ClearColorImageInfo<'a> {
 impl Default for ClearColorImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        ClearColorImageInfo {
+        Self::new()
+    }
+}
+
+impl ClearColorImageInfo<'_> {
+    /// Returns a default `ClearColorImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             image: Id::INVALID,
             image_layout: ImageLayoutType::Optimal,
             clear_value: ClearColorValue::Float([0.0; 4]),
@@ -288,10 +296,21 @@ pub struct ClearDepthStencilImageInfo<'a> {
 impl Default for ClearDepthStencilImageInfo<'_> {
     #[inline]
     fn default() -> Self {
-        ClearDepthStencilImageInfo {
+        Self::new()
+    }
+}
+
+impl ClearDepthStencilImageInfo<'_> {
+    /// Returns a default `ClearDepthStencilImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             image: Id::INVALID,
             image_layout: ImageLayoutType::Optimal,
-            clear_value: ClearDepthStencilValue::default(),
+            clear_value: ClearDepthStencilValue {
+                depth: 0.0,
+                stencil: 0,
+            },
             regions: &[],
             _ne: crate::NE,
         }
@@ -331,7 +350,15 @@ pub struct FillBufferInfo<'a> {
 impl Default for FillBufferInfo<'_> {
     #[inline]
     fn default() -> Self {
-        FillBufferInfo {
+        Self::new()
+    }
+}
+
+impl FillBufferInfo<'_> {
+    /// Returns a default `FillBufferInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             dst_buffer: Id::INVALID,
             dst_offset: 0,
             size: 0,

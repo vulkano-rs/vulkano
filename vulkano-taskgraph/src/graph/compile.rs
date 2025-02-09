@@ -1686,7 +1686,15 @@ pub struct CompileInfo<'a> {
 impl Default for CompileInfo<'_> {
     #[inline]
     fn default() -> Self {
-        CompileInfo {
+        Self::new()
+    }
+}
+
+impl CompileInfo<'_> {
+    /// Returns a default `CompileInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             queues: &[],
             present_queue: None,
             flight_id: Id::INVALID,
