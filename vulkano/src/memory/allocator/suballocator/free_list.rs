@@ -268,6 +268,7 @@ unsafe impl Suballocator for FreeListAllocator {
         self.suballocations.head = root_ptr;
         self.suballocations.tail = root_ptr;
         self.suballocations.len = 1;
+        self.suballocations.free_list.push(root_ptr);
     }
 
     #[inline]
