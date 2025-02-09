@@ -2,7 +2,7 @@ use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
-use std::{cmp::Ordering, num::NonZeroUsize};
+use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
 
@@ -589,7 +589,7 @@ impl ComponentCount {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeArray {
     element_type: Box<Type>,
-    length: Option<NonZeroUsize>,
+    length: Option<NonZero<usize>>,
     stride: usize,
 }
 
@@ -608,7 +608,7 @@ impl TypeArray {
                     assert!(matches!(value.len(), 1 | 2));
                     let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
 
-                    NonZeroUsize::new(len.try_into().unwrap()).ok_or_else(|| {
+                    NonZero::new(len.try_into().unwrap()).ok_or_else(|| {
                         Error::new_spanned(&shader.source, "arrays must have a non-zero length")
                     })
                 }
@@ -972,7 +972,7 @@ impl ToTokens for Serializer<'_, TypeArray> {
 
         let element_type = Padded(Serializer(element_type, self.1), padding);
 
-        if let Some(length) = self.0.length.map(NonZeroUsize::get) {
+        if let Some(length) = self.0.length.map(NonZero::get) {
             tokens.extend(quote! { [#element_type; #length] });
         } else {
             tokens.extend(quote! { [#element_type] });

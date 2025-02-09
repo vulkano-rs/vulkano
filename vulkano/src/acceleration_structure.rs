@@ -90,19 +90,19 @@ use crate::{
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceAddress, DeviceSize, NonNullDeviceAddress, Packed24_8, Requires, RequiresAllOf,
-    RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
+    DeviceAddress, DeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// An opaque data structure that is used to accelerate spatial queries on geometry data.
 #[derive(Debug)]
 pub struct AccelerationStructure {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: vk::AccelerationStructureKHR,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     create_flags: AccelerationStructureCreateFlags,
     buffer: Subbuffer<[u8]>,
@@ -245,7 +245,7 @@ impl AccelerationStructure {
     ///
     /// The device address of the acceleration structure may be different from the device address
     /// of the underlying buffer.
-    pub fn device_address(&self) -> NonNullDeviceAddress {
+    pub fn device_address(&self) -> NonZero<DeviceAddress> {
         let info_vk = vk::AccelerationStructureDeviceAddressInfoKHR::default()
             .acceleration_structure(self.handle);
         let fns = self.device.fns();
@@ -256,7 +256,7 @@ impl AccelerationStructure {
             )
         };
 
-        NonNullDeviceAddress::new(ptr).unwrap()
+        NonZero::new(ptr).unwrap()
     }
 }
 
@@ -338,9 +338,9 @@ pub struct AccelerationStructureCreateInfo {
 }
 
 impl AccelerationStructureCreateInfo {
-    /// Returns a `AccelerationStructureCreateInfo` with the specified `buffer`.
+    /// Returns a default `AccelerationStructureCreateInfo` with the provided `buffer`.
     #[inline]
-    pub fn new(buffer: Subbuffer<[u8]>) -> Self {
+    pub const fn new(buffer: Subbuffer<[u8]>) -> Self {
         Self {
             create_flags: AccelerationStructureCreateFlags::empty(),
             buffer,
@@ -498,9 +498,9 @@ pub struct AccelerationStructureBuildGeometryInfo {
 }
 
 impl AccelerationStructureBuildGeometryInfo {
-    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified `geometries`.
+    /// Returns a default `AccelerationStructureBuildGeometryInfo` with the provided `geometries`.
     #[inline]
-    pub fn new(geometries: AccelerationStructureGeometries) -> Self {
+    pub const fn new(geometries: AccelerationStructureGeometries) -> Self {
         Self {
             flags: BuildAccelerationStructureFlags::empty(),
             mode: BuildAccelerationStructureMode::Build,
@@ -891,10 +891,10 @@ pub struct AccelerationStructureGeometryTrianglesData {
 }
 
 impl AccelerationStructureGeometryTrianglesData {
-    /// Returns a `AccelerationStructureGeometryTrianglesData` with the specified
+    /// Returns a default `AccelerationStructureGeometryTrianglesData` with the provided
     /// `vertex_format`.
     #[inline]
-    pub fn new(vertex_format: Format) -> Self {
+    pub const fn new(vertex_format: Format) -> Self {
         Self {
             flags: GeometryFlags::empty(),
             vertex_format,
@@ -1158,9 +1158,9 @@ pub struct AccelerationStructureGeometryInstancesData {
 }
 
 impl AccelerationStructureGeometryInstancesData {
-    /// Returns a `AccelerationStructureGeometryInstancesData` with the specified `data`.
+    /// Returns a default `AccelerationStructureGeometryInstancesData` with the provided `data`.
     #[inline]
-    pub fn new(data: AccelerationStructureGeometryInstancesDataType) -> Self {
+    pub const fn new(data: AccelerationStructureGeometryInstancesDataType) -> Self {
         Self {
             flags: GeometryFlags::empty(),
             data,
@@ -1426,9 +1426,9 @@ pub struct CopyAccelerationStructureInfo {
 }
 
 impl CopyAccelerationStructureInfo {
-    /// Returns a `CopyAccelerationStructureInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyAccelerationStructureInfo` with the provided `src` and `dst`.
     #[inline]
-    pub fn new(src: Arc<AccelerationStructure>, dst: Arc<AccelerationStructure>) -> Self {
+    pub const fn new(src: Arc<AccelerationStructure>, dst: Arc<AccelerationStructure>) -> Self {
         Self {
             src,
             dst,
@@ -1522,9 +1522,10 @@ pub struct CopyAccelerationStructureToMemoryInfo {
 }
 
 impl CopyAccelerationStructureToMemoryInfo {
-    /// Returns a `CopyAccelerationStructureToMemoryInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyAccelerationStructureToMemoryInfo` with the provided `src` and
+    /// `dst`.
     #[inline]
-    pub fn new(src: Arc<AccelerationStructure>, dst: Subbuffer<[u8]>) -> Self {
+    pub const fn new(src: Arc<AccelerationStructure>, dst: Subbuffer<[u8]>) -> Self {
         Self {
             src,
             dst,
@@ -1604,9 +1605,10 @@ pub struct CopyMemoryToAccelerationStructureInfo {
 }
 
 impl CopyMemoryToAccelerationStructureInfo {
-    /// Returns a `CopyMemoryToAccelerationStructureInfo` with the specified `src` and `dst`.
+    /// Returns a default `CopyMemoryToAccelerationStructureInfo` with the specified `src` and
+    /// `dst`.
     #[inline]
-    pub fn new(src: Subbuffer<[u8]>, dst: Arc<AccelerationStructure>) -> Self {
+    pub const fn new(src: Subbuffer<[u8]>, dst: Arc<AccelerationStructure>) -> Self {
         Self {
             src,
             dst,

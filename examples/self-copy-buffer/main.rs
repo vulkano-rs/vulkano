@@ -119,7 +119,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
@@ -180,7 +180,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyBufferInfoTyped::buffers(data_buffer.clone(), data_buffer.clone())
+            ..CopyBufferInfoTyped::new(data_buffer.clone(), data_buffer.clone())
         })
         .unwrap()
         .bind_pipeline_compute(pipeline.clone())

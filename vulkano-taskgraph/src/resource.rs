@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use std::{
     any::Any,
     hash::Hash,
-    num::{NonZeroU32, NonZeroU64},
+    num::NonZero,
     ops::{BitOr, BitOrAssign},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
@@ -102,7 +102,7 @@ pub(crate) struct SwapchainSemaphoreState {
 // FIXME: imported/exported fences
 #[derive(Debug)]
 pub struct Flight {
-    frame_count: NonZeroU32,
+    frame_count: NonZero<u32>,
     current_frame: AtomicU64,
     fences: SmallVec<[RwLock<Fence>; 3]>,
     pub(crate) state: Mutex<FlightState>,
@@ -246,7 +246,7 @@ impl Resources {
     /// - Returns an error when [`Fence::new_unchecked`] returns an error.
     pub fn create_flight(&self, frame_count: u32) -> Result<Id<Flight>, VulkanError> {
         let frame_count =
-            NonZeroU32::new(frame_count).expect("a flight with zero frames is not valid");
+            NonZero::new(frame_count).expect("a flight with zero frames is not valid");
 
         let fences = (0..frame_count.get())
             .map(|_| {
@@ -974,11 +974,11 @@ impl Flight {
     #[inline]
     #[must_use]
     pub fn current_frame_index(&self) -> u32 {
-        (self.current_frame() % NonZeroU64::from(self.frame_count)) as u32
+        (self.current_frame() % NonZero::<u64>::from(self.frame_count)) as u32
     }
 
     fn previous_frame_index(&self) -> u32 {
-        (self.current_frame().wrapping_sub(1) % NonZeroU64::from(self.frame_count)) as u32
+        (self.current_frame().wrapping_sub(1) % NonZero::<u64>::from(self.frame_count)) as u32
     }
 
     pub(crate) fn current_fence(&self) -> &RwLock<Fence> {
@@ -1011,7 +1011,7 @@ impl Flight {
             return Ok(());
         }
 
-        self.fences[(frame % NonZeroU64::from(self.frame_count)) as usize]
+        self.fences[(frame % NonZero::<u64>::from(self.frame_count)) as usize]
             .read()
             .wait(timeout)
     }

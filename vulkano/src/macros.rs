@@ -951,22 +951,22 @@ macro_rules! impl_id_counter {
     };
     (@inner $type:ident $(< $($param:ident),+ >)?, $($bounds:tt)*) => {
         impl< $($bounds)* > $type $(< $($param),+ >)? {
-            fn next_id() -> std::num::NonZeroU64 {
+            fn next_id() -> std::num::NonZero<u64> {
                 use std::{
-                    num::NonZeroU64,
+                    num::NonZero,
                     sync::atomic::{AtomicU64, Ordering},
                 };
 
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
-                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
+                NonZero::<u64>::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
                     eprintln!("an ID counter has overflown ...somehow");
                     std::process::abort();
                 })
             }
 
             #[allow(dead_code)]
-            pub(crate) fn id(&self) -> std::num::NonZeroU64 {
+            pub(crate) fn id(&self) -> std::num::NonZero<u64> {
                 self.id
             }
         }

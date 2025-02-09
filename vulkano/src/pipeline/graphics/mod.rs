@@ -118,7 +118,7 @@ use foldhash::{HashMap, HashSet};
 use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
-    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc,
+    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZero, ptr, sync::Arc,
 };
 
 pub mod color_blend;
@@ -143,7 +143,7 @@ pub mod viewport;
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
     shader_stages: ShaderStages,
@@ -749,9 +749,10 @@ pub struct GraphicsPipelineCreateInfo {
 }
 
 impl GraphicsPipelineCreateInfo {
-    /// Returns a `GraphicsPipelineCreateInfo` with the specified `layout`.
+    /// Returns a default `GraphicsPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
@@ -775,6 +776,12 @@ impl GraphicsPipelineCreateInfo {
 
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+        Self::new(layout)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

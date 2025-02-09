@@ -436,7 +436,7 @@ use spirv::ExecutionModel;
 use std::{
     collections::hash_map::Entry,
     mem::{discriminant, MaybeUninit},
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -452,7 +452,7 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 pub struct ShaderModule {
     handle: vk::ShaderModule,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     spirv: Spirv,
     specialization_constants: HashMap<u32, SpecializationConstant>,
@@ -715,9 +715,9 @@ pub struct ShaderModuleCreateInfo<'a> {
 }
 
 impl<'a> ShaderModuleCreateInfo<'a> {
-    /// Returns a `ShaderModuleCreateInfo` with the specified `code`.
+    /// Returns a default `ShaderModuleCreateInfo` with the provided `code`.
     #[inline]
-    pub fn new(code: &'a [u32]) -> Self {
+    pub const fn new(code: &'a [u32]) -> Self {
         Self {
             code,
             _ne: crate::NonExhaustive(()),

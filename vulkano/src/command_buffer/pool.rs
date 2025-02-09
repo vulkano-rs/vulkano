@@ -16,7 +16,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Represents a Vulkan command pool.
 ///
@@ -29,7 +29,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 pub struct CommandPool {
     handle: vk::CommandPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: CommandPoolCreateFlags,
     queue_family_index: u32,
@@ -499,7 +499,7 @@ impl CommandBufferAllocateInfo {
 pub struct CommandPoolAlloc {
     handle: vk::CommandBuffer,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     level: CommandBufferLevel,
 }
 

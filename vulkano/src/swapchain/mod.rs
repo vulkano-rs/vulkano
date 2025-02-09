@@ -248,7 +248,7 @@
 //!         .unwrap()
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap();
@@ -309,7 +309,7 @@
 //!         // .then_execute(...)
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap(); // TODO: PresentError?
@@ -337,7 +337,7 @@ use smallvec::SmallVec;
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -355,7 +355,7 @@ pub struct Swapchain {
     handle: vk::SwapchainKHR,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     surface: InstanceOwnedDebugWrapper<Arc<Surface>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: SwapchainCreateFlags,
     min_image_count: u32,
@@ -1397,7 +1397,7 @@ impl Swapchain {
     #[inline]
     pub fn wait_for_present(
         &self,
-        present_id: NonZeroU64,
+        present_id: NonZero<u64>,
         timeout: Option<Duration>,
     ) -> Result<bool, Validated<VulkanError>> {
         let is_retired_lock = self.is_retired.lock();
@@ -1408,7 +1408,7 @@ impl Swapchain {
 
     fn validate_wait_for_present(
         &self,
-        _present_id: NonZeroU64,
+        _present_id: NonZero<u64>,
         timeout: Option<Duration>,
         is_retired: bool,
     ) -> Result<(), Box<ValidationError>> {
@@ -1446,7 +1446,7 @@ impl Swapchain {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn wait_for_present_unchecked(
         &self,
-        present_id: NonZeroU64,
+        present_id: NonZero<u64>,
         timeout: Option<Duration>,
     ) -> Result<bool, VulkanError> {
         let result = {
@@ -1635,7 +1635,7 @@ impl Swapchain {
     }
 
     #[inline]
-    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
+    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZero<u64>) -> bool {
         let present_id = u64::from(present_id);
         self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }

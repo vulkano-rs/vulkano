@@ -307,10 +307,7 @@ impl VulkanoWindowRenderer {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    self.swapchain.clone(),
-                    self.image_index,
-                ),
+                SwapchainPresentInfo::new(self.swapchain.clone(), self.image_index),
             )
             .then_signal_fence_and_flush();
         match future.map_err(Validated::unwrap) {

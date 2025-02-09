@@ -99,7 +99,7 @@ impl SceneTask {
                     stages: stages.into_iter().collect(),
                     groups: groups.into_iter().collect(),
                     max_pipeline_ray_recursion_depth: 1,
-                    ..RayTracingPipelineCreateInfo::layout(pipeline_layout.clone())
+                    ..RayTracingPipelineCreateInfo::new(pipeline_layout.clone())
                 },
             )
             .unwrap()

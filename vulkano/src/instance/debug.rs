@@ -178,15 +178,22 @@ pub struct DebugUtilsMessengerCreateInfo {
 }
 
 impl DebugUtilsMessengerCreateInfo {
-    /// Returns a `DebugUtilsMessengerCreateInfo` with the specified `user_callback`.
+    /// Returns a default `DebugUtilsMessengerCreateInfo` with the provided `user_callback`.
+    // TODO: make const
     #[inline]
-    pub fn user_callback(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
+    pub fn new(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
         Self {
             message_severity: DebugUtilsMessageSeverity::ERROR | DebugUtilsMessageSeverity::WARNING,
             message_type: DebugUtilsMessageType::GENERAL,
             user_callback,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn user_callback(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
+        Self::new(user_callback)
     }
 
     #[inline]
@@ -688,7 +695,7 @@ mod tests {
                 message_type: DebugUtilsMessageType::GENERAL
                     | DebugUtilsMessageType::VALIDATION
                     | DebugUtilsMessageType::PERFORMANCE,
-                ..DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+                ..DebugUtilsMessengerCreateInfo::new(unsafe {
                     DebugUtilsMessengerCallback::new(|_, _, _| {})
                 })
             },

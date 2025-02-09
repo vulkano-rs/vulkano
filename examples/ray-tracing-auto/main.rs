@@ -226,7 +226,7 @@ impl ApplicationHandler for App {
                                     0,
                                     DescriptorSetLayoutBinding {
                                         stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::descriptor_type(
+                                        ..DescriptorSetLayoutBinding::new(
                                             DescriptorType::AccelerationStructure,
                                         )
                                     },
@@ -235,7 +235,7 @@ impl ApplicationHandler for App {
                                     1,
                                     DescriptorSetLayoutBinding {
                                         stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::descriptor_type(
+                                        ..DescriptorSetLayoutBinding::new(
                                             DescriptorType::UniformBuffer,
                                         )
                                     },
@@ -254,9 +254,7 @@ impl ApplicationHandler for App {
                                 0,
                                 DescriptorSetLayoutBinding {
                                     stages: ShaderStages::RAYGEN,
-                                    ..DescriptorSetLayoutBinding::descriptor_type(
-                                        DescriptorType::StorageImage,
-                                    )
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
                                 },
                             )]
                             .into_iter()
@@ -372,10 +370,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

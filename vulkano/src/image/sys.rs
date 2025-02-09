@@ -35,7 +35,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A raw image, with no memory backing it.
 ///
@@ -50,7 +50,7 @@ use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc
 pub struct RawImage {
     handle: vk::Image,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: ImageCreateFlags,
     image_type: ImageType,

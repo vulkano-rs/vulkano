@@ -21,7 +21,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -30,7 +30,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 pub struct PipelineCache {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: vk::PipelineCache,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCacheCreateFlags,
 }
@@ -449,7 +449,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -497,7 +497,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -541,7 +541,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -591,7 +591,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -610,7 +610,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };

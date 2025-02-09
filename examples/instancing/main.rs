@@ -359,7 +359,7 @@ impl ApplicationHandler for App {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
+                    ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()
@@ -492,10 +492,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

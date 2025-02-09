@@ -12,7 +12,7 @@ use crate::{
 use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Pool that descriptors are allocated from.
 ///
@@ -22,7 +22,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 pub struct DescriptorPool {
     handle: vk::DescriptorPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: DescriptorPoolCreateFlags,
     max_sets: u32,
@@ -654,9 +654,9 @@ pub struct DescriptorSetAllocateInfo {
 }
 
 impl DescriptorSetAllocateInfo {
-    /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
+    /// Returns a default `DescriptorSetAllocateInfo` with the provided `layout`.
     #[inline]
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+    pub const fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         Self {
             layout,
             variable_descriptor_count: 0,
@@ -704,7 +704,7 @@ impl DescriptorSetAllocateInfo {
 #[derive(Debug)]
 pub struct DescriptorPoolAlloc {
     handle: vk::DescriptorSet,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
     variable_descriptor_count: u32,
 }
@@ -810,7 +810,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),
@@ -846,7 +846,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),

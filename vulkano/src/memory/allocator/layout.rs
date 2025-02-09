@@ -1,13 +1,12 @@
 use super::align_up;
-use crate::{
-    buffer::BufferContents, macros::try_opt, memory::DeviceAlignment, DeviceSize, NonZeroDeviceSize,
-};
+use crate::{buffer::BufferContents, macros::try_opt, memory::DeviceAlignment, DeviceSize};
 use std::{
     alloc::Layout,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::Hash,
     mem,
+    num::NonZero,
 };
 
 /// Vulkan analog of std's [`Layout`], represented using [`DeviceSize`]s.
@@ -15,7 +14,7 @@ use std::{
 /// Unlike `Layout`s, `DeviceLayout`s are required to have non-zero size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeviceLayout {
-    size: NonZeroDeviceSize,
+    size: NonZero<DeviceSize>,
     alignment: DeviceAlignment,
 }
 
@@ -37,7 +36,7 @@ impl DeviceLayout {
     pub const fn from_layout(layout: Layout) -> Option<DeviceLayout> {
         let (size, alignment) = Self::size_alignment_from_layout(&layout);
 
-        if let Some(size) = NonZeroDeviceSize::new(size) {
+        if let Some(size) = NonZero::new(size) {
             // SAFETY: Under the precondition that `usize` can't overflow `DeviceSize`, which we
             // checked above, `Layout`'s overflow-invariant is the same if not stricter than that
             // of `DeviceLayout`.
@@ -78,7 +77,7 @@ impl DeviceLayout {
     /// exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the nearest multiple of `alignment`.
     #[inline]
     pub const fn from_size_alignment(size: DeviceSize, alignment: DeviceSize) -> Option<Self> {
-        let size = try_opt!(NonZeroDeviceSize::new(size));
+        let size = try_opt!(NonZero::new(size));
         let alignment = try_opt!(DeviceAlignment::new(alignment));
 
         DeviceLayout::new(size, alignment)
@@ -99,7 +98,7 @@ impl DeviceLayout {
         size: DeviceSize,
         alignment: DeviceSize,
     ) -> Self {
-        let size = unsafe { NonZeroDeviceSize::new_unchecked(size) };
+        let size = unsafe { NonZero::new_unchecked(size) };
         let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
         unsafe { DeviceLayout::new_unchecked(size, alignment) }
     }
@@ -127,7 +126,7 @@ impl DeviceLayout {
     /// Returns [`None`] if `size` would exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the
     /// nearest multiple of `alignment`.
     #[inline]
-    pub const fn new(size: NonZeroDeviceSize, alignment: DeviceAlignment) -> Option<Self> {
+    pub const fn new(size: NonZero<DeviceSize>, alignment: DeviceAlignment) -> Option<Self> {
         if size.get() > Self::max_size_for_alignment(alignment) {
             None
         } else {
@@ -151,7 +150,10 @@ impl DeviceLayout {
     ///   [`DeviceLayout::MAX_SIZE`].
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub const unsafe fn new_unchecked(size: NonZeroDeviceSize, alignment: DeviceAlignment) -> Self {
+    pub const unsafe fn new_unchecked(
+        size: NonZero<DeviceSize>,
+        alignment: DeviceAlignment,
+    ) -> Self {
         debug_assert!(size.get() <= Self::max_size_for_alignment(alignment));
 
         DeviceLayout { size, alignment }
@@ -205,11 +207,11 @@ impl DeviceLayout {
     }
 
     #[inline(always)]
-    const fn padded_size(&self) -> NonZeroDeviceSize {
+    const fn padded_size(&self) -> NonZero<DeviceSize> {
         let size = align_up(self.size(), self.alignment);
 
         // SAFETY: `DeviceLayout`'s invariant guarantees that the rounded up size won't overflow.
-        unsafe { NonZeroDeviceSize::new_unchecked(size) }
+        unsafe { NonZero::new_unchecked(size) }
     }
 
     /// Creates a new `DeviceLayout` describing the record for `n` instances of `self`, possibly
@@ -220,7 +222,7 @@ impl DeviceLayout {
     /// [`DeviceLayout::MAX_SIZE`].
     #[inline]
     pub const fn repeat(&self, n: DeviceSize) -> Option<(Self, DeviceSize)> {
-        let n = try_opt!(NonZeroDeviceSize::new(n));
+        let n = try_opt!(NonZero::new(n));
         let stride = self.padded_size();
         let size = try_opt!(stride.checked_mul(n));
         let layout = try_opt!(DeviceLayout::new(size, self.alignment));

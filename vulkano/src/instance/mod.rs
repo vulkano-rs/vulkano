@@ -95,7 +95,7 @@ use std::{
     ffi::{c_char, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
     ptr, slice,
@@ -259,7 +259,7 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 pub struct Instance {
     handle: vk::Instance,
     fns: InstanceFunctions,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: InstanceCreateFlags,
     api_version: Version,

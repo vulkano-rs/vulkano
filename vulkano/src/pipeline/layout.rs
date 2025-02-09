@@ -77,7 +77,7 @@ use std::{
     error::Error,
     fmt::{Display, Formatter, Write},
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -87,7 +87,7 @@ use std::{
 pub struct PipelineLayout {
     handle: vk::PipelineLayout,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineLayoutCreateFlags,
     set_layouts: Vec<DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>>,

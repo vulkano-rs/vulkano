@@ -66,7 +66,7 @@ use crate::{
 use ash::vk;
 use foldhash::{HashMap, HashSet};
 use smallvec::SmallVec;
-use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Defines how the implementation should perform ray tracing operations.
 ///
@@ -75,7 +75,7 @@ use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, 
 pub struct RayTracingPipeline {
     handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
@@ -414,9 +414,10 @@ pub struct RayTracingPipelineCreateInfo {
 }
 
 impl RayTracingPipelineCreateInfo {
-    /// Returns a `RayTracingPipelineCreateInfo` with the specified `layout`.
+    /// Returns a default `RayTracingPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
@@ -427,6 +428,12 @@ impl RayTracingPipelineCreateInfo {
             base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+        Self::new(layout)
     }
 
     fn validate(&self, device: &Arc<Device>) -> Result<(), Box<ValidationError>> {

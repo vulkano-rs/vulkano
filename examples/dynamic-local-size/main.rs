@@ -196,7 +196,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
@@ -271,7 +271,7 @@ fn main() {
     unsafe { builder.dispatch([1024 / local_size_x, 1024 / local_size_y, 1]) }.unwrap();
 
     builder
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
+        .copy_image_to_buffer(CopyImageToBufferInfo::new(image, buf.clone()))
         .unwrap();
 
     let command_buffer = builder.build().unwrap();

@@ -74,7 +74,7 @@ use crate::{
 use ash::vk;
 use core::slice;
 use smallvec::SmallVec;
-use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Duration};
+use std::{fs::File, mem::MaybeUninit, num::NonZero, ptr, sync::Arc, time::Duration};
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -84,7 +84,7 @@ use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Dur
 pub struct Semaphore {
     handle: vk::Semaphore,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     semaphore_type: SemaphoreType,
     export_handle_types: ExternalSemaphoreHandleTypes,
@@ -1171,7 +1171,7 @@ impl SemaphoreCreateInfo {
                         .external_semaphore_properties_unchecked(ExternalSemaphoreInfo {
                             semaphore_type,
                             initial_value,
-                            ..ExternalSemaphoreInfo::handle_type(handle_type)
+                            ..ExternalSemaphoreInfo::new(handle_type)
                         })
                 };
 
@@ -1598,9 +1598,9 @@ pub struct SemaphoreWaitValueInfo {
 }
 
 impl SemaphoreWaitValueInfo {
-    /// Returns a `SemaphoreWaitValueInfo` with the specified `semaphore` and `value`.
+    /// Returns a default `SemaphoreWaitValueInfo` with the provided `semaphore` and `value`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>, value: u64) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>, value: u64) -> Self {
         Self {
             semaphore,
             value,
@@ -1669,15 +1669,21 @@ pub struct ImportSemaphoreFdInfo {
 }
 
 impl ImportSemaphoreFdInfo {
-    /// Returns an `ImportSemaphoreFdInfo` with the specified `handle_type`.
+    /// Returns a default `ImportSemaphoreFdInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             file: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1784,15 +1790,21 @@ pub struct ImportSemaphoreWin32HandleInfo {
 }
 
 impl ImportSemaphoreWin32HandleInfo {
-    /// Returns an `ImportSemaphoreWin32HandleInfo` with the specified `handle_type`.
+    /// Returns a default `ImportSemaphoreWin32HandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             handle: 0,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1890,15 +1902,21 @@ pub struct ImportSemaphoreZirconHandleInfo {
 }
 
 impl ImportSemaphoreZirconHandleInfo {
-    /// Returns an `ImportSemaphoreZirconHandleInfo` with the specified `handle_type`.
+    /// Returns a default `ImportSemaphoreZirconHandleInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             zircon_handle: 0,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1988,15 +2006,21 @@ pub struct ExternalSemaphoreInfo {
 }
 
 impl ExternalSemaphoreInfo {
-    /// Returns an `ExternalSemaphoreInfo` with the specified `handle_type`.
+    /// Returns a default `ExternalSemaphoreInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+    pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             handle_type,
             semaphore_type: SemaphoreType::Binary,
             initial_value: 0,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalSemaphoreHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(

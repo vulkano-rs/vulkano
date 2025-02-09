@@ -47,7 +47,7 @@ use crate::{
     DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
 use ash::vk;
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -55,7 +55,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 pub struct BufferView {
     handle: vk::BufferView,
     subbuffer: Subbuffer<[u8]>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     format: Format,
     format_features: FormatFeatures,

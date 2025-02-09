@@ -45,9 +45,9 @@ pub struct PipelineShaderStageCreateInfo {
 }
 
 impl PipelineShaderStageCreateInfo {
-    /// Returns a `PipelineShaderStageCreateInfo` with the specified `entry_point`.
+    /// Returns a default `PipelineShaderStageCreateInfo` with the provided `entry_point`.
     #[inline]
-    pub fn new(entry_point: EntryPoint) -> Self {
+    pub const fn new(entry_point: EntryPoint) -> Self {
         Self {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,

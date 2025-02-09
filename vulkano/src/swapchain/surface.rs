@@ -22,7 +22,7 @@ use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     marker::PhantomData,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -33,7 +33,7 @@ use std::{
 pub struct Surface {
     handle: vk::SurfaceKHR,
     instance: DebugWrapper<Arc<Instance>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
     // Data queried by the user at runtime, cached for faster lookups.

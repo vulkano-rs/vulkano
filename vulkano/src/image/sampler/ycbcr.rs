@@ -69,7 +69,7 @@
 //!             DescriptorSetLayoutBinding {
 //!                 stages: ShaderStage::Fragment.into(),
 //!                 immutable_samplers: vec![sampler],
-//!                 ..DescriptorSetLayoutBinding::descriptor_type(
+//!                 ..DescriptorSetLayoutBinding::new(
 //!                     DescriptorType::CombinedImageSampler
 //!                 )
 //!             },
@@ -118,14 +118,14 @@ use crate::{
     VulkanObject,
 };
 use ash::vk;
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Describes how sampled image data should converted from a YCbCr representation to an RGB one.
 #[derive(Debug)]
 pub struct SamplerYcbcrConversion {
     handle: vk::SamplerYcbcrConversion,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     format: Format,
     ycbcr_model: SamplerYcbcrModelConversion,
