@@ -843,6 +843,14 @@ pub struct MemoryAllocateInfo<'d> {
 impl Default for MemoryAllocateInfo<'static> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'d> MemoryAllocateInfo<'d> {
+    /// Returns a default `MemoryAllocateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             allocation_size: 0,
             memory_type_index: u32::MAX,
@@ -852,26 +860,14 @@ impl Default for MemoryAllocateInfo<'static> {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl<'d> MemoryAllocateInfo<'d> {
-    /// Returns a default `MemoryAllocateInfo` with the provided `dedicated_allocation`.
-    #[inline]
-    pub const fn new(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
-        Self {
-            allocation_size: 0,
-            memory_type_index: u32::MAX,
-            dedicated_allocation: Some(dedicated_allocation),
-            export_handle_types: ExternalMemoryHandleTypes::empty(),
-            flags: MemoryAllocateFlags::empty(),
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[deprecated(since = "0.36.0")]
     #[inline]
     pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
-        Self::new(dedicated_allocation)
+        Self {
+            dedicated_allocation: Some(dedicated_allocation),
+            ..Self::new()
+        }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1494,16 +1490,22 @@ pub struct MemoryMapInfo {
 impl Default for MemoryMapInfo {
     #[inline]
     fn default() -> Self {
-        MemoryMapInfo {
+        Self::new()
+    }
+}
+
+impl MemoryMapInfo {
+    /// Returns a default `MemoryMapInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             flags: MemoryMapFlags::empty(),
             offset: 0,
             size: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl MemoryMapInfo {
     pub(crate) fn validate(
         &self,
         memory: &DeviceMemory,
@@ -1757,13 +1759,19 @@ pub struct MemoryUnmapInfo {
 impl Default for MemoryUnmapInfo {
     #[inline]
     fn default() -> Self {
-        MemoryUnmapInfo {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl MemoryUnmapInfo {
+    /// Returns a default `MemoryUnmapInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, _memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
         let &Self { _ne: _ } = self;
 
@@ -1891,7 +1899,24 @@ pub struct MappedMemoryRange {
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for MappedMemoryRange {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MappedMemoryRange {
+    /// Returns a default `MappedMemoryRange`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            offset: 0,
+            size: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset,
@@ -1950,17 +1975,6 @@ impl MappedMemoryRange {
             .memory(memory_vk)
             .offset(offset)
             .size(size)
-    }
-}
-
-impl Default for MappedMemoryRange {
-    #[inline]
-    fn default() -> Self {
-        MappedMemoryRange {
-            offset: 0,
-            size: 0,
-            _ne: crate::NonExhaustive(()),
-        }
     }
 }
 

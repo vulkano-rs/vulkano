@@ -9,7 +9,7 @@ pub struct RangeSet<T>(Vec<Range<T>>);
 impl<T: Ord + Copy> RangeSet<T> {
     /// Returns a new empty `RangeSet`.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         RangeSet(Vec::new())
     }
 

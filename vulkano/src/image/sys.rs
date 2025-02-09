@@ -1651,6 +1651,14 @@ pub struct ImageCreateInfo {
 impl Default for ImageCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageCreateInfo {
+    /// Returns a default `ImageCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
@@ -1671,9 +1679,7 @@ impl Default for ImageCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

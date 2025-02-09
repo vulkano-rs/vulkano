@@ -135,10 +135,11 @@ impl Default for VertexInputState {
 }
 
 impl VertexInputState {
-    /// Constructs a new `VertexInputState` with no bindings or attributes.
+    /// Returns a default `VertexInputState`.
+    // TODO: make const
     #[inline]
-    pub fn new() -> VertexInputState {
-        VertexInputState {
+    pub fn new() -> Self {
+        Self {
             bindings: Default::default(),
             attributes: Default::default(),
             _ne: crate::NonExhaustive(()),
@@ -558,15 +559,21 @@ pub struct VertexInputBindingDescription {
 impl Default for VertexInputBindingDescription {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VertexInputBindingDescription {
+    /// Returns a default `VertexInputBindingDescription`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             stride: 0,
             input_rate: VertexInputRate::Vertex,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl VertexInputBindingDescription {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             stride,
@@ -742,6 +749,14 @@ pub struct VertexInputAttributeDescription {
 impl Default for VertexInputAttributeDescription {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VertexInputAttributeDescription {
+    /// Returns a default `VertexInputAttributeDescription`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             binding: 0,
             format: Format::UNDEFINED,
@@ -749,9 +764,7 @@ impl Default for VertexInputAttributeDescription {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl VertexInputAttributeDescription {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             binding,

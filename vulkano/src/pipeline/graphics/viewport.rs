@@ -88,22 +88,18 @@ pub struct ViewportState {
 impl Default for ViewportState {
     #[inline]
     fn default() -> Self {
-        Self {
-            viewports: smallvec![Viewport::default()],
-            scissors: smallvec![Scissor::default()],
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl ViewportState {
-    /// Creates a `ViewportState` with fixed state and no viewports or scissors.
-    #[deprecated(since = "0.34.0")]
+    /// Returns a default `ViewportState`.
+    // TODO: make const
     #[inline]
     pub fn new() -> Self {
         Self {
-            viewports: SmallVec::new(),
-            scissors: SmallVec::new(),
+            viewports: smallvec![Viewport::default()],
+            scissors: smallvec![Scissor::default()],
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -301,15 +297,21 @@ pub struct Viewport {
 impl Default for Viewport {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Viewport {
+    /// Returns a default `Viewport`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: [0.0; 2],
             extent: [1.0; 2],
             depth_range: 0.0..=1.0,
         }
     }
-}
 
-impl Viewport {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset,
@@ -478,21 +480,27 @@ pub struct Scissor {
 
 impl Default for Scissor {
     #[inline]
-    fn default() -> Scissor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scissor {
+    /// Returns a default `Scissor`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: [0; 2],
             extent: [i32::MAX as u32; 2],
         }
     }
-}
 
-impl Scissor {
     /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
     /// framebuffer no matter its size.
-    #[deprecated(since = "0.34.0", note = "use `Scissor::default` instead")]
+    #[deprecated(since = "0.34.0", note = "use `Scissor::new` instead")]
     #[inline]
     pub fn irrelevant() -> Scissor {
-        Self::default()
+        Self::new()
     }
 
     #[allow(clippy::wrong_self_convention)]

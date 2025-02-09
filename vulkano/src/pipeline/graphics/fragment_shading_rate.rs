@@ -42,15 +42,21 @@ pub struct FragmentShadingRateState {
 impl Default for FragmentShadingRateState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FragmentShadingRateState {
+    /// Returns a default `FragmentShadingRateState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             fragment_size: [1, 1],
             combiner_ops: [FragmentShadingRateCombinerOp::Keep; 2],
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl FragmentShadingRateState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             fragment_size,

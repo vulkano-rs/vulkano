@@ -409,14 +409,20 @@ pub struct BufferViewCreateInfo {
 impl Default for BufferViewCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferViewCreateInfo {
+    /// Returns a default `BufferViewCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BufferViewCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self { format, _ne: _ } = self;
 

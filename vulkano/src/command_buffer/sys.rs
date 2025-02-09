@@ -202,15 +202,21 @@ pub struct CommandBufferBeginInfo {
 impl Default for CommandBufferBeginInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferBeginInfo {
+    /// Returns a default `CommandBufferBeginInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             usage: CommandBufferUsage::MultipleSubmit,
             inheritance_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl CommandBufferBeginInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             usage: _,

@@ -245,15 +245,21 @@ pub struct DescriptorSetLayoutCreateInfo {
 impl Default for DescriptorSetLayoutCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DescriptorSetLayoutCreateInfo {
+    /// Returns a default `DescriptorSetLayoutCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: DescriptorSetLayoutCreateFlags::empty(),
             bindings: BTreeMap::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DescriptorSetLayoutCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

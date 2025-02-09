@@ -57,6 +57,14 @@ pub struct AcquireNextImageInfo {
 impl Default for AcquireNextImageInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AcquireNextImageInfo {
+    /// Returns a default `AcquireNextImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             timeout: None,
             semaphore: None,
@@ -64,9 +72,7 @@ impl Default for AcquireNextImageInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl AcquireNextImageInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             timeout,
@@ -457,15 +463,21 @@ pub struct PresentInfo {
 impl Default for PresentInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PresentInfo {
+    /// Returns a default `PresentInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             wait_semaphores: Vec::new(),
             swapchain_infos: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PresentInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,

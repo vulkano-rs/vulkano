@@ -67,6 +67,14 @@ impl Default for ColorBlendState {
     /// Returns [`ColorBlendState::new(1)`].
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ColorBlendState {
+    /// Returns a default `ColorBlendState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ColorBlendStateFlags::empty(),
             logic_op: None,
@@ -75,9 +83,7 @@ impl Default for ColorBlendState {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ColorBlendState {
     /// Returns a default `ColorBlendState` with `count` duplicates of `attachment_state`.
     #[inline]
     pub fn with_attachment_states(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
@@ -86,23 +92,6 @@ impl ColorBlendState {
                 .take(count as usize)
                 .collect(),
             ..Default::default()
-        }
-    }
-
-    /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
-    /// and `num` attachment entries that have blending disabled, and color write and all color
-    /// components enabled.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn new(num: u32) -> Self {
-        Self {
-            flags: ColorBlendStateFlags::empty(),
-            logic_op: None,
-            attachments: (0..num)
-                .map(|_| ColorBlendAttachmentState::default())
-                .collect(),
-            blend_constants: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -662,15 +651,21 @@ pub struct ColorBlendAttachmentState {
 impl Default for ColorBlendAttachmentState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ColorBlendAttachmentState {
+    /// Returns a default `ColorBlendAttachmentState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             blend: None,
             color_write_mask: ColorComponents::all(),
             color_write_enable: true,
         }
     }
-}
 
-impl ColorBlendAttachmentState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref blend,
@@ -754,6 +749,14 @@ pub struct AttachmentBlend {
 impl Default for AttachmentBlend {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AttachmentBlend {
+    /// Returns a default `AttachmentBlend`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_color_blend_factor: BlendFactor::SrcColor,
             dst_color_blend_factor: BlendFactor::Zero,
@@ -763,9 +766,7 @@ impl Default for AttachmentBlend {
             alpha_blend_op: BlendOp::Add,
         }
     }
-}
 
-impl AttachmentBlend {
     /// Builds an `AttachmentBlend` where the output of the fragment shader is ignored and the
     /// destination is untouched.
     #[inline]

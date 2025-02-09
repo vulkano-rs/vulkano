@@ -1935,14 +1935,20 @@ pub struct SubpassBeginInfo {
 impl Default for SubpassBeginInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubpassBeginInfo {
+    /// Returns a default `SubpassBeginInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             contents: SubpassContents::Inline,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SubpassBeginInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { contents, _ne: _ } = self;
 
@@ -1970,13 +1976,19 @@ pub struct SubpassEndInfo {
 impl Default for SubpassEndInfo {
     #[inline]
     fn default() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl SubpassEndInfo {
+    /// Returns a default `SubpassEndInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { _ne: _ } = self;
 
@@ -2072,6 +2084,14 @@ pub struct RenderingInfo {
 impl Default for RenderingInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderingInfo {
+    /// Returns a default `RenderingInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             render_area_offset: [0, 0],
             render_area_extent: [0, 0],
@@ -2084,9 +2104,7 @@ impl Default for RenderingInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl RenderingInfo {
     pub(crate) fn set_auto_extent_layers(&mut self) {
         let &mut RenderingInfo {
             render_area_offset,

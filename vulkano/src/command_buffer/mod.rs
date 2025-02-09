@@ -307,6 +307,14 @@ pub struct CommandBufferInheritanceInfo {
 impl Default for CommandBufferInheritanceInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferInheritanceInfo {
+    /// Returns a default `CommandBufferInheritanceInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             render_pass: None,
             occlusion_query: None,
@@ -314,9 +322,7 @@ impl Default for CommandBufferInheritanceInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl CommandBufferInheritanceInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref render_pass,
@@ -649,6 +655,14 @@ pub struct CommandBufferInheritanceRenderingInfo {
 impl Default for CommandBufferInheritanceRenderingInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferInheritanceRenderingInfo {
+    /// Returns a default `CommandBufferInheritanceRenderingInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_mask: 0,
             color_attachment_formats: Vec::new(),
@@ -657,9 +671,7 @@ impl Default for CommandBufferInheritanceRenderingInfo {
             rasterization_samples: SampleCount::Sample1,
         }
     }
-}
 
-impl CommandBufferInheritanceRenderingInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             view_mask,
@@ -947,6 +959,14 @@ pub struct SubmitInfo {
 impl Default for SubmitInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubmitInfo {
+    /// Returns a default `SubmitInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             wait_semaphores: Vec::new(),
             command_buffers: Vec::new(),
@@ -954,9 +974,7 @@ impl Default for SubmitInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SubmitInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,

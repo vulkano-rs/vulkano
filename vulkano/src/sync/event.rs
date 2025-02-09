@@ -300,14 +300,20 @@ pub struct EventCreateInfo {
 impl Default for EventCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EventCreateInfo {
+    /// Returns a default `EventCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: EventCreateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl EventCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { flags, _ne: _ } = self;
 

@@ -445,6 +445,15 @@ pub struct DescriptorPoolCreateInfo {
 impl Default for DescriptorPoolCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DescriptorPoolCreateInfo {
+    /// Returns a default `DescriptorPoolCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             flags: DescriptorPoolCreateFlags::empty(),
             max_sets: 0,
@@ -453,9 +462,7 @@ impl Default for DescriptorPoolCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DescriptorPoolCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,

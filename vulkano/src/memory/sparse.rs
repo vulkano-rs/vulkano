@@ -58,6 +58,14 @@ pub struct BindSparseInfo {
 impl Default for BindSparseInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BindSparseInfo {
+    /// Returns a default `BindSparseInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             wait_semaphores: Vec::new(),
             buffer_binds: Vec::new(),
@@ -67,9 +75,7 @@ impl Default for BindSparseInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BindSparseInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,
@@ -473,6 +479,14 @@ pub struct SparseBufferMemoryBind {
 
 impl Default for SparseBufferMemoryBind {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseBufferMemoryBind {
+    /// Returns a default `SparseBufferMemoryBind`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: 0,
             size: 0,
@@ -480,9 +494,7 @@ impl Default for SparseBufferMemoryBind {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SparseBufferMemoryBind {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset: _,
@@ -934,6 +946,14 @@ pub struct SparseImageOpaqueMemoryBind {
 
 impl Default for SparseImageOpaqueMemoryBind {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseImageOpaqueMemoryBind {
+    /// Returns a default `SparseImageOpaqueMemoryBind`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: 0,
             size: 0,
@@ -942,9 +962,7 @@ impl Default for SparseImageOpaqueMemoryBind {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SparseImageOpaqueMemoryBind {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset: _,
@@ -1499,6 +1517,14 @@ pub struct SparseImageMemoryBind {
 
 impl Default for SparseImageMemoryBind {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseImageMemoryBind {
+    /// Returns a default `SparseImageMemoryBind`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             aspects: ImageAspects::empty(),
             mip_level: 0,
@@ -1509,9 +1535,7 @@ impl Default for SparseImageMemoryBind {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SparseImageMemoryBind {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,

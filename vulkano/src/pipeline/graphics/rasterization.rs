@@ -96,30 +96,27 @@ pub struct RasterizationState {
 impl Default for RasterizationState {
     #[inline]
     fn default() -> Self {
-        Self {
-            depth_clamp_enable: false,
-            rasterizer_discard_enable: false,
-            polygon_mode: Default::default(),
-            cull_mode: Default::default(),
-            front_face: Default::default(),
-            depth_bias: None,
-            line_width: 1.0,
-            line_rasterization_mode: Default::default(),
-            line_stipple: None,
-            conservative: None,
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl RasterizationState {
-    /// Creates a `RasterizationState` with depth clamping, discard, depth biasing and line
-    /// stippling disabled, filled polygons, no culling, counterclockwise front face, and the
-    /// default line width and line rasterization mode.
+    /// Returns a default `RasterizationState`.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `RasterizationState::default` instead")]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            depth_clamp_enable: false,
+            rasterizer_discard_enable: false,
+            polygon_mode: PolygonMode::Fill,
+            cull_mode: CullMode::None,
+            front_face: FrontFace::CounterClockwise,
+            depth_bias: None,
+            line_width: 1.0,
+            line_rasterization_mode: LineRasterizationMode::Default,
+            line_stipple: None,
+            conservative: None,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 
     /// Sets the polygon mode.
@@ -507,6 +504,14 @@ pub struct DepthBiasState {
 impl Default for DepthBiasState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DepthBiasState {
+    /// Returns a default `DepthBiasState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             constant_factor: 1.0,
             clamp: 0.0,
@@ -643,7 +648,6 @@ vulkan_enum! {
 }
 
 impl Default for LineRasterizationMode {
-    /// Returns `LineRasterizationMode::Default`.
     #[inline]
     fn default() -> Self {
         Self::Default
@@ -682,15 +686,21 @@ pub struct RasterizationConservativeState {
 impl Default for RasterizationConservativeState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RasterizationConservativeState {
+    /// Returns a default `RasterizationConservativeState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             mode: ConservativeRasterizationMode::Disabled,
             overestimation_size: 0.0,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl RasterizationConservativeState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             mode,

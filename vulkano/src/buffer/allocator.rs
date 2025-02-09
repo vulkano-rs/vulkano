@@ -428,6 +428,14 @@ pub struct SubbufferAllocatorCreateInfo {
 impl Default for SubbufferAllocatorCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubbufferAllocatorCreateInfo {
+    /// Returns a default `SubbufferAllocatorCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         SubbufferAllocatorCreateInfo {
             arena_size: 0,
             buffer_usage: BufferUsage::empty(),

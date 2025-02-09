@@ -63,6 +63,14 @@ pub struct MultisampleState {
 impl Default for MultisampleState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MultisampleState {
+    /// Returns a default `MultisampleState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             rasterization_samples: SampleCount::Sample1,
             sample_shading: None,
@@ -71,15 +79,6 @@ impl Default for MultisampleState {
             alpha_to_one_enable: false,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl MultisampleState {
-    /// Creates a `MultisampleState` with multisampling disabled.
-    #[inline]
-    #[deprecated(since = "0.34.0", note = "use `MultisampleState::default` instead")]
-    pub fn new() -> MultisampleState {
-        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

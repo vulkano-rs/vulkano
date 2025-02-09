@@ -590,15 +590,21 @@ pub struct DisplayModeCreateInfo {
 impl Default for DisplayModeCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DisplayModeCreateInfo {
+    /// Returns a default `DisplayModeCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             visible_region: [0; 2],
             refresh_rate: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DisplayModeCreateInfo {
     pub(crate) fn validate(
         &self,
         _physical_device: &PhysicalDevice,

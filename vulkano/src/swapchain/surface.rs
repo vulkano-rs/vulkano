@@ -1452,6 +1452,14 @@ pub struct DisplaySurfaceCreateInfo {
 impl Default for DisplaySurfaceCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DisplaySurfaceCreateInfo {
+    /// Returns a default `DisplaySurfaceCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             plane_index: 0,
             plane_stack_index: 0,
@@ -1462,9 +1470,7 @@ impl Default for DisplaySurfaceCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DisplaySurfaceCreateInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -2040,6 +2046,14 @@ pub struct SurfaceInfo {
 impl Default for SurfaceInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SurfaceInfo {
+    /// Returns a default `SurfaceInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             present_mode: None,
             full_screen_exclusive: FullScreenExclusive::Default,
@@ -2047,9 +2061,7 @@ impl Default for SurfaceInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SurfaceInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,

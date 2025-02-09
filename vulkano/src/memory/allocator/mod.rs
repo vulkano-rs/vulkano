@@ -679,7 +679,15 @@ pub struct AllocationCreateInfo {
 impl Default for AllocationCreateInfo {
     #[inline]
     fn default() -> Self {
-        AllocationCreateInfo {
+        Self::new()
+    }
+}
+
+impl AllocationCreateInfo {
+    /// Returns a default `AllocationCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
             memory_type_bits: u32::MAX,
             allocate_preference: MemoryAllocatePreference::Unknown,
@@ -1865,7 +1873,15 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
 impl Default for GenericMemoryAllocatorCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
-        GenericMemoryAllocatorCreateInfo {
+        Self::new()
+    }
+}
+
+impl GenericMemoryAllocatorCreateInfo<'_> {
+    /// Returns a default `GenericMemoryAllocatorCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             block_sizes: &[],
             memory_type_bits: u32::MAX,
             dedicated_allocation: true,

@@ -1748,6 +1748,15 @@ pub struct DependencyInfo {
 impl Default for DependencyInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DependencyInfo {
+    /// Returns a default `DependencyInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             dependency_flags: DependencyFlags::empty(),
             memory_barriers: SmallVec::new(),
@@ -1756,9 +1765,7 @@ impl Default for DependencyInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DependencyInfo {
     /// Returns whether `self` contains any barriers.
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -2032,6 +2039,14 @@ pub struct MemoryBarrier {
 impl Default for MemoryBarrier {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MemoryBarrier {
+    /// Returns a default `MemoryBarrier`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -2040,9 +2055,7 @@ impl Default for MemoryBarrier {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl MemoryBarrier {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             src_stages,

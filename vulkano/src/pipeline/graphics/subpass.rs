@@ -91,6 +91,14 @@ pub struct PipelineRenderingCreateInfo {
 impl Default for PipelineRenderingCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PipelineRenderingCreateInfo {
+    /// Returns a default `PipelineRenderingCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_mask: 0,
             color_attachment_formats: Vec::new(),
@@ -99,9 +107,7 @@ impl Default for PipelineRenderingCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PipelineRenderingCreateInfo {
     pub(crate) fn from_subpass(subpass: &Subpass) -> Self {
         let subpass_desc = subpass.subpass_desc();
         let rp_attachments = subpass.render_pass().attachments();

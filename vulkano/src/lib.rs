@@ -208,6 +208,7 @@ pub struct Packed24_8(u32);
 
 impl Packed24_8 {
     /// Returns a new `Packed24_8` value.
+    // TODO: make const
     #[inline]
     pub fn new(low_24: u32, high_8: u8) -> Self {
         Self((low_24 & 0x00ff_ffff) | (u32::from(high_8) << 24))

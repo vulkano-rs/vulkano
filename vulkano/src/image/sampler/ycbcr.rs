@@ -421,6 +421,14 @@ pub struct SamplerYcbcrConversionCreateInfo {
 impl Default for SamplerYcbcrConversionCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SamplerYcbcrConversionCreateInfo {
+    /// Returns a default `SamplerYcbcrConversionCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
@@ -432,9 +440,7 @@ impl Default for SamplerYcbcrConversionCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SamplerYcbcrConversionCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             format,
