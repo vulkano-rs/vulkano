@@ -13,7 +13,12 @@
 
 ### Breaking changes
 
+Changes to `GraphicsPipeline`:
+- `ColorBlendState::new` and `ViewportState::new` (previously deprecated, now undeprecated) now return the same as `Default::default()`.
+
 ### Additions
+
+- Added `new` constructors to all `*Info`-like structs.
 
 ### Bugs fixed
 
