@@ -16,10 +16,10 @@ use std::{
 #[repr(transparent)]
 pub struct DeviceAlignment(AlignmentEnum);
 
-const _: () = assert!(mem::size_of::<DeviceAlignment>() == mem::size_of::<DeviceSize>());
-const _: () = assert!(mem::align_of::<DeviceAlignment>() == mem::align_of::<DeviceSize>());
+const _: () = assert!(size_of::<DeviceAlignment>() == size_of::<DeviceSize>());
+const _: () = assert!(align_of::<DeviceAlignment>() == align_of::<DeviceSize>());
 
-const _: () = assert!(mem::size_of::<DeviceSize>() >= mem::size_of::<usize>());
+const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
 
 impl DeviceAlignment {
     /// The smallest possible alignment, 1.
@@ -32,14 +32,14 @@ impl DeviceAlignment {
     #[inline]
     pub const fn of<T>() -> Self {
         // SAFETY: rustc guarantees that the alignment of types is a power of two.
-        unsafe { DeviceAlignment::new_unchecked(mem::align_of::<T>() as DeviceSize) }
+        unsafe { DeviceAlignment::new_unchecked(align_of::<T>() as DeviceSize) }
     }
 
     /// Returns the alignment for a value.
     #[inline]
     pub fn of_val<T: ?Sized>(value: &T) -> Self {
         // SAFETY: rustc guarantees that the alignment of types is a power of two.
-        unsafe { DeviceAlignment::new_unchecked(mem::align_of_val(value) as DeviceSize) }
+        unsafe { DeviceAlignment::new_unchecked(align_of_val(value) as DeviceSize) }
     }
 
     /// Tries to create a `DeviceAlignment` from a [`DeviceSize`], returning [`None`] if it's not a

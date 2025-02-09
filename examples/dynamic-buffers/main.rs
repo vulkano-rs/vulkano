@@ -4,7 +4,7 @@
 // Each draw or dispatch call can specify an offset into the buffer to read object data from,
 // without having to rebind descriptor sets.
 
-use std::{iter::repeat, mem::size_of, sync::Arc};
+use std::{iter::repeat, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{

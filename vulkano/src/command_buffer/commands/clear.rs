@@ -12,7 +12,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{mem::size_of_val, sync::Arc};
+use std::sync::Arc;
 
 /// # Commands to fill resources with new data.
 impl<L> AutoCommandBufferBuilder<L> {

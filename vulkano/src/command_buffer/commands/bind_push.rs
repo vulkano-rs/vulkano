@@ -17,7 +17,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{cmp::min, ffi::c_void, mem::size_of, ptr, sync::Arc};
+use std::{cmp::min, ffi::c_void, ptr, sync::Arc};
 
 /// # Commands to bind or push state for pipeline execution commands.
 ///

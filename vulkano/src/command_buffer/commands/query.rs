@@ -957,7 +957,7 @@ impl RecordingCommandBuffer {
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination.offset() % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
 
         if queries.end < queries.start {
             return Err(Box::new(ValidationError {
@@ -1031,7 +1031,7 @@ impl RecordingCommandBuffer {
         T: QueryResultElement,
     {
         let per_query_len = query_pool.result_len(flags);
-        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
+        let stride = per_query_len * size_of::<T>() as DeviceSize;
 
         let fns = self.device().fns();
         unsafe {

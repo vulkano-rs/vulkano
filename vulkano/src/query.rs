@@ -265,7 +265,7 @@ impl QueryPool {
         T: QueryResultElement,
     {
         let per_query_len = self.result_len(flags);
-        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
+        let stride = per_query_len * size_of::<T>() as DeviceSize;
 
         let fns = self.device.fns();
         let result = unsafe {

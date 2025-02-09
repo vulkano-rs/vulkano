@@ -5,7 +5,6 @@ use std::{
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::Hash,
-    mem,
     num::NonZero,
 };
 
@@ -18,7 +17,7 @@ pub struct DeviceLayout {
     alignment: DeviceAlignment,
 }
 
-const _: () = assert!(mem::size_of::<DeviceSize>() >= mem::size_of::<usize>());
+const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
 const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
 
 impl DeviceLayout {
