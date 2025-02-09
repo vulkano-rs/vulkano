@@ -104,14 +104,14 @@ impl Surface {
             },
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::AppKit(handle), _) => {
-                let layer = raw_window_metal::Layer::from_ns_view(handle.ns_view);
+                let layer = unsafe { raw_window_metal::Layer::from_ns_view(handle.ns_view) };
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
                 unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }
             }
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::UiKit(handle), _) => {
-                let layer = raw_window_metal::Layer::from_ui_view(handle.ui_view);
+                let layer = unsafe { raw_window_metal::Layer::from_ui_view(handle.ui_view) };
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
                 unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }

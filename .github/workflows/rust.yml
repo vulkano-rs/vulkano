@@ -26,7 +26,7 @@ jobs:
           runs-on: macos-latest
           self-hosted: false
       fail-fast: false
-    name: ${{ matrix.name }}
+    name: build / ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v4
@@ -42,14 +42,29 @@ jobs:
     - name: Build examples
       run: cargo build --profile=CI --verbose --bins
   clippy:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+        - name: windows-latest
+          runs-on: [self-hosted, Windows]
+          self-hosted: true
+        - name: ubuntu-latest
+          runs-on: ubuntu-latest
+          self-hosted: false
+        - name: macos-latest
+          runs-on: macos-latest
+          self-hosted: false
+      fail-fast: false
+    name: clippy / ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v4
     - run: rustup toolchain install stable --component clippy
     - uses: Swatinem/rust-cache@v2
+      if: ${{ ! matrix.self-hosted }}
       with:
-        shared-key: ubuntu-latest
-        save-if: "false"
+        shared-key: ${{ matrix.name }}
+        save-if: false
     - name: Run clippy check
       run: cargo clippy --profile=CI -- -Dwarnings
   fmt:
