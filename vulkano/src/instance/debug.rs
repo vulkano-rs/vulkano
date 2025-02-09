@@ -536,11 +536,7 @@ pub struct DebugUtilsLabel {
 impl Default for DebugUtilsLabel {
     #[inline]
     fn default() -> Self {
-        Self {
-            label_name: String::new(),
-            color: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
