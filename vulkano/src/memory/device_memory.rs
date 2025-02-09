@@ -847,7 +847,7 @@ impl Default for MemoryAllocateInfo<'static> {
     }
 }
 
-impl MemoryAllocateInfo<'_> {
+impl<'d> MemoryAllocateInfo<'d> {
     /// Returns a default `MemoryAllocateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -860,9 +860,7 @@ impl MemoryAllocateInfo<'_> {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl<'d> MemoryAllocateInfo<'d> {
     #[deprecated(since = "0.36.0")]
     #[inline]
     pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
