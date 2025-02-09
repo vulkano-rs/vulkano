@@ -436,7 +436,7 @@ mod tests {
                 ..Default::default()
             }]
             .into(),
-            ..CopyBufferInfoTyped::buffers(source, destination.clone())
+            ..CopyBufferInfoTyped::new(source, destination.clone())
         })
         .unwrap();
 
@@ -560,7 +560,7 @@ mod tests {
                     ..Default::default()
                 }]
                 .into(),
-                ..CopyBufferInfoTyped::buffers(source.clone(), source.clone())
+                ..CopyBufferInfoTyped::new(source.clone(), source.clone())
             })
             .unwrap();
 
@@ -618,7 +618,7 @@ mod tests {
                     ..Default::default()
                 }]
                 .into(),
-                ..CopyBufferInfoTyped::buffers(source.clone(), source)
+                ..CopyBufferInfoTyped::new(source.clone(), source)
             })
             .is_err());
     }
@@ -787,7 +787,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
                     },
                 )]
                 .into(),

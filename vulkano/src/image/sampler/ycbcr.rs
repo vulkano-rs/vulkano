@@ -69,7 +69,7 @@
 //!             DescriptorSetLayoutBinding {
 //!                 stages: ShaderStage::Fragment.into(),
 //!                 immutable_samplers: vec![sampler],
-//!                 ..DescriptorSetLayoutBinding::descriptor_type(
+//!                 ..DescriptorSetLayoutBinding::new(
 //!                     DescriptorType::CombinedImageSampler
 //!                 )
 //!             },

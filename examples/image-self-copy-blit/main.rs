@@ -236,7 +236,7 @@ impl App {
             // Here, we perform image copying and blitting on the same image.
             uploads
                 // Clear the image buffer.
-                .clear_color_image(ClearColorImageInfo::image(image.clone()))
+                .clear_color_image(ClearColorImageInfo::new(image.clone()))
                 .unwrap()
                 // Put our image in the top left corner.
                 .copy_buffer_to_image(CopyBufferToImageInfo {
@@ -246,7 +246,7 @@ impl App {
                         ..Default::default()
                     }]
                     .into(),
-                    ..CopyBufferToImageInfo::buffer_image(upload_buffer, image.clone())
+                    ..CopyBufferToImageInfo::new(upload_buffer, image.clone())
                 })
                 .unwrap()
                 // Copy from the top left corner to the bottom right corner.
@@ -264,7 +264,7 @@ impl App {
                         ..Default::default()
                     }]
                     .into(),
-                    ..CopyImageInfo::images(image.clone(), image.clone())
+                    ..CopyImageInfo::new(image.clone(), image.clone())
                 })
                 .unwrap()
                 // Blit from the bottom right corner to the top right corner (flipped).
@@ -288,7 +288,7 @@ impl App {
                     }]
                     .into(),
                     filter: Filter::Nearest,
-                    ..BlitImageInfo::images(image.clone(), image.clone())
+                    ..BlitImageInfo::new(image.clone(), image.clone())
                 })
                 .unwrap();
 
@@ -427,7 +427,7 @@ impl ApplicationHandler for App {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
+                    ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()
@@ -568,10 +568,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

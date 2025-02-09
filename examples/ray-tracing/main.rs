@@ -234,7 +234,7 @@ impl ApplicationHandler for App {
                                     0,
                                     DescriptorSetLayoutBinding {
                                         stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::descriptor_type(
+                                        ..DescriptorSetLayoutBinding::new(
                                             DescriptorType::AccelerationStructure,
                                         )
                                     },
@@ -243,7 +243,7 @@ impl ApplicationHandler for App {
                                     1,
                                     DescriptorSetLayoutBinding {
                                         stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::descriptor_type(
+                                        ..DescriptorSetLayoutBinding::new(
                                             DescriptorType::UniformBuffer,
                                         )
                                     },
@@ -262,9 +262,7 @@ impl ApplicationHandler for App {
                                 0,
                                 DescriptorSetLayoutBinding {
                                     stages: ShaderStages::RAYGEN,
-                                    ..DescriptorSetLayoutBinding::descriptor_type(
-                                        DescriptorType::StorageImage,
-                                    )
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
                                 },
                             )]
                             .into_iter()

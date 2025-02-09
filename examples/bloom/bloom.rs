@@ -39,7 +39,7 @@ impl BloomTask {
             ComputePipeline::new(
                 app.device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, pipeline_layout.clone()),
+                ComputePipelineCreateInfo::new(stage, pipeline_layout.clone()),
             )
             .unwrap()
         };
@@ -54,7 +54,7 @@ impl BloomTask {
             ComputePipeline::new(
                 app.device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, pipeline_layout.clone()),
+                ComputePipelineCreateInfo::new(stage, pipeline_layout.clone()),
             )
             .unwrap()
         };

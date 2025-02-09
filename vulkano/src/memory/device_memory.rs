@@ -855,9 +855,9 @@ impl Default for MemoryAllocateInfo<'static> {
 }
 
 impl<'d> MemoryAllocateInfo<'d> {
-    /// Returns a `MemoryAllocateInfo` with the specified `dedicated_allocation`.
+    /// Returns a default `MemoryAllocateInfo` with the provided `dedicated_allocation`.
     #[inline]
-    pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
+    pub const fn new(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
         Self {
             allocation_size: 0,
             memory_type_index: u32::MAX,
@@ -866,6 +866,12 @@ impl<'d> MemoryAllocateInfo<'d> {
             flags: MemoryAllocateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
+        Self::new(dedicated_allocation)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

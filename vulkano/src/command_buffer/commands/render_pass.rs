@@ -2891,9 +2891,10 @@ pub struct RenderingAttachmentInfo {
 }
 
 impl RenderingAttachmentInfo {
-    /// Returns a `RenderingAttachmentInfo` with the specified `image_view`.
+    /// Returns a default `RenderingAttachmentInfo` with the provided `image_view`.
+    // TODO: make const
     #[inline]
-    pub fn image_view(image_view: Arc<ImageView>) -> Self {
+    pub fn new(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
@@ -2910,6 +2911,12 @@ impl RenderingAttachmentInfo {
             clear_value: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image_view(image_view: Arc<ImageView>) -> Self {
+        Self::new(image_view)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -3083,9 +3090,10 @@ pub struct RenderingAttachmentResolveInfo {
 }
 
 impl RenderingAttachmentResolveInfo {
-    /// Returns a `RenderingAttachmentResolveInfo` with the specified `image_view`.
+    /// Returns a default `RenderingAttachmentResolveInfo` with the provided `image_view`.
+    // TODO: make const
     #[inline]
-    pub fn image_view(image_view: Arc<ImageView>) -> Self {
+    pub fn new(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
@@ -3098,6 +3106,12 @@ impl RenderingAttachmentResolveInfo {
             image_view,
             image_layout,
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image_view(image_view: Arc<ImageView>) -> Self {
+        Self::new(image_view)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

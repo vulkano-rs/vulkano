@@ -653,9 +653,10 @@ pub struct ClearColorImageInfo {
 }
 
 impl ClearColorImageInfo {
-    /// Returns a `ClearColorImageInfo` with the specified `image`.
+    /// Returns a default `ClearColorImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {
@@ -665,6 +666,12 @@ impl ClearColorImageInfo {
             regions: smallvec![range],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -861,9 +868,10 @@ pub struct ClearDepthStencilImageInfo {
 }
 
 impl ClearDepthStencilImageInfo {
-    /// Returns a `ClearDepthStencilImageInfo` with the specified `image`.
+    /// Returns a default `ClearDepthStencilImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {
@@ -873,6 +881,12 @@ impl ClearDepthStencilImageInfo {
             regions: smallvec![range],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

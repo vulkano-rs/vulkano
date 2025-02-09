@@ -781,9 +781,9 @@ pub struct SwapchainPresentInfo {
 }
 
 impl SwapchainPresentInfo {
-    /// Returns a `SwapchainPresentInfo` with the specified `swapchain` and `image_index`.
+    /// Returns a default `SwapchainPresentInfo` with the provided `swapchain` and `image_index`.
     #[inline]
-    pub fn swapchain_image_index(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
+    pub const fn new(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
         Self {
             swapchain,
             image_index,
@@ -792,6 +792,12 @@ impl SwapchainPresentInfo {
             present_region: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn swapchain_image_index(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
+        Self::new(swapchain, image_index)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -974,9 +980,9 @@ pub struct SemaphorePresentInfo {
 }
 
 impl SemaphorePresentInfo {
-    /// Returns a `SemaphorePresentInfo` with the specified `semaphore`.
+    /// Returns a default `SemaphorePresentInfo` with the provided `semaphore`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             _ne: crate::NonExhaustive(()),

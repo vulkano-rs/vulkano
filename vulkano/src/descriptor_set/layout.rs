@@ -625,9 +625,9 @@ pub struct DescriptorSetLayoutBinding {
 }
 
 impl DescriptorSetLayoutBinding {
-    /// Returns a `DescriptorSetLayoutBinding` with the given type.
+    /// Returns a default `DescriptorSetLayoutBinding` with the provided `descriptor_type`.
     #[inline]
-    pub fn descriptor_type(descriptor_type: DescriptorType) -> Self {
+    pub const fn new(descriptor_type: DescriptorType) -> Self {
         Self {
             binding_flags: DescriptorBindingFlags::empty(),
             descriptor_type,
@@ -636,6 +636,12 @@ impl DescriptorSetLayoutBinding {
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn descriptor_type(descriptor_type: DescriptorType) -> Self {
+        Self::new(descriptor_type)
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the
@@ -1418,7 +1424,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),

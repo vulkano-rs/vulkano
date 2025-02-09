@@ -1629,9 +1629,9 @@ pub struct CopyDescriptorSet {
 }
 
 impl CopyDescriptorSet {
-    /// Returns a `CopyDescriptorSet` with the specified `src_set`.
+    /// Returns a default `CopyDescriptorSet` with the provided `src_set`.
     #[inline]
-    pub fn new(src_set: Arc<DescriptorSet>) -> Self {
+    pub const fn new(src_set: Arc<DescriptorSet>) -> Self {
         Self {
             src_set,
             src_binding: 0,

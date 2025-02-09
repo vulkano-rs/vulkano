@@ -509,7 +509,7 @@ impl ApplicationHandler for App {
                     // that the viewport should be dynamic.
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
+                    ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()
@@ -671,7 +671,7 @@ impl ApplicationHandler for App {
                             // Only attachments that have `AttachmentLoadOp::Clear` are provided
                             // with clear values, any others should use `None` as the clear value.
                             clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
-                            ..RenderingAttachmentInfo::image_view(
+                            ..RenderingAttachmentInfo::new(
                                 // We specify image view corresponding to the currently acquired
                                 // swapchain image, to use for this attachment.
                                 rcx.attachment_image_views[image_index as usize].clone(),
@@ -718,10 +718,7 @@ impl ApplicationHandler for App {
                     // that draws the triangle.
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            rcx.swapchain.clone(),
-                            image_index,
-                        ),
+                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

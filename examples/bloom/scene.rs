@@ -116,7 +116,7 @@ impl SceneTask {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(pipeline_layout.clone())
+                    ..GraphicsPipelineCreateInfo::new(pipeline_layout.clone())
                 },
             )
             .unwrap()

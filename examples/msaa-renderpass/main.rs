@@ -347,7 +347,7 @@ fn main() {
                 )),
                 dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                ..GraphicsPipelineCreateInfo::new(layout)
             },
         )
         .unwrap()
@@ -406,7 +406,7 @@ fn main() {
     builder
         .end_render_pass(Default::default())
         .unwrap()
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
+        .copy_image_to_buffer(CopyImageToBufferInfo::new(image, buf.clone()))
         .unwrap();
 
     let command_buffer = builder.build().unwrap();

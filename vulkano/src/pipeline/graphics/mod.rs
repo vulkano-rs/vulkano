@@ -749,9 +749,10 @@ pub struct GraphicsPipelineCreateInfo {
 }
 
 impl GraphicsPipelineCreateInfo {
-    /// Returns a `GraphicsPipelineCreateInfo` with the specified `layout`.
+    /// Returns a default `GraphicsPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
@@ -775,6 +776,12 @@ impl GraphicsPipelineCreateInfo {
 
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+        Self::new(layout)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

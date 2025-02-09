@@ -414,9 +414,10 @@ pub struct RayTracingPipelineCreateInfo {
 }
 
 impl RayTracingPipelineCreateInfo {
-    /// Returns a `RayTracingPipelineCreateInfo` with the specified `layout`.
+    /// Returns a default `RayTracingPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
@@ -427,6 +428,12 @@ impl RayTracingPipelineCreateInfo {
             base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+        Self::new(layout)
     }
 
     fn validate(&self, device: &Arc<Device>) -> Result<(), Box<ValidationError>> {

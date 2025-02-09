@@ -244,18 +244,14 @@ impl ApplicationHandler for App {
                                 0,
                                 DescriptorSetLayoutBinding {
                                     stages: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                                    ..DescriptorSetLayoutBinding::descriptor_type(
-                                        DescriptorType::Sampler,
-                                    )
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
                                 },
                             ),
                             (
                                 1,
                                 DescriptorSetLayoutBinding {
                                     stages: ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                                    ..DescriptorSetLayoutBinding::descriptor_type(
-                                        DescriptorType::SampledImage,
-                                    )
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
                                 },
                             ),
                             (
@@ -263,9 +259,7 @@ impl ApplicationHandler for App {
                                 DescriptorSetLayoutBinding {
                                     stages: ShaderStages::COMPUTE,
                                     descriptor_count: MAX_BLOOM_MIP_LEVELS,
-                                    ..DescriptorSetLayoutBinding::descriptor_type(
-                                        DescriptorType::StorageImage,
-                                    )
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
                                 },
                             ),
                         ]

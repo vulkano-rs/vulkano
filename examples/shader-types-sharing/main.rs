@@ -268,7 +268,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
@@ -289,12 +289,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
-        ComputePipeline::new(
-            device,
-            None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
-        )
-        .unwrap()
+        ComputePipeline::new(device, None, ComputePipelineCreateInfo::new(stage, layout)).unwrap()
     };
 
     // Multiply each value by 2.

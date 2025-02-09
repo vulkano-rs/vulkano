@@ -871,15 +871,21 @@ pub struct ExternalBufferInfo {
 }
 
 impl ExternalBufferInfo {
-    /// Returns an `ExternalBufferInfo` with the specified `handle_type`.
+    /// Returns a default `ExternalBufferInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
+    pub const fn new(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
             flags: BufferCreateFlags::empty(),
             usage: BufferUsage::empty(),
             handle_type,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(

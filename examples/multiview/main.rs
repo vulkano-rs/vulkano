@@ -297,7 +297,7 @@ fn main() {
                     ColorBlendAttachmentState::default(),
                 )),
                 subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                ..GraphicsPipelineCreateInfo::new(layout)
             },
         )
         .unwrap()
@@ -368,7 +368,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer1.clone())
+            ..CopyImageToBufferInfo::new(image.clone(), buffer1.clone())
         })
         .unwrap()
         .copy_image_to_buffer(CopyImageToBufferInfo {
@@ -381,7 +381,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer2.clone())
+            ..CopyImageToBufferInfo::new(image.clone(), buffer2.clone())
         })
         .unwrap();
 
