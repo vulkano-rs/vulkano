@@ -4,7 +4,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{ffi::c_void, mem, ptr, sync::Arc};
+use std::{ffi::c_void, ptr, sync::Arc};
 use vulkano::{
     self,
     buffer::{Buffer, BufferContents, IndexType},
@@ -244,7 +244,7 @@ impl RecordingCommandBuffer<'_> {
                 layout,
                 offset,
                 <*const _>::cast(values),
-                mem::size_of_val(values) as u32,
+                size_of_val(values) as u32,
             )
         }
     }

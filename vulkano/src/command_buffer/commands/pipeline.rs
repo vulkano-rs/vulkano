@@ -30,7 +30,7 @@ use crate::{
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 macro_rules! vuids {
     ($vuid_type:ident, $($id:literal),+ $(,)?) => {

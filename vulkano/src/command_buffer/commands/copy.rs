@@ -16,7 +16,6 @@ use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{
     cmp::{max, min},
-    mem::size_of,
     sync::Arc,
 };
 

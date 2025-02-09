@@ -21,7 +21,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 /// # Commands to do operations on acceleration structures.
 impl<L> AutoCommandBufferBuilder<L> {

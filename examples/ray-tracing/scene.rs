@@ -1,6 +1,6 @@
 use crate::{App, RenderContext};
 use glam::{Mat4, Vec3};
-use std::{iter, mem::size_of, sync::Arc};
+use std::{iter, sync::Arc};
 use vulkano::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,

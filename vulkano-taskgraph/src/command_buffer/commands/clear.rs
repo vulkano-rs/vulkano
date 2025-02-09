@@ -4,7 +4,7 @@ use crate::{
     Id,
 };
 use smallvec::SmallVec;
-use std::{ffi::c_void, mem};
+use std::ffi::c_void;
 use vulkano::{
     buffer::{Buffer, BufferContents},
     device::DeviceOwned,
@@ -186,7 +186,7 @@ impl RecordingCommandBuffer<'_> {
                 dst_buffer,
                 dst_offset,
                 <*const _>::cast(data),
-                mem::size_of_val(data) as DeviceSize,
+                size_of_val(data) as DeviceSize,
             )
         }
     }
