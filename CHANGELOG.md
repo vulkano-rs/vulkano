@@ -17,6 +17,11 @@
 
 ### Bugs fixed
 
+# Version 0.35.1 (2025-02-08)
+
+### Bugs fixed
+- Fixed a bug in `StandardMemoryAllocator` where if the suballocation count of a `DeviceMemory` block would drop to zero, no more suballocations could be made, leading to needless allocations of new `DeviceMemory` blocks.
+
 # Version 0.35.0 (2025-02-06)
 
 ### Public dependency updates
