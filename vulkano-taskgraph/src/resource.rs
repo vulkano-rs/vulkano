@@ -1052,15 +1052,23 @@ impl Flight {
 #[derive(Debug)]
 pub struct ResourcesCreateInfo<'a> {
     /// The maximum number of [`Buffer`]s that the collection can hold at once.
+    ///
+    /// The default value is `16777216` (2<sup>24</sup>).
     pub max_buffers: u32,
 
     /// The maximum number of [`Image`]s that the collection can hold at once.
+    ///
+    /// The default value is `16777216` (2<sup>24</sup>).
     pub max_images: u32,
 
     /// The maximum number of [`Swapchain`]s that the collection can hold at once.
+    ///
+    /// The default value is `256` (2<sup>8</sup>).
     pub max_swapchains: u32,
 
     /// The maximum number of [`Flight`]s that the collection can hold at once.
+    ///
+    /// The default value is `256` (2<sup>8</sup>).
     pub max_flights: u32,
 
     pub _ne: crate::NonExhaustive<'a>,
@@ -1069,7 +1077,15 @@ pub struct ResourcesCreateInfo<'a> {
 impl Default for ResourcesCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
-        ResourcesCreateInfo {
+        Self::new()
+    }
+}
+
+impl ResourcesCreateInfo<'_> {
+    /// Returns a default `ResourcesCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             max_buffers: 1 << 24,
             max_images: 1 << 24,
             max_swapchains: 1 << 8,

@@ -288,26 +288,32 @@ pub struct DependencyInfo<'a> {
     pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl DependencyInfo<'_> {
-    /// Returns `true` if `self` doesn't contain any barriers.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.memory_barriers.is_empty()
-            && self.buffer_memory_barriers.is_empty()
-            && self.image_memory_barriers.is_empty()
-    }
-}
-
 impl Default for DependencyInfo<'_> {
     #[inline]
     fn default() -> Self {
-        DependencyInfo {
-            dependency_flags: DependencyFlags::default(),
+        Self::new()
+    }
+}
+
+impl DependencyInfo<'_> {
+    /// Returns a default `DependencyInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            dependency_flags: DependencyFlags::empty(),
             memory_barriers: &[],
             buffer_memory_barriers: &[],
             image_memory_barriers: &[],
             _ne: crate::NE,
         }
+    }
+
+    /// Returns `true` if `self` doesn't contain any barriers.
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.memory_barriers.is_empty()
+            && self.buffer_memory_barriers.is_empty()
+            && self.image_memory_barriers.is_empty()
     }
 }
 
@@ -341,6 +347,14 @@ pub struct MemoryBarrier<'a> {
 impl Default for MemoryBarrier<'_> {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MemoryBarrier<'_> {
+    /// Returns a default `MemoryBarrier`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -391,7 +405,15 @@ pub struct BufferMemoryBarrier<'a> {
 impl Default for BufferMemoryBarrier<'_> {
     #[inline]
     fn default() -> Self {
-        BufferMemoryBarrier {
+        Self::new()
+    }
+}
+
+impl BufferMemoryBarrier<'_> {
+    /// Returns a default `BufferMemoryBarrier`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
             dst_stages: PipelineStages::empty(),
@@ -455,7 +477,15 @@ pub struct ImageMemoryBarrier<'a> {
 impl Default for ImageMemoryBarrier<'_> {
     #[inline]
     fn default() -> Self {
-        ImageMemoryBarrier {
+        Self::new()
+    }
+}
+
+impl ImageMemoryBarrier<'_> {
+    /// Returns a default `ImageMemoryBarrier`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
             dst_stages: PipelineStages::empty(),

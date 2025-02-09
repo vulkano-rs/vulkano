@@ -1215,7 +1215,15 @@ pub struct AttachmentInfo<'a> {
 impl Default for AttachmentInfo<'_> {
     #[inline]
     fn default() -> Self {
-        AttachmentInfo {
+        Self::new()
+    }
+}
+
+impl AttachmentInfo<'_> {
+    /// Returns a default `AttachmentInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             index: 0,
             clear: false,
             format: Format::UNDEFINED,
