@@ -1706,6 +1706,7 @@ impl AccessTypes {
             .union(AccessFlags::TRANSFER_WRITE)
             .union(AccessFlags::MEMORY_READ)
             .union(AccessFlags::MEMORY_WRITE)
+            .union(AccessFlags::SHADER_SAMPLED_READ)
             .union(AccessFlags::SHADER_STORAGE_READ)
             .union(AccessFlags::SHADER_STORAGE_WRITE)
             .union(AccessFlags::VIDEO_DECODE_READ)
