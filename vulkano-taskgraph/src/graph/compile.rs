@@ -803,7 +803,15 @@ impl IntermediateRepresentationBuilder {
                 .start_barriers
                 .iter_mut()
                 .find(|barrier| barrier.resource == id)
-                .unwrap();
+                .unwrap_or_else(|| {
+                    self.submissions
+                        .last_mut()
+                        .unwrap()
+                        .initial_barriers
+                        .iter_mut()
+                        .find(|barrier| barrier.resource == id)
+                        .unwrap()
+                });
             prev_barrier.dst_stage_mask |= access.stage_mask;
             prev_barrier.dst_access_mask |= access.access_mask;
         }
@@ -2031,15 +2039,25 @@ mod tests {
         let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
         let buffer = graph.add_buffer(&BufferCreateInfo::default());
         let image = graph.add_image(&ImageCreateInfo::default());
-        let node = graph
+        let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .buffer_access(buffer, AccessTypes::VERTEX_SHADER_UNIFORM_READ)
             .image_access(
                 image,
                 AccessTypes::FRAGMENT_SHADER_SAMPLED_READ,
-                ImageLayoutType::Optimal,
+                ImageLayoutType::General,
             )
             .build();
+        let node2 = graph
+            .create_task_node("", QueueFamilyType::Graphics, PhantomData)
+            .buffer_access(buffer, AccessTypes::VERTEX_SHADER_SAMPLED_READ)
+            .image_access(
+                image,
+                AccessTypes::FRAGMENT_SHADER_STORAGE_READ,
+                ImageLayoutType::General,
+            )
+            .build();
+        graph.add_edge(node1, node2).unwrap();
 
         let graph = unsafe {
             graph.compile(&CompileInfo {
@@ -2055,19 +2073,20 @@ mod tests {
                 barriers: [
                     {
                         dst_stage_mask: VERTEX_SHADER,
-                        dst_access_mask: UNIFORM_READ,
+                        dst_access_mask: UNIFORM_READ | SHADER_SAMPLED_READ,
                         new_layout: Undefined,
                         resource: buffer,
                     },
                     {
                         dst_stage_mask: FRAGMENT_SHADER,
-                        dst_access_mask: SHADER_SAMPLED_READ,
-                        new_layout: ShaderReadOnlyOptimal,
+                        dst_access_mask: SHADER_SAMPLED_READ | SHADER_STORAGE_READ,
+                        new_layout: General,
                         resource: image,
                     },
                 ],
             },
-            ExecuteTask { node: node },
+            ExecuteTask { node: node1 },
+            ExecuteTask { node: node2 },
             FlushSubmit,
             Submit,
         );
