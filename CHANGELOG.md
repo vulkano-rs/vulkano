@@ -26,6 +26,7 @@ Changes to `GraphicsPipeline`:
 
 ### Bugs fixed
 - Fixed a bug in `StandardMemoryAllocator` where if the suballocation count of a `DeviceMemory` block would drop to zero, no more suballocations could be made, leading to needless allocations of new `DeviceMemory` blocks.
+- Vulkano-taskgraph: Fixed a panic that would happen when looking up the previous barrier and it's an initial barrier.
 
 # Version 0.35.0 (2025-02-06)
 
