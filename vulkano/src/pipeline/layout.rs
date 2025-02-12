@@ -196,16 +196,19 @@ impl PipelineLayout {
                         stages |= range.stages;
                     }
                 }
-                // finished all stages
-                if stages.is_empty() {
+
+                if !stages.is_empty() {
+                    push_constant_ranges_disjoint.push(PushConstantRange {
+                        stages,
+                        offset: min_offset,
+                        size: max_offset - min_offset,
+                    });
+                }
+
+                if max_offset == u32::MAX {
                     break;
                 }
 
-                push_constant_ranges_disjoint.push(PushConstantRange {
-                    stages,
-                    offset: min_offset,
-                    size: max_offset - min_offset,
-                });
                 // prepare for next range
                 min_offset = max_offset;
             }
