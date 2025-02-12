@@ -1403,6 +1403,39 @@ mod tests {
                     },
                 ][..],
             ),
+            // input:
+            // - `0..8`, stage=vertex
+            // - `16..32`, stage=fragment
+            //
+            // output:
+            // - `0..8`, stage=vertex
+            // - `16..32`, stage=fragment
+            (
+                &[
+                    PushConstantRange {
+                        stages: ShaderStages::VERTEX,
+                        offset: 0,
+                        size: 8,
+                    },
+                    PushConstantRange {
+                        stages: ShaderStages::FRAGMENT,
+                        offset: 16,
+                        size: 16,
+                    },
+                ][..],
+                &[
+                    PushConstantRange {
+                        stages: ShaderStages::VERTEX,
+                        offset: 0,
+                        size: 8,
+                    },
+                    PushConstantRange {
+                        stages: ShaderStages::FRAGMENT,
+                        offset: 16,
+                        size: 16,
+                    },
+                ][..],
+            ),
         ];
 
         let (device, _) = gfx_dev_and_queue!();
