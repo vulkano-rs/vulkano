@@ -33,6 +33,13 @@ fn include_callback(
     base_path: &Path,
     includes: &mut Vec<String>,
 ) -> Result<ResolvedInclude, String> {
+    if requested_source_path_raw == "vulkano.glsl" {
+        return Ok(ResolvedInclude {
+            resolved_name: "vulkano.glsl".to_owned(),
+            content: include_str!("../include/vulkano.glsl").to_owned(),
+        });
+    }
+
     let file_to_include = match directive_type {
         IncludeType::Relative => {
             let requested_source_path = Path::new(requested_source_path_raw);

@@ -3,7 +3,7 @@ use super::{
     RenderPassIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
-    command_buffer::RecordingCommandBuffer,
+    command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
     resource::{
         BufferAccess, BufferState, DeathRow, ImageAccess, ImageState, Resources, SwapchainState,
@@ -167,9 +167,11 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
 
-        resource_map
-            .physical_resources
-            .try_advance_global_and_collect(&resource_map.guard);
+        if resource_map.guard.try_advance_global() {
+            resource_map
+                .physical_resources
+                .try_collect(&resource_map.guard);
+        }
 
         res
     }
@@ -376,7 +378,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     state.begin_render_pass(render_pass_index)?;
                 }
                 Instruction::NextSubpass => {
-                    state.next_subpass();
+                    state.next_subpass()?;
                 }
                 Instruction::EndRenderPass => {
                     state.end_render_pass();
@@ -479,7 +481,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     state.begin_render_pass(render_pass_index)?;
                 }
                 Instruction::NextSubpass => {
-                    state.next_subpass();
+                    state.next_subpass()?;
                 }
                 Instruction::EndRenderPass => {
                     state.end_render_pass();
@@ -813,9 +815,13 @@ struct ExecuteState2<'a, W: ?Sized + 'static> {
     per_submits: SmallVec<[PerSubmitInfo2; 4]>,
     current_per_submit: PerSubmitInfo2,
     current_command_buffer: Option<raw::RecordingCommandBuffer>,
+    command_buffer_state: CommandBufferState,
     command_buffers: Vec<Arc<raw::CommandBuffer>>,
     current_buffer_barriers_vk: Vec<vk::BufferMemoryBarrier2<'static>>,
     current_image_barriers_vk: Vec<vk::ImageMemoryBarrier2<'static>>,
+    current_render_pass_index: RenderPassIndex,
+    current_framebuffer_index: usize,
+    current_subpass_index: usize,
     clear_values: LinearMap<Id, Option<ClearValue>>,
     clear_values_vk: Vec<vk::ClearValue>,
     clear_attachments_vk: Vec<vk::ClearAttachment>,
@@ -862,9 +868,13 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             per_submits: SmallVec::new(),
             current_per_submit: PerSubmitInfo2::default(),
             current_command_buffer: None,
+            command_buffer_state: CommandBufferState::default(),
             command_buffers: Vec::new(),
             current_buffer_barriers_vk: Vec::new(),
             current_image_barriers_vk: Vec::new(),
+            current_render_pass_index: 0,
+            current_framebuffer_index: 0,
+            current_subpass_index: 0,
             clear_values: LinearMap::new(),
             clear_values_vk: Vec::new(),
             clear_attachments_vk: Vec::new(),
@@ -1039,6 +1049,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         let mut current_command_buffer = unsafe {
             RecordingCommandBuffer::new(
                 current_command_buffer!(self),
+                &mut self.command_buffer_state,
                 self.resource_map,
                 self.death_row,
             )
@@ -1144,8 +1155,22 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         }
 
         let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
-        let framebuffer = &render_pass_state.framebuffers
-            [unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) }];
+        let framebuffer_index =
+            unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) };
+        let framebuffer = &render_pass_state.framebuffers[framebuffer_index];
+
+        self.current_render_pass_index = render_pass_index;
+        self.current_framebuffer_index = framebuffer_index;
+        self.current_subpass_index = 0;
+
+        unsafe {
+            self.command_buffer_state.set_local_set(
+                self.resource_map,
+                self.death_row,
+                framebuffer,
+                0,
+            )
+        }?;
 
         // FIXME:
         let mut render_area_vk = vk::Rect2D::default();
@@ -1181,7 +1206,22 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         Ok(())
     }
 
-    fn next_subpass(&mut self) {
+    fn next_subpass(&mut self) -> Result {
+        self.current_subpass_index += 1;
+
+        let render_pass_state =
+            &self.executable.render_passes.borrow()[self.current_render_pass_index];
+        let framebuffer = &render_pass_state.framebuffers[self.current_framebuffer_index];
+
+        unsafe {
+            self.command_buffer_state.set_local_set(
+                self.resource_map,
+                self.death_row,
+                framebuffer,
+                self.current_subpass_index,
+            )
+        }?;
+
         let fns = self.executable.device().fns();
         unsafe {
             (fns.v1_0.cmd_next_subpass)(
@@ -1189,9 +1229,13 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 vk::SubpassContents::INLINE,
             )
         };
+
+        Ok(())
     }
 
     fn end_render_pass(&mut self) {
+        self.command_buffer_state.reset_local_set();
+
         let fns = self.executable.device().fns();
         unsafe {
             (fns.v1_0.cmd_end_render_pass)(self.current_command_buffer.as_ref().unwrap().handle())
@@ -1348,6 +1392,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             .command_buffer_infos_vk
             .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
         self.death_row.push(Arc::new(command_buffer));
+        self.command_buffer_state.reset();
 
         Ok(())
     }
@@ -1366,11 +1411,15 @@ struct ExecuteState<'a, W: ?Sized + 'static> {
     per_submits: SmallVec<[PerSubmitInfo; 4]>,
     current_per_submit: PerSubmitInfo,
     current_command_buffer: Option<raw::RecordingCommandBuffer>,
+    command_buffer_state: CommandBufferState,
     command_buffers: Vec<Arc<raw::CommandBuffer>>,
     current_buffer_barriers_vk: Vec<vk::BufferMemoryBarrier<'static>>,
     current_image_barriers_vk: Vec<vk::ImageMemoryBarrier<'static>>,
     current_src_stage_mask_vk: vk::PipelineStageFlags,
     current_dst_stage_mask_vk: vk::PipelineStageFlags,
+    current_render_pass_index: RenderPassIndex,
+    current_framebuffer_index: usize,
+    current_subpass_index: usize,
     clear_values: LinearMap<Id, Option<ClearValue>>,
     clear_values_vk: Vec<vk::ClearValue>,
     clear_attachments_vk: Vec<vk::ClearAttachment>,
@@ -1411,11 +1460,15 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             per_submits: SmallVec::new(),
             current_per_submit: PerSubmitInfo::default(),
             current_command_buffer: None,
+            command_buffer_state: CommandBufferState::default(),
             command_buffers: Vec::new(),
             current_buffer_barriers_vk: Vec::new(),
             current_image_barriers_vk: Vec::new(),
             current_src_stage_mask_vk: vk::PipelineStageFlags::empty(),
             current_dst_stage_mask_vk: vk::PipelineStageFlags::empty(),
+            current_render_pass_index: 0,
+            current_framebuffer_index: 0,
+            current_subpass_index: 0,
             clear_values: LinearMap::new(),
             clear_values_vk: Vec::new(),
             clear_attachments_vk: Vec::new(),
@@ -1595,6 +1648,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         let mut current_command_buffer = unsafe {
             RecordingCommandBuffer::new(
                 current_command_buffer!(self),
+                &mut self.command_buffer_state,
                 self.resource_map,
                 self.death_row,
             )
@@ -1703,8 +1757,22 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         }
 
         let render_pass_state = &self.executable.render_passes.borrow()[render_pass_index];
-        let framebuffer = &render_pass_state.framebuffers
-            [unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) }];
+        let framebuffer_index =
+            unsafe { framebuffer_index(self.resource_map, &self.executable.swapchains) };
+        let framebuffer = &render_pass_state.framebuffers[framebuffer_index];
+
+        self.current_render_pass_index = render_pass_index;
+        self.current_framebuffer_index = framebuffer_index;
+        self.current_subpass_index = 0;
+
+        unsafe {
+            self.command_buffer_state.set_local_set(
+                self.resource_map,
+                self.death_row,
+                framebuffer,
+                0,
+            )
+        }?;
 
         // FIXME:
         let mut render_area_vk = vk::Rect2D::default();
@@ -1740,7 +1808,22 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         Ok(())
     }
 
-    fn next_subpass(&mut self) {
+    fn next_subpass(&mut self) -> Result {
+        self.current_subpass_index += 1;
+
+        let render_pass_state =
+            &self.executable.render_passes.borrow()[self.current_render_pass_index];
+        let framebuffer = &render_pass_state.framebuffers[self.current_framebuffer_index];
+
+        unsafe {
+            self.command_buffer_state.set_local_set(
+                self.resource_map,
+                self.death_row,
+                framebuffer,
+                self.current_subpass_index,
+            )
+        }?;
+
         let fns = self.executable.device().fns();
         unsafe {
             (fns.v1_0.cmd_next_subpass)(
@@ -1748,9 +1831,13 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 vk::SubpassContents::INLINE,
             )
         };
+
+        Ok(())
     }
 
     fn end_render_pass(&mut self) {
+        self.command_buffer_state.reset_local_set();
+
         let fns = self.executable.device().fns();
         unsafe {
             (fns.v1_0.cmd_end_render_pass)(self.current_command_buffer.as_ref().unwrap().handle())
@@ -1919,6 +2006,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .command_buffers_vk
             .push(command_buffer.handle());
         self.death_row.push(Arc::new(command_buffer));
+        self.command_buffer_state.reset();
 
         Ok(())
     }

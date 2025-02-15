@@ -1,13 +1,13 @@
 #version 450
+#include <vulkano.glsl>
 
 layout(location = 0) in vec2 v_tex_coords;
 
 layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler bloom_sampler;
-layout(set = 0, binding = 1) uniform texture2D bloom_texture;
-
 layout(push_constant) uniform PushConstants {
+    SamplerId sampler_id;
+    SampledImageId texture_id;
     float exposure;
 };
 
@@ -30,7 +30,7 @@ vec3 rrtAndOdtFit(vec3 v) {
 }
 
 void main() {
-    vec4 hdr_color = exposure * texture(sampler2D(bloom_texture, bloom_sampler), v_tex_coords);
+    vec4 hdr_color = exposure * texture(vko_sampler2D(texture_id, sampler_id), v_tex_coords);
 
     vec3 color = ACES_INPUT_MATRIX * hdr_color.rgb;
     color = rrtAndOdtFit(color);

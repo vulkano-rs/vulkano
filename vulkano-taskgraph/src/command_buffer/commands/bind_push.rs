@@ -1,5 +1,6 @@
 use crate::{
     command_buffer::{RecordingCommandBuffer, Result},
+    descriptor_set::LOCAL_SET,
     Id,
 };
 use ash::vk;
@@ -10,7 +11,8 @@ use vulkano::{
     buffer::{Buffer, BufferContents, IndexType},
     device::DeviceOwned,
     pipeline::{
-        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline, PipelineLayout,
+        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline, Pipeline,
+        PipelineBindPoint, PipelineLayout,
     },
     DeviceSize, Version, VulkanObject,
 };
@@ -86,6 +88,16 @@ impl RecordingCommandBuffer<'_> {
             )
         };
 
+        let invalidate_from = self
+            .state
+            .invalidate_descriptor_sets(PipelineBindPoint::Compute, pipeline.layout());
+
+        if let Some(first_set) = invalidate_from {
+            if first_set <= LOCAL_SET {
+                self.bind_bindless_sets(PipelineBindPoint::Compute, pipeline.layout(), first_set);
+            }
+        }
+
         self.death_row.push(pipeline.clone());
 
         self
@@ -112,6 +124,16 @@ impl RecordingCommandBuffer<'_> {
             )
         };
 
+        let invalidate_from = self
+            .state
+            .invalidate_descriptor_sets(PipelineBindPoint::Graphics, pipeline.layout());
+
+        if let Some(first_set) = invalidate_from {
+            if first_set <= LOCAL_SET {
+                self.bind_bindless_sets(PipelineBindPoint::Graphics, pipeline.layout(), first_set);
+            }
+        }
+
         self.death_row.push(pipeline.clone());
 
         self
@@ -137,6 +159,20 @@ impl RecordingCommandBuffer<'_> {
                 pipeline.handle(),
             )
         };
+
+        let invalidate_from = self
+            .state
+            .invalidate_descriptor_sets(PipelineBindPoint::RayTracing, pipeline.layout());
+
+        if let Some(first_set) = invalidate_from {
+            if first_set <= LOCAL_SET {
+                self.bind_bindless_sets(
+                    PipelineBindPoint::RayTracing,
+                    pipeline.layout(),
+                    first_set,
+                );
+            }
+        }
 
         self.death_row.push(pipeline.clone());
 

@@ -7,6 +7,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -26,20 +27,27 @@ use vulkano_taskgraph::{
 pub struct SceneTask {
     pipeline: Option<Arc<GraphicsPipeline>>,
     vertex_buffer_id: Id<Buffer>,
-    bloom_image_id: Id<Image>,
+    diffuse_image_id: Id<Image>,
+    normals_image_id: Id<Image>,
+    depth_image_id: Id<Image>,
 }
 
 impl SceneTask {
-    pub fn new(app: &App, virtual_bloom_image_id: Id<Image>) -> Self {
+    pub fn new(
+        app: &App,
+        virtual_diffuse_image_id: Id<Image>,
+        virtual_normals_image_id: Id<Image>,
+        virtual_depth_image_id: Id<Image>,
+    ) -> Self {
         let vertices = [
-            MyVertex {
-                position: [-0.5, 0.5],
+            TriangleVertex {
+                position: [-0.5, -0.25],
             },
-            MyVertex {
-                position: [0.5, 0.5],
+            TriangleVertex {
+                position: [0.0, 0.5],
             },
-            MyVertex {
-                position: [0.0, -0.5],
+            TriangleVertex {
+                position: [0.25, -0.1],
             },
         ];
         let vertex_buffer_id = app
@@ -64,7 +72,7 @@ impl SceneTask {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[TriangleVertex]>(vertex_buffer_id, ..)?
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -79,7 +87,9 @@ impl SceneTask {
         SceneTask {
             pipeline: None,
             vertex_buffer_id,
-            bloom_image_id: virtual_bloom_image_id,
+            diffuse_image_id: virtual_diffuse_image_id,
+            normals_image_id: virtual_normals_image_id,
+            depth_image_id: virtual_depth_image_id,
         }
     }
 
@@ -95,7 +105,7 @@ impl SceneTask {
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+            let vertex_input_state = TriangleVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(vs),
                 PipelineShaderStageCreateInfo::new(fs),
@@ -111,13 +121,17 @@ impl SceneTask {
                     input_assembly_state: Some(InputAssemblyState::default()),
                     viewport_state: Some(ViewportState::default()),
                     rasterization_state: Some(RasterizationState::default()),
+                    depth_stencil_state: Some(DepthStencilState {
+                        depth: Some(DepthState::simple()),
+                        ..Default::default()
+                    }),
                     multisample_state: Some(MultisampleState::default()),
                     color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
                         ColorBlendAttachmentState::default(),
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
+                    subpass: Some(subpass.clone().into()),
                     ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
@@ -132,7 +146,9 @@ impl Task for SceneTask {
     type World = RenderContext;
 
     fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
-        clear_values.set(self.bloom_image_id, [0.0; 4]);
+        clear_values.set(self.diffuse_image_id, [0.0; 4]);
+        clear_values.set(self.normals_image_id, [0.0; 4]);
+        clear_values.set(self.depth_image_id, 1.0);
     }
 
     unsafe fn execute(
@@ -153,7 +169,7 @@ impl Task for SceneTask {
 
 #[derive(Clone, Copy, BufferContents, Vertex)]
 #[repr(C)]
-struct MyVertex {
+struct TriangleVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
 }
@@ -178,14 +194,14 @@ mod fs {
         ty: "fragment",
         src: r"
             #version 450
-            #include <shared_exponent.glsl>
 
-            layout(location = 0) out uint f_color;
+            layout(location = 0) out vec4 f_color;
+            layout(location = 1) out vec4 f_normal;
 
             void main() {
-                f_color = convertToSharedExponent(vec3(2.0, 0.0, 0.0));
+                f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                f_normal = vec4(0.0, 0.0, 1.0, 0.0);
             }
         ",
-        include: ["."],
     }
 }

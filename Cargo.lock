@@ -298,8 +298,7 @@ dependencies = [
 [[package]]
 name = "concurrent-slotmap"
 version = "0.1.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "288086ecfcd80978f795a7ba8ffd9777d6dfcb6e5c6c74bba10e3d9a1eb52169"
+source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=db6810ab699b99fd79052252c057851fa80117cf#db6810ab699b99fd79052252c057851fa80117cf"
 dependencies = [
  "virtual-buffer",
 ]
@@ -394,6 +393,7 @@ dependencies = [
  "glam",
  "vulkano",
  "vulkano-shaders",
+ "vulkano-taskgraph",
  "winit",
 ]
 
@@ -1881,6 +1881,7 @@ name = "vulkano-taskgraph"
 version = "0.35.0"
 dependencies = [
  "ash",
+ "bytemuck",
  "concurrent-slotmap",
  "foldhash",
  "parking_lot",

@@ -15,51 +15,48 @@ use vulkano::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryCommandBufferAbstract,
     },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
-    },
     device::{Device, Queue},
     format::Format,
-    image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryTypeFilter},
     pipeline::{
         graphics::vertex_input::Vertex,
         ray_tracing::{
             RayTracingPipeline, RayTracingPipelineCreateInfo, RayTracingShaderGroupCreateInfo,
             ShaderBindingTable,
         },
-        PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo,
+        Pipeline, PipelineShaderStageCreateInfo,
     },
     swapchain::Swapchain,
     sync::GpuFuture,
+    DeviceSize,
 };
 use vulkano_taskgraph::{
-    command_buffer::RecordingCommandBuffer, resource::Resources, Id, Task, TaskContext, TaskResult,
+    command_buffer::RecordingCommandBuffer,
+    descriptor_set::{AccelerationStructureId, StorageBufferId},
+    resource::HostAccessType,
+    Id, Task, TaskContext, TaskResult,
 };
 
 pub struct SceneTask {
-    descriptor_set: Arc<DescriptorSet>,
-    swapchain_image_sets: Vec<(Arc<ImageView>, Arc<DescriptorSet>)>,
-    pipeline_layout: Arc<PipelineLayout>,
-    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    virtual_swapchain_id: Id<Swapchain>,
+    swapchain_id: Id<Swapchain>,
+    acceleration_structure_id: AccelerationStructureId,
+    camera_storage_buffer_id: StorageBufferId,
     shader_binding_table: ShaderBindingTable,
     pipeline: Arc<RayTracingPipeline>,
-    blas: Arc<AccelerationStructure>,
-    tlas: Arc<AccelerationStructure>,
-    uniform_buffer: Subbuffer<raygen::Camera>,
+    // The bottom-level acceleration structure is required to be kept alive as we reference it in
+    // the top-level acceleration structure.
+    _blas: Arc<AccelerationStructure>,
 }
 
 impl SceneTask {
     pub fn new(
         app: &App,
-        pipeline_layout: Arc<PipelineLayout>,
-        swapchain_id: Id<Swapchain>,
         virtual_swapchain_id: Id<Swapchain>,
         memory_allocator: Arc<dyn MemoryAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
     ) -> Self {
+        let bcx = app.resources.bindless_context().unwrap();
+
         let pipeline = {
             let raygen = raygen::load(app.device.clone())
                 .unwrap()
@@ -92,6 +89,8 @@ impl SceneTask {
                 },
             ];
 
+            let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
+
             RayTracingPipeline::new(
                 app.device.clone(),
                 None,
@@ -99,7 +98,7 @@ impl SceneTask {
                     stages: stages.into_iter().collect(),
                     groups: groups.into_iter().collect(),
                     max_pipeline_ray_recursion_depth: 1,
-                    ..RayTracingPipelineCreateInfo::new(pipeline_layout.clone())
+                    ..RayTracingPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()
@@ -167,67 +166,65 @@ impl SceneTask {
             Vec3::new(0.0, -1.0, 0.0),
         );
 
-        let uniform_buffer = Buffer::from_data(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            raygen::Camera {
-                view_proj: (proj * view).to_cols_array_2d(),
-                view_inverse: view.inverse().to_cols_array_2d(),
-                proj_inverse: proj.inverse().to_cols_array_2d(),
-            },
-        )
+        let camera_buffer_id = app
+            .resources
+            .create_buffer(
+                BufferCreateInfo {
+                    usage: BufferUsage::STORAGE_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                DeviceLayout::new_sized::<raygen::Camera>(),
+            )
+            .unwrap();
+
+        unsafe {
+            vulkano_taskgraph::execute(
+                &app.queue,
+                &app.resources,
+                app.flight_id,
+                |_cbf, tcx| {
+                    *tcx.write_buffer(camera_buffer_id, ..)? = raygen::Camera {
+                        view_proj: (proj * view).to_cols_array_2d(),
+                        view_inverse: view.inverse().to_cols_array_2d(),
+                        proj_inverse: proj.inverse().to_cols_array_2d(),
+                    };
+
+                    Ok(())
+                },
+                [(camera_buffer_id, HostAccessType::Write)],
+                [],
+                [],
+            )
+        }
         .unwrap();
 
-        let descriptor_set = DescriptorSet::new(
-            descriptor_set_allocator.clone(),
-            pipeline_layout.set_layouts()[0].clone(),
-            [
-                WriteDescriptorSet::acceleration_structure(0, tlas.clone()),
-                WriteDescriptorSet::buffer(1, uniform_buffer.clone()),
-            ],
-            [],
-        )
-        .unwrap();
+        let acceleration_structure_id = bcx.global_set().add_acceleration_structure(tlas);
 
-        let swapchain_image_sets = window_size_dependent_setup(
-            &app.resources,
-            swapchain_id,
-            &pipeline_layout,
-            &descriptor_set_allocator,
-        );
+        let camera_storage_buffer_id = bcx
+            .global_set()
+            .create_storage_buffer(
+                camera_buffer_id,
+                0,
+                size_of::<raygen::Camera>() as DeviceSize,
+            )
+            .unwrap();
 
         let shader_binding_table =
             ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
 
         SceneTask {
-            descriptor_set,
-            swapchain_image_sets,
-            descriptor_set_allocator,
-            pipeline_layout,
-            virtual_swapchain_id,
+            swapchain_id: virtual_swapchain_id,
+            acceleration_structure_id,
+            camera_storage_buffer_id,
             shader_binding_table,
             pipeline,
-            blas,
-            tlas,
-            uniform_buffer,
+            _blas: blas,
         }
-    }
-
-    pub fn handle_resize(&mut self, resources: &Resources, swapchain_id: Id<Swapchain>) {
-        self.swapchain_image_sets = window_size_dependent_setup(
-            resources,
-            swapchain_id,
-            &self.pipeline_layout,
-            &self.descriptor_set_allocator,
-        );
     }
 }
 
@@ -238,35 +235,24 @@ impl Task for SceneTask {
         &self,
         cbf: &mut RecordingCommandBuffer<'_>,
         tcx: &mut TaskContext<'_>,
-        _rcx: &Self::World,
+        rcx: &Self::World,
     ) -> TaskResult {
-        let swapchain_state = tcx.swapchain(self.virtual_swapchain_id)?;
+        let swapchain_state = tcx.swapchain(self.swapchain_id)?;
         let image_index = swapchain_state.current_image_index().unwrap();
+        let extent = swapchain_state.images()[0].extent();
 
-        cbf.as_raw().bind_descriptor_sets(
-            PipelineBindPoint::RayTracing,
-            &self.pipeline_layout,
+        cbf.push_constants(
+            self.pipeline.layout(),
             0,
-            &[
-                self.descriptor_set.as_raw(),
-                self.swapchain_image_sets[image_index as usize].1.as_raw(),
-            ],
-            &[],
+            &raygen::PushConstants {
+                image_id: rcx.swapchain_storage_image_ids[image_index as usize],
+                acceleration_structure_id: self.acceleration_structure_id,
+                camera_buffer_id: self.camera_storage_buffer_id,
+            },
         )?;
         cbf.bind_pipeline_ray_tracing(&self.pipeline)?;
 
-        let extent = self.swapchain_image_sets[0].0.image().extent();
-
         unsafe { cbf.trace_rays(self.shader_binding_table.addresses(), extent) }?;
-
-        for (_, descriptor_set) in self.swapchain_image_sets.iter() {
-            cbf.destroy_object(descriptor_set.clone());
-        }
-
-        cbf.destroy_object(self.blas.clone());
-        cbf.destroy_object(self.tlas.clone());
-        cbf.destroy_object(self.uniform_buffer.clone().into());
-        cbf.destroy_object(self.descriptor_set.clone());
 
         Ok(())
     }
@@ -301,35 +287,6 @@ mod miss {
 struct MyVertex {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
-}
-
-/// This function is called once during initialization, then again whenever the window is resized.
-fn window_size_dependent_setup(
-    resources: &Resources,
-    swapchain_id: Id<Swapchain>,
-    pipeline_layout: &Arc<PipelineLayout>,
-    descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
-) -> Vec<(Arc<ImageView>, Arc<DescriptorSet>)> {
-    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
-    let images = swapchain_state.images();
-
-    let swapchain_image_sets = images
-        .iter()
-        .map(|image| {
-            let image_view = ImageView::new_default(image.clone()).unwrap();
-            let descriptor_set = DescriptorSet::new(
-                descriptor_set_allocator.clone(),
-                pipeline_layout.set_layouts()[1].clone(),
-                [WriteDescriptorSet::image_view(0, image_view.clone())],
-                [],
-            )
-            .unwrap();
-
-            (image_view, descriptor_set)
-        })
-        .collect();
-
-    swapchain_image_sets
 }
 
 /// A helper function to build a acceleration structure and wait for its completion.

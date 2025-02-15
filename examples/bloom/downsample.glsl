@@ -1,16 +1,15 @@
 #version 450
+#include <vulkano.glsl>
 #include <shared_exponent.glsl>
 
-const uint MAX_BLOOM_MIP_LEVELS = 6;
 const float EPSILON = 1.19209290e-07;
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) uniform sampler bloom_sampler;
-layout(set = 0, binding = 1) uniform texture2D bloom_texture;
-layout(set = 0, binding = 2, r32ui) uniform uimage2D bloom_mip_chain[MAX_BLOOM_MIP_LEVELS];
-
 layout(push_constant) uniform PushConstants {
+    SamplerId sampler_id;
+    SampledImageId texture_id;
+    StorageImageId dst_mip_image_id;
     uint dst_mip_level;
     float threshold;
     float knee;
@@ -33,7 +32,7 @@ vec3 prefilter(vec3 color) {
 }
 
 vec3 sample1(vec2 uv) {
-    return textureLod(sampler2D(bloom_texture, bloom_sampler), uv, src_mip_level).rgb;
+    return textureLod(vko_sampler2D(texture_id, sampler_id), uv, src_mip_level).rgb;
 }
 
 // 13-tap box filter.
@@ -71,18 +70,18 @@ vec3 downsampleBox13(vec2 uv, vec2 src_texel_size) {
 
 void store(ivec2 dst_coord, vec3 color) {
     uint packed = convertToSharedExponent(color);
-    imageStore(bloom_mip_chain[dst_mip_level], dst_coord, uvec4(packed, 0, 0, 0));
+    imageStore(vko_uimage2D_r32ui(dst_mip_image_id), dst_coord, uvec4(packed, 0, 0, 0));
 }
 
 void main() {
     ivec2 dst_coord = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 dst_size = imageSize(bloom_mip_chain[dst_mip_level]);
+    ivec2 dst_size = imageSize(vko_uimage2D_r32ui(dst_mip_image_id));
 
     if (dst_coord.x > dst_size.x || dst_coord.y > dst_size.y) {
         return;
     }
 
-    ivec2 src_size = textureSize(sampler2D(bloom_texture, bloom_sampler), int(src_mip_level));
+    ivec2 src_size = textureSize(vko_texture2D(texture_id), int(src_mip_level));
     vec2 src_texel_size = 1.0 / vec2(src_size);
     vec2 uv = (vec2(dst_coord) + 0.5) / vec2(dst_size);
     vec3 color = downsampleBox13(uv, src_texel_size);

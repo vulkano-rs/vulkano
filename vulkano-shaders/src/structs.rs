@@ -116,6 +116,10 @@ pub(super) fn write_structs(
             continue;
         }
 
+        if struct_ty.is_bindless_id() {
+            continue;
+        }
+
         let custom_derives = if struct_ty.size().is_some() {
             input.custom_derives.as_slice()
         } else {
@@ -871,6 +875,27 @@ impl TypeStruct {
             .max()
             .unwrap_or(Alignment::A1)
     }
+
+    fn is_bindless_id(&self) -> bool {
+        self.members.len() == 2
+            && self.members.iter().all(|member| {
+                matches!(
+                    member.ty,
+                    Type::Scalar(TypeScalar::Int(TypeInt {
+                        width: IntWidth::W32,
+                        signed: false,
+                    })),
+                )
+            })
+            && matches!(
+                self.ident.to_string().as_str(),
+                "SamplerId"
+                    | "SampledImageId"
+                    | "StorageImageId"
+                    | "StorageBufferId"
+                    | "AccelerationStructureId",
+            )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -899,7 +924,13 @@ impl ToTokens for Serializer<'_, Type> {
             Type::Vector(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Matrix(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Array(ty) => Serializer(ty, self.1).to_tokens(tokens),
-            Type::Struct(ty) => tokens.append(ty.ident.clone()),
+            Type::Struct(ty) => {
+                if ty.is_bindless_id() {
+                    tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set:: });
+                }
+
+                tokens.append(ty.ident.clone());
+            }
         }
     }
 }
