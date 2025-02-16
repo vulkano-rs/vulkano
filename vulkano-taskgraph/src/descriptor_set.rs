@@ -837,6 +837,13 @@ impl SamplerId {
     }
 }
 
+impl Default for SamplerId {
+    #[inline]
+    fn default() -> Self {
+        Self::INVALID
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct SampledImageId {
@@ -856,6 +863,13 @@ impl SampledImageId {
             index: slot.index(),
             generation: slot.generation(),
         }
+    }
+}
+
+impl Default for SampledImageId {
+    #[inline]
+    fn default() -> Self {
+        Self::INVALID
     }
 }
 
@@ -881,6 +895,13 @@ impl StorageImageId {
     }
 }
 
+impl Default for StorageImageId {
+    #[inline]
+    fn default() -> Self {
+        Self::INVALID
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct StorageBufferId {
@@ -903,6 +924,13 @@ impl StorageBufferId {
     }
 }
 
+impl Default for StorageBufferId {
+    #[inline]
+    fn default() -> Self {
+        Self::INVALID
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct AccelerationStructureId {
@@ -922,6 +950,13 @@ impl AccelerationStructureId {
             index: slot.index(),
             generation: slot.generation(),
         }
+    }
+}
+
+impl Default for AccelerationStructureId {
+    #[inline]
+    fn default() -> Self {
+        Self::INVALID
     }
 }
 
