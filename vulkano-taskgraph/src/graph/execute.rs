@@ -2260,8 +2260,10 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             }
         }
 
-        let mut last_accesses =
-            vec![ResourceAccess::default(); self.executable.graph.resources.capacity() as usize];
+        let mut last_accesses = vec![
+            ResourceAccess::default();
+            self.executable.graph.resources.reserved_len() as usize
+        ];
         let instruction_range = 0..submissions[self.submission_count - 1].instruction_range.end;
 
         // Determine the last accesses of resources up until before the failed submission.
@@ -2313,7 +2315,7 @@ impl<'a> ResourceMap<'a> {
     pub fn new(executable: &'a ExecutableTaskGraph<impl ?Sized>) -> Result<Self, InvalidSlotError> {
         let virtual_resources = &executable.graph.resources;
         let physical_resources = virtual_resources.physical_resources.clone();
-        let mut map = vec![ptr::null(); virtual_resources.capacity() as usize];
+        let mut map = vec![ptr::null(); virtual_resources.reserved_len() as usize];
         let guard = virtual_resources.physical_resources.pin();
 
         for (&physical_id, &virtual_id) in &virtual_resources.physical_map {

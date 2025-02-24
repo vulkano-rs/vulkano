@@ -297,8 +297,8 @@ dependencies = [
 
 [[package]]
 name = "concurrent-slotmap"
-version = "0.1.0-alpha.1"
-source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=db6810ab699b99fd79052252c057851fa80117cf#db6810ab699b99fd79052252c057851fa80117cf"
+version = "0.1.0-alpha.2"
+source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=c10c56adeae11fcc9cd0a1d5c36d3cf258d9f505#c10c56adeae11fcc9cd0a1d5c36d3cf258d9f505"
 dependencies = [
  "virtual-buffer",
 ]
@@ -1806,9 +1806,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "virtual-buffer"
-version = "1.0.1"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bbb9a832cd697a36c2abd5ef58c263b0bc33cdf280f704b895646ed3e9f595"
+checksum = "b434093a2de01d3b27e6246b0ececca4cc2a77f046bef06a9dc1216e3d892a91"
 dependencies = [
  "libc",
  "windows-targets 0.52.5",
