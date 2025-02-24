@@ -830,6 +830,7 @@ impl<T> Hash for Id<T> {
     }
 }
 
+#[doc(hidden)]
 impl Key for Id {
     #[inline]
     fn from_id(id: SlotId) -> Self {
@@ -842,6 +843,7 @@ impl Key for Id {
     }
 }
 
+#[doc(hidden)]
 impl Key for Id<Framebuffer> {
     #[inline]
     fn from_id(id: SlotId) -> Self {

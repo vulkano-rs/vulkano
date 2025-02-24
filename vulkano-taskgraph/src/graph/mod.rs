@@ -7,11 +7,11 @@ pub use self::{
 use crate::{
     linear_map::LinearMap,
     resource::{self, AccessTypes, Flight, HostAccessType, ImageLayoutType},
-    slotmap::{self, Iter, IterMut, SlotMap},
+    slotmap::{self, declare_key, Iter, IterMut, SlotMap},
     Id, InvalidSlotError, Object, ObjectType, QueueFamilyType, Task,
 };
 use ash::vk;
-use concurrent_slotmap::{declare_key, SlotId};
+use concurrent_slotmap::SlotId;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
@@ -551,19 +551,12 @@ unsafe impl<W: ?Sized> DeviceOwned for TaskGraph<W> {
 
 declare_key! {
     /// The ID type used to refer to a node within a [`TaskGraph`].
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct NodeId;
 }
 
 impl NodeId {
     fn index(self) -> NodeIndex {
         self.0.index()
-    }
-}
-
-impl fmt::Debug for NodeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
     }
 }
 

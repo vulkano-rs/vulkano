@@ -4,7 +4,7 @@ use crate::{
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use concurrent_slotmap::{epoch, Key, SlotId, SlotMap};
+use concurrent_slotmap::{epoch, SlotMap};
 use foldhash::HashMap;
 use std::{collections::BTreeMap, iter, sync::Arc};
 use vulkano::{
@@ -878,10 +878,10 @@ macro_rules! declare_key {
 
         impl $name {
             /// An ID that's guaranteed to be invalid.
-            pub const INVALID: Self = Self::new(SlotId::INVALID);
+            pub const INVALID: Self = Self::new(concurrent_slotmap::SlotId::INVALID);
 
-            #[inline]
-            const fn new(slot: SlotId) -> Self {
+            #[inline(always)]
+            const fn new(slot: concurrent_slotmap::SlotId) -> Self {
                 Self {
                     index: slot.index(),
                     generation: slot.generation(),
@@ -891,19 +891,20 @@ macro_rules! declare_key {
 
         impl std::fmt::Debug for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Debug::fmt(&self.as_id(), f)
+                std::fmt::Debug::fmt(&concurrent_slotmap::Key::as_id(*self), f)
             }
         }
 
-        impl Key for $name {
-            #[inline]
-            fn from_id(id: SlotId) -> Self {
+        #[doc(hidden)]
+        impl concurrent_slotmap::Key for $name {
+            #[inline(always)]
+            fn from_id(id: concurrent_slotmap::SlotId) -> Self {
                 Self::new(id)
             }
 
-            #[inline]
-            fn as_id(self) -> SlotId {
-                SlotId::new(self.index, self.generation)
+            #[inline(always)]
+            fn as_id(self) -> concurrent_slotmap::SlotId {
+                concurrent_slotmap::SlotId::new(self.index, self.generation)
             }
         }
     };

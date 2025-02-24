@@ -349,6 +349,50 @@ impl<V> Drop for Slot<V> {
     }
 }
 
+macro_rules! declare_key {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident $(;)?
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[repr(transparent)]
+        $vis struct $name(concurrent_slotmap::SlotId);
+
+        impl Default for $name {
+            #[inline]
+            fn default() -> Self {
+                Self::INVALID
+            }
+        }
+
+        impl $name {
+            /// An ID that's guaranteed to be invalid.
+            pub const INVALID: Self = Self(concurrent_slotmap::SlotId::INVALID);
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+
+        #[doc(hidden)]
+        impl concurrent_slotmap::Key for $name {
+            #[inline(always)]
+            fn from_id(id: concurrent_slotmap::SlotId) -> Self {
+                Self(id)
+            }
+
+            #[inline(always)]
+            fn as_id(self) -> concurrent_slotmap::SlotId {
+                self.0
+            }
+        }
+    };
+}
+pub(crate) use declare_key;
+
 pub struct Iter<'a, K, V> {
     inner: iter::Enumerate<slice::Iter<'a, Slot<V>>>,
     marker: PhantomData<fn(K) -> K>,
