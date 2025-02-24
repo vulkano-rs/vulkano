@@ -3,7 +3,7 @@
 //! panics in random places.
 
 use command_buffer::RecordingCommandBuffer;
-use concurrent_slotmap::SlotId;
+use concurrent_slotmap::{epoch, Key, SlotId};
 use graph::{CompileInfo, ExecuteError, ResourceMap, TaskGraph};
 use linear_map::LinearMap;
 use resource::{
@@ -38,6 +38,7 @@ pub mod descriptor_set;
 pub mod graph;
 mod linear_map;
 pub mod resource;
+mod slotmap;
 
 /// Creates a [`TaskGraph`] with one task node, compiles it, and executes it.
 pub unsafe fn execute(
@@ -82,7 +83,7 @@ pub unsafe fn execute(
         (Cell::take(&task).unwrap())(cbf, tcx)
     };
 
-    let mut task_graph = TaskGraph::new(resources, 1, 64 * 1024);
+    let mut task_graph = TaskGraph::new(resources);
 
     for (id, access_type) in host_buffer_accesses {
         task_graph.add_host_buffer_access(id, access_type);
@@ -809,14 +810,7 @@ impl<T> Copy for Id<T> {}
 
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if *self == Id::INVALID {
-            f.pad("Id::INVALID")
-        } else {
-            f.debug_struct("Id")
-                .field("index", &self.slot.index())
-                .field("generation", &self.slot.generation())
-                .finish()
-        }
+        fmt::Debug::fmt(&self.slot, f)
     }
 }
 
@@ -833,6 +827,30 @@ impl<T> Hash for Id<T> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.slot.hash(state);
+    }
+}
+
+impl Key for Id {
+    #[inline]
+    fn from_id(id: SlotId) -> Self {
+        unsafe { Id::new(id) }
+    }
+
+    #[inline]
+    fn as_id(self) -> SlotId {
+        self.slot
+    }
+}
+
+impl Key for Id<Framebuffer> {
+    #[inline]
+    fn from_id(id: SlotId) -> Self {
+        unsafe { Id::new(id) }
+    }
+
+    #[inline]
+    fn as_id(self) -> SlotId {
+        self.slot
     }
 }
 
@@ -855,20 +873,24 @@ impl<T> Ord for Id<T> {
 /// When you use [`Id`] to retrieve something, you can get back a `Ref` with the same type
 /// parameter, which you can then dereference to get at the underlying data denoted by the type
 /// parameter.
-pub struct Ref<'a, T>(concurrent_slotmap::Ref<'a, T>);
+pub struct Ref<'a, T> {
+    inner: &'a T,
+    #[allow(unused)]
+    guard: epoch::Guard<'a>,
+}
 
 impl<T> Deref for Ref<'_, T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.inner
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
+        fmt::Debug::fmt(self.inner, f)
     }
 }
 

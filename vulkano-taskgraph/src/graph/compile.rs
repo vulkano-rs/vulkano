@@ -315,7 +315,7 @@ impl<W: ?Sized> TaskGraph<W> {
             }
         }
 
-        let mut visited = vec![false; self.nodes.capacity() as usize];
+        let mut visited = vec![false; self.nodes.reserved_len() as usize];
         let mut visited_count = 0;
 
         if let Some((id, _)) = self.nodes.nodes().next() {
@@ -366,7 +366,7 @@ impl<W: ?Sized> TaskGraph<W> {
             Ok(output_index.wrapping_sub(1))
         }
 
-        let mut state = vec![0; self.nodes.capacity() as usize];
+        let mut state = vec![0; self.nodes.reserved_len() as usize];
         let mut output = vec![0; self.nodes.len() as usize];
         let mut output_index = self.nodes.len().wrapping_sub(1);
 
@@ -386,7 +386,7 @@ impl<W: ?Sized> TaskGraph<W> {
     ///
     /// [longest path search]: https://en.wikipedia.org/wiki/Longest_path_problem#Acyclic_graphs
     unsafe fn dependency_levels(&mut self, topological_order: &[NodeIndex]) -> Vec<Vec<NodeIndex>> {
-        let mut distances = vec![0; self.nodes.capacity() as usize];
+        let mut distances = vec![0; self.nodes.reserved_len() as usize];
         let mut max_level = 0;
 
         for &node_index in topological_order {
@@ -506,8 +506,8 @@ impl<W: ?Sized> TaskGraph<W> {
         CompileErrorKind,
     > {
         let mut builder = IntermediateRepresentationBuilder::new(
-            self.nodes.capacity(),
-            self.resources.capacity(),
+            self.nodes.reserved_len(),
+            self.resources.reserved_len(),
         );
         let mut prev_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
         let mut last_swapchain_accesses = LinearMap::new();
@@ -1787,7 +1787,7 @@ mod tests {
         // ┌───┐
         // │ B │
         // └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -1823,7 +1823,7 @@ mod tests {
         //      │  ┌───┐
         //      └─►│ D │
         //         └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -1863,7 +1863,7 @@ mod tests {
         // └───┘│ └───┘│ └───┘┌─►│ G │
         //      │      └──────┘┌►│   │
         //      └──────────────┘ └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -1912,7 +1912,7 @@ mod tests {
         // ┌►│ A ├─►│ B ├─►│ C ├┐
         // │ └───┘  └───┘  └───┘│
         // └────────────────────┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -1949,7 +1949,7 @@ mod tests {
         // │      └►│ D ├─►│ E ├┴►│ F ├┐
         // │        └───┘  └───┘  └───┘│
         // └───────────────────────────┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -2001,7 +2001,7 @@ mod tests {
         // │     ┌►└───┘  └───┘  └───┘││
         // │     └────────────────────┘│
         // └───────────────────────────┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -2044,7 +2044,7 @@ mod tests {
     fn initial_pipeline_barrier() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let buffer = graph.add_buffer(&BufferCreateInfo::default());
         let image = graph.add_image(&ImageCreateInfo::default());
         let node1 = graph
@@ -2104,7 +2104,7 @@ mod tests {
     fn barrier1() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let buffer = graph.add_buffer(&BufferCreateInfo::default());
         let image = graph.add_image(&ImageCreateInfo::default());
         let node1 = graph
@@ -2181,7 +2181,7 @@ mod tests {
     fn barrier2() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let buffer = graph.add_buffer(&BufferCreateInfo::default());
         let image = graph.add_image(&ImageCreateInfo::default());
         let node1 = graph
@@ -2294,7 +2294,7 @@ mod tests {
         //      │└►┌───┐
         //      └─►│ C │
         //         └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -2363,7 +2363,7 @@ mod tests {
         //      │ ┌───┐
         //      └►│ C │
         //        └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -2432,7 +2432,7 @@ mod tests {
         //      │ ┌───┐└►┌───┐│
         //      └►│ C ├─►│ D ├┘
         //        └───┘  └───┘
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let a = graph
             .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
             .build();
@@ -2511,7 +2511,7 @@ mod tests {
     fn render_pass1() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let color_image = graph.add_image(&ImageCreateInfo {
             format: Format::R8G8B8A8_UNORM,
             ..Default::default()
@@ -2579,7 +2579,7 @@ mod tests {
     fn render_pass2() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let color_image = graph.add_image(&ImageCreateInfo {
             format: Format::R8G8B8A8_UNORM,
             ..Default::default()
@@ -2673,7 +2673,7 @@ mod tests {
     fn render_pass3() {
         let (resources, queues) = test_queues!();
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let color_image = graph.add_image(&ImageCreateInfo {
             format: Format::R8G8B8A8_UNORM,
             ..Default::default()
@@ -2774,7 +2774,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let buffer1 = graph.add_buffer(&BufferCreateInfo::default());
         let buffer2 = graph.add_buffer(&BufferCreateInfo::default());
         let image1 = graph.add_image(&ImageCreateInfo::default());
@@ -2926,7 +2926,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
             sharing: sharing.clone(),
@@ -3024,7 +3024,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let buffer1 = graph.add_buffer(&BufferCreateInfo::default());
         let buffer2 = graph.add_buffer(&BufferCreateInfo::default());
         let image1 = graph.add_image(&ImageCreateInfo::default());
@@ -3219,7 +3219,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
             sharing: sharing.clone(),
@@ -3369,7 +3369,7 @@ mod tests {
             queue_flags.contains(QueueFlags::GRAPHICS)
         });
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let node = graph
@@ -3482,7 +3482,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let concurrent_sharing =
             Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo::default());
@@ -3703,7 +3703,7 @@ mod tests {
             queue_flags.contains(QueueFlags::GRAPHICS)
         });
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let swapchain = graph.add_swapchain(&SwapchainCreateInfo {
             image_format: Format::R8G8B8A8_UNORM,
             ..Default::default()
@@ -3828,7 +3828,7 @@ mod tests {
             return;
         }
 
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
+        let mut graph = TaskGraph::<()>::new(&resources);
         let concurrent_sharing =
             Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo {

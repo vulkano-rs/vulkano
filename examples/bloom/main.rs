@@ -248,7 +248,7 @@ impl ApplicationHandler for App {
         let (bloom_image_id, bloom_sampled_image_id, bloom_storage_image_ids) =
             window_size_dependent_setup(&self.resources, swapchain_id);
 
-        let mut task_graph = TaskGraph::new(&self.resources, 3, 2);
+        let mut task_graph = TaskGraph::new(&self.resources);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
             image_format: swapchain_format,
