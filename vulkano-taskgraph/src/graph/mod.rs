@@ -551,7 +551,7 @@ unsafe impl<W: ?Sized> DeviceOwned for TaskGraph<W> {
 
 declare_key! {
     /// The ID type used to refer to a node within a [`TaskGraph`].
-    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct NodeId;
 }
 
