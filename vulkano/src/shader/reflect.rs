@@ -1172,7 +1172,7 @@ pub(crate) fn get_constant(spirv: &Spirv, id: Id) -> Option<u64> {
     match spirv.id(id).instruction() {
         Instruction::Constant { value, .. } => match value.len() {
             1 => Some(value[0] as u64),
-            2 => Some(value[0] as u64 | (value[1] as u64) << 32),
+            2 => Some(value[0] as u64 | ((value[1] as u64) << 32)),
             _ => panic!("constant {} is larger than 64 bits", id),
         },
         _ => None,
@@ -1187,7 +1187,7 @@ pub(crate) fn get_constant_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[
                 .map(|&id| match spirv.id(id).instruction() {
                     Instruction::Constant { value, .. } => match value.len() {
                         1 => value[0] as u64,
-                        2 => value[0] as u64 | (value[1] as u64) << 32,
+                        2 => value[0] as u64 | ((value[1] as u64) << 32),
                         _ => panic!("constant {} is larger than 64 bits", id),
                     },
                     _ => unreachable!(),
@@ -1206,7 +1206,7 @@ pub(crate) fn get_constant_float_composite(spirv: &Spirv, id: Id) -> Option<Smal
                 .map(|&id| match spirv.id(id).instruction() {
                     Instruction::Constant { value, .. } => match value.len() {
                         1 => f32::from_bits(value[0]) as f64,
-                        2 => f64::from_bits(value[0] as u64 | (value[1] as u64) << 32),
+                        2 => f64::from_bits(value[0] as u64 | ((value[1] as u64) << 32)),
                         _ => panic!("constant {} is larger than 64 bits", id),
                     },
                     _ => unreachable!(),

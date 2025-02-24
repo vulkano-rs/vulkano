@@ -465,7 +465,7 @@ fn sorted_structs<'a>(
                 .find_map(|s| s.strip_prefix("VK_VERSION_"))
             {
                 let (major, minor) = version.split_once('_').unwrap();
-                major.parse::<i32>().unwrap() << 22 | minor.parse::<i32>().unwrap() << 12
+                (major.parse::<i32>().unwrap() << 22) | (minor.parse::<i32>().unwrap() << 12)
             } else if provided_by.iter().any(|s| s.starts_with("VK_KHR_")) {
                 i32::MAX - 2
             } else if provided_by.iter().any(|s| s.starts_with("VK_EXT_")) {
