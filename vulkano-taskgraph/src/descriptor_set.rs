@@ -859,7 +859,7 @@ macro_rules! declare_key {
         pub struct $name:ident $(;)?
     ) => {
         $(#[$meta])*
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
         #[repr(C)]
         pub struct $name {
             index: u32,
@@ -886,6 +886,12 @@ macro_rules! declare_key {
                     index: slot.index(),
                     generation: slot.generation(),
                 }
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(&self.as_id(), f)
             }
         }
 
