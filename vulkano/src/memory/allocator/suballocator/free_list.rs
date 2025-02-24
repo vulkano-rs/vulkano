@@ -236,6 +236,9 @@ unsafe impl Suballocator for FreeListAllocator {
         // allocation of `self`, which means that `node_ptr` is the same one we gave out on
         // allocation, making it a valid pointer.
         let node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
+
+        debug_assert!(self.suballocations.node_allocator.contains(node_ptr));
+
         let node = unsafe { *node_ptr.as_ptr() };
 
         debug_assert_ne!(node.allocation_type, SuballocationType::Free);
