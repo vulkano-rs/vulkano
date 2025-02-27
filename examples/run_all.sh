@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env sh
+set -eu
 
 # This script builds and runs all the examples
 # It is NOT headless
@@ -7,5 +7,5 @@ set -e
 # Human monitoring is also required to check for errors in stdout
 
 cargo build --bins
-exa -F . | rg '/$' | sd '/' '' | rargs cargo run --bin {}
+ls -F | grep '/$' | sed 's|/||' | xargs -E '' -I {} cargo run --bin {}
 rm -f pipeline-caching/pipeline_cache.bin
