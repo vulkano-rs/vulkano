@@ -7,10 +7,11 @@ pub use self::{
 use crate::{
     linear_map::LinearMap,
     resource::{self, AccessTypes, Flight, HostAccessType, ImageLayoutType},
+    slotmap::{self, declare_key, Iter, IterMut, SlotMap},
     Id, InvalidSlotError, Object, ObjectType, QueueFamilyType, Task,
 };
 use ash::vk;
-use concurrent_slotmap::{IterMut, IterUnprotected, SlotId, SlotMap};
+use concurrent_slotmap::SlotId;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
@@ -42,7 +43,7 @@ pub struct TaskGraph<W: ?Sized> {
 }
 
 struct Nodes<W: ?Sized> {
-    inner: SlotMap<Node<W>>,
+    inner: SlotMap<NodeId, Node<W>>,
 }
 
 struct Node<W: ?Sized> {
@@ -64,12 +65,12 @@ enum NodeInner<W: ?Sized> {
 type NodeIndex = u32;
 
 pub(crate) struct Resources {
-    inner: SlotMap<ResourceInfo>,
+    inner: SlotMap<Id, ResourceInfo>,
     physical_resources: Arc<resource::Resources>,
     physical_map: HashMap<Id, Id>,
     host_reads: Vec<Id<Buffer>>,
     host_writes: Vec<Id<Buffer>>,
-    framebuffers: SlotMap<()>,
+    framebuffers: SlotMap<Id<Framebuffer>, ()>,
 }
 
 struct ResourceInfo {
@@ -80,27 +81,19 @@ struct ResourceInfo {
 
 impl<W: ?Sized> TaskGraph<W> {
     /// Creates a new `TaskGraph`.
-    ///
-    /// `max_nodes` is the maximum number of nodes the graph can ever have. `max_resources` is the
-    /// maximum number of virtual resources the graph can ever have.
     #[must_use]
-    pub fn new(
-        physical_resources: &Arc<resource::Resources>,
-        max_nodes: u32,
-        max_resources: u32,
-    ) -> Self {
+    pub fn new(physical_resources: &Arc<resource::Resources>) -> Self {
         TaskGraph {
             nodes: Nodes {
-                inner: SlotMap::new(max_nodes),
+                inner: SlotMap::with_key(),
             },
             resources: Resources {
-                inner: SlotMap::new(max_resources),
+                inner: SlotMap::with_key(),
                 physical_resources: physical_resources.clone(),
                 physical_map: HashMap::default(),
                 host_reads: Vec::new(),
                 host_writes: Vec::new(),
-                // FIXME:
-                framebuffers: SlotMap::new(256),
+                framebuffers: SlotMap::with_key(),
             },
         }
     }
@@ -244,18 +237,16 @@ impl<W: ?Sized> TaskGraph<W> {
 
 impl<W: ?Sized> Nodes<W> {
     fn add_node(&mut self, name: Cow<'static, str>, inner: NodeInner<W>) -> NodeId {
-        let slot = self.inner.insert_mut(Node {
+        self.inner.insert(Node {
             name,
             inner,
             in_edges: Vec::new(),
             out_edges: Vec::new(),
-        });
-
-        NodeId { slot }
+        })
     }
 
     fn remove_node(&mut self, id: NodeId) -> Node<W> {
-        let node = self.inner.remove_mut(id.slot).unwrap();
+        let node = self.inner.remove(id).unwrap();
 
         // NOTE(Marc): We must not leave any broken edges because the rest of the code relies on
         // this being impossible.
@@ -277,8 +268,8 @@ impl<W: ?Sized> Nodes<W> {
         node
     }
 
-    fn capacity(&self) -> u32 {
-        self.inner.capacity()
+    fn reserved_len(&self) -> u32 {
+        self.inner.reserved_len()
     }
 
     fn len(&self) -> u32 {
@@ -330,52 +321,40 @@ impl<W: ?Sized> Nodes<W> {
     }
 
     fn node(&self, id: NodeId) -> Result<&Node<W>> {
-        // SAFETY: We never modify the map concurrently.
-        unsafe { self.inner.get_unprotected(id.slot) }.ok_or(TaskGraphError::InvalidNode)
+        self.inner.get(id).ok_or(TaskGraphError::InvalidNode)
     }
 
     unsafe fn node_unchecked(&self, index: NodeIndex) -> &Node<W> {
-        // SAFETY:
-        // * The caller must ensure that the `index` is valid.
-        // * We never modify the map concurrently.
-        unsafe { self.inner.index_unchecked_unprotected(index) }
+        // SAFETY: The `OCCUPIED_BIT` is set.
+        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_BIT) });
+
+        // SAFETY: The caller must ensure that the `index` is valid.
+        unsafe { self.inner.get_unchecked(id) }
     }
 
     fn node_mut(&mut self, id: NodeId) -> Result<&mut Node<W>> {
-        self.inner
-            .get_mut(id.slot)
-            .ok_or(TaskGraphError::InvalidNode)
+        self.inner.get_mut(id).ok_or(TaskGraphError::InvalidNode)
     }
 
     unsafe fn node_unchecked_mut(&mut self, index: NodeIndex) -> &mut Node<W> {
+        // SAFETY: The `OCCUPIED_BIT` is set.
+        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_BIT) });
+
         // SAFETY: The caller must ensure that the `index` is valid.
-        unsafe { self.inner.index_unchecked_mut(index) }
+        unsafe { self.inner.get_unchecked_mut(id) }
     }
 
     fn node_many_mut<const N: usize>(&mut self, ids: [NodeId; N]) -> Result<[&mut Node<W>; N]> {
-        union Transmute<const N: usize> {
-            src: [NodeId; N],
-            dst: [SlotId; N],
-        }
-
-        // HACK: `transmute_unchecked` is not exposed even unstably at the moment, and the compiler
-        // isn't currently smart enough to figure this out using `transmute`.
-        //
-        // SAFETY: `NodeId` is `#[repr(transparent)]` over `SlotId` and both arrays have the same
-        // length.
-        let ids = unsafe { Transmute { src: ids }.dst };
-
         self.inner
             .get_many_mut(ids)
             .ok_or(TaskGraphError::InvalidNode)
     }
 
-    fn nodes(&self) -> IterUnprotected<'_, Node<W>> {
-        // SAFETY: We never modify the map concurrently.
-        unsafe { self.inner.iter_unprotected() }
+    fn nodes(&self) -> Iter<'_, NodeId, Node<W>> {
+        self.inner.iter()
     }
 
-    fn nodes_mut(&mut self) -> IterMut<'_, Node<W>> {
+    fn nodes_mut(&mut self) -> IterMut<'_, NodeId, Node<W>> {
         self.inner.iter_mut()
     }
 }
@@ -394,9 +373,9 @@ impl Resources {
             usage: ImageUsage::empty(),
         };
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        let id = self.inner.insert_with_tag(resource_info, tag);
 
-        unsafe { Id::new(slot) }
+        unsafe { id.parametrize() }
     }
 
     fn add_image(&mut self, create_info: &ImageCreateInfo) -> Id<Image> {
@@ -412,9 +391,9 @@ impl Resources {
             usage: create_info.usage,
         };
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        let id = self.inner.insert_with_tag(resource_info, tag);
 
-        unsafe { Id::new(slot) }
+        unsafe { id.parametrize() }
     }
 
     fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo) -> Id<Swapchain> {
@@ -430,9 +409,9 @@ impl Resources {
             usage: create_info.image_usage,
         };
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        let id = self.inner.insert_with_tag(resource_info, tag);
 
-        unsafe { Id::new(slot) }
+        unsafe { id.parametrize() }
     }
 
     fn add_physical_buffer(
@@ -506,13 +485,12 @@ impl Resources {
 
     fn add_framebuffer(&mut self) -> Id<Framebuffer> {
         let tag = Framebuffer::TAG | Id::VIRTUAL_BIT;
-        let slot = self.framebuffers.insert_with_tag_mut((), tag);
 
-        unsafe { Id::new(slot) }
+        self.framebuffers.insert_with_tag((), tag)
     }
 
-    fn capacity(&self) -> u32 {
-        self.inner.capacity()
+    fn reserved_len(&self) -> u32 {
+        self.inner.reserved_len()
     }
 
     fn len(&self) -> u32 {
@@ -524,13 +502,11 @@ impl Resources {
     }
 
     fn get(&self, id: Id) -> Result<&ResourceInfo, InvalidSlotError> {
-        // SAFETY: We never modify the map concurrently.
-        unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+        self.inner.get(id).ok_or(InvalidSlotError::new(id))
     }
 
-    fn iter(&self) -> impl Iterator<Item = (Id, &ResourceInfo)> {
-        // SAFETY: We never modify the map concurrently.
-        unsafe { self.inner.iter_unprotected() }.map(|(slot, v)| (unsafe { Id::new(slot) }, v))
+    fn iter(&self) -> Iter<'_, Id, ResourceInfo> {
+        self.inner.iter()
     }
 
     pub(crate) fn contains_host_buffer_access(
@@ -555,7 +531,7 @@ impl Resources {
     }
 
     fn framebuffer_mut(&mut self, id: Id<Framebuffer>) -> Option<&mut ()> {
-        self.framebuffers.get_mut(id.slot)
+        self.framebuffers.get_mut(id)
     }
 }
 
@@ -573,25 +549,14 @@ unsafe impl<W: ?Sized> DeviceOwned for TaskGraph<W> {
     }
 }
 
-/// The ID type used to refer to a node within a [`TaskGraph`].
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct NodeId {
-    slot: SlotId,
+declare_key! {
+    /// The ID type used to refer to a node within a [`TaskGraph`].
+    pub struct NodeId;
 }
 
 impl NodeId {
     fn index(self) -> NodeIndex {
-        self.slot.index()
-    }
-}
-
-impl fmt::Debug for NodeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NodeId")
-            .field("index", &self.slot.index())
-            .field("generation", &self.slot.generation())
-            .finish()
+        self.0.index()
     }
 }
 
@@ -1417,7 +1382,7 @@ unsafe impl<W: ?Sized> DeviceOwned for ExecutableTaskGraph<W> {
 ///
 /// [`task_nodes`]: TaskGraph::task_nodes
 pub struct TaskNodes<'a, W: ?Sized> {
-    inner: concurrent_slotmap::IterUnprotected<'a, Node<W>>,
+    inner: slotmap::Iter<'a, NodeId, Node<W>>,
 }
 
 impl<W: ?Sized> fmt::Debug for TaskNodes<'_, W> {
@@ -1467,7 +1432,7 @@ impl<W: ?Sized> FusedIterator for TaskNodes<'_, W> {}
 ///
 /// [`task_nodes_mut`]: TaskGraph::task_nodes_mut
 pub struct TaskNodesMut<'a, W: ?Sized> {
-    inner: concurrent_slotmap::IterMut<'a, Node<W>>,
+    inner: slotmap::IterMut<'a, NodeId, Node<W>>,
 }
 
 impl<W: ?Sized> fmt::Debug for TaskNodesMut<'_, W> {
@@ -1548,7 +1513,7 @@ mod tests {
     #[test]
     fn basic_usage1() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
@@ -1583,7 +1548,7 @@ mod tests {
     #[test]
     fn basic_usage2() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
@@ -1620,7 +1585,7 @@ mod tests {
     #[test]
     fn self_referential_node() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)

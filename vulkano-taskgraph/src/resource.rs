@@ -61,10 +61,10 @@ pub(crate) struct ResourceStorage {
 
     global: epoch::GlobalHandle,
     locals: ThreadLocal<epoch::UniqueLocalHandle>,
-    buffers: SlotMap<BufferState>,
-    images: SlotMap<ImageState>,
-    swapchains: SlotMap<SwapchainState>,
-    flights: SlotMap<Flight>,
+    buffers: SlotMap<Id, BufferState>,
+    images: SlotMap<Id, ImageState>,
+    swapchains: SlotMap<Id, SwapchainState>,
+    flights: SlotMap<Id, Flight>,
 }
 
 #[derive(Debug)]
@@ -166,10 +166,10 @@ impl Resources {
             command_buffer_allocator,
             descriptor_set_allocator,
             locals: ThreadLocal::new(),
-            buffers: SlotMap::with_global(create_info.max_buffers, global.clone()),
-            images: SlotMap::with_global(create_info.max_images, global.clone()),
-            swapchains: SlotMap::with_global(create_info.max_swapchains, global.clone()),
-            flights: SlotMap::with_global(create_info.max_flights, global.clone()),
+            buffers: SlotMap::with_global_and_key(create_info.max_buffers, global.clone()),
+            images: SlotMap::with_global_and_key(create_info.max_images, global.clone()),
+            swapchains: SlotMap::with_global_and_key(create_info.max_swapchains, global.clone()),
+            flights: SlotMap::with_global_and_key(create_info.max_flights, global.clone()),
             global,
         });
         let bindless_context = create_info
@@ -323,12 +323,12 @@ impl Resources {
             }),
         };
 
-        let slot = self
+        let id = self
             .storage
             .flights
-            .insert_with_tag(flight, Flight::TAG, self.storage.pin());
+            .insert_with_tag(flight, Flight::TAG, &self.storage.pin());
 
-        Ok(unsafe { Id::new(slot) })
+        Ok(unsafe { id.parametrize() })
     }
 
     /// Adds a buffer to the collection.
@@ -351,12 +351,12 @@ impl Resources {
             last_access: Mutex::new(BufferAccess::NONE),
         };
 
-        let slot = self
+        let id = self
             .storage
             .buffers
-            .insert_with_tag(state, Buffer::TAG, self.storage.pin());
+            .insert_with_tag(state, Buffer::TAG, &self.storage.pin());
 
-        unsafe { Id::new(slot) }
+        unsafe { id.parametrize() }
     }
 
     /// Adds an image to the collection.
@@ -386,12 +386,12 @@ impl Resources {
             last_access: Mutex::new(ImageAccess::NONE),
         };
 
-        let slot = self
+        let id = self
             .storage
             .images
-            .insert_with_tag(state, Image::TAG, self.storage.pin());
+            .insert_with_tag(state, Image::TAG, &self.storage.pin());
 
-        unsafe { Id::new(slot) }
+        unsafe { id.parametrize() }
     }
 
     /// Adds a swapchain to the collection. `(swapchain, images)` must correspond to the value
@@ -507,12 +507,12 @@ impl Resources {
             last_access: Mutex::new(ImageAccess::NONE),
         };
 
-        let slot = self
+        let id = self
             .storage
             .swapchains
             .insert_with_tag(state, Swapchain::TAG, guard);
 
-        Ok(unsafe { Id::new(slot) })
+        Ok(unsafe { id.parametrize() })
     }
 
     /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
@@ -535,7 +535,7 @@ impl Resources {
         id: Id<Swapchain>,
         f: impl FnOnce(SwapchainCreateInfo) -> SwapchainCreateInfo,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
-        let guard = self.storage.pin();
+        let guard = &self.storage.pin();
 
         let state = unsafe { self.storage.swapchain_unprotected(id) }.unwrap();
         let swapchain = state.swapchain();
@@ -561,14 +561,14 @@ impl Resources {
             last_access: Mutex::new(ImageAccess::NONE),
         };
 
-        let slot = self
+        let new_id = self
             .storage
             .swapchains
             .insert_with_tag(new_state, Swapchain::TAG, guard);
 
         let _ = unsafe { self.remove_swapchain(id) };
 
-        Ok(unsafe { Id::new(slot) })
+        Ok(unsafe { new_id.parametrize() })
     }
 
     /// Removes the buffer corresponding to `id`.
@@ -579,11 +579,16 @@ impl Resources {
     ///   pending command buffer, and if it is used in any command buffer that's in the executable
     ///   or recording state, that command buffer must never be executed.
     pub unsafe fn remove_buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
-        self.storage
+        let guard = self.storage.pin();
+
+        let inner = self
+            .storage
             .buffers
-            .remove(id.slot, self.storage.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     /// Removes the image corresponding to `id`.
@@ -594,11 +599,16 @@ impl Resources {
     ///   command buffer, and if it is used in any command buffer that's in the executable or
     ///   recording state, that command buffer must never be executed.
     pub unsafe fn remove_image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
-        self.storage
+        let guard = self.storage.pin();
+
+        let inner = self
+            .storage
             .images
-            .remove(id.slot, self.storage.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     /// Removes the swapchain corresponding to `id`.
@@ -609,11 +619,16 @@ impl Resources {
     ///   pending command buffer, and if it is used in any command buffer that's in the executable
     ///   or recording state, that command buffer must never be executed.
     pub unsafe fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
-        self.storage
+        let guard = self.storage.pin();
+
+        let inner = self
+            .storage
             .swapchains
-            .remove(id.slot, self.storage.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -711,62 +726,89 @@ impl ResourceStorage {
     }
 
     pub(crate) fn buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
-        self.buffers
-            .get(id.slot, self.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+        let guard = self.pin();
+
+        let inner = self
+            .buffers
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     pub(crate) unsafe fn buffer_unprotected(&self, id: Id<Buffer>) -> Result<&BufferState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.buffers.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+        self.buffers
+            // SAFETY: Enforced by the caller.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))
     }
 
     pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
         #[cfg(debug_assertions)]
-        if unsafe { self.buffers.get_unprotected(id.slot) }.is_none() {
+        if self.buffers.get(id.erase(), &self.pin()).is_none() {
             std::process::abort();
         }
 
         // SAFETY: Enforced by the caller.
-        unsafe { self.buffers.index_unchecked_unprotected(id.index()) }
+        let unprotected = unsafe { epoch::unprotected() };
+
+        // SAFETY: Enforced by the caller.
+        unsafe { self.buffers.get_unchecked(id.erase(), unprotected) }
     }
 
     pub(crate) fn image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
-        self.images
-            .get(id.slot, self.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+        let guard = self.pin();
+
+        let inner = self
+            .images
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     pub(crate) unsafe fn image_unprotected(&self, id: Id<Image>) -> Result<&ImageState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.images.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+        self.images
+            // SAFETY: Enforced by the caller.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))
     }
 
     pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
         #[cfg(debug_assertions)]
-        if unsafe { self.images.get_unprotected(id.slot) }.is_none() {
+        if self.images.get(id.erase(), &self.pin()).is_none() {
             std::process::abort();
         }
 
         // SAFETY: Enforced by the caller.
-        unsafe { self.images.index_unchecked_unprotected(id.index()) }
+        let unprotected = unsafe { epoch::unprotected() };
+
+        // SAFETY: Enforced by the caller.
+        unsafe { self.images.get_unchecked(id.erase(), unprotected) }
     }
 
     pub(crate) fn swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
-        self.swapchains
-            .get(id.slot, self.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+        let guard = self.pin();
+
+        let inner = self
+            .swapchains
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     pub(crate) unsafe fn swapchain_unprotected(
         &self,
         id: Id<Swapchain>,
     ) -> Result<&SwapchainState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.swapchains.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+        self.swapchains
+            // SAFETY: Enforced by the caller.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))
     }
 
     pub(crate) unsafe fn swapchain_unchecked_unprotected(
@@ -774,29 +816,42 @@ impl ResourceStorage {
         id: Id<Swapchain>,
     ) -> &SwapchainState {
         #[cfg(debug_assertions)]
-        if unsafe { self.swapchains.get_unprotected(id.slot) }.is_none() {
+        if self.swapchains.get(id.erase(), &self.pin()).is_none() {
             std::process::abort();
         }
 
         // SAFETY: Enforced by the caller.
-        unsafe { self.swapchains.index_unchecked_unprotected(id.index()) }
+        let unprotected = unsafe { epoch::unprotected() };
+
+        // SAFETY: Enforced by the caller.
+        unsafe { self.swapchains.get_unchecked(id.erase(), unprotected) }
     }
 
     pub(crate) fn flight(&self, id: Id<Flight>) -> Result<Ref<'_, Flight>> {
-        self.flights
-            .get(id.slot, self.pin())
-            .map(Ref)
-            .ok_or(InvalidSlotError::new(id))
+        let guard = self.pin();
+
+        let inner = self
+            .flights
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        Ok(Ref { inner, guard })
     }
 
     pub(crate) unsafe fn flight_unprotected(&self, id: Id<Flight>) -> Result<&Flight> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.flights.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+        self.flights
+            // SAFETY: Enforced by the caller.
+            .get(id.erase(), unsafe { epoch::unprotected() })
+            .ok_or(InvalidSlotError::new(id))
     }
 
     pub(crate) unsafe fn flight_unprotected_unchecked(&self, id: Id<Flight>) -> &Flight {
         // SAFETY: Enforced by the caller.
-        unsafe { self.flights.index_unchecked_unprotected(id.slot.index()) }
+        let unprotected = unsafe { epoch::unprotected() };
+
+        // SAFETY: Enforced by the caller.
+        unsafe { self.flights.get_unchecked(id.erase(), unprotected) }
     }
 
     pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {

@@ -228,7 +228,7 @@ impl ApplicationHandler for App {
         let (diffuse_image_id, normals_image_id, depth_image_id) =
             window_size_dependent_setup(&self.resources, swapchain_id);
 
-        let mut task_graph = TaskGraph::new(&self.resources, 2, 4);
+        let mut task_graph = TaskGraph::new(&self.resources);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
             image_format: swapchain_format,

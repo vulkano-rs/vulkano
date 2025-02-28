@@ -4,7 +4,7 @@ use crate::{
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use concurrent_slotmap::{epoch, SlotId, SlotMap};
+use concurrent_slotmap::{epoch, SlotMap};
 use foldhash::HashMap;
 use std::{collections::BTreeMap, iter, sync::Arc};
 use vulkano::{
@@ -269,11 +269,11 @@ pub struct GlobalDescriptorSet {
     resources: Arc<ResourceStorage>,
     inner: RawDescriptorSet,
 
-    samplers: SlotMap<SamplerDescriptor>,
-    sampled_images: SlotMap<SampledImageDescriptor>,
-    storage_images: SlotMap<StorageImageDescriptor>,
-    storage_buffers: SlotMap<StorageBufferDescriptor>,
-    acceleration_structures: SlotMap<AccelerationStructureDescriptor>,
+    samplers: SlotMap<SamplerId, SamplerDescriptor>,
+    sampled_images: SlotMap<SampledImageId, SampledImageDescriptor>,
+    storage_images: SlotMap<StorageImageId, StorageImageDescriptor>,
+    storage_buffers: SlotMap<StorageBufferId, StorageBufferDescriptor>,
+    acceleration_structures: SlotMap<AccelerationStructureId, AccelerationStructureDescriptor>,
 }
 
 #[derive(Debug)]
@@ -327,11 +327,11 @@ impl GlobalDescriptorSet {
         Ok(GlobalDescriptorSet {
             resources: resources.clone(),
             inner,
-            samplers: SlotMap::with_global(max_samplers, global.clone()),
-            sampled_images: SlotMap::with_global(max_sampled_images, global.clone()),
-            storage_images: SlotMap::with_global(max_storage_images, global.clone()),
-            storage_buffers: SlotMap::with_global(max_storage_buffers, global.clone()),
-            acceleration_structures: SlotMap::with_global(
+            samplers: SlotMap::with_global_and_key(max_samplers, global.clone()),
+            sampled_images: SlotMap::with_global_and_key(max_sampled_images, global.clone()),
+            storage_images: SlotMap::with_global_and_key(max_storage_images, global.clone()),
+            storage_buffers: SlotMap::with_global_and_key(max_storage_buffers, global.clone()),
+            acceleration_structures: SlotMap::with_global_and_key(
                 max_acceleration_structures,
                 global.clone(),
             ),
@@ -468,14 +468,14 @@ impl GlobalDescriptorSet {
         let descriptor = SamplerDescriptor {
             sampler: sampler.clone(),
         };
-        let slot = self.samplers.insert(descriptor, self.resources.pin());
+        let id = self.samplers.insert(descriptor, &self.resources.pin());
 
         let write =
-            WriteDescriptorSet::sampler_array(SAMPLER_BINDING, slot.index(), iter::once(sampler));
+            WriteDescriptorSet::sampler_array(SAMPLER_BINDING, id.index, iter::once(sampler));
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
-        SamplerId::new(slot)
+        id
     }
 
     pub fn add_sampled_image(
@@ -496,11 +496,13 @@ impl GlobalDescriptorSet {
             image_view: image_view.clone(),
             image_layout,
         };
-        let slot = self.sampled_images.insert(descriptor, self.resources.pin());
+        let id = self
+            .sampled_images
+            .insert(descriptor, &self.resources.pin());
 
         let write = WriteDescriptorSet::image_view_with_layout_array(
             SAMPLED_IMAGE_BINDING,
-            slot.index(),
+            id.index,
             iter::once(DescriptorImageViewInfo {
                 image_view,
                 image_layout,
@@ -509,7 +511,7 @@ impl GlobalDescriptorSet {
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
-        SampledImageId::new(slot)
+        id
     }
 
     pub fn add_storage_image(
@@ -523,11 +525,13 @@ impl GlobalDescriptorSet {
             image_view: image_view.clone(),
             image_layout,
         };
-        let slot = self.storage_images.insert(descriptor, self.resources.pin());
+        let id = self
+            .storage_images
+            .insert(descriptor, &self.resources.pin());
 
         let write = WriteDescriptorSet::image_view_with_layout_array(
             STORAGE_IMAGE_BINDING,
-            slot.index(),
+            id.index,
             iter::once(DescriptorImageViewInfo {
                 image_view,
                 image_layout,
@@ -536,7 +540,7 @@ impl GlobalDescriptorSet {
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
-        StorageImageId::new(slot)
+        id
     }
 
     pub fn add_storage_buffer(
@@ -552,19 +556,19 @@ impl GlobalDescriptorSet {
             offset,
             size,
         };
-        let slot = self
+        let id = self
             .storage_buffers
-            .insert(descriptor, self.resources.pin());
+            .insert(descriptor, &self.resources.pin());
 
         let write = WriteDescriptorSet::buffer_array(
             STORAGE_BUFFER_BINDING,
-            slot.index(),
+            id.index,
             iter::once(subbuffer),
         );
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
-        StorageBufferId::new(slot)
+        id
     }
 
     pub fn add_acceleration_structure(
@@ -574,99 +578,130 @@ impl GlobalDescriptorSet {
         let descriptor = AccelerationStructureDescriptor {
             acceleration_structure: acceleration_structure.clone(),
         };
-        let slot = self
+        let id = self
             .acceleration_structures
-            .insert(descriptor, self.resources.pin());
+            .insert(descriptor, &self.resources.pin());
 
         let write = WriteDescriptorSet::acceleration_structure_array(
             ACCELERATION_STRUCTURE_BINDING,
-            slot.index(),
+            id.index,
             iter::once(acceleration_structure),
         );
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
-        AccelerationStructureId::new(slot)
+        id
     }
 
     pub unsafe fn remove_sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.samplers.remove(slot, self.resources.pin()).map(Ref)
+        // SAFETY: We own an `epoch::Guard`.
+        let inner = self.samplers.remove(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     pub unsafe fn remove_sampled_image(
         &self,
         id: SampledImageId,
     ) -> Option<Ref<'_, SampledImageDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.sampled_images
-            .remove(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .sampled_images
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     pub unsafe fn remove_storage_image(
         &self,
         id: StorageImageId,
     ) -> Option<Ref<'_, StorageImageDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.storage_images
-            .remove(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .storage_images
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     pub unsafe fn remove_storage_buffer(
         &self,
         id: StorageBufferId,
     ) -> Option<Ref<'_, StorageBufferDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.storage_buffers
-            .remove(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .storage_buffers
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     pub unsafe fn remove_acceleration_structure(
         &self,
         id: AccelerationStructureId,
     ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.acceleration_structures
-            .remove(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .acceleration_structures
+            // SAFETY: We own an `epoch::Guard`.
+            .remove(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     #[inline]
     pub fn sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.samplers.get(slot, self.resources.pin()).map(Ref)
+        // SAFETY: We own an `epoch::Guard`.
+        let inner = self.samplers.get(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     #[inline]
     pub fn sampled_image(&self, id: SampledImageId) -> Option<Ref<'_, SampledImageDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.sampled_images.get(slot, self.resources.pin()).map(Ref)
+        let inner = self
+            .sampled_images
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     #[inline]
     pub fn storage_image(&self, id: StorageImageId) -> Option<Ref<'_, StorageImageDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.storage_images.get(slot, self.resources.pin()).map(Ref)
+        let inner = self
+            .storage_images
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     #[inline]
     pub fn storage_buffer(&self, id: StorageBufferId) -> Option<Ref<'_, StorageBufferDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.storage_buffers
-            .get(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .storage_buffers
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     #[inline]
@@ -674,11 +709,14 @@ impl GlobalDescriptorSet {
         &self,
         id: AccelerationStructureId,
     ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
-        let slot = SlotId::new(id.index, id.generation);
+        let guard = self.resources.pin();
 
-        self.acceleration_structures
-            .get(slot, self.resources.pin())
-            .map(Ref)
+        let inner = self
+            .acceleration_structures
+            // SAFETY: We own an `epoch::Guard`.
+            .get(id, unsafe { epoch::unprotected() })?;
+
+        Some(Ref { inner, guard })
     }
 
     pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {
@@ -815,149 +853,81 @@ impl GlobalDescriptorSetCreateInfo<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub struct SamplerId {
-    index: u32,
-    generation: u32,
-}
-
-unsafe impl Pod for SamplerId {}
-unsafe impl Zeroable for SamplerId {}
-
-impl SamplerId {
-    /// An ID that's guaranteed to be invalid.
-    pub const INVALID: Self = Self::new(SlotId::INVALID);
-
-    const fn new(slot: SlotId) -> Self {
-        Self {
-            index: slot.index(),
-            generation: slot.generation(),
+macro_rules! declare_key {
+    (
+        $(#[$meta:meta])*
+        pub struct $name:ident $(;)?
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[repr(C)]
+        pub struct $name {
+            index: u32,
+            generation: u32,
         }
-    }
-}
 
-impl Default for SamplerId {
-    #[inline]
-    fn default() -> Self {
-        Self::INVALID
-    }
-}
+        unsafe impl Pod for $name {}
+        unsafe impl Zeroable for $name {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub struct SampledImageId {
-    index: u32,
-    generation: u32,
-}
-
-unsafe impl Pod for SampledImageId {}
-unsafe impl Zeroable for SampledImageId {}
-
-impl SampledImageId {
-    /// An ID that's guaranteed to be invalid.
-    pub const INVALID: Self = Self::new(SlotId::INVALID);
-
-    const fn new(slot: SlotId) -> Self {
-        Self {
-            index: slot.index(),
-            generation: slot.generation(),
+        impl Default for $name {
+            #[inline]
+            fn default() -> Self {
+                Self::INVALID
+            }
         }
-    }
-}
 
-impl Default for SampledImageId {
-    #[inline]
-    fn default() -> Self {
-        Self::INVALID
-    }
-}
+        impl $name {
+            /// An ID that's guaranteed to be invalid.
+            pub const INVALID: Self = Self::new(concurrent_slotmap::SlotId::INVALID);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub struct StorageImageId {
-    index: u32,
-    generation: u32,
-}
-
-unsafe impl Pod for StorageImageId {}
-unsafe impl Zeroable for StorageImageId {}
-
-impl StorageImageId {
-    /// An ID that's guaranteed to be invalid.
-    pub const INVALID: Self = Self::new(SlotId::INVALID);
-
-    const fn new(slot: SlotId) -> Self {
-        Self {
-            index: slot.index(),
-            generation: slot.generation(),
+            #[inline(always)]
+            const fn new(slot: concurrent_slotmap::SlotId) -> Self {
+                Self {
+                    index: slot.index(),
+                    generation: slot.generation(),
+                }
+            }
         }
-    }
-}
 
-impl Default for StorageImageId {
-    #[inline]
-    fn default() -> Self {
-        Self::INVALID
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub struct StorageBufferId {
-    index: u32,
-    generation: u32,
-}
-
-unsafe impl Pod for StorageBufferId {}
-unsafe impl Zeroable for StorageBufferId {}
-
-impl StorageBufferId {
-    /// An ID that's guaranteed to be invalid.
-    pub const INVALID: Self = Self::new(SlotId::INVALID);
-
-    const fn new(slot: SlotId) -> Self {
-        Self {
-            index: slot.index(),
-            generation: slot.generation(),
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(&concurrent_slotmap::Key::as_id(*self), f)
+            }
         }
-    }
-}
 
-impl Default for StorageBufferId {
-    #[inline]
-    fn default() -> Self {
-        Self::INVALID
-    }
-}
+        #[doc(hidden)]
+        impl concurrent_slotmap::Key for $name {
+            #[inline(always)]
+            fn from_id(id: concurrent_slotmap::SlotId) -> Self {
+                Self::new(id)
+            }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-pub struct AccelerationStructureId {
-    index: u32,
-    generation: u32,
-}
-
-unsafe impl Pod for AccelerationStructureId {}
-unsafe impl Zeroable for AccelerationStructureId {}
-
-impl AccelerationStructureId {
-    /// An ID that's guaranteed to be invalid.
-    pub const INVALID: Self = Self::new(SlotId::INVALID);
-
-    const fn new(slot: SlotId) -> Self {
-        Self {
-            index: slot.index(),
-            generation: slot.generation(),
+            #[inline(always)]
+            fn as_id(self) -> concurrent_slotmap::SlotId {
+                concurrent_slotmap::SlotId::new(self.index, self.generation)
+            }
         }
-    }
+    };
 }
 
-impl Default for AccelerationStructureId {
-    #[inline]
-    fn default() -> Self {
-        Self::INVALID
-    }
+declare_key! {
+    pub struct SamplerId;
+}
+
+declare_key! {
+    pub struct SampledImageId;
+}
+
+declare_key! {
+    pub struct StorageImageId;
+}
+
+declare_key! {
+    pub struct StorageBufferId;
+}
+
+declare_key! {
+    pub struct AccelerationStructureId;
 }
 
 struct GlobalDescriptorSetAllocator {

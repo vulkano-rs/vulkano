@@ -467,7 +467,7 @@ impl ApplicationHandler for App {
                 .unwrap()
         });
 
-        let mut task_graph = TaskGraph::new(&self.resources, 1, 3);
+        let mut task_graph = TaskGraph::new(&self.resources);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
             image_format: swapchain_format,
@@ -813,7 +813,7 @@ fn run_worker(
             .unwrap()
     });
 
-    let mut task_graph = TaskGraph::new(&resources, 1, 3);
+    let mut task_graph = TaskGraph::new(&resources);
 
     let virtual_front_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
     let virtual_back_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());

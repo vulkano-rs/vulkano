@@ -141,6 +141,13 @@ impl AmbientLightingPipeline {
             )
             .unwrap();
 
+        // FIXME(taskgraph): sane initialization
+        app.resources
+            .flight(app.flight_id)
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
         unsafe {
             vulkano_taskgraph::execute(
                 &app.queue,
@@ -330,6 +337,13 @@ impl DirectionalLightingPipeline {
                 },
                 DeviceLayout::for_value(vertices.as_slice()).unwrap(),
             )
+            .unwrap();
+
+        // FIXME(taskgraph): sane initialization
+        app.resources
+            .flight(app.flight_id)
+            .unwrap()
+            .wait(None)
             .unwrap();
 
         unsafe {
@@ -538,6 +552,13 @@ impl PointLightingPipeline {
                 },
                 DeviceLayout::for_value(vertices.as_slice()).unwrap(),
             )
+            .unwrap();
+
+        // FIXME(taskgraph): sane initialization
+        app.resources
+            .flight(app.flight_id)
+            .unwrap()
+            .wait(None)
             .unwrap();
 
         unsafe {

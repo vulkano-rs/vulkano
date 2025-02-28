@@ -231,7 +231,7 @@ impl ApplicationHandler for App {
             Default::default(),
         ));
 
-        let mut task_graph = TaskGraph::new(&self.resources, 3, 2);
+        let mut task_graph = TaskGraph::new(&self.resources);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
 
