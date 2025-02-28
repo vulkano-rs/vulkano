@@ -66,6 +66,13 @@ impl SceneTask {
             )
             .unwrap();
 
+        // FIXME(taskgraph): sane initialization
+        app.resources
+            .flight(app.flight_id)
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
         unsafe {
             vulkano_taskgraph::execute(
                 &app.queue,
