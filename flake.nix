@@ -38,6 +38,7 @@
           ];
 
           LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
+          SHADERC_LIB_DIR = "${shaderc.lib}/lib";
           VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
         };
       }
