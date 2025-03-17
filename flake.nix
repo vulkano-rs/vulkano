@@ -16,7 +16,9 @@
       in {
         devShells.default = with pkgs; mkShell rec {
           buildInputs = [
-            (rust-bin.stable.latest.default.override { extensions = [ "rust-analyzer" ]; })
+            (rust-bin.stable.latest.default.override {
+              extensions = [ "rust-analyzer" "rust-src" ];
+            })
 
             # Vulkan dependencies
             shaderc
