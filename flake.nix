@@ -16,9 +16,10 @@
       in {
         devShells.default = with pkgs; mkShell rec {
           buildInputs = [
-            (rust-bin.stable.latest.default.override {
-              extensions = [ "rust-analyzer" "rust-src" ];
+            (rust-bin.stable.latest.minimal.override {
+              extensions = [ "clippy" "rust-analyzer" "rust-docs" "rust-src" ];
             })
+            (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
 
             # Vulkan dependencies
             shaderc
