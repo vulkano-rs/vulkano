@@ -19,6 +19,7 @@
             (rust-bin.stable.latest.minimal.override {
               extensions = [ "clippy" "rust-analyzer" "rust-docs" "rust-src" ];
             })
+            # We use nightly rustfmt features.
             (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
 
             # Vulkan dependencies
@@ -38,8 +39,8 @@
             xorg.libXrandr
           ];
 
-          LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
-          SHADERC_LIB_DIR = "${shaderc.lib}/lib";
+          LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
+          SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
           VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
         };
       }
