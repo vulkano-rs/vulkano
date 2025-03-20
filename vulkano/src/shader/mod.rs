@@ -1253,11 +1253,11 @@ impl DescriptorBindingRequirements {
             descriptor_types,
             descriptor_count,
             image_format,
+            image_multisampled: _,
             image_scalar_type,
             image_view_type,
             stages,
             descriptors,
-            ..
         } = self;
 
         /* Checks */
