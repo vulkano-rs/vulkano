@@ -21,6 +21,7 @@ Changes to `GraphicsPipeline`:
 - Added `new` constructors to all `*Info`-like structs.
 
 ### Bugs fixed
+- When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.
 
 # Version 0.35.1 (2025-02-08)
 
