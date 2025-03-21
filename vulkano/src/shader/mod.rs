@@ -1253,7 +1253,7 @@ impl DescriptorBindingRequirements {
             descriptor_types,
             descriptor_count,
             image_format,
-            image_multisampled,
+            image_multisampled: _,
             image_scalar_type,
             image_view_type,
             stages,
@@ -1269,40 +1269,6 @@ impl DescriptorBindingRequirements {
             return Err(Box::new(ValidationError {
                 problem: "the allowed descriptor types of the two descriptors do not overlap"
                     .into(),
-                ..Default::default()
-            }));
-        }
-
-        if let (Some(first), Some(second)) = (*image_format, other.image_format) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different formats".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if let (Some(first), Some(second)) = (*image_scalar_type, other.image_scalar_type) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different scalar types".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if let (Some(first), Some(second)) = (*image_view_type, other.image_view_type) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different image view types".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if *image_multisampled != other.image_multisampled {
-            return Err(Box::new(ValidationError {
-                problem: "the multisampling requirements of the descriptors differ".into(),
                 ..Default::default()
             }));
         }
