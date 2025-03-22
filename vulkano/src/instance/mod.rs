@@ -271,6 +271,7 @@ pub struct Instance {
 
     physical_devices: WeakArcOnceCache<vk::PhysicalDevice, PhysicalDevice>,
     physical_device_groups: RwLock<(bool, Vec<PhysicalDeviceGroupPropertiesRaw>)>,
+    borrowed: bool,
 }
 
 // TODO: fix the underlying cause instead
@@ -408,10 +409,38 @@ impl Instance {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `library`.
     /// - `create_info` must match the info used to create the object.
+    /// - `handle` must not be destroyed outside Vulkano, as it is now owned by the returned
+    ///   `Instance`.
     pub unsafe fn from_handle(
         library: Arc<VulkanLibrary>,
         handle: vk::Instance,
+        create_info: InstanceCreateInfo,
+    ) -> Arc<Self> {
+        unsafe { Self::from_handle_inner(library, handle, create_info, false) }
+    }
+
+    /// Creates a new `Instance` from a raw object handle, without owning it.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `library`.
+    /// - `create_info` must match the info used to create the object.
+    /// - `handle` must not be destroyed while the returned `Instance` is alive. This means all
+    ///   copies of the returned `Arc` must be dropped first. Note `InstanceOwned` objects all hold
+    ///   a reference to the instance internally.
+    pub unsafe fn from_handle_borrowed(
+        library: Arc<VulkanLibrary>,
+        handle: vk::Instance,
+        create_info: InstanceCreateInfo,
+    ) -> Arc<Self> {
+        unsafe { Self::from_handle_inner(library, handle, create_info, true) }
+    }
+
+    unsafe fn from_handle_inner(
+        library: Arc<VulkanLibrary>,
+        handle: vk::Instance,
         mut create_info: InstanceCreateInfo,
+        borrowed: bool,
     ) -> Arc<Self> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
@@ -461,6 +490,7 @@ impl Instance {
 
             physical_devices: WeakArcOnceCache::new(),
             physical_device_groups: RwLock::new((false, Vec::new())),
+            borrowed,
         })
     }
 
@@ -737,7 +767,9 @@ impl Drop for Instance {
     #[inline]
     fn drop(&mut self) {
         let fns = self.fns();
-        unsafe { (fns.v1_0.destroy_instance)(self.handle, ptr::null()) };
+        if !self.borrowed {
+            unsafe { (fns.v1_0.destroy_instance)(self.handle, ptr::null()) };
+        }
     }
 }
 
@@ -769,6 +801,7 @@ impl Debug for Instance {
 
             physical_devices: _,
             physical_device_groups: _,
+            borrowed: _,
         } = self;
 
         f.debug_struct("Instance")
