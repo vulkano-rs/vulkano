@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use vulkano::{
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -85,7 +76,7 @@ fn main() {
                 message_type: DebugUtilsMessageType::GENERAL
                     | DebugUtilsMessageType::VALIDATION
                     | DebugUtilsMessageType::PERFORMANCE,
-                ..DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+                ..DebugUtilsMessengerCreateInfo::new(DebugUtilsMessengerCallback::new(
                     |message_severity, message_type, callback_data| {
                         let severity = if message_severity
                             .intersects(DebugUtilsMessageSeverity::ERROR)
@@ -122,8 +113,8 @@ fn main() {
                 ))
             },
         )
-        .ok()
-    };
+    }
+    .ok();
 
     // Create Vulkan objects in the same way as the other examples.
     let device_extensions = DeviceExtensions {
@@ -148,7 +139,7 @@ fn main() {
         })
         .expect("no device available");
 
-    let (_device, mut _queues) = Device::new(
+    let (_device, _queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,

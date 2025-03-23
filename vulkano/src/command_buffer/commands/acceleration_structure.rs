@@ -1,12 +1,3 @@
-// Copyright (c) 2023 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,
@@ -20,9 +11,8 @@ use crate::{
     },
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RecordingCommandBuffer,
         AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
@@ -31,13 +21,10 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 /// # Commands to do operations on acceleration structures.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Builds or updates an acceleration structure.
     ///
     /// # Safety
@@ -55,8 +42,8 @@ where
     /// - If [`index_data`] is `Some`, then if `index_max` is the highest index value in the index
     ///   buffer that is accessed, then the size of [`vertex_data`] must be at least<br/>
     ///   [`vertex_stride`] * ([`first_vertex`] + `index_max` + 1).
-    /// - If [`transform_data`] is `Some`, then for the
-    ///   3x4 matrix in the buffer, the first three columns must be a 3x3 invertible matrix.
+    /// - If [`transform_data`] is `Some`, then for the 3x4 matrix in the buffer, the first three
+    ///   columns must be a 3x3 invertible matrix.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Aabbs`], then for each geometry:
     /// - For each accessed [`AabbPositions`] element in
@@ -67,11 +54,11 @@ where
     /// of the buffer in [`data`](AccelerationStructureGeometryInstancesData::data) must be valid,
     /// as follows:
     /// - Any [`AccelerationStructureInstance::acceleration_structure_reference`] address contained
-    ///   in or referenced by [`data`](AccelerationStructureGeometryInstancesData::data)
-    ///   must be either 0, or a device address that was returned from calling [`device_address`]
-    ///   on a bottom-level acceleration structure.
-    /// - If an [`AccelerationStructureInstance::acceleration_structure_reference`] address is
-    ///   not 0, then the corresponding acceleration structure object must be kept alive and not be
+    ///   in or referenced by [`data`](AccelerationStructureGeometryInstancesData::data) must be
+    ///   either 0, or a device address that was returned from calling [`device_address`] on a
+    ///   bottom-level acceleration structure.
+    /// - If an [`AccelerationStructureInstance::acceleration_structure_reference`] address is not
+    ///   0, then the corresponding acceleration structure object must be kept alive and not be
     ///   dropped while it is bound to the top-level acceleration structure.
     /// - If [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///   [`AccelerationStructureGeometryInstancesDataType::Pointers`], then the addresses in the
@@ -87,8 +74,7 @@ where
     /// [`AabbPositions`]: crate::acceleration_structure::AabbPositions
     /// [`AccelerationStructureInstance::acceleration_structure_reference`]: crate::acceleration_structure::AccelerationStructureInstance::acceleration_structure_reference
     /// [`AccelerationStructureGeometryInstancesData::data`]: crate::acceleration_structure::AccelerationStructureGeometryInstancesData::data
-    /// [`device_address`]: crate::acceleration_structure::AccelerationStructure::device_address
-    /// [`AccelerationStructureGeometryInstancesDataType::Pointers`]: crate::acceleration_structure::AccelerationStructureGeometryInstancesDataType::Pointers
+    /// [`device_address`]: AccelerationStructure::device_address
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,
@@ -97,7 +83,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure(&info, &build_range_infos)?;
 
-        Ok(self.build_acceleration_structure_unchecked(info, build_range_infos))
+        Ok(unsafe { self.build_acceleration_structure_unchecked(info, build_range_infos) })
     }
 
     fn validate_build_acceleration_structure(
@@ -132,8 +118,8 @@ where
         self.add_command(
             "build_acceleration_structure",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.build_acceleration_structure_unchecked(&info, &build_range_infos);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.build_acceleration_structure_unchecked(&info, &build_range_infos) };
             },
         );
 
@@ -151,8 +137,8 @@ where
     /// - [`primitive_count`] must not be greater than the corresponding element of
     ///   `max_primitive_counts`.
     /// - If `info.geometries` is [`AccelerationStructureGeometries::Instances`], then
-    ///   [`primitive_count`] must not be greater than the [`max_instance_count`] limit.
-    ///   Otherwise, it must not be greater than the [`max_primitive_count`] limit.
+    ///   [`primitive_count`] must not be greater than the [`max_instance_count`] limit. Otherwise,
+    ///   it must not be greater than the [`max_primitive_count`] limit.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Triangles`], then:
     /// - [`primitive_offset`] must be a multiple of:
@@ -160,15 +146,13 @@ where
     ///   - The byte size of the smallest component of [`vertex_format`] if [`index_data`] is
     ///     `None`.
     /// - [`transform_offset`] must be a multiple of 16.
-    /// - The size of [`vertex_data`] must be at least<br/>
-    ///   [`primitive_offset`] + ([`first_vertex`] + 3 * [`primitive_count`]) * [`vertex_stride`]
-    ///   <br/>if [`index_data`] is `None`, and as in [`build_acceleration_structure`] if
-    ///   [`index_data`] is `Some`.
-    /// - The size of [`index_data`] must be at least<br/>
-    ///   [`primitive_offset`] + 3 * [`primitive_count`] *
-    ///   [`index_data.index_type().size()`].
-    /// - The size of [`transform_data`] must be at least<br/>
-    ///   [`transform_offset`] + `size_of::<TransformMatrix>()`.
+    /// - The size of [`vertex_data`] must be at least<br/> [`primitive_offset`] +
+    ///   ([`first_vertex`] + 3 * [`primitive_count`]) * [`vertex_stride`] <br/>if [`index_data`]
+    ///   is `None`, and as in [`build_acceleration_structure`] if [`index_data`] is `Some`.
+    /// - The size of [`index_data`] must be at least<br/> [`primitive_offset`] + 3 *
+    ///   [`primitive_count`] * [`index_data.index_type().size()`].
+    /// - The size of [`transform_data`] must be at least<br/> [`transform_offset`] +
+    ///   `size_of::<TransformMatrix>()`.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Aabbs`], then:
     /// - [`primitive_offset`] must be a multiple of 8.
@@ -183,15 +167,14 @@ where
     ///     `size_of::<AccelerationStructureInstance>()`<br/> if
     ///     [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///     [`AccelerationStructureGeometryInstancesDataType::Values`].
-    ///   - [`primitive_offset`] + [`primitive_count`] *
-    ///     `size_of::<DeviceSize>()`<br/> if
+    ///   - [`primitive_offset`] + [`primitive_count`] * `size_of::<DeviceSize>()`<br/> if
     ///     [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///     [`AccelerationStructureGeometryInstancesDataType::Pointers`].
     ///
     /// [`build_acceleration_structure`]: Self::build_acceleration_structure
     /// [`primitive_count`]: AccelerationStructureBuildRangeInfo::primitive_count
-    /// [`max_instance_count`]: crate::device::Properties::max_instance_count
-    /// [`max_primitive_count`]: crate::device::Properties::max_primitive_count
+    /// [`max_instance_count`]: crate::device::DeviceProperties::max_instance_count
+    /// [`max_primitive_count`]: crate::device::DeviceProperties::max_primitive_count
     /// [`primitive_offset`]: AccelerationStructureBuildRangeInfo::primitive_offset
     /// [`index_data.index_type().size()`]: AccelerationStructureGeometryTrianglesData::index_data
     /// [`index_data`]: AccelerationStructureGeometryTrianglesData::index_data
@@ -215,12 +198,14 @@ where
             &max_primitive_counts,
         )?;
 
-        Ok(self.build_acceleration_structure_indirect_unchecked(
-            info,
-            indirect_buffer,
-            stride,
-            max_primitive_counts,
-        ))
+        Ok(unsafe {
+            self.build_acceleration_structure_indirect_unchecked(
+                info,
+                indirect_buffer,
+                stride,
+                max_primitive_counts,
+            )
+        })
     }
 
     fn validate_build_acceleration_structure_indirect(
@@ -264,13 +249,15 @@ where
         self.add_command(
             "build_acceleration_structure_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.build_acceleration_structure_indirect_unchecked(
-                    &info,
-                    &indirect_buffer,
-                    stride,
-                    &max_primitive_counts,
-                );
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe {
+                    out.build_acceleration_structure_indirect_unchecked(
+                        &info,
+                        &indirect_buffer,
+                        stride,
+                        &max_primitive_counts,
+                    )
+                };
             },
         );
 
@@ -294,7 +281,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure(&info)?;
 
-        Ok(self.copy_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure(
@@ -353,8 +340,8 @@ where
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_acceleration_structure_unchecked(&info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.copy_acceleration_structure_unchecked(&info) };
             },
         );
 
@@ -367,8 +354,8 @@ where
     ///
     /// - `info.src` must have been built when this command is executed.
     /// - `info.dst` must be large enough to hold the serialized form of `info.src`. This can be
-    ///   queried using [`write_acceleration_structures_properties`] with a query pool whose type is
-    ///   [`QueryType::AccelerationStructureSerializationSize`].
+    ///   queried using [`write_acceleration_structures_properties`] with a query pool whose type
+    ///   is [`QueryType::AccelerationStructureSerializationSize`].
     ///
     /// [`write_acceleration_structures_properties`]: Self::write_acceleration_structures_properties
     #[inline]
@@ -378,7 +365,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure_to_memory(&info)?;
 
-        Ok(self.copy_acceleration_structure_to_memory_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_to_memory_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure_to_memory(
@@ -437,8 +424,8 @@ where
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_acceleration_structure_to_memory_unchecked(&info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.copy_acceleration_structure_to_memory_unchecked(&info) };
             },
         );
 
@@ -453,8 +440,8 @@ where
     /// - `info.src` must contain data previously serialized using
     ///   [`copy_acceleration_structure_to_memory`], and must have a format compatible with the
     ///   device (as queried by [`Device::acceleration_structure_is_compatible`]).
-    /// - `info.dst.size()` must be at least the size that the structure in `info.src` had
-    ///   before it was serialized.
+    /// - `info.dst.size()` must be at least the size that the structure in `info.src` had before
+    ///   it was serialized.
     ///
     /// [`copy_acceleration_structure_to_memory`]: Self::copy_acceleration_structure_to_memory
     /// [`Device::acceleration_structure_is_compatible`]: crate::device::Device::acceleration_structure_is_compatible
@@ -465,7 +452,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_memory_to_acceleration_structure(&info)?;
 
-        Ok(self.copy_memory_to_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_memory_to_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_memory_to_acceleration_structure(
@@ -524,8 +511,8 @@ where
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_memory_to_acceleration_structure_unchecked(&info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.copy_memory_to_acceleration_structure_unchecked(&info) };
             },
         );
 
@@ -541,8 +528,8 @@ where
     ///
     /// - All elements of `acceleration_structures` must have been built when this command is
     ///   executed.
-    /// - If `query_pool.query_type()` is [`QueryType::AccelerationStructureCompactedSize`],
-    ///   all elements of `acceleration_structures` must have been built with
+    /// - If `query_pool.query_type()` is [`QueryType::AccelerationStructureCompactedSize`], all
+    ///   elements of `acceleration_structures` must have been built with
     ///   [`BuildAccelerationStructureFlags::ALLOW_COMPACTION`].
     /// - The queries must be unavailable, ensured by calling [`reset_query_pool`].
     ///
@@ -561,11 +548,13 @@ where
             first_query,
         )?;
 
-        Ok(self.write_acceleration_structures_properties_unchecked(
-            acceleration_structures,
-            query_pool,
-            first_query,
-        ))
+        Ok(unsafe {
+            self.write_acceleration_structures_properties_unchecked(
+                acceleration_structures,
+                query_pool,
+                first_query,
+            )
+        })
     }
 
     fn validate_write_acceleration_structures_properties(
@@ -620,12 +609,12 @@ where
                     },
                 )
             }).collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.write_acceleration_structures_properties_unchecked(
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.write_acceleration_structures_properties_unchecked(
                     &acceleration_structures,
                     &query_pool,
                     first_query,
-                );
+                ) };
             },
         );
 
@@ -637,14 +626,14 @@ fn add_build_geometry_resources(
     used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
     info: &AccelerationStructureBuildGeometryInfo,
 ) {
-    let &AccelerationStructureBuildGeometryInfo {
+    let AccelerationStructureBuildGeometryInfo {
         flags: _,
-        ref mode,
-        ref dst_acceleration_structure,
-        ref geometries,
-        ref scratch_data,
+        mode,
+        dst_acceleration_structure,
+        geometries,
+        scratch_data,
         _ne: _,
-    } = &info;
+    } = info;
 
     match geometries {
         AccelerationStructureGeometries::Triangles(geometries) => {
@@ -807,10 +796,8 @@ fn add_indirect_buffer_resources(
     ));
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
@@ -818,7 +805,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure(info, build_range_infos)?;
 
-        Ok(self.build_acceleration_structure_unchecked(info, build_range_infos))
+        Ok(unsafe { self.build_acceleration_structure_unchecked(info, build_range_infos) })
     }
 
     fn validate_build_acceleration_structure(
@@ -1119,7 +1106,7 @@ where
                         if primitive_offset as DeviceSize
                             + 3 * primitive_count as DeviceSize
                                 * index_data.index_type().size() as DeviceSize
-                            > vertex_data.size()
+                            > index_data.as_bytes().size()
                         {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
@@ -1558,48 +1545,33 @@ where
         info: &AccelerationStructureBuildGeometryInfo,
         build_range_infos: &[AccelerationStructureBuildRangeInfo],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let build_range_info_elements_vk: SmallVec<[_; 8]> = build_range_infos
             .iter()
-            .map(|build_range_info| {
-                let &AccelerationStructureBuildRangeInfo {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                } = build_range_info;
-
-                ash::vk::AccelerationStructureBuildRangeInfoKHR {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                }
-            })
+            .map(AccelerationStructureBuildRangeInfo::to_vk)
             .collect();
         let build_range_info_pointers_vk: SmallVec<[_; 8]> = build_range_info_elements_vk
             .iter()
-            .map(|element| element as *const _)
+            .map(|p| -> *const _ { p })
             .collect();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_build_acceleration_structures_khr)(
-            self.handle(),
-            1,
-            &info_vk,
-            build_range_info_pointers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_build_acceleration_structures_khr)(
+                self.handle(),
+                1,
+                &info_vk,
+                build_range_info_pointers_vk.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
@@ -1614,12 +1586,14 @@ where
             max_primitive_counts,
         )?;
 
-        Ok(self.build_acceleration_structure_indirect_unchecked(
-            info,
-            indirect_buffer,
-            stride,
-            max_primitive_counts,
-        ))
+        Ok(unsafe {
+            self.build_acceleration_structure_indirect_unchecked(
+                info,
+                indirect_buffer,
+                stride,
+                max_primitive_counts,
+            )
+        })
     }
 
     fn validate_build_acceleration_structure_indirect(
@@ -1635,7 +1609,7 @@ where
             .acceleration_structure_indirect_build
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("acceleration_structure_indirect_build")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature("acceleration_structure_indirect_build")])]),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650"],
                 ..Default::default()
             }));
@@ -2200,34 +2174,33 @@ where
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_build_acceleration_structures_indirect_khr)(
-            self.handle(),
-            1,
-            &info_vk,
-            &indirect_buffer.device_address().unwrap().get(),
-            &stride,
-            &max_primitive_counts.as_ptr(),
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_build_acceleration_structures_indirect_khr)(
+                self.handle(),
+                1,
+                &info_vk,
+                &indirect_buffer.device_address().unwrap().get(),
+                &stride,
+                &max_primitive_counts.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn copy_acceleration_structure(
         &mut self,
         info: &CopyAccelerationStructureInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure(info)?;
 
-        Ok(self.copy_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure(
@@ -2259,34 +2232,25 @@ where
         &mut self,
         info: &CopyAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureInfoKHR {
-            src: src.handle(),
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_acceleration_structure_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_acceleration_structure_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn copy_acceleration_structure_to_memory(
         &mut self,
         info: &CopyAccelerationStructureToMemoryInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure_to_memory(info)?;
 
-        Ok(self.copy_acceleration_structure_to_memory_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_to_memory_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure_to_memory(
@@ -2327,36 +2291,25 @@ where
         &mut self,
         info: &CopyAccelerationStructureToMemoryInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureToMemoryInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureToMemoryInfoKHR {
-            src: src.handle(),
-            dst: ash::vk::DeviceOrHostAddressKHR {
-                device_address: dst.device_address().unwrap().get(),
-            },
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_acceleration_structure_to_memory_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_acceleration_structure_to_memory_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn copy_memory_to_acceleration_structure(
         &mut self,
         info: &CopyMemoryToAccelerationStructureInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_memory_to_acceleration_structure(info)?;
 
-        Ok(self.copy_memory_to_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_memory_to_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_memory_to_acceleration_structure(
@@ -2397,29 +2350,18 @@ where
         &mut self,
         info: &CopyMemoryToAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyMemoryToAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyMemoryToAccelerationStructureInfoKHR {
-            src: ash::vk::DeviceOrHostAddressConstKHR {
-                device_address: src.device_address().unwrap().get(),
-            },
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_memory_to_acceleration_structure_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_memory_to_acceleration_structure_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn write_acceleration_structures_properties(
         &mut self,
         acceleration_structures: &[Arc<AccelerationStructure>],
@@ -2432,11 +2374,13 @@ where
             first_query,
         )?;
 
-        Ok(self.write_acceleration_structures_properties_unchecked(
-            acceleration_structures,
-            query_pool,
-            first_query,
-        ))
+        Ok(unsafe {
+            self.write_acceleration_structures_properties_unchecked(
+                acceleration_structures,
+                query_pool,
+                first_query,
+            )
+        })
     }
 
     fn validate_write_acceleration_structures_properties(
@@ -2523,15 +2467,17 @@ where
             .collect();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_write_acceleration_structures_properties_khr)(
-            self.handle(),
-            acceleration_structures_vk.len() as u32,
-            acceleration_structures_vk.as_ptr(),
-            query_pool.query_type().into(),
-            query_pool.handle(),
-            first_query,
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_write_acceleration_structures_properties_khr)(
+                self.handle(),
+                acceleration_structures_vk.len() as u32,
+                acceleration_structures_vk.as_ptr(),
+                query_pool.query_type().into(),
+                query_pool.handle(),
+                first_query,
+            )
+        };
 
         self
     }

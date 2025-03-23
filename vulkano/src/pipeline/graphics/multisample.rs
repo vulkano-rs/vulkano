@@ -1,27 +1,19 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Generates multiple fragments per framebuffer pixel when rasterizing. This can be used for
 //! anti-aliasing.
 
 use crate::{
     device::Device, image::SampleCount, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 
 // TODO: handle some weird behaviors with non-floating-point targets
 
 /// State of the multisampling.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct MultisampleState {
-    /// The number of rasterization samples to take per pixel. The GPU will pick this many different
-    /// locations within each pixel and assign to each of these locations a different depth value.
-    /// The depth and stencil test will then be run for each sample.
+    /// The number of rasterization samples to take per pixel. The GPU will pick this many
+    /// different locations within each pixel and assign to each of these locations a different
+    /// depth value. The depth and stencil test will then be run for each sample.
     ///
     /// The default value is [`SampleCount::Sample1`].
     pub rasterization_samples: SampleCount,
@@ -30,11 +22,12 @@ pub struct MultisampleState {
     /// fragment shader.
     ///
     /// If the value is 1.0, then all sub-pixel samples will run
-    /// through the shader and get a different value. If the value is 0.5, about half of the samples
-    /// will run through the shader and the other half will get their values from the ones which
-    /// went through the shader.
+    /// through the shader and get a different value. If the value is 0.5, about half of the
+    /// samples will run through the shader and the other half will get their values from the
+    /// ones which went through the shader.
     ///
-    /// If set to `Some`, the [`sample_rate_shading`](crate::device::Features::sample_rate_shading)
+    /// If set to `Some`, the
+    /// [`sample_rate_shading`](crate::device::DeviceFeatures::sample_rate_shading)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -48,9 +41,9 @@ pub struct MultisampleState {
 
     /// Controls whether the alpha value of the fragment will be used in an implementation-defined
     /// way to determine which samples get disabled or not. For example if the alpha value is 0.5,
-    /// then about half of the samples will be discarded. If you render to a multisample image, this
-    /// means that the color will end up being mixed with whatever color was underneath, which gives
-    /// the same effect as alpha blending.
+    /// then about half of the samples will be discarded. If you render to a multisample image,
+    /// this means that the color will end up being mixed with whatever color was underneath,
+    /// which gives the same effect as alpha blending.
     ///
     /// The default value is `false`.
     pub alpha_to_coverage_enable: bool,
@@ -58,7 +51,7 @@ pub struct MultisampleState {
     /// Controls whether the alpha value of all the samples will be forced to 1.0 (or the
     /// maximum possible value) after the effects of `alpha_to_coverage` have been applied.
     ///
-    /// If set to `true`, the [`alpha_to_one`](crate::device::Features::alpha_to_one)
+    /// If set to `true`, the [`alpha_to_one`](crate::device::DeviceFeatures::alpha_to_one)
     /// feature must be enabled on the device.
     ///
     /// The default value is `false`.
@@ -70,6 +63,14 @@ pub struct MultisampleState {
 impl Default for MultisampleState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MultisampleState {
+    /// Returns a default `MultisampleState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             rasterization_samples: SampleCount::Sample1,
             sample_shading: None,
@@ -78,15 +79,6 @@ impl Default for MultisampleState {
             alpha_to_one_enable: false,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl MultisampleState {
-    /// Creates a `MultisampleState` with multisampling disabled.
-    #[inline]
-    #[deprecated(since = "0.34.0", note = "use `MultisampleState::default` instead")]
-    pub fn new() -> MultisampleState {
-        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -112,7 +104,7 @@ impl MultisampleState {
                 return Err(Box::new(ValidationError {
                     context: "min_sample_shading".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "sample_rate_shading",
                     )])]),
                     vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784"],
@@ -133,7 +125,7 @@ impl MultisampleState {
             return Err(Box::new(ValidationError {
                 context: "alpha_to_one_enable".into(),
                 problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "alpha_to_one",
                 )])]),
                 vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785"],
@@ -141,5 +133,32 @@ impl MultisampleState {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::PipelineMultisampleStateCreateInfo<'_> {
+        let &Self {
+            rasterization_samples,
+            sample_shading,
+            ref sample_mask,
+            alpha_to_coverage_enable,
+            alpha_to_one_enable,
+            _ne: _,
+        } = self;
+
+        let (sample_shading_enable_vk, min_sample_shading_vk) =
+            if let Some(min_sample_shading) = sample_shading {
+                (true, min_sample_shading)
+            } else {
+                (false, 0.0)
+            };
+
+        vk::PipelineMultisampleStateCreateInfo::default()
+            .flags(vk::PipelineMultisampleStateCreateFlags::empty())
+            .rasterization_samples(rasterization_samples.into())
+            .sample_shading_enable(sample_shading_enable_vk)
+            .min_sample_shading(min_sample_shading_vk)
+            .sample_mask(sample_mask)
+            .alpha_to_coverage_enable(alpha_to_coverage_enable)
+            .alpha_to_one_enable(alpha_to_one_enable)
     }
 }

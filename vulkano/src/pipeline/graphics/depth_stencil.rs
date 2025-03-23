@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Configures the operation of the depth, stencil and depth bounds tests.
 //!
 //! The depth test passes of fails depending on how the depth value of each fragment compares
@@ -25,6 +16,7 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 use std::ops::RangeInclusive;
 
 /// The state in a graphics pipeline describing how the depth, depth bounds and stencil tests
@@ -66,26 +58,32 @@ pub struct DepthStencilState {
 impl Default for DepthStencilState {
     #[inline]
     fn default() -> Self {
-        Self {
-            flags: DepthStencilStateFlags::empty(),
-            depth: Default::default(),
-            depth_bounds: Default::default(),
-            stencil: Default::default(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl DepthStencilState {
+    /// Returns a default `DepthStencilState`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            flags: DepthStencilStateFlags::empty(),
+            depth: None,
+            depth_bounds: None,
+            stencil: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     /// Creates a `DepthStencilState` where all tests are disabled and have no effect.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `DepthStencilState::default` instead")]
+    #[deprecated(since = "0.34.0", note = "use `DepthStencilState::new` instead")]
     pub fn disabled() -> Self {
         Self::default()
     }
 
-    /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and other
-    /// tests disabled.
+    /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and
+    /// other tests disabled.
     #[inline]
     #[deprecated(since = "0.34.0", note = "use `DepthState::simple` instead")]
     pub fn simple_depth_test() -> Self {
@@ -123,7 +121,7 @@ impl DepthStencilState {
                 return Err(Box::new(ValidationError {
                     context: "depth_bounds".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "depth_bounds",
                     )])]),
                     vuids: &[
@@ -164,6 +162,57 @@ impl DepthStencilState {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::PipelineDepthStencilStateCreateInfo<'static> {
+        let &Self {
+            flags,
+            ref depth,
+            ref depth_bounds,
+            ref stencil,
+            _ne: _,
+        } = self;
+
+        let (depth_test_enable_vk, depth_write_enable_vk, depth_compare_op_vk) =
+            if let Some(depth_state) = depth {
+                let &DepthState {
+                    write_enable,
+                    compare_op,
+                } = depth_state;
+
+                (true, write_enable, compare_op.into())
+            } else {
+                (false, false, vk::CompareOp::ALWAYS)
+            };
+
+        let (depth_bounds_test_enable_vk, min_depth_bounds_vk, max_depth_bounds_vk) =
+            if let Some(depth_bounds) = depth_bounds {
+                (true, *depth_bounds.start(), *depth_bounds.end())
+            } else {
+                (false, 0.0, 1.0)
+            };
+
+        let (stencil_test_enable_vk, front_vk, back_vk) = if let Some(stencil_state) = stencil {
+            let StencilState { front, back } = stencil_state;
+
+            let [front, back] = [front, back].map(|stencil_op_state| stencil_op_state.to_vk());
+
+            (true, front, back)
+        } else {
+            (false, Default::default(), Default::default())
+        };
+
+        vk::PipelineDepthStencilStateCreateInfo::default()
+            .flags(flags.into())
+            .depth_test_enable(depth_test_enable_vk)
+            .depth_write_enable(depth_write_enable_vk)
+            .depth_compare_op(depth_compare_op_vk)
+            .depth_bounds_test_enable(depth_bounds_test_enable_vk)
+            .stencil_test_enable(stencil_test_enable_vk)
+            .front(front_vk)
+            .back(back_vk)
+            .min_depth_bounds(min_depth_bounds_vk)
+            .max_depth_bounds(max_depth_bounds_vk)
     }
 }
 
@@ -208,19 +257,34 @@ pub struct DepthState {
 impl Default for DepthState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DepthState {
+    /// Returns a default `DepthState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             write_enable: false,
             compare_op: CompareOp::Always,
         }
     }
-}
 
-impl DepthState {
     /// Returns a `DepthState` with a `Less` depth test and depth writes enabled.
     #[inline]
     pub fn simple() -> Self {
         Self {
             compare_op: CompareOp::Less,
+            write_enable: true,
+        }
+    }
+
+    /// Returns a `DepthState` with a `Greater` depth test and depth writes enabled.
+    #[inline]
+    pub fn reverse() -> Self {
+        Self {
+            compare_op: CompareOp::Greater,
             write_enable: true,
         }
     }
@@ -258,14 +322,20 @@ pub struct StencilState {
 impl Default for StencilState {
     #[inline]
     fn default() -> Self {
-        Self {
-            front: Default::default(),
-            back: Default::default(),
-        }
+        Self::new()
     }
 }
 
 impl StencilState {
+    /// Returns a default `StencilState`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            front: StencilOpState::new(),
+            back: StencilOpState::new(),
+        }
+    }
+
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &StencilState {
             ref front,
@@ -310,10 +380,11 @@ pub struct StencilOpState {
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
     /// value yields true.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if culling is disabled, and the `reference` values of the front and back face
     /// are not equal, then the
-    /// [`separate_stencil_mask_ref`](crate::device::Features::separate_stencil_mask_ref)
+    /// [`separate_stencil_mask_ref`](crate::device::DeviceFeatures::separate_stencil_mask_ref)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`u32::MAX`].
@@ -322,12 +393,40 @@ pub struct StencilOpState {
 
 impl Default for StencilOpState {
     #[inline]
-    fn default() -> StencilOpState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StencilOpState {
+    /// Returns a default `StencilOpState`.
+    #[inline]
+    pub const fn new() -> Self {
         StencilOpState {
-            ops: Default::default(),
+            ops: StencilOps::new(),
             compare_mask: u32::MAX,
             write_mask: u32::MAX,
             reference: u32::MAX,
+        }
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> vk::StencilOpState {
+        let &Self {
+            ops,
+            compare_mask,
+            write_mask,
+            reference,
+        } = self;
+
+        vk::StencilOpState {
+            fail_op: ops.fail_op.into(),
+            pass_op: ops.pass_op.into(),
+            depth_fail_op: ops.depth_fail_op.into(),
+            compare_op: ops.compare_op.into(),
+            compare_mask,
+            write_mask,
+            reference,
         }
     }
 }
@@ -359,6 +458,14 @@ pub struct StencilOps {
 impl Default for StencilOps {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StencilOps {
+    /// Returns a default `StencilOps`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             pass_op: StencilOp::Keep,
             fail_op: StencilOp::Keep,
@@ -366,9 +473,7 @@ impl Default for StencilOps {
             compare_op: CompareOp::Never,
         }
     }
-}
 
-impl StencilOps {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             fail_op,

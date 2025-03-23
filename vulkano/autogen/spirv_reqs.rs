@@ -1,25 +1,21 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{
     spirv_grammar::{SpirvGrammar, SpirvKindEnumerant},
     write_file, IndexMap, RequiresOneOf, VkRegistryData,
 };
 use heck::ToSnakeCase;
 use indexmap::map::Entry;
-use once_cell::sync::Lazy;
+use nom::{
+    bytes::complete::tag,
+    character::complete,
+    combinator::all_consuming,
+    sequence::{preceded, separated_pair},
+    IResult, Parser,
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use regex::Regex;
 use vk_parse::SpirvExtOrCap;
 
-pub fn write(vk_data: &VkRegistryData, grammar: &SpirvGrammar) {
+pub fn write(vk_data: &VkRegistryData<'_>, grammar: &SpirvGrammar) {
     let grammar_enumerants = grammar
         .operand_kinds
         .iter()
@@ -101,43 +97,47 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
                     api_version,
                     ref device_extensions,
                     instance_extensions: _,
-                    ref features,
+                    ref device_features,
                 } = requires_one_of;
 
-                let condition_items = (api_version.iter().map(|version| {
-                    let version = format_ident!("V{}_{}", version.0, version.1);
-                    quote! { api_version >= crate::Version::#version }
-                }))
-                .chain(device_extensions.iter().map(|name| {
-                    let ident = format_ident!("{}", name);
-                    quote! { device_extensions.#ident }
-                }))
-                .chain(features.iter().map(|name| {
-                    let ident = format_ident!("{}", name);
-                    quote! { features.#ident }
-                }));
-                let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
-                    let version = format_ident!("V{}_{}", major, minor);
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::APIVersion(crate::Version::#version),
-                        ]),
-                    }
-                }))
-                .chain(device_extensions.iter().map(|name| {
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::DeviceExtension(#name),
-                        ]),
-                    }
-                }))
-                .chain(features.iter().map(|name| {
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::Feature(#name),
-                        ]),
-                    }
-                }));
+                let condition_items = api_version
+                    .iter()
+                    .map(|version| {
+                        let version = format_ident!("V{}_{}", version.0, version.1);
+                        quote! { api_version >= crate::Version::#version }
+                    })
+                    .chain(device_extensions.iter().map(|name| {
+                        let ident = format_ident!("{}", name);
+                        quote! { device_extensions.#ident }
+                    }))
+                    .chain(device_features.iter().map(|name| {
+                        let ident = format_ident!("{}", name);
+                        quote! { device_features.#ident }
+                    }));
+                let requires_one_of_items = api_version
+                    .iter()
+                    .map(|(major, minor)| {
+                        let version = format_ident!("V{}_{}", major, minor);
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::APIVersion(crate::Version::#version),
+                            ]),
+                        }
+                    })
+                    .chain(device_extensions.iter().map(|name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::DeviceExtension(#name),
+                            ]),
+                        }
+                    }))
+                    .chain(device_features.iter().map(|name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::DeviceFeature(#name),
+                            ]),
+                        }
+                    }));
                 let problem = format!("uses the SPIR-V {} `{}`", item_type, name);
 
                 quote! {
@@ -224,7 +224,7 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
             #[allow(unused_variables)]
             let device_extensions = device.enabled_extensions();
             #[allow(unused_variables)]
-            let features = device.enabled_features();
+            let device_features = device.enabled_features();
             #[allow(unused_variables)]
             let properties = device.physical_device().properties();
 
@@ -312,9 +312,12 @@ fn spirv_extensions_members(extensions: &[&SpirvExtOrCap]) -> Vec<SpirvReqsMembe
 }
 
 fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresProperty>) {
-    static VK_API_VERSION: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^VK_(?:API_)?VERSION_(\d+)_(\d+)$").unwrap());
-    static BIT: Lazy<Regex> = Lazy::new(|| Regex::new(r"_BIT(?:_NV)?$").unwrap());
+    fn vk_api_version(input: &str) -> IResult<&str, (u32, u32)> {
+        all_consuming(preceded(
+            tag("VK_API_VERSION_").or(tag("VK_VERSION_")),
+            separated_pair(complete::u32, complete::char('_'), complete::u32),
+        ))(input)
+    }
 
     let mut requires_one_of = RequiresOneOf::default();
     let mut requires_properties = vec![];
@@ -323,12 +326,7 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
         match enable {
             vk_parse::Enable::Version(version) => {
                 if version != "VK_VERSION_1_0" {
-                    let captures = VK_API_VERSION.captures(version).unwrap();
-                    let major = captures.get(1).unwrap().as_str();
-                    let minor = captures.get(1).unwrap().as_str();
-
-                    requires_one_of.api_version =
-                        Some((major.parse().unwrap(), minor.parse().unwrap()));
+                    requires_one_of.api_version = Some(vk_api_version(version).unwrap().1);
                 }
             }
             vk_parse::Enable::Extension(extension) => {
@@ -338,7 +336,7 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
             }
             vk_parse::Enable::Feature(feature) => {
                 requires_one_of
-                    .features
+                    .device_features
                     .push(feature.feature.to_snake_case());
             }
             vk_parse::Enable::Property(property) => {
@@ -350,7 +348,10 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
                     PropertyValue::FlagsIntersects {
                         path: quote! { crate::device::physical },
                         ty: "SubgroupFeatures".to_string(),
-                        flag: BIT.replace(member, "").to_string(),
+                        flag: member
+                            .trim_end_matches("_BIT_NV")
+                            .trim_end_matches("_BIT")
+                            .to_string(),
                     }
                 } else {
                     unimplemented!()
@@ -367,8 +368,8 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
     requires_one_of.device_extensions.sort_unstable();
     requires_one_of.device_extensions.dedup();
 
-    requires_one_of.features.sort_unstable();
-    requires_one_of.features.dedup();
+    requires_one_of.device_features.sort_unstable();
+    requires_one_of.device_features.dedup();
 
     (requires_one_of, requires_properties)
 }

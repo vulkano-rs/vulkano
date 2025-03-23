@@ -1,16 +1,12 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use self::spirv_grammar::SpirvGrammar;
-use ahash::HashMap;
-use once_cell::sync::Lazy;
-use regex::Regex;
+use foldhash::HashMap;
+use nom::{
+    bytes::complete::{tag, take_until},
+    character::complete::{self, multispace0, multispace1},
+    combinator::eof,
+    sequence::{delimited, tuple},
+    IResult, Parser,
+};
 use std::{
     cmp::min,
     env,
@@ -19,13 +15,14 @@ use std::{
     io::{BufWriter, Write},
     ops::BitOrAssign,
     path::Path,
-    process::Command,
+    process,
 };
 use vk_parse::{
-    Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format, InterfaceItem,
-    Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
+    Command, Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format,
+    InterfaceItem, Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
 };
 
+mod conjunctive_normal_form;
 mod errors;
 mod extensions;
 mod features;
@@ -37,7 +34,7 @@ mod spirv_parse;
 mod spirv_reqs;
 mod version;
 
-pub type IndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
 
 pub fn autogen() {
     let registry = get_vk_registry("vk.xml");
@@ -70,8 +67,8 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
     )
     .unwrap();
 
-    std::mem::drop(writer); // Ensure that the file is fully written
-    Command::new("rustfmt").arg(&path).status().ok();
+    drop(writer); // Ensure that the file is fully written
+    process::Command::new("rustfmt").arg(&path).status().ok();
 }
 
 fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
@@ -97,6 +94,7 @@ pub struct VkRegistryData<'r> {
     pub spirv_capabilities: Vec<&'r SpirvExtOrCap>,
     pub spirv_extensions: Vec<&'r SpirvExtOrCap>,
     pub types: HashMap<&'r str, (&'r Type, Vec<&'r str>)>,
+    pub commands: IndexMap<&'r str, &'r Command>,
 }
 
 impl<'r> VkRegistryData<'r> {
@@ -110,6 +108,7 @@ impl<'r> VkRegistryData<'r> {
         let errors = Self::get_errors(registry, &features, &extensions);
         let types = Self::get_types(registry, &aliases, &features, &extensions);
         let header_version = Self::get_header_version(registry);
+        let commands = Self::get_commands(registry);
 
         VkRegistryData {
             header_version,
@@ -120,15 +119,56 @@ impl<'r> VkRegistryData<'r> {
             spirv_capabilities,
             spirv_extensions,
             types,
+            commands,
         }
     }
 
+    /// Returns the Vulkan header version in the vk.xml file.
     fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
-        static VK_HEADER_VERSION: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap());
-        static VK_HEADER_VERSION_COMPLETE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap()
-        });
+        fn spaced_comma(input: &str) -> IResult<&str, char> {
+            delimited(multispace0, complete::char(','), multispace0)(input)
+        }
+
+        fn vk_header_patch(input: &str) -> IResult<&str, u16> {
+            let (input, _) = take_until("#define")(input)?;
+            delimited(
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION"),
+                    multispace0,
+                )),
+                complete::u16,
+                tuple((multispace0, eof)),
+            )(input)
+        }
+
+        fn vk_header_major_minor(input: &str) -> IResult<&str, (u16, u16)> {
+            let (input, _) = take_until("#define")(input)?;
+            delimited(
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION_COMPLETE"),
+                    multispace1,
+                    tag("VK_MAKE_API_VERSION"),
+                    multispace0,
+                    complete::char('('),
+                    multispace0,
+                )),
+                tuple((
+                    complete::u16,
+                    spaced_comma,
+                    complete::u16,
+                    spaced_comma,
+                    complete::u16,
+                    spaced_comma,
+                    tag("VK_HEADER_VERSION"),
+                ))
+                .map(|(_ignored, _, major, _, minor, _, _)| (major, minor)),
+                tuple((multispace0, complete::char(')'), multispace0)),
+            )(input)
+        }
 
         let mut major = None;
         let mut minor = None;
@@ -138,14 +178,17 @@ impl<'r> VkRegistryData<'r> {
             if let RegistryChild::Types(types) = child {
                 for ty in types.children.iter() {
                     if let TypesChild::Type(ty) = ty {
+                        if ty.api.as_deref() != Some("vulkan") {
+                            continue;
+                        }
                         if let TypeSpec::Code(code) = &ty.spec {
-                            if let Some(captures) = VK_HEADER_VERSION.captures(&code.code) {
-                                patch = Some(captures.get(1).unwrap().as_str().parse().unwrap());
-                            } else if let Some(captures) =
-                                VK_HEADER_VERSION_COMPLETE.captures(&code.code)
-                            {
-                                major = Some(captures.get(2).unwrap().as_str().parse().unwrap());
-                                minor = Some(captures.get(3).unwrap().as_str().parse().unwrap());
+                            if let Ok((_, p)) = vk_header_patch(&code.code) {
+                                assert!(patch.is_none());
+                                patch = Some(p);
+                            } else if let Ok((_, (m, n))) = vk_header_major_minor(&code.code) {
+                                assert!(major.is_none());
+                                major = Some(m);
+                                minor = Some(n);
                             }
                         }
                     }
@@ -182,7 +225,7 @@ impl<'r> VkRegistryData<'r> {
         features: &IndexMap<&'a str, &'a Feature>,
         extensions: &IndexMap<&'a str, &'a Extension>,
     ) -> Vec<&'a str> {
-        (registry
+        registry
             .0
             .iter()
             .filter_map(|child| match child {
@@ -205,36 +248,38 @@ impl<'r> VkRegistryData<'r> {
                 })),
                 _ => None,
             })
-            .flatten())
-        .chain(
-            (features.values().map(|feature| feature.children.iter()))
-                .chain(
-                    extensions
-                        .values()
-                        .map(|extension| extension.children.iter()),
-                )
-                .flatten()
-                .filter_map(|child| {
-                    if let ExtensionChild::Require { items, .. } = child {
-                        return Some(items.iter().filter_map(|item| match item {
-                            InterfaceItem::Enum(Enum {
-                                name,
-                                spec:
-                                    EnumSpec::Offset {
-                                        extends,
-                                        dir: false,
-                                        ..
-                                    },
-                                ..
-                            }) if extends == "VkResult" => Some(name.as_str()),
-                            _ => None,
-                        }));
-                    }
-                    None
-                })
-                .flatten(),
-        )
-        .collect()
+            .flatten()
+            .chain(
+                features
+                    .values()
+                    .map(|feature| feature.children.iter())
+                    .chain(
+                        extensions
+                            .values()
+                            .map(|extension| extension.children.iter()),
+                    )
+                    .flatten()
+                    .filter_map(|child| {
+                        if let ExtensionChild::Require { items, .. } = child {
+                            return Some(items.iter().filter_map(|item| match item {
+                                InterfaceItem::Enum(Enum {
+                                    name,
+                                    spec:
+                                        EnumSpec::Offset {
+                                            extends,
+                                            dir: false,
+                                            ..
+                                        },
+                                    ..
+                                }) if extends == "VkResult" => Some(name.as_str()),
+                                _ => None,
+                            }));
+                        }
+                        None
+                    })
+                    .flatten(),
+            )
+            .collect()
     }
 
     fn get_extensions(registry: &Registry) -> IndexMap<&str, &Extension> {
@@ -247,7 +292,7 @@ impl<'r> VkRegistryData<'r> {
                         if ext
                             .supported
                             .as_deref()
-                            .map_or(false, |s| s.split(',').any(|s| s == "vulkan"))
+                            .is_some_and(|s| s.split(',').any(|s| s == "vulkan"))
                             && ext.obsoletedby.is_none()
                         {
                             return true;
@@ -393,6 +438,30 @@ impl<'r> VkRegistryData<'r> {
             .filter(|(_key, val)| !val.1.is_empty())
             .collect()
     }
+
+    fn get_commands(registry: &Registry) -> IndexMap<&str, &Command> {
+        registry
+            .0
+            .iter()
+            .filter_map(|child| {
+                // TODO: resolve aliases into CommandDefinition immediately?
+                if let RegistryChild::Commands(commands) = child {
+                    return Some(commands.children.iter().map(|c| {
+                        (
+                            match c {
+                                Command::Alias { name, .. } => name.as_str(),
+                                Command::Definition(d) => d.proto.name.as_str(),
+                                _ => todo!(),
+                            },
+                            c,
+                        )
+                    }));
+                }
+                None
+            })
+            .flatten()
+            .collect()
+    }
 }
 
 pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
@@ -439,11 +508,12 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
 }
 
 fn suffix_key(name: &str) -> u32 {
-    static VENDOR_SUFFIXES: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap());
-
     #[allow(clippy::bool_to_int_with_if)]
-    if VENDOR_SUFFIXES.is_match(name) {
+    if name.ends_with("AMD")
+        || name.ends_with("GOOGLE")
+        || name.ends_with("INTEL")
+        || name.ends_with("NV")
+    {
         3
     } else if name.ends_with("EXT") {
         2
@@ -459,7 +529,7 @@ pub struct RequiresOneOf {
     pub api_version: Option<(u32, u32)>,
     pub device_extensions: Vec<String>,
     pub instance_extensions: Vec<String>,
-    pub features: Vec<String>,
+    pub device_features: Vec<String>,
 }
 
 impl RequiresOneOf {
@@ -468,13 +538,13 @@ impl RequiresOneOf {
             api_version,
             device_extensions,
             instance_extensions,
-            features,
+            device_features,
         } = self;
 
         api_version.is_none()
             && device_extensions.is_empty()
             && instance_extensions.is_empty()
-            && features.is_empty()
+            && device_features.is_empty()
     }
 }
 
@@ -498,9 +568,9 @@ impl BitOrAssign<&Self> for RequiresOneOf {
             }
         }
 
-        for rhs in &rhs.features {
-            if !self.features.contains(rhs) {
-                self.features.push(rhs.to_owned());
+        for rhs in &rhs.device_features {
+            if !self.device_features.contains(rhs) {
+                self.device_features.push(rhs.to_owned());
             }
         }
     }

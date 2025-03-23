@@ -1,3 +1,15 @@
+// Most of the code in this module comes from the rangemap crate, which is licensed under either of
+// - Apache License, Version 2.0 (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-APACHE
+//   or http://www.apache.org/licenses/LICENSE-2.0)
+// - MIT (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-MIT or http://opensource.org/licenses/MIT)
+// at your option.
+//
+// The following changes were made:
+// - The `RangeStartWrapper` used as key was changed into just the start that's used as the key,
+//   and the end is stored in the value (in `Entry`) instead.
+// - A `RangeMap::split_at` method was added.
+// - Some parts we don't need were removed.
+
 #![allow(dead_code)]
 
 use std::{
@@ -42,7 +54,7 @@ where
 {
     /// Makes a new empty `RangeMap`.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         RangeMap {
             btm: BTreeMap::new(),
         }
@@ -142,7 +154,7 @@ where
             .take(2)
             .filter(|(start, Entry { end, value: _ })| {
                 // Does the candidate range either overlap
-                // or immediately preceed the range to insert?
+                // or immediately precede the range to insert?
                 // (Remember that it might actually cover the _whole_
                 // range to insert and then some.)
                 (*start..end).touches(&(&range.start..&range.end))
@@ -419,8 +431,8 @@ where
     }
 }
 
-impl<'a, K, V> FusedIterator for Iter<'a, K, V> where K: Ord + Clone {}
-impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for Iter<'_, K, V> where K: Ord + Clone {}
+impl<K, V> ExactSizeIterator for Iter<'_, K, V> where K: Ord + Clone {}
 
 /// An iterator over the entries of a `RangeMap`, ordered by key range.
 ///
@@ -452,8 +464,8 @@ where
     }
 }
 
-impl<'a, K, V> FusedIterator for IterMut<'a, K, V> where K: Ord + Clone {}
-impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for IterMut<'_, K, V> where K: Ord + Clone {}
+impl<K, V> ExactSizeIterator for IterMut<'_, K, V> where K: Ord + Clone {}
 
 /// An owning iterator over the entries of a `RangeMap`, ordered by key range.
 ///
@@ -544,7 +556,7 @@ pub struct RangeIter<'a, K, V> {
     inner: btree_map::Range<'a, K, Entry<K, V>>,
 }
 
-impl<'a, K, V> FusedIterator for RangeIter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for RangeIter<'_, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeIter<'a, K, V>
 where
@@ -576,7 +588,7 @@ pub struct RangeMutIter<'a, K, V> {
     inner: btree_map::RangeMut<'a, K, Entry<K, V>>,
 }
 
-impl<'a, K, V> FusedIterator for RangeMutIter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for RangeMutIter<'_, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeMutIter<'a, K, V>
 where
@@ -878,9 +890,7 @@ mod tests {
         assert_eq!(range_map.to_vec(), vec![]);
     }
 
-    ///
-    /// impl Debug
-    ///
+    // impl Debug
 
     #[test]
     fn map_debug_repr_looks_right() {

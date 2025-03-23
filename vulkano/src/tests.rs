@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 #![cfg(test)]
 
 /// Creates an instance or returns if initialization fails.
@@ -28,18 +19,29 @@ macro_rules! instance {
 
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
+    () => ({
+        gfx_dev_and_queue!(;)
+    });
     ($($feature:ident),*) => ({
+        gfx_dev_and_queue!($($feature),*;)
+    });
+    ($($feature:ident),*; $($extension:ident),*) => ({
         use crate::device::physical::PhysicalDeviceType;
         use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-        use crate::device::Features;
+        use crate::device::DeviceFeatures;
 
         let instance = instance!();
-        let enabled_extensions = DeviceExtensions::empty();
-        let enabled_features = Features {
+        let enabled_extensions = DeviceExtensions {
+            $(
+                $extension: true,
+            )*
+            .. DeviceExtensions::empty()
+        };
+        let enabled_features = DeviceFeatures {
             $(
                 $feature: true,
             )*
-            .. Features::empty()
+            .. DeviceFeatures::empty()
         };
 
         let select = match instance.enumerate_physical_devices() {

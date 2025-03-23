@@ -1,18 +1,9 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Link between Vulkan and a window and/or the screen.
 //!
 //! Before you can draw on the screen or a window, you have to create two objects:
 //!
-//! - Create a `Surface` object that represents the location where the image will show up (either
-//!   a window or a monitor).
+//! - Create a `Surface` object that represents the location where the image will show up (either a
+//!   window or a monitor).
 //! - Create a `Swapchain` that uses that `Surface`.
 //!
 //! Creating a surface can be done with only an `Instance` object. However creating a swapchain
@@ -67,8 +58,8 @@
 //!
 //!     let extensions = InstanceExtensions {
 //!         khr_surface: true,
-//!         khr_win32_surface: true,        // If you don't enable this, `from_hwnd` will fail.
-//!         .. InstanceExtensions::empty()
+//!         khr_win32_surface: true, // If you don't enable this, `from_hwnd` will fail.
+//!         ..InstanceExtensions::empty()
 //!     };
 //!
 //!     Instance::new(
@@ -81,6 +72,7 @@
 //!     .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err))
 //! };
 //!
+//! # use ash::vk;
 //! # use std::sync::Arc;
 //! # struct Window(*const u32);
 //! # impl Window { fn hwnd(&self) -> *const u32 { self.0 } }
@@ -88,13 +80,17 @@
 //! # unsafe impl Sync for Window {}
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window(); // Third-party function, not provided by vulkano
-//! let _surface = unsafe {
-//!     let hinstance: *const () = ptr::null(); // Windows-specific object
-//!     Surface::from_win32(
-//!         instance.clone(),
-//!         hinstance, window.hwnd(),
-//!         Some(window),
-//!     ).unwrap()
+//! let _surface = {
+//!     let hinstance: vk::HINSTANCE = 0; // Windows-specific object
+//!     unsafe {
+//!         Surface::from_win32(
+//!             instance.clone(),
+//!             hinstance,
+//!             window.hwnd() as vk::HWND,
+//!             Some(window),
+//!         )
+//!     }
+//!     .unwrap()
 //! };
 //! ```
 //!
@@ -129,7 +125,7 @@
 //! # use vulkano::device::DeviceExtensions;
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
-//!     .. DeviceExtensions::empty()
+//!     ..DeviceExtensions::empty()
 //! };
 //! ```
 //!
@@ -169,7 +165,7 @@
 //! # }
 //! ```
 //!
-//! Then, call [`Swapchain::new`](crate::swapchain::Swapchain::new).
+//! Then, call [`Swapchain::new`].
 //!
 //! ```no_run
 //! # use std::{error::Error, sync::Arc};
@@ -227,8 +223,8 @@
 //!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
 //!    (within the list returned by `Swapchain::new`) that is available to draw, plus a future
 //!    representing the moment when the GPU will gain access to that image.
-//!  - Draw on that image just like you would draw to any other image (see the documentation of
-//!    the `pipeline` module). You need to chain the draw after the future that was returned by
+//!  - Draw on that image just like you would draw to any other image (see the documentation of the
+//!    `pipeline` module). You need to chain the draw after the future that was returned by
 //!    `acquire_next_image`.
 //!  - Call `Swapchain::present` with the same index and by chaining the futures, in order to tell
 //!    the implementation that you are finished drawing to the image and that it can queue a
@@ -252,7 +248,7 @@
 //!         .unwrap()
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap();
@@ -273,7 +269,8 @@
 //! ```
 //! use vulkano::{
 //!     swapchain::{self, SwapchainCreateInfo, SwapchainPresentInfo},
-//!     sync::GpuFuture, Validated, VulkanError,
+//!     sync::GpuFuture,
+//!     Validated, VulkanError,
 //! };
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
@@ -284,20 +281,25 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         let (new_swapchain, new_images) = swapchain.recreate(SwapchainCreateInfo {
-//!             image_extent: [1024, 768],
-//!             ..swapchain.create_info()
-//!         })
-//!         .unwrap();
+//!         let (new_swapchain, new_images) = swapchain
+//!             .recreate(SwapchainCreateInfo {
+//!                 image_extent: [1024, 768],
+//!                 ..swapchain.create_info()
+//!             })
+//!             .unwrap();
 //!         swapchain = new_swapchain;
 //!         images = new_images;
 //!         recreate_swapchain = false;
 //!     }
 //!
 //!     let (image_index, suboptimal, acq_future) =
-//!         match swapchain::acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+//!         match swapchain::acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap)
+//!         {
 //!             Ok(r) => r,
-//!             Err(VulkanError::OutOfDate) => { recreate_swapchain = true; continue; },
+//!             Err(VulkanError::OutOfDate) => {
+//!                 recreate_swapchain = true;
+//!                 continue;
+//!             }
 //!             Err(err) => panic!("{:?}", err),
 //!         };
 //!
@@ -307,7 +309,7 @@
 //!         // .then_execute(...)
 //!         .then_swapchain_present(
 //!             queue.clone(),
-//!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+//!             SwapchainPresentInfo::new(swapchain.clone(), image_index),
 //!         )
 //!         .then_signal_fence_and_flush()
 //!         .unwrap(); // TODO: PresentError?
@@ -319,12 +321,6 @@
 //! ```
 
 pub use self::{acquire_present::*, surface::*};
-#[cfg(target_os = "ios")]
-pub use surface::IOSMetalLayer;
-
-mod acquire_present;
-mod surface;
-
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
@@ -335,12 +331,13 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ptr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -349,13 +346,16 @@ use std::{
     time::Duration,
 };
 
+mod acquire_present;
+mod surface;
+
 /// Contains the swapping system and the images that can be shown on a surface.
 #[derive(Debug)]
 pub struct Swapchain {
-    handle: ash::vk::SwapchainKHR,
+    handle: vk::SwapchainKHR,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     surface: InstanceOwnedDebugWrapper<Arc<Surface>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: SwapchainCreateFlags,
     min_image_count: u32,
@@ -395,7 +395,7 @@ pub struct Swapchain {
 
 #[derive(Debug)]
 struct ImageEntry {
-    handle: ash::vk::Image,
+    handle: vk::Image,
     layout_initialized: AtomicBool,
 }
 
@@ -410,8 +410,6 @@ impl Swapchain {
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `create_info.usage` is empty.
-    ///
-    // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new(
         device: Arc<Device>,
@@ -420,7 +418,7 @@ impl Swapchain {
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
         Self::validate_new_inner(&device, &surface, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, surface, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, surface, create_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -431,9 +429,9 @@ impl Swapchain {
         create_info: SwapchainCreateInfo,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         let (handle, image_handles) =
-            Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
+            unsafe { Self::new_inner_unchecked(&device, &surface, &create_info, None) }?;
 
-        Self::from_handle(device, handle, image_handles, surface, create_info)
+        unsafe { Self::from_handle(device, handle, image_handles, surface, create_info) }
     }
 
     /// Creates a new swapchain from this one.
@@ -473,7 +471,7 @@ impl Swapchain {
             }
         }
 
-        unsafe { Ok(self.recreate_unchecked(create_info)?) }
+        Ok(unsafe { self.recreate_unchecked(create_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -492,22 +490,24 @@ impl Swapchain {
         *self.is_retired.lock() = true;
 
         let (handle, image_handles) = unsafe {
-            Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))?
-        };
+            Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))
+        }?;
 
-        let (mut swapchain, swapchain_images) = Self::from_handle(
-            self.device.clone(),
-            handle,
-            image_handles,
-            self.surface.clone(),
-            create_info,
-        )?;
+        let (swapchain, swapchain_images) = unsafe {
+            Self::from_handle(
+                self.device.clone(),
+                handle,
+                image_handles,
+                self.surface.clone(),
+                create_info,
+            )
+        }?;
 
         if self.full_screen_exclusive == FullScreenExclusive::ApplicationControlled {
-            Arc::get_mut(&mut swapchain)
-                .unwrap()
-                .full_screen_exclusive_held =
-                AtomicBool::new(self.full_screen_exclusive_held.load(Ordering::Relaxed))
+            swapchain.full_screen_exclusive_held.store(
+                self.full_screen_exclusive_held.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
         };
 
         Ok((swapchain, swapchain_images))
@@ -556,16 +556,14 @@ impl Swapchain {
         assert_eq!(device.instance(), surface.instance());
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
-        if !device
-            .active_queue_family_indices()
-            .iter()
-            .any(|&index| unsafe {
+        if !device.active_queue_family_indices().iter().any(|&index| {
+            unsafe {
                 device
                     .physical_device()
                     .surface_support_unchecked(index, surface)
-                    .unwrap_or_default()
-            })
-        {
+            }
+            .unwrap_or_default()
+        }) {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
@@ -575,74 +573,78 @@ impl Swapchain {
         }
 
         let surface_capabilities = unsafe {
-            device
-                .physical_device()
-                .surface_capabilities_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
-                            .then_some(present_mode),
-                        full_screen_exclusive,
-                        win32_monitor,
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_capabilities` \
+            device.physical_device().surface_capabilities_unchecked(
+                surface,
+                SurfaceInfo {
+                    present_mode: device
+                        .enabled_extensions()
+                        .ext_swapchain_maintenance1
+                        .then_some(present_mode),
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor
+                        .filter(|_| full_screen_exclusive != FullScreenExclusive::Default),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_capabilities` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
         let surface_formats = unsafe {
-            device
-                .physical_device()
-                .surface_formats_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
-                            .then_some(present_mode),
-                        full_screen_exclusive,
-                        win32_monitor,
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_formats` \
+            device.physical_device().surface_formats_unchecked(
+                surface,
+                SurfaceInfo {
+                    present_mode: device
+                        .enabled_extensions()
+                        .ext_swapchain_maintenance1
+                        .then_some(present_mode),
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor.filter(|_| {
+                        surface.api() == SurfaceApi::Win32
+                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                    }),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_formats` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
-        let surface_present_modes: SmallVec<[_; PresentMode::COUNT]> = unsafe {
-            device
-                .physical_device()
-                .surface_present_modes_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        full_screen_exclusive,
-                        win32_monitor,
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_present_modes` \
+                    .into(),
+                ..Default::default()
+            })
+        })?;
+        let surface_present_modes = unsafe {
+            device.physical_device().surface_present_modes_unchecked(
+                surface,
+                SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor.filter(|_| {
+                        surface.api() == SurfaceApi::Win32
+                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                    }),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_present_modes` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-                .collect()
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
 
         if surface_capabilities
             .max_image_count
-            .map_or(false, |c| min_image_count > c)
+            .is_some_and(|c| min_image_count > c)
         {
             return Err(Box::new(ValidationError {
                 problem: "`create_info.min_image_count` is greater than the `max_image_count` \
@@ -817,26 +819,24 @@ impl Swapchain {
 
                 if scaling_behavior.is_some() || present_gravity.is_some() {
                     let surface_capabilities = unsafe {
-                        device
-                            .physical_device()
-                            .surface_capabilities_unchecked(
-                                surface,
-                                SurfaceInfo {
-                                    present_mode: Some(present_mode),
-                                    full_screen_exclusive,
-                                    win32_monitor,
-                                    ..Default::default()
-                                },
-                            )
-                            .map_err(|_err| {
-                                Box::new(ValidationError {
-                                    problem: "`PhysicalDevice::surface_capabilities` \
+                        device.physical_device().surface_capabilities_unchecked(
+                            surface,
+                            SurfaceInfo {
+                                present_mode: Some(present_mode),
+                                full_screen_exclusive,
+                                win32_monitor,
+                                ..Default::default()
+                            },
+                        )
+                    }
+                    .map_err(|_err| {
+                        Box::new(ValidationError {
+                            problem: "`PhysicalDevice::surface_capabilities` \
                                         returned an error"
-                                        .into(),
-                                    ..Default::default()
-                                })
-                            })?
-                    };
+                                .into(),
+                            ..Default::default()
+                        })
+                    })?;
 
                     if let Some(scaling_behavior) = scaling_behavior {
                         if !surface_capabilities
@@ -961,33 +961,6 @@ impl Swapchain {
             */
         }
 
-        if surface.api() == SurfaceApi::Win32
-            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-        {
-            if win32_monitor.is_none() {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is a Win32 surface, and \
-                        `create_info.full_screen_exclusive` is \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `create_info.win32_monitor` is `None`"
-                        .into(),
-                    vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
-                    ..Default::default()
-                }));
-            }
-        } else {
-            if win32_monitor.is_some() {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is not a Win32 surface, or \
-                        `create_info.full_screen_exclusive` is not \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `create_info.win32_monitor` is `Some`"
-                        .into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
         Ok(())
     }
 
@@ -996,177 +969,61 @@ impl Swapchain {
         surface: &Surface,
         create_info: &SwapchainCreateInfo,
         old_swapchain: Option<&Swapchain>,
-    ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), VulkanError> {
-        let &SwapchainCreateInfo {
-            flags,
-            min_image_count,
-            image_format,
-            ref image_view_formats,
-            image_color_space,
-            image_extent,
-            image_array_layers,
-            image_usage,
-            ref image_sharing,
-            pre_transform,
-            composite_alpha,
-            present_mode,
-            ref present_modes,
-            clipped,
-            scaling_behavior,
-            present_gravity,
-            full_screen_exclusive,
-            win32_monitor,
-            _ne: _,
-        } = create_info;
-
-        let (image_sharing_mode_vk, queue_family_index_count_vk, p_queue_family_indices_vk) =
-            match image_sharing {
-                Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-                Sharing::Concurrent(ref ids) => (
-                    ash::vk::SharingMode::CONCURRENT,
-                    ids.len() as u32,
-                    ids.as_ptr(),
-                ),
-            };
-
-        let mut create_info_vk = ash::vk::SwapchainCreateInfoKHR {
-            flags: flags.into(),
-            surface: surface.handle(),
-            min_image_count,
-            image_format: image_format.into(),
-            image_color_space: image_color_space.into(),
-            image_extent: ash::vk::Extent2D {
-                width: image_extent[0],
-                height: image_extent[1],
-            },
-            image_array_layers,
-            image_usage: image_usage.into(),
-            image_sharing_mode: image_sharing_mode_vk,
-            queue_family_index_count: queue_family_index_count_vk,
-            p_queue_family_indices: p_queue_family_indices_vk,
-            pre_transform: pre_transform.into(),
-            composite_alpha: composite_alpha.into(),
-            present_mode: present_mode.into(),
-            clipped: clipped as ash::vk::Bool32,
-            old_swapchain: old_swapchain.map_or(ash::vk::SwapchainKHR::null(), |os| os.handle),
-            ..Default::default()
-        };
-        let mut format_list_info_vk = None;
-        let format_list_view_formats_vk: Vec<_>;
-        let mut full_screen_exclusive_info_vk = None;
-        let mut full_screen_exclusive_win32_info_vk = None;
-        let mut present_modes_info_vk = None;
-        let present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; PresentMode::COUNT]>;
-        let mut present_scaling_info_vk = None;
-
-        if !image_view_formats.is_empty() {
-            format_list_view_formats_vk = image_view_formats
-                .iter()
-                .copied()
-                .map(ash::vk::Format::from)
-                .collect();
-
-            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
-                view_format_count: format_list_view_formats_vk.len() as u32,
-                p_view_formats: format_list_view_formats_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if full_screen_exclusive != FullScreenExclusive::Default {
-            let next =
-                full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                    full_screen_exclusive: full_screen_exclusive.into(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if let Some(Win32Monitor(hmonitor)) = win32_monitor {
-            let next = full_screen_exclusive_win32_info_vk.insert(
-                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor,
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if !present_modes.is_empty() {
-            present_modes_vk = present_modes.iter().copied().map(Into::into).collect();
-
-            let next = present_modes_info_vk.insert(ash::vk::SwapchainPresentModesCreateInfoEXT {
-                present_mode_count: present_modes_vk.len() as u32,
-                p_present_modes: present_modes_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if scaling_behavior.is_some() || present_gravity.is_some() {
-            let [present_gravity_x, present_gravity_y] =
-                present_gravity.map_or_else(Default::default, |pg| pg.map(Into::into));
-            let next =
-                present_scaling_info_vk.insert(ash::vk::SwapchainPresentScalingCreateInfoEXT {
-                    scaling_behavior: scaling_behavior.map_or_else(Default::default, Into::into),
-                    present_gravity_x,
-                    present_gravity_y,
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
+    ) -> Result<(vk::SwapchainKHR, Vec<vk::Image>), VulkanError> {
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields1_vk);
+        let create_info_vk = create_info.to_vk(
+            surface.handle(),
+            old_swapchain.map_or(vk::SwapchainKHR::null(), |os| os.handle),
+            &mut create_info_extensions_vk,
+        );
 
         let fns = device.fns();
 
         let handle = {
             let mut output = MaybeUninit::uninit();
-            (fns.khr_swapchain.create_swapchain_khr)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_swapchain.create_swapchain_khr)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         let image_handles = loop {
             let mut count = 0;
-            (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.handle(),
-                handle,
-                &mut count,
-                ptr::null_mut(),
-            )
+            unsafe {
+                (fns.khr_swapchain.get_swapchain_images_khr)(
+                    device.handle(),
+                    handle,
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut images = Vec::with_capacity(count as usize);
-            let result = (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.handle(),
-                handle,
-                &mut count,
-                images.as_mut_ptr(),
-            );
+            let result = unsafe {
+                (fns.khr_swapchain.get_swapchain_images_khr)(
+                    device.handle(),
+                    handle,
+                    &mut count,
+                    images.as_mut_ptr(),
+                )
+            };
 
             match result {
-                ash::vk::Result::SUCCESS => {
-                    images.set_len(count as usize);
+                vk::Result::SUCCESS => {
+                    unsafe { images.set_len(count as usize) };
                     break images;
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -1180,13 +1037,13 @@ impl Swapchain {
     ///
     /// - `handle` and `image_handles` must be valid Vulkan object handles created from `device`.
     /// - `handle` must not be retired.
-    /// - `image_handles` must be swapchain images owned by `handle`,
-    ///   in the same order as they were returned by `vkGetSwapchainImagesKHR`.
+    /// - `image_handles` must be swapchain images owned by `handle`, in the same order as they
+    ///   were returned by `vkGetSwapchainImagesKHR`.
     /// - `surface` and `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::SwapchainKHR,
-        image_handles: impl IntoIterator<Item = ash::vk::Image>,
+        handle: vk::SwapchainKHR,
+        image_handles: impl IntoIterator<Item = vk::Image>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
@@ -1253,12 +1110,10 @@ impl Swapchain {
             .images
             .iter()
             .enumerate()
-            .map(|(image_index, entry)| unsafe {
-                Ok(Arc::new(Image::from_swapchain(
-                    entry.handle,
-                    swapchain.clone(),
-                    image_index as u32,
-                )?))
+            .map(|(image_index, entry)| {
+                Ok(Arc::new(unsafe {
+                    Image::from_swapchain(entry.handle, swapchain.clone(), image_index as u32)
+                }?))
             })
             .collect::<Result<_, VulkanError>>()?;
 
@@ -1443,7 +1298,7 @@ impl Swapchain {
         let is_retired_lock = self.is_retired.lock();
         self.validate_acquire_next_image(acquire_info, *is_retired_lock)?;
 
-        Ok(self.acquire_next_image_unchecked(acquire_info)?)
+        Ok(unsafe { self.acquire_next_image_unchecked(acquire_info) }?)
     }
 
     fn validate_acquire_next_image(
@@ -1477,69 +1332,56 @@ impl Swapchain {
         &self,
         acquire_info: &AcquireNextImageInfo,
     ) -> Result<AcquiredImage, VulkanError> {
-        let &AcquireNextImageInfo {
-            timeout,
-            ref semaphore,
-            ref fence,
-            _ne: _,
-        } = acquire_info;
+        let acquire_info_vk = acquire_info.to_vk(self.handle(), self.device.device_mask());
 
-        let acquire_info_vk = ash::vk::AcquireNextImageInfoKHR {
-            swapchain: self.handle,
-            timeout: timeout.map_or(u64::MAX, |duration| {
-                u64::try_from(duration.as_nanos()).unwrap()
-            }),
-            semaphore: semaphore
-                .as_ref()
-                .map(VulkanObject::handle)
-                .unwrap_or_default(),
-            fence: fence.as_ref().map(VulkanObject::handle).unwrap_or_default(),
-            device_mask: self.device.device_mask(),
-            ..Default::default()
-        };
+        let (image_index, is_suboptimal) = {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
 
-        let fns = self.device.fns();
-        let mut output = MaybeUninit::uninit();
-
-        let result = if self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_device_group
-        {
-            (fns.khr_swapchain.acquire_next_image2_khr)(
-                self.device.handle(),
-                &acquire_info_vk,
-                output.as_mut_ptr(),
-            )
-        } else {
-            debug_assert!(acquire_info_vk.p_next.is_null());
-            (fns.khr_swapchain.acquire_next_image_khr)(
-                self.device.handle(),
-                acquire_info_vk.swapchain,
-                acquire_info_vk.timeout,
-                acquire_info_vk.semaphore,
-                acquire_info_vk.fence,
-                output.as_mut_ptr(),
-            )
-        };
-
-        let is_suboptimal = match result {
-            ash::vk::Result::SUCCESS => false,
-            ash::vk::Result::SUBOPTIMAL_KHR => true,
-            ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady),
-            ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
-            err => {
-                let err = VulkanError::from(err);
-
-                if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
-                    self.full_screen_exclusive_held
-                        .store(false, Ordering::SeqCst);
+            let result = if self.device.api_version() >= Version::V1_1
+                || self.device.enabled_extensions().khr_device_group
+            {
+                unsafe {
+                    (fns.khr_swapchain.acquire_next_image2_khr)(
+                        self.device.handle(),
+                        &acquire_info_vk,
+                        output.as_mut_ptr(),
+                    )
                 }
+            } else {
+                debug_assert!(acquire_info_vk.p_next.is_null());
+                unsafe {
+                    (fns.khr_swapchain.acquire_next_image_khr)(
+                        self.device.handle(),
+                        acquire_info_vk.swapchain,
+                        acquire_info_vk.timeout,
+                        acquire_info_vk.semaphore,
+                        acquire_info_vk.fence,
+                        output.as_mut_ptr(),
+                    )
+                }
+            };
 
-                return Err(err);
+            match result {
+                vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
+                vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
+                vk::Result::NOT_READY => return Err(VulkanError::NotReady),
+                vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
+                err => {
+                    let err = VulkanError::from(err);
+
+                    if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
+                        self.full_screen_exclusive_held
+                            .store(false, Ordering::SeqCst);
+                    }
+
+                    return Err(err);
+                }
             }
         };
 
         Ok(AcquiredImage {
-            image_index: output.assume_init(),
+            image_index,
             is_suboptimal,
         })
     }
@@ -1555,24 +1397,24 @@ impl Swapchain {
     #[inline]
     pub fn wait_for_present(
         &self,
-        present_id: NonZeroU64,
+        present_id: NonZero<u64>,
         timeout: Option<Duration>,
     ) -> Result<bool, Validated<VulkanError>> {
         let is_retired_lock = self.is_retired.lock();
         self.validate_wait_for_present(present_id, timeout, *is_retired_lock)?;
 
-        unsafe { Ok(self.wait_for_present_unchecked(present_id, timeout)?) }
+        Ok(unsafe { self.wait_for_present_unchecked(present_id, timeout) }?)
     }
 
     fn validate_wait_for_present(
         &self,
-        _present_id: NonZeroU64,
+        _present_id: NonZero<u64>,
         timeout: Option<Duration>,
         is_retired: bool,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_features().present_wait {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "present_wait",
                 )])]),
                 vuids: &["VUID-vkWaitForPresentKHR-presentWait-06234"],
@@ -1604,25 +1446,27 @@ impl Swapchain {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn wait_for_present_unchecked(
         &self,
-        present_id: NonZeroU64,
+        present_id: NonZero<u64>,
         timeout: Option<Duration>,
     ) -> Result<bool, VulkanError> {
         let result = {
             let fns = self.device.fns();
-            (fns.khr_present_wait.wait_for_present_khr)(
-                self.device.handle(),
-                self.handle,
-                present_id.get(),
-                timeout.map_or(u64::MAX, |duration| {
-                    u64::try_from(duration.as_nanos()).unwrap()
-                }),
-            )
+            unsafe {
+                (fns.khr_present_wait.wait_for_present_khr)(
+                    self.device.handle(),
+                    self.handle,
+                    present_id.get(),
+                    timeout.map_or(u64::MAX, |duration| {
+                        u64::try_from(duration.as_nanos()).unwrap()
+                    }),
+                )
+            }
         };
 
         match result {
-            ash::vk::Result::SUCCESS => Ok(false),
-            ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-            ash::vk::Result::TIMEOUT => Err(VulkanError::Timeout),
+            vk::Result::SUCCESS => Ok(false),
+            vk::Result::SUBOPTIMAL_KHR => Ok(true),
+            vk::Result::TIMEOUT => Err(VulkanError::Timeout),
             err => {
                 let err = VulkanError::from(err);
 
@@ -1640,13 +1484,13 @@ impl Swapchain {
     ///
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
     /// and must not already hold full-screen exclusivity. Full-screen exclusivity is held until
-    /// either the `release_full_screen_exclusive` is called, or if any of the the other `Swapchain`
-    /// functions return `FullScreenExclusiveLost`.
+    /// either the `release_full_screen_exclusive` is called, or if any of the the other
+    /// `Swapchain` functions return `FullScreenExclusiveLost`.
     #[inline]
     pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_acquire_full_screen_exclusive_mode()?;
 
-        unsafe { Ok(self.acquire_full_screen_exclusive_mode_unchecked()?) }
+        Ok(unsafe { self.acquire_full_screen_exclusive_mode_unchecked() }?)
     }
 
     fn validate_acquire_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1688,8 +1532,12 @@ impl Swapchain {
             .store(true, Ordering::Relaxed);
 
         let fns = self.device.fns();
-        (fns.ext_full_screen_exclusive
-            .acquire_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        unsafe {
+            (fns.ext_full_screen_exclusive
+                .acquire_full_screen_exclusive_mode_ext)(
+                self.device.handle(), self.handle
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -1704,7 +1552,7 @@ impl Swapchain {
     pub fn release_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_release_full_screen_exclusive_mode()?;
 
-        unsafe { Ok(self.release_full_screen_exclusive_mode_unchecked()?) }
+        Ok(unsafe { self.release_full_screen_exclusive_mode_unchecked() }?)
     }
 
     fn validate_release_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1734,8 +1582,12 @@ impl Swapchain {
             .store(false, Ordering::Release);
 
         let fns = self.device.fns();
-        (fns.ext_full_screen_exclusive
-            .release_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        unsafe {
+            (fns.ext_full_screen_exclusive
+                .release_full_screen_exclusive_mode_ext)(
+                self.device.handle(), self.handle
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -1783,7 +1635,7 @@ impl Swapchain {
     }
 
     #[inline]
-    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
+    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZero<u64>) -> bool {
         let present_id = u64::from(present_id);
         self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }
@@ -1792,19 +1644,19 @@ impl Swapchain {
 impl Drop for Swapchain {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
             (fns.khr_swapchain.destroy_swapchain_khr)(
                 self.device.handle(),
                 self.handle,
                 ptr::null(),
-            );
-        }
+            )
+        };
     }
 }
 
 unsafe impl VulkanObject for Swapchain {
-    type Handle = ash::vk::SwapchainKHR;
+    type Handle = vk::SwapchainKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1845,7 +1697,8 @@ pub struct SwapchainCreateInfo {
     /// The default value is `Format::UNDEFINED`.
     pub image_format: Format,
 
-    /// The formats that an image view can have when it is created from one of the swapchain images.
+    /// The formats that an image view can have when it is created from one of the swapchain
+    /// images.
     ///
     /// If the list is not empty, and `flags` does not contain
     /// [`SwapchainCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
@@ -1921,9 +1774,10 @@ pub struct SwapchainCreateInfo {
     /// The default value is empty.
     pub present_modes: SmallVec<[PresentMode; PresentMode::COUNT]>,
 
-    /// Whether the implementation is allowed to discard rendering operations that affect regions of
-    /// the surface which aren't visible. This is important to take into account if your fragment
-    /// shader has side-effects or if you want to read back the content of the image afterwards.
+    /// Whether the implementation is allowed to discard rendering operations that affect regions
+    /// of the surface which aren't visible. This is important to take into account if your
+    /// fragment shader has side-effects or if you want to read back the content of the image
+    /// afterwards.
     ///
     /// The default value is `true`.
     pub clipped: bool,
@@ -1960,9 +1814,8 @@ pub struct SwapchainCreateInfo {
     /// The default value is [`FullScreenExclusive::Default`].
     pub full_screen_exclusive: FullScreenExclusive,
 
-    /// For Win32 surfaces, if `full_screen_exclusive` is
-    /// [`FullScreenExclusive::ApplicationControlled`], this specifies the monitor on which
-    /// full-screen exclusivity should be used.
+    /// If `full_screen_exclusive` is not [`FullScreenExclusive::Default`], this specifies the
+    /// monitor on which full-screen exclusivity should be used.
     ///
     /// For this case, the value must be `Some`, and for all others it must be `None`.
     ///
@@ -1975,6 +1828,15 @@ pub struct SwapchainCreateInfo {
 impl Default for SwapchainCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SwapchainCreateInfo {
+    /// Returns a default `SwapchainCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             flags: SwapchainCreateFlags::empty(),
             min_image_count: 2,
@@ -1997,9 +1859,7 @@ impl Default for SwapchainCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SwapchainCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -2019,7 +1879,7 @@ impl SwapchainCreateInfo {
             scaling_behavior,
             present_gravity,
             full_screen_exclusive,
-            win32_monitor: _,
+            win32_monitor,
             _ne: _,
         } = self;
 
@@ -2141,15 +2001,15 @@ impl SwapchainCreateInfo {
                     usage: image_usage,
                     ..Default::default()
                 })
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::image_format_properties` \
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::image_format_properties` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
 
         if image_format_properties.is_none() {
             return Err(Box::new(ValidationError {
@@ -2323,10 +2183,206 @@ impl SwapchainCreateInfo {
                         "VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter",
                     ])
                 })?;
+
+            if win32_monitor.is_none() {
+                return Err(Box::new(ValidationError {
+                    problem: "`full_screen_exclusive` is not `FullScreenExclusive::Default`, but \
+                        `win32_monitor` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
+                    ..Default::default()
+                }));
+            }
+        } else if win32_monitor.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`full_screen_exclusive` is `FullScreenExclusive::Default`, but \
+                    `win32_monitor` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
         }
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &'a self,
+        surface_vk: vk::SurfaceKHR,
+        old_swapchain_vk: vk::SwapchainKHR,
+        extensions_vk: &'a mut SwapchainCreateInfoExtensionsVk<'_>,
+    ) -> vk::SwapchainCreateInfoKHR<'a> {
+        let &Self {
+            flags,
+            min_image_count,
+            image_format,
+            image_view_formats: _,
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            ref image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            present_modes: _,
+            clipped,
+            scaling_behavior: _,
+            present_gravity: _,
+            full_screen_exclusive: _,
+            win32_monitor: _,
+            _ne: _,
+        } = self;
+
+        let (image_sharing_mode_vk, queue_family_indices_vk) = match image_sharing {
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(ids) => (vk::SharingMode::CONCURRENT, ids.as_slice()),
+        };
+
+        let mut val_vk = vk::SwapchainCreateInfoKHR::default()
+            .flags(flags.into())
+            .surface(surface_vk)
+            .min_image_count(min_image_count)
+            .image_format(image_format.into())
+            .image_color_space(image_color_space.into())
+            .image_extent(vk::Extent2D {
+                width: image_extent[0],
+                height: image_extent[1],
+            })
+            .image_array_layers(image_array_layers)
+            .image_usage(image_usage.into())
+            .image_sharing_mode(image_sharing_mode_vk)
+            .queue_family_indices(queue_family_indices_vk)
+            .pre_transform(pre_transform.into())
+            .composite_alpha(composite_alpha.into())
+            .present_mode(present_mode.into())
+            .clipped(clipped)
+            .old_swapchain(old_swapchain_vk);
+
+        let SwapchainCreateInfoExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            image_format_list_vk,
+            present_modes_vk,
+            present_scaling_vk,
+        } = extensions_vk;
+
+        if let Some(next) = full_screen_exclusive_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = full_screen_exclusive_win32_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = image_format_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_modes_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_scaling_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a SwapchainCreateInfoFields1Vk,
+    ) -> SwapchainCreateInfoExtensionsVk<'a> {
+        let &Self {
+            flags: _,
+            min_image_count: _,
+            image_format: _,
+            image_view_formats: _,
+            image_color_space: _,
+            image_extent: _,
+            image_array_layers: _,
+            image_usage: _,
+            image_sharing: _,
+            pre_transform: _,
+            composite_alpha: _,
+            present_mode: _,
+            present_modes: _,
+            clipped: _,
+            scaling_behavior,
+            present_gravity,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = self;
+        let SwapchainCreateInfoFields1Vk {
+            present_modes_vk,
+            view_formats_vk,
+        } = fields1_vk;
+
+        let full_screen_exclusive_vk = (full_screen_exclusive != FullScreenExclusive::Default)
+            .then(|| {
+                vk::SurfaceFullScreenExclusiveInfoEXT::default()
+                    .full_screen_exclusive(full_screen_exclusive.into())
+            });
+
+        let full_screen_exclusive_win32_vk = win32_monitor.map(|win32_monitor| {
+            vk::SurfaceFullScreenExclusiveWin32InfoEXT::default().hmonitor(win32_monitor.0)
+        });
+
+        let image_format_list_vk = (!view_formats_vk.is_empty())
+            .then(|| vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+
+        let present_modes_vk = (!present_modes_vk.is_empty()).then(|| {
+            vk::SwapchainPresentModesCreateInfoEXT::default().present_modes(present_modes_vk)
+        });
+
+        let present_scaling_vk =
+            (scaling_behavior.is_some() || present_gravity.is_some()).then(|| {
+                let [present_gravity_x, present_gravity_y] =
+                    present_gravity.map_or_else(Default::default, |pg| pg.map(Into::into));
+                vk::SwapchainPresentScalingCreateInfoEXT::default()
+                    .scaling_behavior(scaling_behavior.map_or_else(Default::default, Into::into))
+                    .present_gravity_x(present_gravity_x)
+                    .present_gravity_y(present_gravity_y)
+            });
+
+        SwapchainCreateInfoExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            image_format_list_vk,
+            present_modes_vk,
+            present_scaling_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> SwapchainCreateInfoFields1Vk {
+        let present_modes_vk = self.present_modes.iter().copied().map(Into::into).collect();
+        let view_formats_vk = self
+            .image_view_formats
+            .iter()
+            .copied()
+            .map(vk::Format::from)
+            .collect();
+
+        SwapchainCreateInfoFields1Vk {
+            present_modes_vk,
+            view_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct SwapchainCreateInfoExtensionsVk<'a> {
+    pub(crate) full_screen_exclusive_vk: Option<vk::SurfaceFullScreenExclusiveInfoEXT<'static>>,
+    pub(crate) full_screen_exclusive_win32_vk:
+        Option<vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
+    pub(crate) image_format_list_vk: Option<vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) present_modes_vk: Option<vk::SwapchainPresentModesCreateInfoEXT<'a>>,
+    pub(crate) present_scaling_vk: Option<vk::SwapchainPresentScalingCreateInfoEXT<'static>>,
+}
+
+pub(crate) struct SwapchainCreateInfoFields1Vk {
+    pub(crate) present_modes_vk: SmallVec<[vk::PresentModeKHR; PresentMode::COUNT]>,
+    pub(crate) view_formats_vk: Vec<vk::Format>,
 }
 
 vulkan_bitflags! {
@@ -2460,7 +2516,7 @@ vulkan_enum! {
 
 /// A wrapper around a Win32 monitor handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Win32Monitor(pub(crate) ash::vk::HMONITOR);
+pub struct Win32Monitor(pub(crate) vk::HMONITOR);
 
 impl Win32Monitor {
     /// Wraps a Win32 monitor handle.
@@ -2468,8 +2524,8 @@ impl Win32Monitor {
     /// # Safety
     ///
     /// - `hmonitor` must be a valid handle as returned by the Win32 API.
-    pub unsafe fn new<T>(hmonitor: *const T) -> Self {
-        Self(hmonitor as _)
+    pub unsafe fn new(hmonitor: vk::HMONITOR) -> Self {
+        Self(hmonitor)
     }
 }
 

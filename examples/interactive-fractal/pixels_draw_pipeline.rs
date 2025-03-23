@@ -1,35 +1,24 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     image::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
         view::ImageView,
     },
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
+            vertex_input::VertexInputState,
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
@@ -40,40 +29,6 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-/// Vertex for textured quads.
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-pub struct TexturedVertex {
-    #[format(R32G32_SFLOAT)]
-    pub position: [f32; 2],
-    #[format(R32G32_SFLOAT)]
-    pub tex_coords: [f32; 2],
-}
-
-pub fn textured_quad(width: f32, height: f32) -> (Vec<TexturedVertex>, Vec<u32>) {
-    (
-        vec![
-            TexturedVertex {
-                position: [-(width / 2.0), -(height / 2.0)],
-                tex_coords: [0.0, 1.0],
-            },
-            TexturedVertex {
-                position: [-(width / 2.0), height / 2.0],
-                tex_coords: [0.0, 0.0],
-            },
-            TexturedVertex {
-                position: [width / 2.0, height / 2.0],
-                tex_coords: [1.0, 0.0],
-            },
-            TexturedVertex {
-                position: [width / 2.0, -(height / 2.0)],
-                tex_coords: [1.0, 1.0],
-            },
-        ],
-        vec![0, 2, 1, 0, 3, 2],
-    )
-}
-
 /// A subpass pipeline that fills a quad over frame.
 pub struct PixelsDrawPipeline {
     gfx_queue: Arc<Queue>,
@@ -81,48 +36,15 @@ pub struct PixelsDrawPipeline {
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    vertices: Subbuffer<[TexturedVertex]>,
-    indices: Subbuffer<[u32]>,
 }
 
 impl PixelsDrawPipeline {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
-        let (vertices, indices) = textured_quad(2.0, 2.0);
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap();
-        let index_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::INDEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            indices,
-        )
-        .unwrap();
-
         let pipeline = {
             let device = gfx_queue.device();
             let vs = vs::load(device.clone())
@@ -133,9 +55,6 @@ impl PixelsDrawPipeline {
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let vertex_input_state = TexturedVertex::per_vertex()
-                .definition(&vs.info().input_interface)
-                .unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(vs),
                 PipelineShaderStageCreateInfo::new(fs),
@@ -153,7 +72,7 @@ impl PixelsDrawPipeline {
                 None,
                 GraphicsPipelineCreateInfo {
                     stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
+                    vertex_input_state: Some(VertexInputState::default()),
                     input_assembly_state: Some(InputAssemblyState::default()),
                     viewport_state: Some(ViewportState::default()),
                     rasterization_state: Some(RasterizationState::default()),
@@ -164,7 +83,7 @@ impl PixelsDrawPipeline {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
+                    ..GraphicsPipelineCreateInfo::new(layout)
                 },
             )
             .unwrap()
@@ -176,13 +95,11 @@ impl PixelsDrawPipeline {
             pipeline,
             command_buffer_allocator,
             descriptor_set_allocator,
-            vertices: vertex_buffer,
-            indices: index_buffer,
         }
     }
 
-    fn create_descriptor_set(&self, image: Arc<ImageView>) -> Arc<PersistentDescriptorSet> {
-        let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
+    fn create_descriptor_set(&self, image: Arc<ImageView>) -> Arc<DescriptorSet> {
+        let layout = &self.pipeline.layout().set_layouts()[0];
         let sampler = Sampler::new(
             self.gfx_queue.device().clone(),
             SamplerCreateInfo {
@@ -195,8 +112,8 @@ impl PixelsDrawPipeline {
         )
         .unwrap();
 
-        PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+        DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
             layout.clone(),
             [
                 WriteDescriptorSet::sampler(0, sampler),
@@ -214,7 +131,7 @@ impl PixelsDrawPipeline {
         image: Arc<ImageView>,
     ) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            self.command_buffer_allocator.as_ref(),
+            self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -223,7 +140,7 @@ impl PixelsDrawPipeline {
             },
         )
         .unwrap();
-        let desc_set = self.create_descriptor_set(image);
+
         builder
             .set_viewport(
                 0,
@@ -242,15 +159,11 @@ impl PixelsDrawPipeline {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                desc_set,
+                self.create_descriptor_set(image),
             )
-            .unwrap()
-            .bind_vertex_buffers(0, self.vertices.clone())
-            .unwrap()
-            .bind_index_buffer(self.indices.clone())
-            .unwrap()
-            .draw_indexed(self.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
+        unsafe { builder.draw(6, 1, 0, 0) }.unwrap();
+
         builder.build().unwrap()
     }
 }
@@ -260,14 +173,30 @@ mod vs {
         ty: "vertex",
         src: r"
             #version 450
-            layout(location=0) in vec2 position;
-            layout(location=1) in vec2 tex_coords;
+
+            const vec2[6] POSITIONS = {
+                vec2(-1.0, -1.0),
+                vec2( 1.0,  1.0),
+                vec2(-1.0,  1.0),
+                vec2(-1.0, -1.0),
+                vec2( 1.0, -1.0),
+                vec2( 1.0,  1.0),
+            };
+
+            const vec2[6] TEX_COORDS = {
+                vec2(0.0, 1.0),
+                vec2(1.0, 0.0),
+                vec2(0.0, 0.0),
+                vec2(0.0, 1.0),
+                vec2(1.0, 1.0),
+                vec2(1.0, 0.0),
+            };
 
             layout(location = 0) out vec2 f_tex_coords;
 
             void main() {
-                gl_Position =  vec4(position, 0.0, 1.0);
-                f_tex_coords = tex_coords;
+                gl_Position = vec4(POSITIONS[gl_VertexIndex], 0.0, 1.0);
+                f_tex_coords = TEX_COORDS[gl_VertexIndex];
             }
         ",
     }

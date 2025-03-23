@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{AccessCheckError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
@@ -27,7 +18,7 @@ where
     assert_eq!(first.device().handle(), second.device().handle());
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
-        assert!(first.queue().unwrap() == second.queue().unwrap());
+        assert_eq!(first.queue().unwrap(), second.queue().unwrap());
     }
 
     JoinFuture { first, second }
@@ -73,11 +64,12 @@ where
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // TODO: review this function
-        let first = self.first.build_submission()?;
-        let second = self.second.build_submission()?;
+        let first = unsafe { self.first.build_submission() }?;
+        let second = unsafe { self.second.build_submission() }?;
 
-        // In some cases below we have to submit previous command buffers already, this s done by flushing previous.
-        // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+        // In some cases below we have to submit previous command buffers already, this s done by
+        // flushing previous. Since the implementation should remember being flushed it's
+        // safe to call build_submission multiple times
         Ok(match (first, second) {
             (SubmitAnyBuilder::Empty, b) => b,
             (a, SubmitAnyBuilder::Empty) => a,
@@ -170,8 +162,8 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        self.first.signal_finished();
-        self.second.signal_finished();
+        unsafe { self.first.signal_finished() };
+        unsafe { self.second.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {

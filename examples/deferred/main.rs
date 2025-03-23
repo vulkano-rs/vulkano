@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // Welcome to the deferred lighting example!
 //
 // The idea behind deferred lighting is to render the scene in two steps.
@@ -25,277 +16,526 @@
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
 
-use crate::{
-    frame::{FrameSystem, Pass},
-    triangle_draw_system::TriangleDrawSystem,
-};
-use cgmath::{Matrix4, SquareMatrix, Vector3};
+use deferred::DeferredTask;
+use scene::SceneTask;
 use std::{error::Error, sync::Arc};
 use vulkano::{
-    command_buffer::allocator::{
-        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
-    },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
+        QueueCreateInfo, QueueFlags,
     },
-    image::{view::ImageView, ImageUsage},
+    format::Format,
+    image::{Image, ImageCreateInfo, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
-    swapchain::{
-        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
-    },
-    sync::{self, GpuFuture},
+    memory::allocator::AllocationCreateInfo,
+    pipeline::graphics::viewport::Viewport,
+    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     Validated, VulkanError, VulkanLibrary,
 };
+use vulkano_taskgraph::{
+    descriptor_set::{BindlessContext, BindlessContextCreateInfo, LocalDescriptorSetCreateInfo},
+    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    resource::{AccessTypes, Flight, ImageLayoutType, Resources, ResourcesCreateInfo},
+    resource_map, Id, QueueFamilyType,
+};
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
 };
 
-mod frame;
-mod triangle_draw_system;
+mod deferred;
+mod scene;
+
+const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 fn main() -> Result<(), impl Error> {
     // Basic initialization. See the triangle example if you want more details about this.
 
     let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
 
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
+    event_loop.run_app(&mut app)
+}
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+struct App {
+    instance: Arc<Instance>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    resources: Arc<Resources>,
+    flight_id: Id<Flight>,
+    rcx: Option<RenderContext>,
+}
 
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
-        .unwrap();
+pub struct RenderContext {
+    window: Arc<Window>,
+    swapchain_id: Id<Swapchain>,
+    diffuse_image_id: Id<Image>,
+    normals_image_id: Id<Image>,
+    depth_image_id: Id<Image>,
+    viewport: Viewport,
+    recreate_swapchain: bool,
+    task_graph: ExecutableTaskGraph<Self>,
+    virtual_swapchain_id: Id<Swapchain>,
+    virtual_diffuse_image_id: Id<Image>,
+    virtual_normals_image_id: Id<Image>,
+    virtual_depth_image_id: Id<Image>,
+}
 
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
-
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    let queue = queues.next().unwrap();
-
-    let (mut swapchain, mut images) = {
-        let surface_capabilities = device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let image_format = device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0]
-            .0;
-
-        let (swapchain, images) = Swapchain::new(
-            device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window.inner_size().into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
+impl App {
+    fn new(event_loop: &EventLoop<()>) -> Self {
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
                 ..Default::default()
             },
         )
         .unwrap();
-        let images = images
-            .into_iter()
-            .map(|image| ImageView::new_default(image).unwrap())
-            .collect::<Vec<_>>();
-        (swapchain, images)
-    };
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        StandardCommandBufferAllocatorCreateInfo {
-            secondary_buffer_count: 32,
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..BindlessContext::required_extensions(&instance)
+        };
+        let device_features = BindlessContext::required_features(&instance);
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| {
+                p.supported_extensions().contains(&device_extensions)
+                    && p.supported_features().contains(&device_features)
+            })
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .unwrap();
+
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                enabled_features: device_features,
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let queue = queues.next().unwrap();
+
+        let resources = Resources::new(
+            &device,
+            &ResourcesCreateInfo {
+                bindless_context: Some(&BindlessContextCreateInfo {
+                    local_set: Some(&LocalDescriptorSetCreateInfo::default()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        App {
+            instance,
+            device,
+            queue,
+            resources,
+            flight_id,
+            rcx: None,
+        }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
+
+        let swapchain_format;
+        let swapchain_id = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            (swapchain_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
+
+            self.resources
+                .create_swapchain(
+                    self.flight_id,
+                    surface,
+                    SwapchainCreateInfo {
+                        min_image_count: surface_capabilities.min_image_count.max(2),
+                        image_format: swapchain_format,
+                        image_extent: window_size.into(),
+                        image_usage: ImageUsage::COLOR_ATTACHMENT,
+                        composite_alpha: surface_capabilities
+                            .supported_composite_alpha
+                            .into_iter()
+                            .next()
+                            .unwrap(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+        };
+
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: window_size.into(),
+            depth_range: 0.0..=1.0,
+        };
+
+        let (diffuse_image_id, normals_image_id, depth_image_id) =
+            window_size_dependent_setup(&self.resources, swapchain_id);
+
+        let mut task_graph = TaskGraph::new(&self.resources);
+
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
+            image_format: swapchain_format,
             ..Default::default()
-        },
-    ));
+        });
+        // We create the virtual images with the `TRANSIENT_ATTACHMENT` usage to allow the task
+        // graph compiler to optimize based on it. The physical images that are later assigned must
+        // have been created with this usage.
+        let virtual_diffuse_image_id = task_graph.add_image(&ImageCreateInfo {
+            format: Format::A2B10G10R10_UNORM_PACK32,
+            usage: ImageUsage::TRANSIENT_ATTACHMENT,
+            ..Default::default()
+        });
+        let virtual_normals_image_id = task_graph.add_image(&ImageCreateInfo {
+            format: Format::R16G16B16A16_SFLOAT,
+            usage: ImageUsage::TRANSIENT_ATTACHMENT,
+            ..Default::default()
+        });
+        let virtual_depth_image_id = task_graph.add_image(&ImageCreateInfo {
+            format: Format::D16_UNORM,
+            usage: ImageUsage::TRANSIENT_ATTACHMENT,
+            ..Default::default()
+        });
+        let virtual_framebuffer_id = task_graph.add_framebuffer();
 
-    // Here is the basic initialization for the deferred system.
-    let mut frame_system = FrameSystem::new(
-        queue.clone(),
-        swapchain.image_format(),
-        memory_allocator.clone(),
-        command_buffer_allocator.clone(),
-    );
-    let triangle_draw_system = TriangleDrawSystem::new(
-        queue.clone(),
-        frame_system.deferred_subpass(),
-        memory_allocator.clone(),
-        command_buffer_allocator,
-    );
+        let scene_node_id = task_graph
+            .create_task_node(
+                "Scene",
+                QueueFamilyType::Graphics,
+                SceneTask::new(
+                    self,
+                    virtual_diffuse_image_id,
+                    virtual_normals_image_id,
+                    virtual_depth_image_id,
+                ),
+            )
+            .framebuffer(virtual_framebuffer_id)
+            // We only need `COLOR_ATTACHMENT_WRITE` for the color attachments here because the
+            // scene pipeline has color blending disabled, which would otherwise be a read as well.
+            .color_attachment(
+                virtual_diffuse_image_id,
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    index: 0,
+                    clear: true,
+                    ..Default::default()
+                },
+            )
+            .color_attachment(
+                virtual_normals_image_id,
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    index: 1,
+                    clear: true,
+                    ..Default::default()
+                },
+            )
+            // We need both `DEPTH_STENCIL_ATTACHMENT_READ` and `DEPTH_STENCIL_ATTACHMENT_WRITE`
+            // for the depth/stencil attachment, as the scene pipeline has both depth tests (read)
+            // and depth writes (write) enabled.
+            .depth_stencil_attachment(
+                virtual_depth_image_id,
+                AccessTypes::DEPTH_STENCIL_ATTACHMENT_READ
+                    | AccessTypes::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    clear: true,
+                    ..Default::default()
+                },
+            )
+            .build();
+        let deferred_node_id = task_graph
+            .create_task_node(
+                "Deferred",
+                QueueFamilyType::Graphics,
+                DeferredTask::new(self, virtual_swapchain_id),
+            )
+            .framebuffer(virtual_framebuffer_id)
+            // The deferred lighting pipelines have color blending enabled, so we need both
+            // `COLOR_ATTACHMENT_READ` and `COLOR_ATTACHMENT_WRITE`.
+            .color_attachment(
+                virtual_swapchain_id.current_image_id(),
+                AccessTypes::COLOR_ATTACHMENT_READ | AccessTypes::COLOR_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    clear: true,
+                    ..Default::default()
+                },
+            )
+            .input_attachment(
+                virtual_diffuse_image_id,
+                AccessTypes::FRAGMENT_SHADER_COLOR_INPUT_ATTACHMENT_READ,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    index: 0,
+                    ..Default::default()
+                },
+            )
+            .input_attachment(
+                virtual_normals_image_id,
+                AccessTypes::FRAGMENT_SHADER_COLOR_INPUT_ATTACHMENT_READ,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    index: 1,
+                    ..Default::default()
+                },
+            )
+            .input_attachment(
+                virtual_depth_image_id,
+                AccessTypes::FRAGMENT_SHADER_DEPTH_STENCIL_INPUT_ATTACHMENT_READ,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    index: 2,
+                    ..Default::default()
+                },
+            )
+            .build();
 
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+        task_graph
+            .add_edge(scene_node_id, deferred_node_id)
+            .unwrap();
 
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
+        let mut task_graph = unsafe {
+            task_graph.compile(&CompileInfo {
+                queues: &[&self.queue],
+                present_queue: Some(&self.queue),
+                flight_id: self.flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let scene_node = task_graph.task_node_mut(scene_node_id).unwrap();
+        let subpass = scene_node.subpass().unwrap().clone();
+        scene_node
+            .task_mut()
+            .downcast_mut::<SceneTask>()
+            .unwrap()
+            .create_pipeline(self, subpass);
+        let deferred_node = task_graph.task_node_mut(deferred_node_id).unwrap();
+        let subpass = deferred_node.subpass().unwrap().clone();
+        deferred_node
+            .task_mut()
+            .downcast_mut::<DeferredTask>()
+            .unwrap()
+            .create_pipelines(self, subpass);
+
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain_id,
+            diffuse_image_id,
+            normals_image_id,
+            depth_image_id,
+            viewport,
+            recreate_swapchain: false,
+            task_graph,
+            virtual_swapchain_id,
+            virtual_diffuse_image_id,
+            virtual_normals_image_id,
+            virtual_depth_image_id,
+        });
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let rcx = self.rcx.as_mut().unwrap();
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
+            WindowEvent::Resized(_) => {
+                rcx.recreate_swapchain = true;
             }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let image_extent: [u32; 2] = window.inner_size().into();
+            WindowEvent::RedrawRequested => {
+                let window_size = rcx.window.inner_size();
 
-                if image_extent.contains(&0) {
+                if window_size.width == 0 || window_size.height == 0 {
                     return;
                 }
 
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
+                let flight = self.resources.flight(self.flight_id).unwrap();
 
-                if recreate_swapchain {
-                    let (new_swapchain, new_images) = swapchain
-                        .recreate(SwapchainCreateInfo {
-                            image_extent,
-                            ..swapchain.create_info()
+                if rcx.recreate_swapchain {
+                    rcx.swapchain_id = self
+                        .resources
+                        .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
+                            image_extent: window_size.into(),
+                            ..create_info
                         })
                         .expect("failed to recreate swapchain");
-                    let new_images = new_images
-                        .into_iter()
-                        .map(|image| ImageView::new_default(image).unwrap())
-                        .collect::<Vec<_>>();
 
-                    swapchain = new_swapchain;
-                    images = new_images;
-                    recreate_swapchain = false;
+                    rcx.viewport.extent = window_size.into();
+
+                    // FIXME(taskgraph): safe resource destruction
+                    flight
+                        .wait_for_frame(flight.current_frame() - 1, None)
+                        .unwrap();
+
+                    unsafe { self.resources.remove_image(rcx.diffuse_image_id) }.unwrap();
+                    unsafe { self.resources.remove_image(rcx.normals_image_id) }.unwrap();
+                    unsafe { self.resources.remove_image(rcx.depth_image_id) }.unwrap();
+
+                    (
+                        rcx.diffuse_image_id,
+                        rcx.normals_image_id,
+                        rcx.depth_image_id,
+                    ) = window_size_dependent_setup(&self.resources, rcx.swapchain_id);
+
+                    rcx.recreate_swapchain = false;
                 }
 
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
-                        Ok(r) => r,
-                        Err(VulkanError::OutOfDate) => {
-                            recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("failed to acquire next image: {e}"),
-                    };
+                flight.wait(None).unwrap();
 
-                if suboptimal {
-                    recreate_swapchain = true;
-                }
+                let resource_map = resource_map!(
+                    &rcx.task_graph,
+                    rcx.virtual_swapchain_id => rcx.swapchain_id,
+                    rcx.virtual_diffuse_image_id => rcx.diffuse_image_id,
+                    rcx.virtual_normals_image_id => rcx.normals_image_id,
+                    rcx.virtual_depth_image_id => rcx.depth_image_id,
+                )
+                .unwrap();
 
-                let future = previous_frame_end.take().unwrap().join(acquire_future);
-                let mut frame = frame_system.frame(
-                    future,
-                    images[image_index as usize].clone(),
-                    Matrix4::identity(),
-                );
-                let mut after_future = None;
-                while let Some(pass) = frame.next_pass() {
-                    match pass {
-                        Pass::Deferred(mut draw_pass) => {
-                            let cb = triangle_draw_system.draw(draw_pass.viewport_dimensions());
-                            draw_pass.execute(cb);
-                        }
-                        Pass::Lighting(mut lighting) => {
-                            lighting.ambient_light([0.1, 0.1, 0.1]);
-                            lighting
-                                .directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
-                            lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
-                            lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
-                            lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
-                        }
-                        Pass::Finished(af) => {
-                            after_future = Some(af);
-                        }
-                    }
-                }
-
-                let future = after_future
-                    .unwrap()
-                    .then_swapchain_present(
-                        queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-                    )
-                    .then_signal_fence_and_flush();
-
-                match future.map_err(Validated::unwrap) {
-                    Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
-                    }
-                    Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                match unsafe {
+                    rcx.task_graph
+                        .execute(resource_map, rcx, || rcx.window.pre_present_notify())
+                } {
+                    Ok(()) => {}
+                    Err(ExecuteError::Swapchain {
+                        error: Validated::Error(VulkanError::OutOfDate),
+                        ..
+                    }) => {
+                        rcx.recreate_swapchain = true;
                     }
                     Err(e) => {
-                        println!("failed to flush future: {e}");
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        panic!("failed to execute next frame: {e:?}");
                     }
                 }
             }
-            Event::AboutToWait => window.request_redraw(),
-            _ => (),
+            _ => {}
         }
-    })
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let rcx = self.rcx.as_mut().unwrap();
+        rcx.window.request_redraw();
+    }
+}
+
+/// This function is called once during initialization, then again whenever the window is resized.
+fn window_size_dependent_setup(
+    resources: &Resources,
+    swapchain_id: Id<Swapchain>,
+) -> (Id<Image>, Id<Image>, Id<Image>) {
+    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
+    let images = swapchain_state.images();
+    let extent = images[0].extent();
+
+    // Note that we create "transient" images here. This means that the content of the image is
+    // only defined when within a render pass. In other words you can draw to them in a subpass
+    // then read them in another subpass, but as soon as you leave the render pass their content
+    // becomes undefined.
+    let diffuse_image_id = resources
+        .create_image(
+            ImageCreateInfo {
+                extent,
+                format: Format::A2B10G10R10_UNORM_PACK32,
+                usage: ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::TRANSIENT_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+    let normals_image_id = resources
+        .create_image(
+            ImageCreateInfo {
+                extent,
+                format: Format::R16G16B16A16_SFLOAT,
+                usage: ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::TRANSIENT_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+    let depth_image_id = resources
+        .create_image(
+            ImageCreateInfo {
+                extent,
+                format: Format::D16_UNORM,
+                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                    | ImageUsage::TRANSIENT_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+
+    (diffuse_image_id, normals_image_id, depth_image_id)
 }

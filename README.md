@@ -3,18 +3,18 @@
 # [Vulkano](https://vulkano.rs)
 
 [![Build Status](https://github.com/vulkano-rs/vulkano/workflows/Rust/badge.svg)](https://github.com/vulkano-rs/vulkano/actions?query=workflow%3ARust)
-[![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/bncB9W2VDV)
+[![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/xjHzXQp8hw)
 [![Website/guide](https://img.shields.io/badge/-website/guide-%23555.svg)](https://vulkano.rs/)
 <br/>
 [![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
 [![vulkano-shaders crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=shaders)](https://crates.io/crates/vulkano-shaders)
+[![vulkano-taskgraph crates.io](https://img.shields.io/crates/v/vulkano-taskgraph?label=taskgraph)](https://crates.io/crates/vulkano-taskgraph)
 [![vulkano-util crates.io](https://img.shields.io/crates/v/vulkano-util?label=util)](https://crates.io/crates/vulkano-util)
-[![vulkano-win crates.io](https://img.shields.io/crates/v/vulkano-win?label=win)](https://crates.io/crates/vulkano-win)
 <br/>
 [![vulkano docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
 [![vulkano-shaders docs](https://img.shields.io/docsrs/vulkano-shaders?label=shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![vulkano-taskgraph docs](https://img.shields.io/docsrs/vulkano-taskgraph?label=taskgraph%20docs)](https://docs.rs/vulkano-taskgraph)
 [![vulkano-util docs](https://img.shields.io/docsrs/vulkano-util?label=util%20docs)](https://docs.rs/vulkano-util)
-[![vulkano-win docs](https://img.shields.io/docsrs/vulkano-win?label=win%20docs)](https://docs.rs/vulkano-win)
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
@@ -60,40 +60,21 @@ are maintained. As such we can recommend using any of them in the 3rd party code
 The choice depends on the end project's goals and requirements, and we recommend examining
 their actual set of features and API capabilities beforehand.
 
-### Projects using Vulkano
-
-We started collecting this list just recently and it would be appreciated if you help us by
-contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkano/blob/master/README.md).
-
-| Project Name | Description |
-| ------------ | ----------- |
-| [Basalt](https://github.com/AustinJ235/basalt) | GUI framework for Desktop applications |
-| [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
-| [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
-| [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
-| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
-| [Korangar](https://github.com/vE5li/korangar) | A Vulkan based Ragnarok Online client |
-
-We would love to help you keep your project in sync with the most recent changes in Vulkano
-if you give us feedback by adding your project to this list.
-
-Thanks in advance!
-
 ## Documentation and Resources
 
 To get started you are encouraged to use the following resources:
 
 - The [examples](https://github.com/vulkano-rs/vulkano/tree/master/examples) folder in this repository.
  - [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
- - The guide on [vulkano.rs](https://vulkano.rs/introduction/introduction) - Starts with trivial compute
+ - The guide on [vulkano.rs](https://vulkano.rs/01-introduction/01-introduction.html) - Starts with trivial compute
    examples (~50 lines of code) and then works up to rendering triangles and mandelbrots.
    The guide is currently outdated a little. We are planning to update it in the future, but it's
    a good place to start understanding the base building blocks of Vulkano API.
- - Github [Issues](https://github.com/vulkano-rs/vulkano/issues) - Raise a topic, ask a question
+ - GitHub [Issues](https://github.com/vulkano-rs/vulkano/issues) - Raise a topic, ask a question
    or report a bug. The new topics there are watched regularly by maintainers and other
    community users.
  - Gitter [Chat](https://gitter.im/vulkano-rs/Lobby) - Another place to raise a question. However,
-   the chat is not maintained regularly at this moment. Better use Github Issues for this purpose.
+   the chat is not maintained regularly at this moment. Better use GitHub Issues for this purpose.
 
 ## Contributing
 
@@ -103,15 +84,6 @@ in the [Issues](https://github.com/vulkano-rs/vulkano/issues) section.
 The project was initially developed by Pierre Krieger(Tomaka), who established Vulkano's base
 design goals, and the code structure. In the meantime, development is driven by Vulkano
 community members.
-
-**New Pull Requests are usually scheduled for review by the end of each week.**
-The older PRs that are already in review have priority over the new ones. We are trying to push
-development forward as quick as possible, but the review process sometimes takes time,
-please be patient as the maintainers need time to check everything properly.
-
-If something needs to get promoted urgently, please ping current Vulkano
-maintainer([@Eliah-Lakhin](https://github.com/Eliah-Lakhin/)) in the PR's
-or Issue's comments.
 
 If your change adds, removes or modifies a trait or a function, please
 specify changelog entries **in the Pull Request description**(not in the changelog file directly).
@@ -128,8 +100,9 @@ This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-taskgraph` allows building a dependency graph of tasks, which are automatically
+  synchronized and are then executed on the Vulkan device.
 - `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
-- `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
@@ -152,7 +125,7 @@ Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compi
 Note that in general vulkano does **not** require you to install the official Vulkan SDK. This is
 not something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
-required. However, macOS and iOS platforms do require a little more Vulkan setup since it is not
+required. However, macOS, iOS and tvOS platforms do require a little more Vulkan setup since it is not
 natively supported. See below for more details.
 
 Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
@@ -193,24 +166,23 @@ Use your package manager to install the required dev-tools and Vulkan drivers
 
 For example on ubuntu:
 ```
-sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-utils
+sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-tools
 ```
 On arch based system
 ```
 sudo pacman -Sy base-devel git python cmake vulkan-devel --noconfirm
 ```
 
-### macOS and iOS Specific Setup
+### macOS, iOS and tvOS Specific Setup
 
-Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
-an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
-and iOS platforms.
+Vulkan is not natively supported by macOS, iOS and tvOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
+an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS, iOS and tvOS platforms.
 
 The easiest way to get vulkano up and running with MoltenVK is to install the
 [Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). There are [installation instructions](https://vulkan.lunarg.com/doc/sdk/latest/mac/getting_started.html) on the LunarG website.
 
-On iOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
-installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
+On iOS and tvOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
+installing it. Note that the Vulkan SDK for macOS also comes with the framework for iOS and tvOS.
 
 ## License
 

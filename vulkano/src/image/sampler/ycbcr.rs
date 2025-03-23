@@ -1,12 +1,3 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Conversion from sampled YCbCr image data to RGB shader data.
 //!
 //! A sampler YCbCr conversion is an object that assists a sampler when converting from YCbCr
@@ -29,7 +20,7 @@
 //!             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
 //!             DescriptorType,
 //!         },
-//!         PersistentDescriptorSet, WriteDescriptorSet,
+//!         DescriptorSet, WriteDescriptorSet,
 //!     },
 //!     format::Format,
 //!     image::{
@@ -49,30 +40,38 @@
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-//! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
+//! # let descriptor_set_allocator: std::sync::Arc<vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator> = return;
 //! #
-//! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
-//!     format: Format::G8_B8_R8_3PLANE_420_UNORM,
-//!     ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
-//!     ..Default::default()
-//! })
+//! let conversion = SamplerYcbcrConversion::new(
+//!     device.clone(),
+//!     SamplerYcbcrConversionCreateInfo {
+//!         format: Format::G8_B8_R8_3PLANE_420_UNORM,
+//!         ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
+//!         ..Default::default()
+//!     },
+//! )
 //! .unwrap();
 //!
-//! let sampler = Sampler::new(device.clone(), SamplerCreateInfo {
-//!     sampler_ycbcr_conversion: Some(conversion.clone()),
-//!     ..Default::default()
-//! })
+//! let sampler = Sampler::new(
+//!     device.clone(),
+//!     SamplerCreateInfo {
+//!         sampler_ycbcr_conversion: Some(conversion.clone()),
+//!         ..Default::default()
+//!     },
+//! )
 //! .unwrap();
 //!
 //! let descriptor_set_layout = DescriptorSetLayout::new(
 //!     device.clone(),
-//!         DescriptorSetLayoutCreateInfo {
+//!     DescriptorSetLayoutCreateInfo {
 //!         bindings: [(
 //!             0,
 //!             DescriptorSetLayoutBinding {
 //!                 stages: ShaderStage::Fragment.into(),
 //!                 immutable_samplers: vec![sampler],
-//!                 ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::CombinedImageSampler)
+//!                 ..DescriptorSetLayoutBinding::new(
+//!                     DescriptorType::CombinedImageSampler
+//!                 )
 //!             },
 //!         )]
 //!         .into(),
@@ -100,8 +99,8 @@
 //! };
 //! let image_view = ImageView::new(image, create_info).unwrap();
 //!
-//! let descriptor_set = PersistentDescriptorSet::new(
-//!     &descriptor_set_allocator,
+//! let descriptor_set = DescriptorSet::new(
+//!     descriptor_set_allocator.clone(),
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],
 //!     [],
@@ -118,14 +117,15 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use ash::vk;
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Describes how sampled image data should converted from a YCbCr representation to an RGB one.
 #[derive(Debug)]
 pub struct SamplerYcbcrConversion {
-    handle: ash::vk::SamplerYcbcrConversion,
+    handle: vk::SamplerYcbcrConversion,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     format: Format,
     ycbcr_model: SamplerYcbcrModelConversion,
@@ -139,7 +139,7 @@ pub struct SamplerYcbcrConversion {
 impl SamplerYcbcrConversion {
     /// Creates a new `SamplerYcbcrConversion`.
     ///
-    /// The [`sampler_ycbcr_conversion`](crate::device::Features::sampler_ycbcr_conversion)
+    /// The [`sampler_ycbcr_conversion`](crate::device::DeviceFeatures::sampler_ycbcr_conversion)
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
@@ -148,7 +148,7 @@ impl SamplerYcbcrConversion {
     ) -> Result<Arc<SamplerYcbcrConversion>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -157,7 +157,7 @@ impl SamplerYcbcrConversion {
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "sampler_ycbcr_conversion",
                 )])]),
                 vuids: &["VUID-vkCreateSamplerYcbcrConversion-None-01648"],
@@ -177,30 +177,9 @@ impl SamplerYcbcrConversion {
         device: Arc<Device>,
         create_info: SamplerYcbcrConversionCreateInfo,
     ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
-        let &SamplerYcbcrConversionCreateInfo {
-            format,
-            ycbcr_model,
-            ycbcr_range,
-            component_mapping,
-            chroma_offset,
-            chroma_filter,
-            force_explicit_reconstruction,
-            _ne: _,
-        } = &create_info;
+        let create_info_vk = create_info.to_vk();
 
-        let create_info_vk = ash::vk::SamplerYcbcrConversionCreateInfo {
-            format: format.into(),
-            ycbcr_model: ycbcr_model.into(),
-            ycbcr_range: ycbcr_range.into(),
-            components: component_mapping.into(),
-            x_chroma_offset: chroma_offset[0].into(),
-            y_chroma_offset: chroma_offset[1].into(),
-            chroma_filter: chroma_filter.into(),
-            force_explicit_reconstruction: force_explicit_reconstruction as ash::vk::Bool32,
-            ..Default::default()
-        };
-
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let create_sampler_ycbcr_conversion = if device.api_version() >= Version::V1_1 {
                 fns.v1_1.create_sampler_ycbcr_conversion
@@ -210,18 +189,20 @@ impl SamplerYcbcrConversion {
             };
 
             let mut output = MaybeUninit::uninit();
-            create_sampler_ycbcr_conversion(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                create_sampler_ycbcr_conversion(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `SamplerYcbcrConversion` from a raw object handle.
@@ -233,7 +214,7 @@ impl SamplerYcbcrConversion {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::SamplerYcbcrConversion,
+        handle: vk::SamplerYcbcrConversion,
         create_info: SamplerYcbcrConversionCreateInfo,
     ) -> Arc<SamplerYcbcrConversion> {
         let SamplerYcbcrConversionCreateInfo {
@@ -334,22 +315,20 @@ impl SamplerYcbcrConversion {
 impl Drop for SamplerYcbcrConversion {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
-                fns.v1_1.destroy_sampler_ycbcr_conversion
-            } else {
-                fns.khr_sampler_ycbcr_conversion
-                    .destroy_sampler_ycbcr_conversion_khr
-            };
+        let fns = self.device.fns();
+        let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
+            fns.v1_1.destroy_sampler_ycbcr_conversion
+        } else {
+            fns.khr_sampler_ycbcr_conversion
+                .destroy_sampler_ycbcr_conversion_khr
+        };
 
-            destroy_sampler_ycbcr_conversion(self.device.handle(), self.handle, ptr::null());
-        }
+        unsafe { destroy_sampler_ycbcr_conversion(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for SamplerYcbcrConversion {
-    type Handle = ash::vk::SamplerYcbcrConversion;
+    type Handle = vk::SamplerYcbcrConversion;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -375,8 +354,8 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// The format must support YCbCr conversions, meaning that its `FormatFeatures` must support
     /// at least one of `cosited_chroma_samples` or `midpoint_chroma_samples`.
     ///
-    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the name)
-    /// then `component_mapping` is restricted as follows:
+    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the
+    /// name) then `component_mapping` is restricted as follows:
     /// - `g` must be identity swizzled.
     /// - `a` must be identity swizzled or `Zero` or `One`.
     /// - `r` and `b` must be identity swizzled or mapped to each other.
@@ -420,8 +399,8 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// The default value is [`CositedEven`](ChromaLocation::CositedEven) for both axes.
     pub chroma_offset: [ChromaLocation; 2],
 
-    /// For formats with chroma subsampling, specifies the filter used for reconstructing the chroma
-    /// components to full resolution.
+    /// For formats with chroma subsampling, specifies the filter used for reconstructing the
+    /// chroma components to full resolution.
     ///
     /// The `Cubic` filter is not supported. If `Linear` is used, the format must support it.
     ///
@@ -442,6 +421,14 @@ pub struct SamplerYcbcrConversionCreateInfo {
 impl Default for SamplerYcbcrConversionCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SamplerYcbcrConversionCreateInfo {
+    /// Returns a default `SamplerYcbcrConversionCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
@@ -453,9 +440,7 @@ impl Default for SamplerYcbcrConversionCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SamplerYcbcrConversionCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             format,
@@ -502,10 +487,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter"])
         })?;
 
-        if !format
-            .numeric_format_color()
-            .map_or(false, |ty| ty == NumericFormat::UNORM)
-        {
+        if !(format.numeric_format_color() == Some(NumericFormat::UNORM)) {
             return Err(Box::new(ValidationError {
                 context: "format".into(),
                 problem: "the numeric type is not `UNORM`".into(),
@@ -515,12 +497,9 @@ impl SamplerYcbcrConversionCreateInfo {
         }
 
         // Use unchecked, because all validation has been done above.
-        let potential_format_features = unsafe {
-            device
-                .physical_device()
-                .format_properties_unchecked(format)
-                .potential_format_features()
-        };
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+        let potential_format_features = format_properties.potential_format_features();
 
         if !potential_format_features.intersects(
             FormatFeatures::MIDPOINT_CHROMA_SAMPLES | FormatFeatures::COSITED_CHROMA_SAMPLES,
@@ -750,7 +729,7 @@ impl SamplerYcbcrConversionCreateInfo {
             // TODO: Spec doesn't say how many bits `Zero` and `One` are considered to have, so
             // just skip them for now.
 
-            if components_bits[0].map_or(false, |bits| bits < 8) {
+            if components_bits[0].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.r` maps to a component in `format` with less than \
@@ -761,7 +740,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[1].map_or(false, |bits| bits < 8) {
+            if components_bits[1].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.g` maps to a component in `format` with less than \
@@ -772,7 +751,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[2].map_or(false, |bits| bits < 8) {
+            if components_bits[2].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.b` maps to a component in `format` with less than \
@@ -783,7 +762,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[3].map_or(false, |bits| bits < 8) {
+            if components_bits[3].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.a` maps to a component in `format` with less than \
@@ -836,6 +815,29 @@ impl SamplerYcbcrConversionCreateInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::SamplerYcbcrConversionCreateInfo<'static> {
+        let &Self {
+            format,
+            ycbcr_model,
+            ycbcr_range,
+            component_mapping,
+            chroma_offset,
+            chroma_filter,
+            force_explicit_reconstruction,
+            _ne: _,
+        } = self;
+
+        vk::SamplerYcbcrConversionCreateInfo::default()
+            .format(format.into())
+            .ycbcr_model(ycbcr_model.into())
+            .ycbcr_range(ycbcr_range.into())
+            .components(component_mapping.to_vk())
+            .x_chroma_offset(chroma_offset[0].into())
+            .y_chroma_offset(chroma_offset[1].into())
+            .chroma_filter(chroma_filter.into())
+            .force_explicit_reconstruction(force_explicit_reconstruction)
     }
 }
 
@@ -910,7 +912,7 @@ mod tests {
                 if matches!(
                     *err,
                     ValidationError {
-                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::Feature(
+                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
                             "sampler_ycbcr_conversion"
                         )])]),
                         ..

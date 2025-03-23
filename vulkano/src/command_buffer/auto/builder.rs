@@ -1,27 +1,17 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{
     CommandInfo, PrimaryAutoCommandBuffer, RenderPassCommand, Resource, ResourceUseRef2,
-    SubmitState,
+    SecondaryAutoCommandBuffer, SubmitState,
 };
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
-        allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
-        sys::{CommandBufferBeginInfo, UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
+        allocator::CommandBufferAllocator,
+        sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
         CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
-        CommandBufferUsage, RenderingInfo, ResourceUseRef, SecondaryAutoCommandBuffer,
-        SecondaryCommandBufferBufferUsage, SecondaryCommandBufferImageUsage,
-        SecondaryCommandBufferResourcesUsage, SubpassContents,
+        CommandBufferUsage, RenderingInfo, ResourceUseRef, SecondaryCommandBufferBufferUsage,
+        SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
@@ -30,14 +20,19 @@ use crate::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilOps},
+            fragment_shading_rate::FragmentShadingRateState,
             input_assembly::PrimitiveTopology,
-            rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
+            rasterization::{
+                ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
+            },
             subpass::PipelineRenderingCreateInfo,
+            vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
+        ray_tracing::RayTracingPipeline,
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    query::{QueryControlFlags, QueryPool},
+    query::{QueryControlFlags, QueryPool, QueryType},
     range_map::RangeMap,
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
@@ -47,8 +42,8 @@ use crate::{
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
-use ahash::HashMap;
-use parking_lot::Mutex;
+use foldhash::HashMap;
+use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
@@ -59,37 +54,33 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
-/// Note that command buffers allocated from `StandardCommandBufferAllocator` don't implement
-/// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
-/// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
-/// implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L, A = StandardCommandBufferAllocator>
-where
-    A: CommandBufferAllocator,
-{
-    pub(in crate::command_buffer) inner: UnsafeCommandBufferBuilder<A>,
+/// A command buffer in the recording state.
+///
+/// Unlike [`RecordingCommandBuffer`], this type does resource tracking and inserts pipeline
+/// barriers automatically.
+///
+/// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
+/// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
+pub struct AutoCommandBufferBuilder<L> {
+    pub(in crate::command_buffer) inner: RecordingCommandBuffer,
     commands: Vec<(
         CommandInfo,
-        Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>,
+        Box<dyn Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
-    _data: PhantomData<L>,
+    marker: PhantomData<fn() -> L>,
 }
 
-impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Starts recording a primary command buffer.
+impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
+    /// Allocates and begins recording a new primary command buffer.
     #[inline]
     pub fn primary(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
-    {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
-            AutoCommandBufferBuilder::begin(
+            Self::new(
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Primary,
@@ -105,38 +96,50 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn primary_unchecked(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, VulkanError> {
-        AutoCommandBufferBuilder::begin_unchecked(
-            allocator,
-            queue_family_index,
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage,
-                inheritance_info: None,
-                _ne: crate::NonExhaustive(()),
-            },
-        )
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+        unsafe {
+            Self::new_unchecked(
+                allocator,
+                queue_family_index,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: None,
+                    _ne: crate::NonExhaustive(()),
+                },
+            )
+        }
+    }
+
+    /// Ends the recording, returning a command buffer which can be submitted.
+    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+        self.validate_end()?;
+
+        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked() }?;
+
+        Ok(Arc::new(PrimaryAutoCommandBuffer {
+            inner,
+            _keep_alive_objects: keep_alive_objects,
+            resources_usage,
+            state: Mutex::new(Default::default()),
+        }))
     }
 }
 
-impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Starts recording a secondary command buffer.
+impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
+    /// Allocates and begins recording a new secondary command buffer.
     #[inline]
     pub fn secondary(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
-    {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
-            AutoCommandBufferBuilder::begin(
+            Self::new(
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Secondary,
@@ -152,71 +155,79 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn secondary_unchecked(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, VulkanError> {
-        AutoCommandBufferBuilder::begin_unchecked(
-            allocator,
-            queue_family_index,
-            CommandBufferLevel::Secondary,
-            CommandBufferBeginInfo {
-                usage,
-                inheritance_info: Some(inheritance_info),
-                _ne: crate::NonExhaustive(()),
-            },
-        )
-    }
-}
-
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Actual constructor. Private.
-    ///
-    /// # Safety
-    ///
-    /// `begin_info.inheritance_info` must match `level`.
-    unsafe fn begin(
-        allocator: &A,
-        queue_family_index: u32,
-        level: CommandBufferLevel,
-        begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, A>, Validated<VulkanError>> {
-        Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
-
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
-            Ok(Self::begin_unchecked(
+            Self::new_unchecked(
                 allocator,
                 queue_family_index,
-                level,
-                begin_info,
-            )?)
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(inheritance_info),
+                    _ne: crate::NonExhaustive(()),
+                },
+            )
         }
     }
 
-    fn validate_begin(
+    /// Ends the recording, returning a command buffer which can be submitted.
+    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+        self.validate_end()?;
+
+        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked() }?;
+
+        let submit_state = match inner.usage() {
+            CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
+                in_use: AtomicBool::new(false),
+            },
+            CommandBufferUsage::SimultaneousUse => SubmitState::Concurrent,
+            CommandBufferUsage::OneTimeSubmit => SubmitState::OneTime {
+                already_submitted: AtomicBool::new(false),
+            },
+        };
+
+        Ok(Arc::new(SecondaryAutoCommandBuffer {
+            inner,
+            _keep_alive_objects: keep_alive_objects,
+            resources_usage,
+            submit_state,
+        }))
+    }
+}
+
+impl<L> AutoCommandBufferBuilder<L> {
+    unsafe fn new(
+        allocator: Arc<dyn CommandBufferAllocator>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: CommandBufferBeginInfo,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::validate_new(allocator.device(), queue_family_index, level, &begin_info)?;
+
+        unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
+    }
+
+    fn validate_new(
         device: &Device,
-        _queue_family_index: u32,
-        _level: CommandBufferLevel,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
-        begin_info
-            .validate(device)
-            .map_err(|err| err.add_context("begin_info"))?;
+        RecordingCommandBuffer::validate_new(device, queue_family_index, level, begin_info)?;
 
         Ok(())
     }
 
-    #[inline]
-    unsafe fn begin_unchecked(
-        allocator: &A,
+    unsafe fn new_unchecked(
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, Validated<VulkanError>> {
         let &CommandBufferBeginInfo {
             usage: _,
             ref inheritance_info,
@@ -229,7 +240,7 @@ where
             let &CommandBufferInheritanceInfo {
                 ref render_pass,
                 occlusion_query: _,
-                query_statistics_flags: _,
+                pipeline_statistics: _,
                 _ne: _,
             } = inheritance_info;
 
@@ -238,23 +249,49 @@ where
             }
         }
 
-        let inner =
-            UnsafeCommandBufferBuilder::new(allocator, queue_family_index, level, begin_info)?;
+        let inner = unsafe {
+            RecordingCommandBuffer::new_unchecked(allocator, queue_family_index, level, begin_info)
+        }?;
 
         Ok(AutoCommandBufferBuilder {
             inner,
             commands: Vec::new(),
             builder_state,
-            _data: PhantomData,
+            marker: PhantomData,
         })
+    }
+
+    fn validate_end(&self) -> Result<(), Box<ValidationError>> {
+        if self.inner.level() == CommandBufferLevel::Primary
+            && self.builder_state.render_pass.is_some()
+        {
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00060"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.builder_state.queries.is_empty() {
+            return Err(Box::new(ValidationError {
+                problem: "a query is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO:
+        // VUID-vkEndCommandBuffer-commandBuffer-01815
+
+        Ok(())
     }
 
     unsafe fn end_unchecked(
         mut self,
     ) -> Result<
         (
-            UnsafeCommandBuffer<A>,
-            Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
+            CommandBuffer,
+            Vec<Box<dyn Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static>>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -266,7 +303,7 @@ where
             self.inner
                 .inheritance_info()
                 .as_ref()
-                .map_or(false, |info| info.render_pass.is_some()),
+                .is_some_and(|info| info.render_pass.is_some()),
         );
 
         // Add barriers between the commands.
@@ -292,15 +329,14 @@ where
         for (command_index, (_, record_func)) in self.commands.iter().enumerate() {
             if let Some(barriers) = barriers.remove(&command_index) {
                 for dependency_info in barriers {
-                    unsafe {
-                        #[cfg(debug_assertions)]
-                        self.inner
-                            .pipeline_barrier(&dependency_info)
-                            .expect("bug in Vulkano");
+                    #[cfg(debug_assertions)]
+                    unsafe { self.inner.pipeline_barrier(&dependency_info) }
+                        .expect("bug in Vulkano");
 
-                        #[cfg(not(debug_assertions))]
-                        self.inner.pipeline_barrier_unchecked(&dependency_info);
-                    }
+                    #[cfg(not(debug_assertions))]
+                    unsafe {
+                        self.inner.pipeline_barrier_unchecked(&dependency_info)
+                    };
                 }
             }
 
@@ -310,22 +346,20 @@ where
         // Record final barriers
         if let Some(final_barriers) = barriers.remove(&final_barrier_index) {
             for dependency_info in final_barriers {
-                unsafe {
-                    #[cfg(debug_assertions)]
-                    self.inner
-                        .pipeline_barrier(&dependency_info)
-                        .expect("bug in Vulkano");
+                #[cfg(debug_assertions)]
+                unsafe { self.inner.pipeline_barrier(&dependency_info) }.expect("bug in Vulkano");
 
-                    #[cfg(not(debug_assertions))]
-                    self.inner.pipeline_barrier_unchecked(&dependency_info);
-                }
+                #[cfg(not(debug_assertions))]
+                unsafe {
+                    self.inner.pipeline_barrier_unchecked(&dependency_info)
+                };
             }
         }
 
         debug_assert!(barriers.is_empty());
 
         Ok((
-            self.inner.build()?,
+            unsafe { self.inner.end() }?,
             self.commands
                 .into_iter()
                 .map(|(_, record_func)| record_func)
@@ -334,91 +368,20 @@ where
             secondary_resources_usage,
         ))
     }
-}
 
-impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
-        if self.builder_state.render_pass.is_some() {
-            return Err(Box::new(ValidationError {
-                problem: "a render pass instance is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00060"],
-                ..Default::default()
-            })
-            .into());
-        }
-
-        if !self.builder_state.queries.is_empty() {
-            return Err(Box::new(ValidationError {
-                problem: "a query is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
-                ..Default::default()
-            })
-            .into());
-        }
-
-        // TODO:
-        // VUID-vkEndCommandBuffer-commandBuffer-01815
-
-        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
-
-        Ok(Arc::new(PrimaryAutoCommandBuffer {
-            inner,
-            _keep_alive_objects: keep_alive_objects,
-            resources_usage,
-            state: Mutex::new(Default::default()),
-        }))
+    /// Returns the level of the command buffer.
+    #[inline]
+    pub fn level(&self) -> CommandBufferLevel {
+        self.inner.level()
     }
 }
 
-impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
-        if !self.builder_state.queries.is_empty() {
-            return Err(Box::new(ValidationError {
-                problem: "a query is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
-                ..Default::default()
-            })
-            .into());
-        }
-
-        let submit_state = match self.inner.usage() {
-            CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
-                in_use: AtomicBool::new(false),
-            },
-            CommandBufferUsage::SimultaneousUse => SubmitState::Concurrent,
-            CommandBufferUsage::OneTimeSubmit => SubmitState::OneTime {
-                already_submitted: AtomicBool::new(false),
-            },
-        };
-
-        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked()? };
-
-        Ok(Arc::new(SecondaryAutoCommandBuffer {
-            inner,
-            _keep_alive_objects: keep_alive_objects,
-            resources_usage,
-            submit_state,
-        }))
-    }
-}
-
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -434,7 +397,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -450,7 +413,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -463,10 +426,8 @@ where
     }
 }
 
-unsafe impl<L, A> DeviceOwned for AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl<L> DeviceOwned for AutoCommandBufferBuilder<L> {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -846,8 +807,8 @@ impl AutoSyncState {
     ///   through `Command::buffer(..)` or `Command::image(..)`.
     /// - `PipelineMemoryAccess` must match the way the resource has been used.
     /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
-    ///   be in when the command starts, and the image layout that the image will be transitioned to
-    ///   during the command. When it comes to buffers, you should pass `Undefined` for both.
+    ///   be in when the command starts, and the image layout that the image will be transitioned
+    ///   to during the command. When it comes to buffers, you should pass `Undefined` for both.
     fn add_resources(&mut self, command_info: &CommandInfo) {
         let &CommandInfo {
             name: command_name,
@@ -1329,6 +1290,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) index_buffer: Option<IndexBuffer>,
     pub(in crate::command_buffer) pipeline_compute: Option<Arc<ComputePipeline>>,
     pub(in crate::command_buffer) pipeline_graphics: Option<Arc<GraphicsPipeline>>,
+    pub(in crate::command_buffer) pipeline_ray_tracing: Option<Arc<RayTracingPipeline>>,
     pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Subbuffer<[u8]>>,
     pub(in crate::command_buffer) push_constants: RangeSet<u32>,
     pub(in crate::command_buffer) push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
@@ -1360,11 +1322,16 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) stencil_reference: StencilStateDynamic,
     pub(in crate::command_buffer) stencil_test_enable: Option<bool>,
     pub(in crate::command_buffer) stencil_write_mask: StencilStateDynamic,
+    pub(in crate::command_buffer) vertex_input: Option<VertexInputState>,
     pub(in crate::command_buffer) viewport: HashMap<u32, Viewport>,
     pub(in crate::command_buffer) viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
+    pub(in crate::command_buffer) conservative_rasterization_mode:
+        Option<ConservativeRasterizationMode>,
+    pub(in crate::command_buffer) extra_primitive_overestimation_size: Option<f32>,
+    pub(in crate::command_buffer) fragment_shading_rate: Option<FragmentShadingRateState>,
 
     // Active queries
-    pub(in crate::command_buffer) queries: HashMap<ash::vk::QueryType, QueryState>,
+    pub(in crate::command_buffer) queries: HashMap<QueryType, QueryState>,
 }
 
 impl CommandBufferBuilderState {
@@ -1393,7 +1360,7 @@ impl CommandBufferBuilderState {
                 DynamicState::DepthWriteEnable => self.depth_write_enable = None,
                 DynamicState::DiscardRectangle => self.discard_rectangle.clear(),
                 // DynamicState::ExclusiveScissor => todo!(),
-                // DynamicState::FragmentShadingRate => todo!(),
+                DynamicState::FragmentShadingRate => self.fragment_shading_rate = None,
                 DynamicState::FrontFace => self.front_face = None,
                 DynamicState::LineStipple => self.line_stipple = None,
                 DynamicState::LineWidth => self.line_width = None,
@@ -1411,7 +1378,7 @@ impl CommandBufferBuilderState {
                 DynamicState::StencilReference => self.stencil_reference = Default::default(),
                 DynamicState::StencilTestEnable => self.stencil_test_enable = None,
                 DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
-                // DynamicState::VertexInput => todo!(),
+                DynamicState::VertexInput => self.vertex_input = None,
                 // DynamicState::VertexInputBindingStride => todo!(),
                 DynamicState::Viewport => self.viewport.clear(),
                 // DynamicState::ViewportCoarseSampleOrder => todo!(),
@@ -1430,25 +1397,28 @@ impl CommandBufferBuilderState {
                 // DynamicState::ColorBlendEquation => todo!(),
                 // DynamicState::ColorWriteMask => todo!(),
                 // DynamicState::RasterizationStream => todo!(),
-                // DynamicState::ConservativeRasterizationMode => todo!(),
-                // DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
-                // DynamicState::DepthClipEnable => todo!(),
-                // DynamicState::SampleLocationsEnable => todo!(),
-                // DynamicState::ColorBlendAdvanced => todo!(),
-                // DynamicState::ProvokingVertexMode => todo!(),
-                // DynamicState::LineRasterizationMode => todo!(),
-                // DynamicState::LineStippleEnable => todo!(),
-                // DynamicState::DepthClipNegativeOneToOne => todo!(),
-                // DynamicState::ViewportWScalingEnable => todo!(),
-                // DynamicState::ViewportSwizzle => todo!(),
-                // DynamicState::CoverageToColorEnable => todo!(),
-                // DynamicState::CoverageToColorLocation => todo!(),
-                // DynamicState::CoverageModulationMode => todo!(),
-                // DynamicState::CoverageModulationTableEnable => todo!(),
-                // DynamicState::CoverageModulationTable => todo!(),
-                // DynamicState::ShadingRateImageEnable => todo!(),
-                // DynamicState::RepresentativeFragmentTestEnable => todo!(),
-                // DynamicState::CoverageReductionMode => todo!(),
+                DynamicState::ConservativeRasterizationMode => {
+                    self.conservative_rasterization_mode = None
+                }
+                DynamicState::ExtraPrimitiveOverestimationSize => {
+                    self.extra_primitive_overestimation_size = None
+                } /* DynamicState::DepthClipEnable => todo!(),
+                   * DynamicState::SampleLocationsEnable => todo!(),
+                   * DynamicState::ColorBlendAdvanced => todo!(),
+                   * DynamicState::ProvokingVertexMode => todo!(),
+                   * DynamicState::LineRasterizationMode => todo!(),
+                   * DynamicState::LineStippleEnable => todo!(),
+                   * DynamicState::DepthClipNegativeOneToOne => todo!(),
+                   * DynamicState::ViewportWScalingEnable => todo!(),
+                   * DynamicState::ViewportSwizzle => todo!(),
+                   * DynamicState::CoverageToColorEnable => todo!(),
+                   * DynamicState::CoverageToColorLocation => todo!(),
+                   * DynamicState::CoverageModulationMode => todo!(),
+                   * DynamicState::CoverageModulationTableEnable => todo!(),
+                   * DynamicState::CoverageModulationTable => todo!(),
+                   * DynamicState::ShadingRateImageEnable => todo!(),
+                   * DynamicState::RepresentativeFragmentTestEnable => todo!(),
+                   * DynamicState::CoverageReductionMode => todo!(), */
             }
         }
     }
@@ -1530,7 +1500,9 @@ impl RenderPassState {
                 RenderPassState {
                     contents: SubpassContents::Inline,
                     render_area_offset: [0, 0],
-                    render_area_extent: (info.framebuffer.as_ref())
+                    render_area_extent: info
+                        .framebuffer
+                        .as_ref()
                         // Still not exact, but it's a better upper bound.
                         .map_or([u32::MAX, u32::MAX], |framebuffer| framebuffer.extent()),
 
@@ -1607,10 +1579,12 @@ impl RenderPassStateAttachments {
         let fb_attachments = framebuffer.attachments();
 
         Self {
-            color_attachments: (subpass_desc.color_attachments.iter())
+            color_attachments: subpass_desc
+                .color_attachments
+                .iter()
                 .zip(subpass_desc.color_resolve_attachments.iter())
                 .map(|(color_attachment, color_resolve_attachment)| {
-                    (color_attachment.as_ref()).map(|color_attachment| {
+                    color_attachment.as_ref().map(|color_attachment| {
                         RenderPassStateAttachmentInfo {
                             image_view: fb_attachments[color_attachment.attachment as usize]
                                 .clone(),
@@ -1627,9 +1601,12 @@ impl RenderPassStateAttachments {
                     })
                 })
                 .collect(),
-            depth_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+            depth_attachment: subpass_desc
+                .depth_stencil_attachment
+                .as_ref()
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                    rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
                         .aspects()
                         .intersects(ImageAspects::DEPTH)
                 })
@@ -1646,9 +1623,12 @@ impl RenderPassStateAttachments {
                         },
                     ),
                 }),
-            stencil_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+            stencil_attachment: subpass_desc
+                .depth_stencil_attachment
+                .as_ref()
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                    rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
                         .aspects()
                         .intersects(ImageAspects::STENCIL)
                 })
@@ -1674,21 +1654,25 @@ impl RenderPassStateAttachments {
 
     pub(in crate::command_buffer) fn from_rendering_info(info: &RenderingInfo) -> Self {
         Self {
-            color_attachments: (info.color_attachments.iter())
+            color_attachments: info
+                .color_attachments
+                .iter()
                 .map(|atch_info| {
-                    (atch_info.as_ref()).map(|atch_info| RenderPassStateAttachmentInfo {
-                        image_view: atch_info.image_view.clone(),
-                        _image_layout: atch_info.image_layout,
-                        _resolve_info: atch_info.resolve_info.as_ref().map(|resolve_atch_info| {
-                            RenderPassStateAttachmentResolveInfo {
-                                _image_view: resolve_atch_info.image_view.clone(),
-                                _image_layout: resolve_atch_info.image_layout,
-                            }
-                        }),
-                    })
+                    atch_info
+                        .as_ref()
+                        .map(|atch_info| RenderPassStateAttachmentInfo {
+                            image_view: atch_info.image_view.clone(),
+                            _image_layout: atch_info.image_layout,
+                            _resolve_info: atch_info.resolve_info.as_ref().map(
+                                |resolve_atch_info| RenderPassStateAttachmentResolveInfo {
+                                    _image_view: resolve_atch_info.image_view.clone(),
+                                    _image_layout: resolve_atch_info.image_layout,
+                                },
+                            ),
+                        })
                 })
                 .collect(),
-            depth_attachment: (info.depth_attachment.as_ref()).map(|atch_info| {
+            depth_attachment: info.depth_attachment.as_ref().map(|atch_info| {
                 RenderPassStateAttachmentInfo {
                     image_view: atch_info.image_view.clone(),
                     _image_layout: atch_info.image_layout,
@@ -1700,7 +1684,7 @@ impl RenderPassStateAttachments {
                     }),
                 }
             }),
-            stencil_attachment: (info.stencil_attachment.as_ref()).map(|atch_info| {
+            stencil_attachment: info.stencil_attachment.as_ref().map(|atch_info| {
                 RenderPassStateAttachmentInfo {
                     image_view: atch_info.image_view.clone(),
                     _image_layout: atch_info.image_layout,
@@ -1739,10 +1723,10 @@ pub(in crate::command_buffer) enum SetOrPush {
 }
 
 impl SetOrPush {
-    pub(in crate::command_buffer) fn resources(&self) -> &DescriptorSetResources {
+    pub(in crate::command_buffer) fn resources(&self) -> SetOrPushResources<'_> {
         match self {
-            Self::Set(set) => set.as_ref().0.resources(),
-            Self::Push(resources) => resources,
+            Self::Set(set) => SetOrPushResources::Set(set.as_ref().0.resources()),
+            Self::Push(resources) => SetOrPushResources::Push(resources),
         }
     }
 
@@ -1751,6 +1735,22 @@ impl SetOrPush {
         match self {
             Self::Set(set) => set.as_ref().1,
             Self::Push(_) => &[],
+        }
+    }
+}
+
+pub(in crate::command_buffer) enum SetOrPushResources<'a> {
+    Set(RwLockReadGuard<'a, DescriptorSetResources>),
+    Push(&'a DescriptorSetResources),
+}
+
+impl std::ops::Deref for SetOrPushResources<'_> {
+    type Target = DescriptorSetResources;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Set(guard) => guard,
+            Self::Push(r) => r,
         }
     }
 }

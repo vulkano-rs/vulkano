@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! A subpart of a buffer.
 
 use super::{allocator::Arena, Buffer, BufferMemory};
@@ -19,8 +10,9 @@ use crate::{
         is_aligned, DeviceAlignment, MappedMemoryRange,
     },
     sync::HostAccessError,
-    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, ValidationError,
+    DeviceAddress, DeviceSize, ValidationError,
 };
+use ash::vk;
 use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
@@ -28,12 +20,12 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{self, align_of, size_of},
+    num::NonZero,
     ops::{Deref, DerefMut, Range, RangeBounds},
     ptr::{self, NonNull},
     sync::Arc,
     thread,
 };
-
 #[cfg(feature = "macros")]
 pub use vulkano_macros::BufferContents;
 
@@ -94,7 +86,7 @@ impl<T: ?Sized> Subbuffer<T> {
     fn memory_offset(&self) -> DeviceSize {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => unreachable!(),
+            BufferMemory::Sparse | BufferMemory::External => unreachable!(),
         };
 
         allocation.offset() + self.offset
@@ -125,36 +117,36 @@ impl<T: ?Sized> Subbuffer<T> {
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
     ///
-    /// [`DeviceMemory::map`]: crate::memory::DeviceMemory::map
-    /// [`MappingState::slice`]: crate::memory::MappingState::slice
+    /// [`DeviceMemory::map`]: memory::DeviceMemory::map
+    /// [`MappingState::slice`]: memory::MappingState::slice
     pub fn mapped_slice(&self) -> Result<NonNull<[u8]>, HostAccessError> {
         match self.buffer().memory() {
             BufferMemory::Normal(allocation) => {
                 // SAFETY: `self.range()` is in bounds of the allocation.
                 unsafe { allocation.mapped_slice_unchecked(self.range()) }
             }
-            BufferMemory::Sparse => unreachable!(),
+            BufferMemory::Sparse | BufferMemory::External => unreachable!(),
         }
     }
 
     /// Returns the device address for this subbuffer.
-    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
         self.buffer().device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
             // in range.
-            unsafe { NonNullDeviceAddress::new_unchecked(ptr.get() + self.offset) }
+            unsafe { NonZero::new_unchecked(ptr.get() + self.offset) }
         })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
+    pub unsafe fn device_address_unchecked(&self) -> NonZero<DeviceAddress> {
+        let buffer_device_address = unsafe { self.buffer().device_address_unchecked() };
+
         // SAFETY: The original address came from the Vulkan implementation, and allocation
         // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
         // in range.
-        NonNullDeviceAddress::new_unchecked(
-            self.buffer().device_address_unchecked().get() + self.offset,
-        )
+        unsafe { NonZero::new_unchecked(buffer_device_address.get() + self.offset) }
     }
 
     /// Casts the subbuffer to a slice of raw bytes.
@@ -172,16 +164,34 @@ impl<T: ?Sized> Subbuffer<T> {
     #[inline(always)]
     unsafe fn reinterpret_unchecked_inner<U: ?Sized>(self) -> Subbuffer<U> {
         // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self)
+        unsafe { mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self) }
     }
 
     #[inline(always)]
     unsafe fn reinterpret_unchecked_ref_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
-        assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
-        assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
+        assert_eq!(size_of::<Subbuffer<T>>(), size_of::<Subbuffer<U>>());
+        assert_eq!(align_of::<Subbuffer<T>>(), align_of::<Subbuffer<U>>());
 
         // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
+        unsafe { mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self) }
+    }
+
+    pub(crate) fn to_vk_device_or_host_address(&self) -> vk::DeviceOrHostAddressKHR {
+        vk::DeviceOrHostAddressKHR {
+            device_address: self
+                .device_address()
+                .expect("Can't get device address. Is the extension enabled?")
+                .into(),
+        }
+    }
+
+    pub(crate) fn to_vk_device_or_host_address_const(&self) -> vk::DeviceOrHostAddressConstKHR {
+        vk::DeviceOrHostAddressConstKHR {
+            device_address: self
+                .device_address()
+                .expect("Can't get device address. Is the extension enabled?")
+                .into(),
+        }
     }
 }
 
@@ -234,7 +244,7 @@ where
         #[cfg(debug_assertions)]
         self.validate_reinterpret(U::LAYOUT);
 
-        self.reinterpret_unchecked_inner()
+        unsafe { self.reinterpret_unchecked_inner() }
     }
 
     /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
@@ -264,17 +274,20 @@ where
         #[cfg(debug_assertions)]
         self.validate_reinterpret(U::LAYOUT);
 
-        self.reinterpret_unchecked_ref_inner()
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 
     fn validate_reinterpret(&self, new_layout: BufferContentsLayout) {
         assert!(is_aligned(self.memory_offset(), new_layout.alignment()));
 
         if new_layout.is_sized() {
-            assert!(self.size == new_layout.unwrap_sized().size());
+            assert_eq!(self.size, new_layout.unwrap_sized().size());
         } else {
             assert!(self.size > new_layout.head_size());
-            assert!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap() == 0);
+            assert_eq!(
+                (self.size - new_layout.head_size()) % new_layout.element_size().unwrap(),
+                0,
+            );
             assert!(is_aligned(self.size(), new_layout.alignment()));
         }
     }
@@ -285,9 +298,9 @@ where
     /// return an error. Similarly if you called [`write`] on the buffer and haven't dropped the
     /// lock, this function will return an error as well.
     ///
-    /// After this function successfully locks the subbuffer, any attempt to submit a command buffer
-    /// that uses it in exclusive mode will fail. You can still submit this subbuffer for
-    /// non-exclusive accesses (ie. reads).
+    /// After this function successfully locks the subbuffer, any attempt to submit a command
+    /// buffer that uses it in exclusive mode will fail. You can still submit this subbuffer
+    /// for non-exclusive accesses (ie. reads).
     ///
     /// If the memory backing the buffer is not [host-coherent], then this function will lock a
     /// range that is potentially larger than the subbuffer, because the range given to
@@ -300,15 +313,22 @@ where
     /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
     /// 64. [`SubbufferAllocator`] does this automatically.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be read from using this function.
+    ///
+    /// [host-coherent]: memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`invalidate_range`]: memory::ResourceMemory::invalidate_range
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
+    /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn read(&self) -> Result<BufferReadGuard<'_, T>, HostAccessError> {
+        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
+
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
+            BufferMemory::External => return Err(HostAccessError::Unmanaged),
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
@@ -349,15 +369,16 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size
-            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
+            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
         }
 
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &*data_ptr };
 
         Ok(BufferReadGuard {
             subbuffer: self,
@@ -386,15 +407,22 @@ where
     /// in this case one would be at offset 0 and the other at offset 64. [`SubbufferAllocator`]
     /// does this automatically.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be written to using this function.
+    ///
+    /// [host-coherent]: memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`flush_range`]: memory::ResourceMemory::flush_range
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
+    /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, HostAccessError> {
+        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
+
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
+            BufferMemory::External => return Err(HostAccessError::Unmanaged),
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
@@ -429,15 +457,16 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size
-            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
+            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
         }
 
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &mut *data_ptr };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
@@ -464,7 +493,7 @@ impl<T> Subbuffer<T> {
 impl<T> Subbuffer<[T]> {
     /// Returns the number of elements in the slice.
     pub fn len(&self) -> DeviceSize {
-        debug_assert!(self.size % size_of::<T>() as DeviceSize == 0);
+        debug_assert_eq!(self.size % size_of::<T>() as DeviceSize, 0);
 
         self.size / size_of::<T>() as DeviceSize
     }
@@ -501,7 +530,7 @@ impl<T> Subbuffer<[T]> {
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
-        assert!(self.size != 0);
+        assert_ne!(self.size, 0);
 
         self
     }
@@ -531,10 +560,9 @@ impl<T> Subbuffer<[T]> {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn split_at_unchecked(self, mid: DeviceSize) -> (Subbuffer<[T]>, Subbuffer<[T]>) {
-        (
-            self.clone().slice_unchecked(..mid),
-            self.slice_unchecked(mid..),
-        )
+        let first = unsafe { self.clone().slice_unchecked(..mid) };
+        let second = unsafe { self.slice_unchecked(mid..) };
+        (first, second)
     }
 }
 
@@ -673,6 +701,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),
+            BufferMemory::External => unreachable!(),
         };
 
         if allocation.atom_size().is_some() && !thread::panicking() {
@@ -682,7 +711,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
                 _ne: crate::NonExhaustive(()),
             };
 
-            unsafe { allocation.flush_range_unchecked(memory_range).unwrap() };
+            unsafe { allocation.flush_range_unchecked(memory_range) }.unwrap();
         }
 
         let mut state = self.subbuffer.buffer().state();
@@ -811,9 +840,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     ///
     /// # Safety
     ///
-    /// - If `Self` is sized, then `slice.len()` must match the size exactly.
-    /// - If `Self` is unsized, then `slice.len()` minus the size of the head (sized part) of the
-    ///   DST must be evenly divisible by the size of the element type.
+    /// - `slice` must be a pointer that's valid for reads and writes of the entire slice.
     #[doc(hidden)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self;
 }
@@ -822,17 +849,10 @@ unsafe impl<T> BufferContents for T
 where
     T: AnyBitPattern + Send + Sync,
 {
-    const LAYOUT: BufferContentsLayout =
-        if let Some(layout) = BufferContentsLayout::from_sized(Layout::new::<T>()) {
-            layout
-        } else {
-            panic!("zero-sized types are not valid buffer contents");
-        };
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_sized(Layout::new::<T>());
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<T>());
-
         <*mut [u8]>::cast::<T>(slice.as_ptr())
     }
 }
@@ -841,16 +861,13 @@ unsafe impl<T> BufferContents for [T]
 where
     T: BufferContents,
 {
-    const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Unsized {
-        head_layout: None,
-        element_layout: T::LAYOUT.unwrap_sized(),
-    });
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_slice(Layout::new::<T>());
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
         let data = <*mut [u8]>::cast::<T>(slice.as_ptr());
         let len = slice.len() / size_of::<T>();
-        debug_assert!(slice.len() % size_of::<T>() == 0);
+        debug_assert_eq!(slice.len() % size_of::<T>(), 0);
 
         ptr::slice_from_raw_parts_mut(data, len)
     }
@@ -926,10 +943,10 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] on
-    /// arithmetic overflow or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
+    /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] if `len`
+    /// is zero or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
     #[inline]
-    pub const fn layout_for_len(&self, len: NonZeroDeviceSize) -> Option<DeviceLayout> {
+    pub const fn layout_for_len(&self, len: DeviceSize) -> Option<DeviceLayout> {
         match &self.0 {
             BufferContentsLayoutInner::Sized(sized) => Some(*sized),
             BufferContentsLayoutInner::Unsized {
@@ -949,120 +966,116 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Creates a new `BufferContentsLayout` from a sized layout. This is inteded for use by the
+    /// Creates a new `BufferContentsLayout` from a sized layout. This is intended for use by the
     /// derive macro only.
     #[doc(hidden)]
     #[inline]
-    pub const fn from_sized(sized: Layout) -> Option<Self> {
+    pub const fn from_sized(sized: Layout) -> Self {
         assert!(
             sized.align() <= 64,
             "types with alignments above 64 are not valid buffer contents",
         );
 
-        if let Ok(sized) = DeviceLayout::from_layout(sized) {
-            Some(Self(BufferContentsLayoutInner::Sized(sized)))
+        if let Some(sized) = DeviceLayout::from_layout(sized) {
+            Self(BufferContentsLayoutInner::Sized(sized))
         } else {
-            None
+            unreachable!()
         }
     }
 
-    /// Creates a new `BufferContentsLayout` from a head and element layout. This is inteded for
-    /// use by the derive macro only.
+    /// Creates a new `BufferContentsLayout` from an element layout. This is intended for use by
+    /// the derive macro only.
     #[doc(hidden)]
     #[inline]
-    pub const fn from_head_element_layout(
-        head_layout: Layout,
-        element_layout: Layout,
-    ) -> Option<Self> {
-        if head_layout.align() > 64 || element_layout.align() > 64 {
-            panic!("types with alignments above 64 are not valid buffer contents");
-        }
-
-        // The head of a `BufferContentsLayout` can be zero-sized.
-        // TODO: Replace with `Result::ok` once its constness is stabilized.
-        let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(head_layout) {
-            Some(head_layout)
-        } else {
-            None
-        };
-
-        if let Ok(element_layout) = DeviceLayout::from_layout(element_layout) {
-            Some(Self(BufferContentsLayoutInner::Unsized {
-                head_layout,
-                element_layout,
-            }))
-        } else {
-            None
-        }
-    }
-
-    /// Extends the given `previous` [`Layout`] by `self`. This is intended for use by the derive
-    /// macro only.
-    #[doc(hidden)]
-    #[inline]
-    pub const fn extend_from_layout(self, previous: &Layout) -> Option<Self> {
+    pub const fn from_slice(element_layout: Layout) -> Self {
         assert!(
-            previous.align() <= 64,
+            element_layout.align() <= 64,
             "types with alignments above 64 are not valid buffer contents",
         );
 
-        match self.0 {
-            BufferContentsLayoutInner::Sized(sized) => {
-                let (sized, _) = try_opt!(sized.extend_from_layout(previous));
-
-                Some(Self(BufferContentsLayoutInner::Sized(sized)))
-            }
-            BufferContentsLayoutInner::Unsized {
+        if let Some(element_layout) = DeviceLayout::from_layout(element_layout) {
+            Self(BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
-            } => {
-                // The head of a `BufferContentsLayout` can be zero-sized.
-                // TODO: Replace with `Result::ok` once its constness is stabilized.
-                let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(*previous) {
-                    Some(head_layout)
-                } else {
-                    None
-                };
+            })
+        } else {
+            unreachable!()
+        }
+    }
 
-                Some(Self(BufferContentsLayoutInner::Unsized {
-                    head_layout,
-                    element_layout,
-                }))
-            }
-            BufferContentsLayoutInner::Unsized {
-                head_layout: Some(head_layout),
-                element_layout,
-            } => {
-                let (head_layout, _) = try_opt!(head_layout.extend_from_layout(previous));
-
-                Some(Self(BufferContentsLayoutInner::Unsized {
-                    head_layout: Some(head_layout),
-                    element_layout,
-                }))
+    /// Creates a new `BufferContentsLayout` from the given field layouts. This is intended for use
+    /// by the derive macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn from_field_layouts(field_layouts: &[Layout], last_field_layout: Self) -> Self {
+        const fn extend(previous: DeviceLayout, next: DeviceLayout) -> DeviceLayout {
+            match previous.extend(next) {
+                Some((layout, _)) => layout,
+                None => unreachable!(),
             }
         }
+
+        let mut head_layout = None;
+        let mut i = 0;
+
+        while i < field_layouts.len() {
+            head_layout = match DeviceLayout::from_layout(field_layouts[i]) {
+                Some(field_layout) => Some(match head_layout {
+                    Some(layout) => extend(layout, field_layout),
+                    None => field_layout,
+                }),
+                None => unreachable!(),
+            };
+
+            i += 1;
+        }
+
+        let layout = Self(match last_field_layout.0 {
+            BufferContentsLayoutInner::Sized(field_layout) => {
+                BufferContentsLayoutInner::Sized(match head_layout {
+                    Some(layout) => extend(layout, field_layout),
+                    None => field_layout,
+                })
+            }
+            BufferContentsLayoutInner::Unsized {
+                head_layout: field_head_layout,
+                element_layout,
+            } => BufferContentsLayoutInner::Unsized {
+                head_layout: match (head_layout, field_head_layout) {
+                    (Some(layout), Some(field_layout)) => Some(extend(layout, field_layout)),
+                    (Some(layout), None) => Some(layout),
+                    (None, Some(field_layout)) => Some(field_layout),
+                    (None, None) => None,
+                },
+                element_layout,
+            },
+        });
+
+        assert!(
+            layout.alignment().as_devicesize() <= 64,
+            "types with alignments above 64 are not valid buffer contents",
+        );
+
+        layout.pad_to_alignment()
     }
 
     /// Creates a new `BufferContentsLayout` by rounding up the size of the head to the nearest
     /// multiple of its alignment if the layout is sized, or by rounding up the size of the head to
     /// the nearest multiple of the alignment of the element type and aligning the head to the
     /// alignment of the element type if there is a sized part. Doesn't do anything if there is no
-    /// sized part. Returns [`None`] if the new head size would exceed [`DeviceLayout::MAX_SIZE`].
-    /// This is inteded for use by the derive macro only.
-    #[doc(hidden)]
-    #[inline]
-    pub const fn pad_to_alignment(&self) -> Option<Self> {
-        match &self.0 {
-            BufferContentsLayoutInner::Sized(sized) => Some(Self(
-                BufferContentsLayoutInner::Sized(sized.pad_to_alignment()),
-            )),
+    /// sized part.
+    const fn pad_to_alignment(&self) -> Self {
+        Self(match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => {
+                BufferContentsLayoutInner::Sized(sized.pad_to_alignment())
+            }
             BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
-            } => Some(Self(BufferContentsLayoutInner::Unsized {
+            } => BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout: *element_layout,
-            })),
+            },
             BufferContentsLayoutInner::Unsized {
                 head_layout: Some(head_layout),
                 element_layout,
@@ -1083,8 +1096,7 @@ impl BufferContentsLayout {
                 // SAFETY: `BufferContentsLayout`'s invariant guarantees that the alignment of the
                 // element type doesn't exceed 64, which together with the overflow invariant of
                 // `DeviceLayout` means that this can't overflow.
-                let padded_head_size =
-                    unsafe { NonZeroDeviceSize::new_unchecked(padded_head_size) };
+                let padded_head_size = unsafe { NonZero::new_unchecked(padded_head_size) };
 
                 // We have to align the head to the alignment of the element type, so that the
                 // struct as a whole is aligned correctly when a different struct is extended with
@@ -1101,15 +1113,15 @@ impl BufferContentsLayout {
                     DeviceAlignment::max(head_layout.alignment(), element_layout.alignment());
 
                 if let Some(head_layout) = DeviceLayout::new(padded_head_size, alignment) {
-                    Some(Self(BufferContentsLayoutInner::Unsized {
+                    BufferContentsLayoutInner::Unsized {
                         head_layout: Some(head_layout),
                         element_layout: *element_layout,
-                    }))
+                    }
                 } else {
-                    None
+                    unreachable!()
                 }
             }
-        }
+        })
     }
 
     fn is_sized(&self) -> bool {
@@ -1119,7 +1131,7 @@ impl BufferContentsLayout {
         )
     }
 
-    pub(super) const fn unwrap_sized(self) -> DeviceLayout {
+    pub(crate) const fn unwrap_sized(self) -> DeviceLayout {
         match self.0 {
             BufferContentsLayoutInner::Sized(sized) => sized,
             BufferContentsLayoutInner::Unsized { .. } => {
@@ -1161,7 +1173,7 @@ mod tests {
 
         #[derive(BufferContents)]
         #[repr(C)]
-        struct Composite1(Test1, [f32; 10], Test1);
+        struct Composite1(Test1, [f32; 9], Test1);
 
         assert_eq!(
             Composite1::LAYOUT.head_size() as usize,
@@ -1192,7 +1204,7 @@ mod tests {
 
         #[derive(BufferContents)]
         #[repr(C)]
-        struct Composite2(Test1, [f32; 10], Test2);
+        struct Composite2(Test1, [f32; 9], Test2);
 
         assert_eq!(
             Composite2::LAYOUT.head_size() as usize,
@@ -1226,14 +1238,14 @@ mod tests {
 
         {
             let (left, right) = buffer.clone().split_at(2);
-            assert!(left.len() == 2);
-            assert!(right.len() == 4);
+            assert_eq!(left.len(), 2);
+            assert_eq!(right.len(), 4);
         }
 
         {
             let (left, right) = buffer.clone().split_at(5);
-            assert!(left.len() == 5);
-            assert!(right.len() == 1);
+            assert_eq!(left.len(), 5);
+            assert_eq!(right.len(), 1);
         }
 
         {

@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{PresentMode, Swapchain};
 use crate::{
     buffer::Buffer,
@@ -20,11 +11,12 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
-use smallvec::smallvec;
+use ash::vk;
+use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    num::NonZeroU64,
+    num::NonZero,
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -65,6 +57,14 @@ pub struct AcquireNextImageInfo {
 impl Default for AcquireNextImageInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AcquireNextImageInfo {
+    /// Returns a default `AcquireNextImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             timeout: None,
             semaphore: None,
@@ -72,9 +72,7 @@ impl Default for AcquireNextImageInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl AcquireNextImageInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             timeout,
@@ -122,6 +120,33 @@ impl AcquireNextImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(
+        &self,
+        swapchain_vk: vk::SwapchainKHR,
+        device_mask_vk: u32,
+    ) -> vk::AcquireNextImageInfoKHR<'static> {
+        let &Self {
+            timeout,
+            ref semaphore,
+            ref fence,
+            _ne: _,
+        } = self;
+
+        vk::AcquireNextImageInfoKHR::default()
+            .swapchain(swapchain_vk)
+            .timeout(timeout.map_or(u64::MAX, |duration| {
+                u64::try_from(duration.as_nanos()).unwrap()
+            }))
+            .semaphore(
+                semaphore
+                    .as_ref()
+                    .map(VulkanObject::handle)
+                    .unwrap_or_default(),
+            )
+            .fence(fence.as_ref().map(VulkanObject::handle).unwrap_or_default())
+            .device_mask(device_mask_vk)
+    }
 }
 
 /// Tries to take ownership of an image in order to draw on it.
@@ -152,8 +177,8 @@ pub fn acquire_next_image(
             semaphore: Some(semaphore.clone()),
             fence: Some(fence.clone()),
             ..Default::default()
-        })?
-    };
+        })
+    }?;
 
     Ok((
         image_index,
@@ -196,28 +221,32 @@ pub unsafe fn acquire_next_image_raw(
         u64::MAX
     };
 
-    let mut out = MaybeUninit::uninit();
-    let result = (fns.khr_swapchain.acquire_next_image_khr)(
-        swapchain.device.handle(),
-        swapchain.handle,
-        timeout_ns,
-        semaphore
-            .map(|s| s.handle())
-            .unwrap_or(ash::vk::Semaphore::null()),
-        fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
-        out.as_mut_ptr(),
-    );
+    let (image_index, is_suboptimal) = {
+        let mut output = MaybeUninit::uninit();
+        let result = unsafe {
+            (fns.khr_swapchain.acquire_next_image_khr)(
+                swapchain.device.handle(),
+                swapchain.handle,
+                timeout_ns,
+                semaphore
+                    .map(|s| s.handle())
+                    .unwrap_or(vk::Semaphore::null()),
+                fence.map(|f| f.handle()).unwrap_or(vk::Fence::null()),
+                output.as_mut_ptr(),
+            )
+        };
 
-    let is_suboptimal = match result {
-        ash::vk::Result::SUCCESS => false,
-        ash::vk::Result::SUBOPTIMAL_KHR => true,
-        ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
-        ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
-        err => return Err(VulkanError::from(err).into()),
+        match result {
+            vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
+            vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
+            vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
+            vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
+            err => return Err(VulkanError::from(err).into()),
+        }
     };
 
     Ok(AcquiredImage {
-        image_index: out.assume_init(),
+        image_index,
         is_suboptimal,
     })
 }
@@ -426,7 +455,7 @@ pub struct PresentInfo {
     /// The present operations to perform.
     ///
     /// The default value is empty.
-    pub swapchains: Vec<SwapchainPresentInfo>,
+    pub swapchain_infos: Vec<SwapchainPresentInfo>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -434,19 +463,25 @@ pub struct PresentInfo {
 impl Default for PresentInfo {
     #[inline]
     fn default() -> Self {
-        Self {
-            wait_semaphores: Vec::new(),
-            swapchains: Vec::new(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl PresentInfo {
+    /// Returns a default `PresentInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            wait_semaphores: Vec::new(),
+            swapchain_infos: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,
-            swapchains: ref swapchain_infos,
+            ref swapchain_infos,
             _ne: _,
         } = self;
 
@@ -460,7 +495,7 @@ impl PresentInfo {
 
         let has_present_mode = swapchain_infos
             .first()
-            .map_or(false, |first| first.present_mode.is_some());
+            .is_some_and(|first| first.present_mode.is_some());
 
         for (index, swapchain_info) in swapchain_infos.iter().enumerate() {
             swapchain_info
@@ -472,7 +507,7 @@ impl PresentInfo {
                 image_index: _,
                 present_id: _,
                 present_mode,
-                present_regions: _,
+                present_region: _,
                 _ne: _,
             } = swapchain_info;
 
@@ -507,6 +542,189 @@ impl PresentInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a PresentInfoFields1Vk<'_>,
+        results_vk: &'a mut [vk::Result],
+        extensions_vk: &'a mut PresentInfoExtensionsVk<'_>,
+    ) -> vk::PresentInfoKHR<'a> {
+        let &Self {
+            wait_semaphores: _,
+            swapchain_infos: _,
+            _ne: _,
+        } = self;
+        let PresentInfoFields1Vk {
+            wait_semaphores_vk,
+            swapchains_vk,
+            image_indices_vk,
+            present_ids_vk: _,
+            present_modes_vk: _,
+            present_regions_vk: _,
+        } = fields1_vk;
+        let PresentInfoExtensionsVk {
+            present_id_vk,
+            present_mode_vk,
+            present_regions_vk,
+        } = extensions_vk;
+
+        let mut val_vk = vk::PresentInfoKHR::default()
+            .wait_semaphores(wait_semaphores_vk)
+            .swapchains(swapchains_vk)
+            .image_indices(image_indices_vk)
+            .results(results_vk);
+
+        if let Some(next) = present_id_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_mode_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_regions_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_results(&self) -> Vec<vk::Result> {
+        vec![vk::Result::SUCCESS; self.swapchain_infos.len()]
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a PresentInfoFields1Vk<'_>,
+    ) -> PresentInfoExtensionsVk<'a> {
+        let PresentInfoFields1Vk {
+            wait_semaphores_vk: _,
+            swapchains_vk: _,
+            image_indices_vk: _,
+            present_ids_vk,
+            present_modes_vk,
+            present_regions_vk,
+        } = fields1_vk;
+
+        let mut has_present_ids = false;
+        let mut has_present_modes = false;
+        let mut has_present_regions = false;
+
+        for swapchain_info in &self.swapchain_infos {
+            let &SwapchainPresentInfo {
+                swapchain: _,
+                image_index: _,
+                present_id,
+                present_mode,
+                ref present_region,
+                _ne: _,
+            } = swapchain_info;
+
+            has_present_ids |= present_id.is_some();
+            has_present_modes |= present_mode.is_some();
+            has_present_regions |= !present_region.is_empty();
+        }
+
+        let present_id_vk =
+            has_present_ids.then(|| vk::PresentIdKHR::default().present_ids(present_ids_vk));
+        let present_mode_vk = has_present_modes
+            .then(|| vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk));
+        let present_regions_vk = has_present_regions
+            .then(|| vk::PresentRegionsKHR::default().regions(present_regions_vk));
+
+        PresentInfoExtensionsVk {
+            present_id_vk,
+            present_mode_vk,
+            present_regions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a PresentInfoFields2Vk,
+    ) -> PresentInfoFields1Vk<'a> {
+        let &Self {
+            ref wait_semaphores,
+            ref swapchain_infos,
+            _ne: _,
+        } = self;
+        let PresentInfoFields2Vk {
+            swapchain_infos_fields1_vk,
+        } = fields2_vk;
+
+        let wait_semaphores_vk = wait_semaphores
+            .iter()
+            .map(SemaphorePresentInfo::to_vk)
+            .collect();
+
+        let mut swapchains_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut image_indices_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_ids_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_modes_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_regions_vk = SmallVec::with_capacity(swapchain_infos.len());
+
+        for (swapchain_info, fields1_vk) in swapchain_infos.iter().zip(swapchain_infos_fields1_vk) {
+            let &SwapchainPresentInfo {
+                ref swapchain,
+                image_index,
+                present_id,
+                present_mode,
+                present_region: _,
+                _ne: _,
+            } = swapchain_info;
+
+            let SwapchainPresentInfoFields1Vk {
+                present_region_rectangles_vk,
+            } = fields1_vk;
+
+            swapchains_vk.push(swapchain.handle());
+            image_indices_vk.push(image_index);
+            present_ids_vk.push(present_id.map_or(0, u64::from));
+            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
+            present_regions_vk
+                .push(vk::PresentRegionKHR::default().rectangles(present_region_rectangles_vk));
+        }
+
+        PresentInfoFields1Vk {
+            wait_semaphores_vk,
+            swapchains_vk,
+            image_indices_vk,
+            present_ids_vk,
+            present_modes_vk,
+            present_regions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> PresentInfoFields2Vk {
+        let swapchain_infos_fields1_vk = self
+            .swapchain_infos
+            .iter()
+            .map(SwapchainPresentInfo::to_vk_fields1)
+            .collect();
+
+        PresentInfoFields2Vk {
+            swapchain_infos_fields1_vk,
+        }
+    }
+}
+
+pub(crate) struct PresentInfoExtensionsVk<'a> {
+    pub(crate) present_id_vk: Option<vk::PresentIdKHR<'a>>,
+    pub(crate) present_mode_vk: Option<vk::SwapchainPresentModeInfoEXT<'a>>,
+    pub(crate) present_regions_vk: Option<vk::PresentRegionsKHR<'a>>,
+}
+
+pub(crate) struct PresentInfoFields1Vk<'a> {
+    pub(crate) wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    pub(crate) swapchains_vk: SmallVec<[vk::SwapchainKHR; 4]>,
+    pub(crate) image_indices_vk: SmallVec<[u32; 4]>,
+    pub(crate) present_ids_vk: SmallVec<[u64; 4]>,
+    pub(crate) present_modes_vk: SmallVec<[vk::PresentModeKHR; 4]>,
+    pub(crate) present_regions_vk: SmallVec<[vk::PresentRegionKHR<'a>; 4]>,
+}
+
+pub(crate) struct PresentInfoFields2Vk {
+    pub(crate) swapchain_infos_fields1_vk: SmallVec<[SwapchainPresentInfoFields1Vk; 4]>,
 }
 
 /// Parameters for a single present operation on a swapchain.
@@ -537,12 +755,12 @@ pub struct SwapchainPresentInfo {
      */
     /// An id used to identify this present operation.
     ///
-    /// If `present_id` is `Some`, the [`present_id`](crate::device::Features::present_id) feature
-    /// must be enabled on the device. The id must be greater than any id previously used for
-    /// `swapchain`. If a swapchain is recreated, this resets.
+    /// If `present_id` is `Some`, the [`present_id`](crate::device::DeviceFeatures::present_id)
+    /// feature must be enabled on the device. The id must be greater than any id previously
+    /// used for `swapchain`. If a swapchain is recreated, this resets.
     ///
     /// The default value is `None`.
-    pub present_id: Option<NonZeroU64>,
+    pub present_id: Option<NonZero<u64>>,
 
     /// The new present mode to use for presenting. This mode will be used for the current
     /// present, and any future presents where this value is `None`.
@@ -569,23 +787,29 @@ pub struct SwapchainPresentInfo {
     /// If `present_regions` is empty, that means that all of the swapchain image must be updated.
     ///
     /// The default value is empty.
-    pub present_regions: Vec<RectangleLayer>,
+    pub present_region: Vec<RectangleLayer>,
 
     pub _ne: crate::NonExhaustive,
 }
 
 impl SwapchainPresentInfo {
-    /// Returns a `SwapchainPresentInfo` with the specified `swapchain` and `image_index`.
+    /// Returns a default `SwapchainPresentInfo` with the provided `swapchain` and `image_index`.
     #[inline]
-    pub fn swapchain_image_index(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
+    pub const fn new(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
         Self {
             swapchain,
             image_index,
             present_id: None,
             present_mode: None,
-            present_regions: Vec::new(),
+            present_region: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn swapchain_image_index(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
+        Self::new(swapchain, image_index)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -594,7 +818,7 @@ impl SwapchainPresentInfo {
             image_index,
             present_id,
             present_mode,
-            ref present_regions,
+            ref present_region,
             _ne: _,
         } = self;
 
@@ -613,7 +837,7 @@ impl SwapchainPresentInfo {
             return Err(Box::new(ValidationError {
                 context: "present_id".into(),
                 problem: "is `Some`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "present_id",
                 )])]),
                 vuids: &["VUID-VkPresentInfoKHR-pNext-06235"],
@@ -630,7 +854,7 @@ impl SwapchainPresentInfo {
             }
         }
 
-        if !present_regions.is_empty() && !device.enabled_extensions().khr_incremental_present {
+        if !present_region.is_empty() && !device.enabled_extensions().khr_incremental_present {
             return Err(Box::new(ValidationError {
                 context: "present_regions".into(),
                 problem: "is not empty".into(),
@@ -641,7 +865,7 @@ impl SwapchainPresentInfo {
             }));
         }
 
-        for (index, rectangle_layer) in present_regions.iter().enumerate() {
+        for (index, rectangle_layer) in present_region.iter().enumerate() {
             let &RectangleLayer {
                 offset,
                 extent,
@@ -651,7 +875,7 @@ impl SwapchainPresentInfo {
             if offset[0] + extent[0] > swapchain.image_extent()[0] {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].offset[0]` + `present_regions[{0}].extent[0]` is \
+                        "`present_region[{0}].offset[0]` + `present_regions[{0}].extent[0]` is \
                         greater than `swapchain.image_extent()[0]`",
                         index
                     )
@@ -664,7 +888,7 @@ impl SwapchainPresentInfo {
             if offset[1] + extent[1] > swapchain.image_extent()[1] {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].offset[1]` + `present_regions[{0}].extent[1]` is \
+                        "`present_region[{0}].offset[1]` + `present_regions[{0}].extent[1]` is \
                         greater than `swapchain.image_extent()[1]`",
                         index
                     )
@@ -677,7 +901,7 @@ impl SwapchainPresentInfo {
             if layer >= swapchain.image_array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].layer` is greater than \
+                        "`present_region[{0}].layer` is greater than \
                         `swapchain.image_array_layers()`",
                         index
                     )
@@ -694,6 +918,22 @@ impl SwapchainPresentInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk_fields1(&self) -> SwapchainPresentInfoFields1Vk {
+        let present_region_rectangles_vk = self
+            .present_region
+            .iter()
+            .map(RectangleLayer::to_vk)
+            .collect();
+
+        SwapchainPresentInfoFields1Vk {
+            present_region_rectangles_vk,
+        }
+    }
+}
+
+pub(crate) struct SwapchainPresentInfoFields1Vk {
+    pub(crate) present_region_rectangles_vk: SmallVec<[vk::RectLayerKHR; 4]>,
 }
 
 /// Represents a rectangular region on an image layer.
@@ -717,21 +957,25 @@ impl RectangleLayer {
             && self.offset[1] + self.extent[1] <= swapchain.image_extent()[1]
             && self.layer < swapchain.image_array_layers()
     }
-}
 
-impl From<&RectangleLayer> for ash::vk::RectLayerKHR {
-    #[inline]
-    fn from(val: &RectangleLayer) -> Self {
-        ash::vk::RectLayerKHR {
-            offset: ash::vk::Offset2D {
-                x: val.offset[0] as i32,
-                y: val.offset[1] as i32,
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {
+        let &Self {
+            offset,
+            extent,
+            layer,
+        } = self;
+
+        vk::RectLayerKHR {
+            offset: vk::Offset2D {
+                x: offset[0] as i32,
+                y: offset[1] as i32,
             },
-            extent: ash::vk::Extent2D {
-                width: val.extent[0],
-                height: val.extent[1],
+            extent: vk::Extent2D {
+                width: extent[0],
+                height: extent[1],
             },
-            layer: val.layer,
+            layer,
         }
     }
 }
@@ -748,9 +992,9 @@ pub struct SemaphorePresentInfo {
 }
 
 impl SemaphorePresentInfo {
-    /// Returns a `SemaphorePresentInfo` with the specified `semaphore`.
+    /// Returns a default `SemaphorePresentInfo` with the provided `semaphore`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             _ne: crate::NonExhaustive(()),
@@ -776,6 +1020,15 @@ impl SemaphorePresentInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::Semaphore {
+        let &Self {
+            ref semaphore,
+            _ne: _,
+        } = self;
+
+        semaphore.handle()
     }
 }
 
@@ -833,11 +1086,11 @@ where
         }
 
         if device.enabled_extensions().khr_incremental_present {
-            for rectangle in &swapchain_info.present_regions {
+            for rectangle in &swapchain_info.present_region {
                 assert!(rectangle.is_compatible_with(swapchain_info.swapchain.as_ref()));
             }
         } else {
-            swapchain_info.present_regions = Default::default();
+            swapchain_info.present_region = Default::default();
         }
 
         let _queue = self.previous.queue();
@@ -845,9 +1098,9 @@ where
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
         // buffer
 
-        Ok(match self.previous.build_submission()? {
+        Ok(match unsafe { self.previous.build_submission() }? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::QueuePresent(PresentInfo {
-                swapchains: vec![self.swapchain_info.clone()],
+                swapchain_infos: vec![self.swapchain_info.clone()],
                 ..Default::default()
             }),
             SubmitAnyBuilder::SemaphoresWait(semaphores) => {
@@ -856,7 +1109,7 @@ where
                         .into_iter()
                         .map(SemaphorePresentInfo::new)
                         .collect(),
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -864,7 +1117,7 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -872,24 +1125,26 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
             SubmitAnyBuilder::QueuePresent(mut present_info) => {
-                if present_info.swapchains.first().map_or(false, |prev| {
+                if present_info.swapchain_infos.first().is_some_and(|prev| {
                     prev.present_mode.is_some() != self.swapchain_info.present_mode.is_some()
                 }) {
                     // If the present mode Option variants don't match, create a new command.
                     self.previous.flush()?;
 
                     SubmitAnyBuilder::QueuePresent(PresentInfo {
-                        swapchains: vec![self.swapchain_info.clone()],
+                        swapchain_infos: vec![self.swapchain_info.clone()],
                         ..Default::default()
                     })
                 } else {
                     // Otherwise, add our swapchain to the previous.
-                    present_info.swapchains.push(self.swapchain_info.clone());
+                    present_info
+                        .swapchain_infos
+                        .push(self.swapchain_info.clone());
 
                     SubmitAnyBuilder::QueuePresent(present_info)
                 }
@@ -898,75 +1153,73 @@ where
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
+        // SAFETY: If `flushed` already contains `true`, then `build_submission` will return
+        // `Empty`.
+        let build_submission_result = unsafe { self.build_submission() };
+        self.flushed.store(true, Ordering::SeqCst);
 
-            let build_submission_result = self.build_submission();
-            self.flushed.store(true, Ordering::SeqCst);
+        match build_submission_result? {
+            SubmitAnyBuilder::Empty => Ok(()),
+            SubmitAnyBuilder::QueuePresent(present_info) => {
+                let PresentInfo {
+                    wait_semaphores: _,
+                    swapchain_infos: swapchains,
+                    _ne: _,
+                } = &present_info;
 
-            match build_submission_result? {
-                SubmitAnyBuilder::Empty => Ok(()),
-                SubmitAnyBuilder::QueuePresent(present_info) => {
-                    let PresentInfo {
-                        wait_semaphores: _,
-                        swapchains,
+                for swapchain_info in swapchains {
+                    let &SwapchainPresentInfo {
+                        ref swapchain,
+                        image_index: _,
+                        present_id,
+                        present_region: _,
+                        present_mode: _,
                         _ne: _,
-                    } = &present_info;
+                    } = swapchain_info;
 
-                    for swapchain_info in swapchains {
-                        let &SwapchainPresentInfo {
-                            ref swapchain,
-                            image_index: _,
-                            present_id,
-                            present_regions: _,
-                            present_mode: _,
-                            _ne: _,
-                        } = swapchain_info;
-
-                        if present_id.map_or(false, |present_id| {
-                            !swapchain.try_claim_present_id(present_id)
-                        }) {
-                            return Err(Box::new(ValidationError {
-                                problem: "the provided `present_id` was not greater than any \
+                    if present_id.is_some_and(|present_id| !unsafe {
+                        swapchain.try_claim_present_id(present_id)
+                    }) {
+                        return Err(Box::new(ValidationError {
+                            problem: "the provided `present_id` was not greater than any \
                                     `present_id` passed previously for the same swapchain"
-                                    .into(),
-                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
-                                ..Default::default()
-                            })
-                            .into());
-                        }
+                                .into(),
+                            vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                            ..Default::default()
+                        })
+                        .into());
                     }
-
-                    match self.previous.check_swapchain_image_acquired(
-                        &self.swapchain_info.swapchain,
-                        self.swapchain_info.image_index,
-                        true,
-                    ) {
-                        Ok(_) => (),
-                        Err(AccessCheckError::Unknown) => {
-                            return Err(Box::new(ValidationError::from_error(
-                                AccessError::SwapchainImageNotAcquired,
-                            ))
-                            .into());
-                        }
-                        Err(AccessCheckError::Denied(err)) => {
-                            return Err(Box::new(ValidationError::from_error(err)).into());
-                        }
-                    }
-
-                    Ok(queue_present(&self.queue, present_info)?
-                        .map(|r| r.map(|_| ()))
-                        .fold(Ok(()), Result::and)?)
                 }
-                _ => unreachable!(),
+
+                match self.previous.check_swapchain_image_acquired(
+                    &self.swapchain_info.swapchain,
+                    self.swapchain_info.image_index,
+                    true,
+                ) {
+                    Ok(_) => (),
+                    Err(AccessCheckError::Unknown) => {
+                        return Err(Box::new(ValidationError::from_error(
+                            AccessError::SwapchainImageNotAcquired,
+                        ))
+                        .into());
+                    }
+                    Err(AccessCheckError::Denied(err)) => {
+                        return Err(Box::new(ValidationError::from_error(err)).into());
+                    }
+                }
+
+                Ok(unsafe { queue_present(&self.queue, present_info) }?
+                    .map(|r| r.map(|_| ()))
+                    .fold(Ok(()), Result::and)?)
             }
+            _ => unreachable!(),
         }
     }
 
     unsafe fn signal_finished(&self) {
         self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
-        self.previous.signal_finished();
+        unsafe { self.previous.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {
@@ -1054,18 +1307,16 @@ where
             return;
         }
 
-        unsafe {
-            if !*self.flushed.get_mut() {
-                // Flushing may fail, that's okay. We will still wait for the queue later, so any
-                // previous futures that were flushed correctly will still be waited upon.
-                self.flush().ok();
-            }
+        if !*self.flushed.get_mut() {
+            // Flushing may fail, that's okay. We will still wait for the queue later, so any
+            // previous futures that were flushed correctly will still be waited upon.
+            self.flush().ok();
+        }
 
-            if !*self.finished.get_mut() {
-                // Block until the queue finished.
-                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
-                self.previous.signal_finished();
-            }
+        if !*self.finished.get_mut() {
+            // Block until the queue finished.
+            self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
+            unsafe { self.previous.signal_finished() };
         }
     }
 }

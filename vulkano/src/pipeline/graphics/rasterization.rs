@@ -1,17 +1,9 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Configures how primitives should be converted into collections of fragments.
 
 use crate::{
     device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
@@ -19,7 +11,7 @@ pub struct RasterizationState {
     /// If true, then the depth value of the vertices will be clamped to the range [0.0, 1.0]. If
     /// false, fragments whose depth is outside of this range will be discarded.
     ///
-    /// If enabled, the [`depth_clamp`](crate::device::Features::depth_clamp) feature must be
+    /// If enabled, the [`depth_clamp`](crate::device::DeviceFeatures::depth_clamp) feature must be
     /// enabled on the device.
     ///
     /// The default value is `false`.
@@ -36,7 +28,7 @@ pub struct RasterizationState {
     /// into points.
     ///
     /// If set to a value other than `Fill`, the
-    /// [`fill_mode_non_solid`](crate::device::Features::fill_mode_non_solid) feature must be
+    /// [`fill_mode_non_solid`](crate::device::DeviceFeatures::fill_mode_non_solid) feature must be
     /// enabled on the device.
     ///
     /// The default value is [`PolygonMode::Fill`].
@@ -63,7 +55,7 @@ pub struct RasterizationState {
     /// Width, in pixels, of lines when drawing lines.
     ///
     /// Setting this to a value other than 1.0 requires the
-    /// [`wide_lines`](crate::device::Features::wide_lines) feature to be enabled on
+    /// [`wide_lines`](crate::device::DeviceFeatures::wide_lines) feature to be enabled on
     /// the device.
     ///
     /// The default value is `1.0`.
@@ -87,35 +79,44 @@ pub struct RasterizationState {
     /// The default value is `None`.
     pub line_stipple: Option<LineStipple>,
 
+    /// Enables a mode of rasterization where the edges of primitives are modified so that
+    /// fragments are generated if the edge of a primitive touches any part of a pixel, or if a
+    /// pixel is fully covered by a primitive.
+    ///
+    /// If this is set to `Some`, the
+    /// [`ext_conservative_rasterization`](crate::device::DeviceExtensions::ext_conservative_rasterization)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is `None`.
+    pub conservative: Option<RasterizationConservativeState>,
+
     pub _ne: crate::NonExhaustive,
 }
 
 impl Default for RasterizationState {
     #[inline]
     fn default() -> Self {
-        Self {
-            depth_clamp_enable: false,
-            rasterizer_discard_enable: false,
-            polygon_mode: Default::default(),
-            cull_mode: Default::default(),
-            front_face: Default::default(),
-            depth_bias: None,
-            line_width: 1.0,
-            line_rasterization_mode: Default::default(),
-            line_stipple: None,
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl RasterizationState {
-    /// Creates a `RasterizationState` with depth clamping, discard, depth biasing and line
-    /// stippling disabled, filled polygons, no culling, counterclockwise front face, and the
-    /// default line width and line rasterization mode.
+    /// Returns a default `RasterizationState`.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `RasterizationState::default` instead")]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            depth_clamp_enable: false,
+            rasterizer_discard_enable: false,
+            polygon_mode: PolygonMode::Fill,
+            cull_mode: CullMode::None,
+            front_face: FrontFace::CounterClockwise,
+            depth_bias: None,
+            line_width: 1.0,
+            line_rasterization_mode: LineRasterizationMode::Default,
+            line_stipple: None,
+            conservative: None,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 
     /// Sets the polygon mode.
@@ -153,6 +154,7 @@ impl RasterizationState {
             line_width: _,
             line_rasterization_mode,
             ref line_stipple,
+            ref conservative,
             _ne: _,
         } = self;
 
@@ -171,7 +173,7 @@ impl RasterizationState {
             return Err(Box::new(ValidationError {
                 context: "depth_clamp_enable".into(),
                 problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "depth_clamp",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782"],
@@ -182,7 +184,7 @@ impl RasterizationState {
             return Err(Box::new(ValidationError {
                 context: "polygon_mode".into(),
                 problem: "is not `PolygonMode::Fill`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "fill_mode_non_solid",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-01507"],
@@ -199,7 +201,7 @@ impl RasterizationState {
                     `rasterizer_discard_enable` is `false`, and \
                     `polygon_mode` is `PolygonMode::Point`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "point_polygons",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458"],
@@ -236,7 +238,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::Rectangular`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768"],
@@ -248,7 +250,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::Bresenham`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "bresenham_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769"],
@@ -260,7 +262,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::RectangularSmooth`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "smooth_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770"],
@@ -289,7 +291,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Default`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774"],
@@ -314,7 +316,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Rectangular`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771"],
@@ -328,7 +330,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Bresenham`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_bresenham_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772"],
@@ -342,7 +344,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::RectangularSmooth`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_smooth_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773"],
@@ -353,8 +355,127 @@ impl RasterizationState {
             }
         }
 
+        if let Some(conservative) = conservative {
+            if !device.enabled_extensions().ext_conservative_rasterization {
+                return Err(Box::new(ValidationError {
+                    context: "conservative".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_conservative_rasterization",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            conservative
+                .validate(device)
+                .map_err(|err| err.add_context("conservative"))?;
+        }
+
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut RasterizationStateExtensionsVk,
+    ) -> vk::PipelineRasterizationStateCreateInfo<'a> {
+        let &Self {
+            depth_clamp_enable,
+            rasterizer_discard_enable,
+            polygon_mode,
+            cull_mode,
+            front_face,
+            ref depth_bias,
+            line_width,
+            line_rasterization_mode: _,
+            line_stipple: _,
+            conservative: _,
+            _ne: _,
+        } = self;
+
+        let (
+            depth_bias_enable_vk,
+            depth_bias_constant_factor_vk,
+            depth_bias_clamp_vk,
+            depth_bias_slope_factor_vk,
+        ) = if let Some(depth_bias_state) = depth_bias {
+            let &DepthBiasState {
+                constant_factor,
+                clamp,
+                slope_factor,
+            } = depth_bias_state;
+
+            (true, constant_factor, clamp, slope_factor)
+        } else {
+            (false, 0.0, 0.0, 0.0)
+        };
+
+        let mut val_vk = vk::PipelineRasterizationStateCreateInfo::default()
+            .flags(vk::PipelineRasterizationStateCreateFlags::empty())
+            .depth_clamp_enable(depth_clamp_enable)
+            .rasterizer_discard_enable(rasterizer_discard_enable)
+            .polygon_mode(polygon_mode.into())
+            .cull_mode(cull_mode.into())
+            .front_face(front_face.into())
+            .depth_bias_enable(depth_bias_enable_vk)
+            .depth_bias_constant_factor(depth_bias_constant_factor_vk)
+            .depth_bias_clamp(depth_bias_clamp_vk)
+            .depth_bias_slope_factor(depth_bias_slope_factor_vk)
+            .line_width(line_width);
+
+        let RasterizationStateExtensionsVk {
+            line_vk,
+            conservative_vk,
+        } = extensions_vk;
+
+        if let Some(next) = line_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = conservative_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> RasterizationStateExtensionsVk {
+        let &Self {
+            line_rasterization_mode,
+            ref line_stipple,
+            ref conservative,
+            ..
+        } = self;
+
+        let line_vk = (line_rasterization_mode != LineRasterizationMode::Default).then(|| {
+            let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) =
+                if let Some(line_stipple) = line_stipple {
+                    (true, line_stipple.factor, line_stipple.pattern)
+                } else {
+                    (false, 1, 0)
+                };
+
+            vk::PipelineRasterizationLineStateCreateInfoKHR::default()
+                .line_rasterization_mode(line_rasterization_mode.into())
+                .stippled_line_enable(stippled_line_enable)
+                .line_stipple_factor(line_stipple_factor)
+                .line_stipple_pattern(line_stipple_pattern)
+        });
+        let conservative_vk = conservative
+            .as_ref()
+            .map(RasterizationConservativeState::to_vk);
+
+        RasterizationStateExtensionsVk {
+            line_vk,
+            conservative_vk,
+        }
+    }
+}
+
+pub(crate) struct RasterizationStateExtensionsVk {
+    pub(crate) line_vk: Option<vk::PipelineRasterizationLineStateCreateInfoKHR<'static>>,
+    pub(crate) conservative_vk:
+        Option<vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static>>,
 }
 
 /// The values to use for depth biasing.
@@ -368,8 +489,8 @@ pub struct DepthBiasState {
     /// The maximum (or minimum) depth bias of a fragment.
     ///
     /// Setting this to a value other than 0.0 requires the
-    /// [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp) feature to be enabled on
-    /// the device.
+    /// [`depth_bias_clamp`](crate::device::DeviceFeatures::depth_bias_clamp) feature to be enabled
+    /// on the device.
     ///
     /// The default value is `0.0`.
     pub clamp: f32,
@@ -383,6 +504,14 @@ pub struct DepthBiasState {
 impl Default for DepthBiasState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DepthBiasState {
+    /// Returns a default `DepthBiasState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             constant_factor: 1.0,
             clamp: 0.0,
@@ -459,7 +588,7 @@ vulkan_enum! {
     // TODO: document further
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, unless `rasterizer_discard_enable` is active, the
-    /// [`point_polygons`](crate::device::Features::point_polygons)
+    /// [`point_polygons`](crate::device::DeviceFeatures::point_polygons)
     /// feature must be enabled on the device.
     Point = POINT,
 
@@ -484,42 +613,41 @@ vulkan_enum! {
     /// The rasterization mode to use for lines.
     LineRasterizationMode = LineRasterizationModeEXT(i32);
 
-    /// If the [`strict_lines`](crate::device::Properties::strict_lines) device property is `true`,
+    /// If the [`strict_lines`](crate::device::DeviceProperties::strict_lines) device property is `true`,
     /// then this is the same as `Rectangular`. Otherwise, lines are drawn as parallelograms.
     ///
     /// If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`strict_lines`](crate::device::Properties::strict_lines) property must be `true` and the
-    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) feature
+    /// [`strict_lines`](crate::device::DeviceProperties::strict_lines) property must be `true` and the
+    /// [`stippled_rectangular_lines`](crate::device::DeviceFeatures::stippled_rectangular_lines) feature
     /// must be enabled on the device.
     Default = DEFAULT,
 
     /// Lines are drawn as if they were rectangles extruded from the line.
     ///
-    /// The [`rectangular_lines`](crate::device::Features::rectangular_lines) feature must be
+    /// The [`rectangular_lines`](crate::device::DeviceFeatures::rectangular_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) must
+    /// [`stippled_rectangular_lines`](crate::device::DeviceFeatures::stippled_rectangular_lines) must
     /// also be enabled.
     Rectangular = RECTANGULAR,
 
     /// Lines are drawn by determining which pixel diamonds the line intersects and exits.
     ///
-    /// The [`bresenham_lines`](crate::device::Features::bresenham_lines) feature must be
+    /// The [`bresenham_lines`](crate::device::DeviceFeatures::bresenham_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_bresenham_lines`](crate::device::Features::stippled_bresenham_lines) must
+    /// [`stippled_bresenham_lines`](crate::device::DeviceFeatures::stippled_bresenham_lines) must
     /// also be enabled.
     Bresenham = BRESENHAM,
 
     /// As `Rectangular`, but with alpha falloff.
     ///
-    /// The [`smooth_lines`](crate::device::Features::smooth_lines) feature must be
+    /// The [`smooth_lines`](crate::device::DeviceFeatures::smooth_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_smooth_lines`](crate::device::Features::stippled_smooth_lines) must
+    /// [`stippled_smooth_lines`](crate::device::DeviceFeatures::stippled_smooth_lines) must
     /// also be enabled.
     RectangularSmooth = RECTANGULAR_SMOOTH,
 }
 
 impl Default for LineRasterizationMode {
-    /// Returns `LineRasterizationMode::Default`.
     #[inline]
     fn default() -> Self {
         Self::Default
@@ -534,4 +662,109 @@ pub struct LineStipple {
 
     /// The bit pattern used in stippled line rasterization.
     pub pattern: u16,
+}
+
+/// The state in a graphics pipeline describing how the conservative rasterization mode should
+/// behave.
+#[derive(Clone, Debug)]
+pub struct RasterizationConservativeState {
+    /// Sets the conservative rasterization mode.
+    ///
+    /// The default value is [`ConservativeRasterizationMode::Disabled`].
+    pub mode: ConservativeRasterizationMode,
+
+    /// The extra size in pixels to increase the generating primitive during conservative
+    /// rasterization. If the mode is set to anything other than
+    /// [`ConservativeRasterizationMode::Overestimate`] this value is ignored.
+    ///
+    ///  The default value is 0.0.
+    pub overestimation_size: f32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for RasterizationConservativeState {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RasterizationConservativeState {
+    /// Returns a default `RasterizationConservativeState`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            mode: ConservativeRasterizationMode::Disabled,
+            overestimation_size: 0.0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            mode,
+            overestimation_size,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode").set_vuids(&[
+                "VUID-VkPipelineRasterizationConservativeStateCreateInfoEXT-conservativeRasterizationMode-parameter",
+            ])
+        })?;
+
+        if overestimation_size < 0.0
+            || overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap()
+        {
+            return Err(Box::new(ValidationError {
+                context: "overestimation size".into(),
+                problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
+                vuids: &[
+                    "VUID-VkPipelineRasterizationConservativeStateCreateInfoEXT-extraPrimitiveOverestimationSize-01769",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static> {
+        let &Self {
+            mode,
+            overestimation_size,
+            _ne: _,
+        } = self;
+
+        vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+            .flags(vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty())
+            .conservative_rasterization_mode(mode.into())
+            .extra_primitive_overestimation_size(overestimation_size)
+    }
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    /// Describes how fragments will be generated based on how much is covered by a primitive.
+    ConservativeRasterizationMode = ConservativeRasterizationModeEXT(i32);
+
+    /// Conservative rasterization is disabled and rasterization proceeds as normal.
+    Disabled = DISABLED,
+
+    /// Fragments will be generated if any part of a primitive touches a pixel.
+    Overestimate = OVERESTIMATE,
+
+    /// Fragments will be generated only if a primitive completely covers a pixel.
+    Underestimate = UNDERESTIMATE,
+}
+
+impl Default for ConservativeRasterizationMode {
+    #[inline]
+    fn default() -> ConservativeRasterizationMode {
+        ConservativeRasterizationMode::Disabled
+    }
 }

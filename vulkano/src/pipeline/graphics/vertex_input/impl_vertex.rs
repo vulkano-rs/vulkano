@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::format::Format;
 
 /// Implements the `Vertex` trait on a struct.
@@ -49,26 +40,28 @@ macro_rules! impl_vertex {
                         #[inline] fn f<T: VertexMember>(_: &T) -> Format { T::format() }
                         let format = f(&dummy.$member);
                         let field_size = {
-                            let p = unsafe {
-                                core::ptr::addr_of!((*(&dummy as *const _ as *const $out)).$member)
+                            let dummy_ptr: *const $out = <*const _>::cast(&dummy);
+                            let member_ptr = unsafe {
+                                core::ptr::addr_of!((*dummy_ptr).$member)
                             };
                             const fn size_of_raw<T>(_: *const T) -> usize {
                                 core::mem::size_of::<T>()
                             }
-                            size_of_raw(p)
+                            size_of_raw(member_ptr)
                         } as u32;
                         let format_size = format.block_size() as u32;
                         let num_elements = field_size / format_size;
                         let remainder = field_size % format_size;
                         assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", stringify!($member));
 
-                        let dummy_ptr = (&dummy) as *const _;
-                        let member_ptr = (&dummy.$member) as *const _;
+                        let dummy_ptr = core::ptr::addr_of!(dummy);
+                        let member_ptr = core::ptr::addr_of!(dummy.$member);
 
                         members.insert(stringify!($member).to_string(), VertexMemberInfo {
-                            offset: member_ptr as usize - dummy_ptr as usize,
+                            offset: u32::try_from(member_ptr as usize - dummy_ptr as usize).unwrap(),
                             format,
                             num_elements,
+                            stride: format_size,
                         });
                     }
                 )*
@@ -167,7 +160,6 @@ mod tests {
     use crate::format::Format;
     #[allow(deprecated)]
     use crate::pipeline::graphics::vertex_input::Vertex;
-
     use bytemuck::{Pod, Zeroable};
 
     #[test]

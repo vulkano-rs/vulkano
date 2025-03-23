@@ -1,20 +1,11 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::align_up;
-use crate::{macros::try_opt, memory::DeviceAlignment, DeviceSize, NonZeroDeviceSize};
+use crate::{buffer::BufferContents, macros::try_opt, memory::DeviceAlignment, DeviceSize};
 use std::{
     alloc::Layout,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::Hash,
-    mem::size_of,
+    num::NonZero,
 };
 
 /// Vulkan analog of std's [`Layout`], represented using [`DeviceSize`]s.
@@ -22,9 +13,12 @@ use std::{
 /// Unlike `Layout`s, `DeviceLayout`s are required to have non-zero size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeviceLayout {
-    size: NonZeroDeviceSize,
+    size: NonZero<DeviceSize>,
     alignment: DeviceAlignment,
 }
+
+const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
+const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
 
 impl DeviceLayout {
     /// The maximum size of a memory block after its layout's size has been rounded up to the
@@ -35,59 +29,43 @@ impl DeviceLayout {
     /// undefined behavior*.
     pub const MAX_SIZE: DeviceSize = DeviceAlignment::MAX.as_devicesize() - 1;
 
-    /// Creates a new `DeviceLayout` from a [`Layout`], or returns an error if the `Layout` has
+    /// Creates a new `DeviceLayout` from a [`Layout`], or returns [`None`] if the `Layout` has
     /// zero size.
     #[inline]
-    pub const fn from_layout(layout: Layout) -> Result<Self, TryFromLayoutError> {
+    pub const fn from_layout(layout: Layout) -> Option<DeviceLayout> {
         let (size, alignment) = Self::size_alignment_from_layout(&layout);
 
-        #[cfg(any(
-            target_pointer_width = "64",
-            target_pointer_width = "32",
-            target_pointer_width = "16",
-        ))]
-        {
-            const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
-            const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
-
-            if let Some(size) = NonZeroDeviceSize::new(size) {
-                // SAFETY: Under the precondition that `usize` can't overflow `DeviceSize`, which
-                // we checked above, `Layout`'s overflow-invariant is the same if not stricter than
-                // that of `DeviceLayout`.
-                Ok(unsafe { DeviceLayout::new_unchecked(size, alignment) })
-            } else {
-                Err(TryFromLayoutError)
-            }
+        if let Some(size) = NonZero::new(size) {
+            // SAFETY: Under the precondition that `usize` can't overflow `DeviceSize`, which we
+            // checked above, `Layout`'s overflow-invariant is the same if not stricter than that
+            // of `DeviceLayout`.
+            Some(unsafe { DeviceLayout::new_unchecked(size, alignment) })
+        } else {
+            None
         }
     }
 
-    /// Converts the `DeviceLayout` into a [`Layout`], or returns an error if the `DeviceLayout`
+    /// Converts the `DeviceLayout` into a [`Layout`], or returns [`None`] if the `DeviceLayout`
     /// doesn't meet the invariants of `Layout`.
     #[inline]
-    pub const fn into_layout(self) -> Result<Layout, TryFromDeviceLayoutError> {
+    pub const fn into_layout(self) -> Option<Layout> {
         let (size, alignment) = (self.size(), self.alignment().as_devicesize());
 
         #[cfg(target_pointer_width = "64")]
         {
-            const _: () = assert!(size_of::<DeviceSize>() <= size_of::<usize>());
-            const _: () = assert!(DeviceLayout::MAX_SIZE as usize <= isize::MAX as usize);
-
             // SAFETY: Under the precondition that `DeviceSize` can't overflow `usize`, which we
             // checked above, `DeviceLayout`'s overflow-invariant is the same if not stricter that
             // of `Layout`.
-            Ok(unsafe { Layout::from_size_align_unchecked(size as usize, alignment as usize) })
+            Some(unsafe { Layout::from_size_align_unchecked(size as usize, alignment as usize) })
         }
         #[cfg(any(target_pointer_width = "32", target_pointer_width = "16"))]
         {
-            const _: () = assert!(size_of::<DeviceSize>() > size_of::<usize>());
-            const _: () = assert!(DeviceLayout::MAX_SIZE > isize::MAX as DeviceSize);
-
             if size > usize::MAX as DeviceSize || alignment > usize::MAX as DeviceSize {
-                Err(TryFromDeviceLayoutError)
+                None
             } else if let Ok(layout) = Layout::from_size_align(size as usize, alignment as usize) {
-                Ok(layout)
+                Some(layout)
             } else {
-                Err(TryFromDeviceLayoutError)
+                None
             }
         }
     }
@@ -98,7 +76,7 @@ impl DeviceLayout {
     /// exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the nearest multiple of `alignment`.
     #[inline]
     pub const fn from_size_alignment(size: DeviceSize, alignment: DeviceSize) -> Option<Self> {
-        let size = try_opt!(NonZeroDeviceSize::new(size));
+        let size = try_opt!(NonZero::new(size));
         let alignment = try_opt!(DeviceAlignment::new(alignment));
 
         DeviceLayout::new(size, alignment)
@@ -119,10 +97,27 @@ impl DeviceLayout {
         size: DeviceSize,
         alignment: DeviceSize,
     ) -> Self {
-        DeviceLayout::new_unchecked(
-            NonZeroDeviceSize::new_unchecked(size),
-            DeviceAlignment::new_unchecked(alignment),
-        )
+        let size = unsafe { NonZero::new_unchecked(size) };
+        let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
+        unsafe { DeviceLayout::new_unchecked(size, alignment) }
+    }
+
+    /// Creates a new `DeviceLayout` for a sized `T`.
+    #[inline]
+    pub const fn new_sized<T: BufferContents>() -> DeviceLayout {
+        T::LAYOUT.unwrap_sized()
+    }
+
+    /// Creates a new `DeviceLayout` for an unsized `T` with an unsized tail of `len` elements.
+    ///
+    /// Returns [`None`] if `len` is zero or if the total size would exceed
+    /// [`DeviceLayout::MAX_SIZE`], unless the `T` is actually sized, in which case this behaves
+    /// identically to [`new_sized`] and `len` is ignored.
+    ///
+    /// [`new_sized`]: Self::new_sized
+    #[inline]
+    pub const fn new_unsized<T: BufferContents + ?Sized>(len: DeviceSize) -> Option<DeviceLayout> {
+        T::LAYOUT.layout_for_len(len)
     }
 
     /// Creates a new `DeviceLayout` from the given `size` and `alignment`.
@@ -130,7 +125,7 @@ impl DeviceLayout {
     /// Returns [`None`] if `size` would exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the
     /// nearest multiple of `alignment`.
     #[inline]
-    pub const fn new(size: NonZeroDeviceSize, alignment: DeviceAlignment) -> Option<Self> {
+    pub const fn new(size: NonZero<DeviceSize>, alignment: DeviceAlignment) -> Option<Self> {
         if size.get() > Self::max_size_for_alignment(alignment) {
             None
         } else {
@@ -154,10 +149,21 @@ impl DeviceLayout {
     ///   [`DeviceLayout::MAX_SIZE`].
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub const unsafe fn new_unchecked(size: NonZeroDeviceSize, alignment: DeviceAlignment) -> Self {
+    pub const unsafe fn new_unchecked(
+        size: NonZero<DeviceSize>,
+        alignment: DeviceAlignment,
+    ) -> Self {
         debug_assert!(size.get() <= Self::max_size_for_alignment(alignment));
 
         DeviceLayout { size, alignment }
+    }
+
+    /// Creates a new `DeviceLayout` for the given `value`.
+    ///
+    /// Returns [`None`] if the value is zero-sized.
+    #[inline]
+    pub fn for_value<T: BufferContents + ?Sized>(value: &T) -> Option<DeviceLayout> {
+        DeviceLayout::from_layout(Layout::for_value(value))
     }
 
     /// Returns the minimum size in bytes for a memory block of this layout.
@@ -200,21 +206,22 @@ impl DeviceLayout {
     }
 
     #[inline(always)]
-    const fn padded_size(&self) -> NonZeroDeviceSize {
+    const fn padded_size(&self) -> NonZero<DeviceSize> {
         let size = align_up(self.size(), self.alignment);
 
         // SAFETY: `DeviceLayout`'s invariant guarantees that the rounded up size won't overflow.
-        unsafe { NonZeroDeviceSize::new_unchecked(size) }
+        unsafe { NonZero::new_unchecked(size) }
     }
 
     /// Creates a new `DeviceLayout` describing the record for `n` instances of `self`, possibly
     /// with padding at the end of each to ensure correct alignment of all instances.
     ///
     /// Returns a tuple consisting of the new layout and the stride, in bytes, of `self`, or
-    /// returns [`None`] on arithmetic overflow or when the total size would exceed
+    /// returns [`None`] if `n` is zero or when the total size would exceed
     /// [`DeviceLayout::MAX_SIZE`].
     #[inline]
-    pub const fn repeat(&self, n: NonZeroDeviceSize) -> Option<(Self, DeviceSize)> {
+    pub const fn repeat(&self, n: DeviceSize) -> Option<(Self, DeviceSize)> {
+        let n = try_opt!(NonZero::new(n));
         let stride = self.padded_size();
         let size = try_opt!(stride.checked_mul(n));
         let layout = try_opt!(DeviceLayout::new(size, self.alignment));
@@ -284,23 +291,13 @@ impl DeviceLayout {
 
     #[inline(always)]
     const fn size_alignment_from_layout(layout: &Layout) -> (DeviceSize, DeviceAlignment) {
-        #[cfg(any(
-            target_pointer_width = "64",
-            target_pointer_width = "32",
-            target_pointer_width = "16",
-        ))]
-        {
-            const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
-            const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
+        // We checked that `usize` can't overflow `DeviceSize` above, so this can't truncate.
+        let (size, alignment) = (layout.size() as DeviceSize, layout.align() as DeviceSize);
 
-            // We checked that `usize` can't overflow `DeviceSize`, so this can't truncate.
-            let (size, alignment) = (layout.size() as DeviceSize, layout.align() as DeviceSize);
+        // SAFETY: `Layout`'s alignment-invariant guarantees that it is a power of two.
+        let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
 
-            // SAFETY: `Layout`'s alignment-invariant guarantees that it is a power of two.
-            let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
-
-            (size, alignment)
-        }
+        (size, alignment)
     }
 }
 
@@ -309,7 +306,7 @@ impl TryFrom<Layout> for DeviceLayout {
 
     #[inline]
     fn try_from(layout: Layout) -> Result<Self, Self::Error> {
-        DeviceLayout::from_layout(layout)
+        DeviceLayout::from_layout(layout).ok_or(TryFromLayoutError)
     }
 }
 
@@ -318,7 +315,7 @@ impl TryFrom<DeviceLayout> for Layout {
 
     #[inline]
     fn try_from(device_layout: DeviceLayout) -> Result<Self, Self::Error> {
-        DeviceLayout::into_layout(device_layout)
+        DeviceLayout::into_layout(device_layout).ok_or(TryFromDeviceLayoutError)
     }
 }
 

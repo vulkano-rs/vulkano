@@ -1,32 +1,20 @@
-// Copyright (c) 2022 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{Device, DeviceOwned, QueueCreateFlags};
 use crate::{
     command_buffer::{CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo},
     instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
     macros::vulkan_bitflags,
-    memory::{
-        BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
-    },
-    swapchain::{PresentInfo, SemaphorePresentInfo, SwapchainPresentInfo},
-    sync::{fence::Fence, semaphore::SemaphoreType, PipelineStages},
+    memory::sparse::BindSparseInfo,
+    swapchain::{PresentInfo, SwapchainPresentInfo},
+    sync::{fence::Fence, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
-    ffi::CString,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    ptr,
     sync::Arc,
 };
 
@@ -34,53 +22,71 @@ use std::{
 // TODO: should use internal synchronization?
 #[derive(Debug)]
 pub struct Queue {
-    handle: ash::vk::Queue,
+    handle: vk::Queue,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
 
     flags: QueueCreateFlags,
     queue_family_index: u32,
-    id: u32, // id within family
+    queue_index: u32, // index within family
 
     state: Mutex<QueueState>,
 }
 
 impl Queue {
-    pub(super) unsafe fn new(
-        device: Arc<Device>,
-        flags: QueueCreateFlags,
-        queue_family_index: u32,
-        id: u32,
-    ) -> Arc<Self> {
+    pub(super) unsafe fn new(device: Arc<Device>, queue_info: DeviceQueueInfo) -> Arc<Self> {
+        let queue_info_vk = queue_info.to_vk();
+
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.get_device_queue)(
-                device.handle(),
-                queue_family_index,
-                id,
-                output.as_mut_ptr(),
-            );
-            output.assume_init()
+
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.get_device_queue2)(
+                        device.handle(),
+                        &queue_info_vk,
+                        output.as_mut_ptr(),
+                    )
+                };
+            } else {
+                debug_assert!(queue_info_vk.flags.is_empty());
+                debug_assert!(queue_info_vk.p_next.is_null());
+                unsafe {
+                    (fns.v1_0.get_device_queue)(
+                        device.handle(),
+                        queue_info_vk.queue_family_index,
+                        queue_info_vk.queue_index,
+                        output.as_mut_ptr(),
+                    )
+                };
+            }
+
+            unsafe { output.assume_init() }
         };
 
-        Self::from_handle(device, handle, flags, queue_family_index, id)
+        unsafe { Self::from_handle(device, handle, queue_info) }
     }
 
     // TODO: Make public
     #[inline]
     pub(super) unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Queue,
-        flags: QueueCreateFlags,
-        queue_family_index: u32,
-        id: u32,
+        handle: vk::Queue,
+        queue_info: DeviceQueueInfo,
     ) -> Arc<Self> {
+        let DeviceQueueInfo {
+            flags,
+            queue_family_index,
+            queue_index,
+            _ne: _,
+        } = queue_info;
+
         Arc::new(Queue {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             flags,
             queue_family_index,
-            id,
+            queue_index,
             state: Mutex::new(Default::default()),
         })
     }
@@ -105,8 +111,8 @@ impl Queue {
 
     /// Returns the index of this queue within its queue family.
     #[inline]
-    pub fn id_within_family(&self) -> u32 {
-        self.id
+    pub fn queue_index(&self) -> u32 {
+        self.queue_index
     }
 
     /// Locks the queue and then calls the provided closure, providing it with an object that
@@ -118,20 +124,22 @@ impl Queue {
             _state: self.state.lock(),
         })
     }
+
+    fn queue_family_properties(&self) -> &QueueFamilyProperties {
+        &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
+    }
 }
 
 impl Drop for Queue {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            let _ = (fns.v1_0.queue_wait_idle)(self.handle);
-        }
+        let fns = self.device.fns();
+        let _ = unsafe { (fns.v1_0.queue_wait_idle)(self.handle) };
     }
 }
 
 unsafe impl VulkanObject for Queue {
-    type Handle = ash::vk::Queue;
+    type Handle = vk::Queue;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -149,7 +157,7 @@ unsafe impl DeviceOwned for Queue {
 impl PartialEq for Queue {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.queue_index == other.queue_index
             && self.queue_family_index == other.queue_family_index
             && self.device == other.device
     }
@@ -159,9 +167,46 @@ impl Eq for Queue {}
 
 impl Hash for Queue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        self.queue_index.hash(state);
         self.queue_family_index.hash(state);
         self.device.hash(state);
+    }
+}
+
+/// Parameters to retrieve a [`Queue`] from the device.
+#[derive(Clone, Debug)]
+pub(super) struct DeviceQueueInfo {
+    pub(super) flags: QueueCreateFlags,
+    pub(super) queue_family_index: u32,
+    pub(super) queue_index: u32,
+    pub(super) _ne: crate::NonExhaustive,
+}
+
+impl Default for DeviceQueueInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            flags: QueueCreateFlags::empty(),
+            queue_family_index: 0,
+            queue_index: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl DeviceQueueInfo {
+    pub(crate) fn to_vk(&self) -> vk::DeviceQueueInfo2<'static> {
+        let &Self {
+            flags,
+            queue_family_index,
+            queue_index,
+            _ne: _,
+        } = self;
+
+        vk::DeviceQueueInfo2::default()
+            .flags(flags.into())
+            .queue_family_index(queue_family_index)
+            .queue_index(queue_index)
     }
 }
 
@@ -170,7 +215,7 @@ pub struct QueueGuard<'a> {
     _state: MutexGuard<'a, QueueState>,
 }
 
-impl<'a> QueueGuard<'a> {
+impl QueueGuard<'_> {
     /// Waits until all work on this queue has finished, then releases ownership of all resources
     /// that were in use by the queue.
     ///
@@ -181,12 +226,89 @@ impl<'a> QueueGuard<'a> {
     /// program.
     #[inline]
     pub fn wait_idle(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.queue.device.fns();
-            (fns.v1_0.queue_wait_idle)(self.queue.handle)
-                .result()
-                .map_err(VulkanError::from)
+        let fns = self.queue.device.fns();
+        unsafe { (fns.v1_0.queue_wait_idle)(self.queue.handle) }
+            .result()
+            .map_err(VulkanError::from)
+    }
+
+    /// Bind or unbind memory to resources with sparse memory.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
+    ///
+    /// For every element in the `buffer_binds`, `image_opaque_binds` and `image_binds`
+    /// elements of every `bind_infos` element:
+    /// - The buffers and images must be kept alive while the command is being executed.
+    /// - The memory allocations must be kept alive while they are bound to a buffer or image.
+    /// - Access to the affected regions of each buffer or image must be synchronized.
+    ///
+    /// For every semaphore in the `signal_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
+    #[inline]
+    pub unsafe fn bind_sparse(
+        &mut self,
+        bind_infos: &[BindSparseInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_bind_sparse(bind_infos, fence)?;
+
+        Ok(unsafe { self.bind_sparse_unchecked(bind_infos, fence) }?)
+    }
+
+    fn validate_bind_sparse(
+        &self,
+        bind_infos: &[BindSparseInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::SPARSE_BINDING)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of this queue does not support \
+                    sparse binding operations"
+                    .into(),
+                vuids: &["VUID-vkQueueBindSparse-queuetype"],
+                ..Default::default()
+            }));
         }
+
+        let device = self.queue.device();
+
+        if let Some(fence) = fence {
+            // VUID-vkQueueBindSparse-commonparent
+            assert_eq!(device, fence.device());
+        }
+
+        for (index, bind_sparse_info) in bind_infos.iter().enumerate() {
+            bind_sparse_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("bind_infos[{}]", index)))?;
+        }
+
+        // unsafe
+        // VUID-vkQueueBindSparse-fence-01113
+        // VUID-vkQueueBindSparse-fence-01114
+        // VUID-vkQueueBindSparse-pSignalSemaphores-01115
+        // VUID-vkQueueBindSparse-pWaitSemaphores-01116
+        // VUID-vkQueueBindSparse-pWaitSemaphores-03245
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -195,261 +317,34 @@ impl<'a> QueueGuard<'a> {
         bind_infos: &[BindSparseInfo],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
-        struct PerBindSparseInfo {
-            wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-            buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
-            buffer_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
-            image_opaque_bind_infos_vk: SmallVec<[ash::vk::SparseImageOpaqueMemoryBindInfo; 4]>,
-            image_opaque_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
-            image_bind_infos_vk: SmallVec<[ash::vk::SparseImageMemoryBindInfo; 4]>,
-            image_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseImageMemoryBind; 4]>; 4]>,
-            signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-        }
-
-        let (mut bind_infos_vk, mut per_bind_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) = bind_infos
+        let bind_infos_fields2_vk: SmallVec<[_; 4]> = bind_infos
             .iter()
-            .map(|bind_info| {
-                let &BindSparseInfo {
-                    ref wait_semaphores,
-                    ref buffer_binds,
-                    ref image_opaque_binds,
-                    ref image_binds,
-                    ref signal_semaphores,
-                    _ne: _,
-                } = bind_info;
+            .map(BindSparseInfo::to_vk_fields2)
+            .collect();
 
-                let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
-                    .iter()
-                    .map(|semaphore| semaphore.handle())
-                    .collect();
+        let bind_infos_fields1_vk: SmallVec<[_; 4]> = bind_infos
+            .iter()
+            .zip(&bind_infos_fields2_vk)
+            .map(|(bind_info, fields2_vk)| bind_info.to_vk_fields1(fields2_vk))
+            .collect();
 
-                let (buffer_bind_infos_vk, buffer_binds_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
-                    buffer_binds
-                        .iter()
-                        .map(|(buffer, memory_binds)| {
-                            (
-                                ash::vk::SparseBufferMemoryBindInfo {
-                                    buffer: buffer.buffer().handle(),
-                                    bind_count: 0,
-                                    p_binds: ptr::null(),
-                                },
-                                memory_binds
-                                    .iter()
-                                    .map(|memory_bind| {
-                                        let &SparseBufferMemoryBind {
-                                            offset,
-                                            size,
-                                            ref memory,
-                                        } = memory_bind;
-
-                                        let (memory, memory_offset) = memory.as_ref().map_or_else(
-                                            Default::default,
-                                            |(memory, memory_offset)| {
-                                                (memory.handle(), *memory_offset)
-                                            },
-                                        );
-
-                                        ash::vk::SparseMemoryBind {
-                                            resource_offset: offset,
-                                            size,
-                                            memory,
-                                            memory_offset,
-                                            flags: ash::vk::SparseMemoryBindFlags::empty(),
-                                        }
-                                    })
-                                    .collect::<SmallVec<[_; 4]>>(),
-                            )
-                        })
-                        .unzip();
-
-                let (image_opaque_bind_infos_vk, image_opaque_binds_vk): (
-                    SmallVec<[_; 4]>,
-                    SmallVec<[_; 4]>,
-                ) = image_opaque_binds
-                    .iter()
-                    .map(|(image, memory_binds)| {
-                        (
-                            ash::vk::SparseImageOpaqueMemoryBindInfo {
-                                image: image.handle(),
-                                bind_count: 0,
-                                p_binds: ptr::null(),
-                            },
-                            memory_binds
-                                .iter()
-                                .map(|memory_bind| {
-                                    let &SparseImageOpaqueMemoryBind {
-                                        offset,
-                                        size,
-                                        ref memory,
-                                        metadata,
-                                    } = memory_bind;
-
-                                    let (memory, memory_offset) = memory.as_ref().map_or_else(
-                                        Default::default,
-                                        |(memory, memory_offset)| (memory.handle(), *memory_offset),
-                                    );
-
-                                    ash::vk::SparseMemoryBind {
-                                        resource_offset: offset,
-                                        size,
-                                        memory,
-                                        memory_offset,
-                                        flags: if metadata {
-                                            ash::vk::SparseMemoryBindFlags::METADATA
-                                        } else {
-                                            ash::vk::SparseMemoryBindFlags::empty()
-                                        },
-                                    }
-                                })
-                                .collect::<SmallVec<[_; 4]>>(),
-                        )
-                    })
-                    .unzip();
-
-                let (image_bind_infos_vk, image_binds_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
-                    image_binds
-                        .iter()
-                        .map(|(image, memory_binds)| {
-                            (
-                                ash::vk::SparseImageMemoryBindInfo {
-                                    image: image.handle(),
-                                    bind_count: 0,
-                                    p_binds: ptr::null(),
-                                },
-                                memory_binds
-                                    .iter()
-                                    .map(|memory_bind| {
-                                        let &SparseImageMemoryBind {
-                                            aspects,
-                                            mip_level,
-                                            array_layer,
-                                            offset,
-                                            extent,
-                                            ref memory,
-                                        } = memory_bind;
-
-                                        let (memory, memory_offset) = memory.as_ref().map_or_else(
-                                            Default::default,
-                                            |(memory, memory_offset)| {
-                                                (memory.handle(), *memory_offset)
-                                            },
-                                        );
-
-                                        ash::vk::SparseImageMemoryBind {
-                                            subresource: ash::vk::ImageSubresource {
-                                                aspect_mask: aspects.into(),
-                                                mip_level,
-                                                array_layer,
-                                            },
-                                            offset: ash::vk::Offset3D {
-                                                x: offset[0] as i32,
-                                                y: offset[1] as i32,
-                                                z: offset[2] as i32,
-                                            },
-                                            extent: ash::vk::Extent3D {
-                                                width: extent[0],
-                                                height: extent[1],
-                                                depth: extent[2],
-                                            },
-                                            memory,
-                                            memory_offset,
-                                            flags: ash::vk::SparseMemoryBindFlags::empty(),
-                                        }
-                                    })
-                                    .collect::<SmallVec<[_; 4]>>(),
-                            )
-                        })
-                        .unzip();
-
-                let signal_semaphores_vk: SmallVec<[_; 4]> = signal_semaphores
-                    .iter()
-                    .map(|semaphore| semaphore.handle())
-                    .collect();
-
-                (
-                    ash::vk::BindSparseInfo::default(),
-                    PerBindSparseInfo {
-                        wait_semaphores_vk,
-                        buffer_bind_infos_vk,
-                        buffer_binds_vk,
-                        image_opaque_bind_infos_vk,
-                        image_opaque_binds_vk,
-                        image_bind_infos_vk,
-                        image_binds_vk,
-                        signal_semaphores_vk,
-                    },
-                )
-            })
-            .unzip();
-
-        for (
-            bind_info_vk,
-            PerBindSparseInfo {
-                wait_semaphores_vk,
-                buffer_bind_infos_vk,
-                buffer_binds_vk,
-                image_opaque_bind_infos_vk,
-                image_opaque_binds_vk,
-                image_bind_infos_vk,
-                image_binds_vk,
-                signal_semaphores_vk,
-            },
-        ) in (bind_infos_vk.iter_mut()).zip(per_bind_vk.iter_mut())
-        {
-            for (buffer_bind_infos_vk, buffer_binds_vk) in
-                (buffer_bind_infos_vk.iter_mut()).zip(buffer_binds_vk.iter())
-            {
-                *buffer_bind_infos_vk = ash::vk::SparseBufferMemoryBindInfo {
-                    bind_count: buffer_binds_vk.len() as u32,
-                    p_binds: buffer_binds_vk.as_ptr(),
-                    ..*buffer_bind_infos_vk
-                };
-            }
-
-            for (image_opaque_bind_infos_vk, image_opaque_binds_vk) in
-                (image_opaque_bind_infos_vk.iter_mut()).zip(image_opaque_binds_vk.iter())
-            {
-                *image_opaque_bind_infos_vk = ash::vk::SparseImageOpaqueMemoryBindInfo {
-                    bind_count: image_opaque_binds_vk.len() as u32,
-                    p_binds: image_opaque_binds_vk.as_ptr(),
-                    ..*image_opaque_bind_infos_vk
-                };
-            }
-
-            for (image_bind_infos_vk, image_binds_vk) in
-                (image_bind_infos_vk.iter_mut()).zip(image_binds_vk.iter())
-            {
-                *image_bind_infos_vk = ash::vk::SparseImageMemoryBindInfo {
-                    bind_count: image_binds_vk.len() as u32,
-                    p_binds: image_binds_vk.as_ptr(),
-                    ..*image_bind_infos_vk
-                };
-            }
-
-            *bind_info_vk = ash::vk::BindSparseInfo {
-                wait_semaphore_count: wait_semaphores_vk.len() as u32,
-                p_wait_semaphores: wait_semaphores_vk.as_ptr(),
-                buffer_bind_count: buffer_bind_infos_vk.len() as u32,
-                p_buffer_binds: buffer_bind_infos_vk.as_ptr(),
-                image_opaque_bind_count: image_opaque_bind_infos_vk.len() as u32,
-                p_image_opaque_binds: image_opaque_bind_infos_vk.as_ptr(),
-                image_bind_count: image_bind_infos_vk.len() as u32,
-                p_image_binds: image_bind_infos_vk.as_ptr(),
-                signal_semaphore_count: signal_semaphores_vk.len() as u32,
-                p_signal_semaphores: signal_semaphores_vk.as_ptr(),
-                ..*bind_info_vk
-            }
-        }
+        let bind_infos_vk: SmallVec<[_; 4]> = bind_infos
+            .iter()
+            .zip(&bind_infos_fields1_vk)
+            .map(|(bind_info, fields1_vk)| bind_info.to_vk(fields1_vk))
+            .collect();
 
         let fns = self.queue.device.fns();
-        (fns.v1_0.queue_bind_sparse)(
-            self.queue.handle,
-            bind_infos_vk.len() as u32,
-            bind_infos_vk.as_ptr(),
-            fence
-                .as_ref()
-                .map_or_else(Default::default, VulkanObject::handle),
-        )
+        unsafe {
+            (fns.v1_0.queue_bind_sparse)(
+                self.queue.handle,
+                bind_infos_vk.len() as u32,
+                bind_infos_vk.as_ptr(),
+                fence
+                    .as_ref()
+                    .map_or_else(Default::default, VulkanObject::handle),
+            )
+        }
         .result()
         .map_err(VulkanError::from)
     }
@@ -462,7 +357,8 @@ impl<'a> QueueGuard<'a> {
     /// - The semaphore must be kept alive while the command is being executed.
     /// - The semaphore must be already in the signaled state, or there must be a previously
     ///   submitted operation that will signal it.
-    /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
     ///
     /// For every element of `present_info.swapchain_infos`:
     /// - `swapchain` must be kept alive while the command is being executed.
@@ -470,8 +366,8 @@ impl<'a> QueueGuard<'a> {
     ///   operation must happen-after the acquire operation.
     /// - The swapchain image indicated by `swapchain` and `image_index` must be in the
     ///   [`ImageLayout::PresentSrc`] layout when the presentation operation is executed.
-    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed
-    ///   after this function is called, until it is acquired again.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed after
+    ///   this function is called, until it is acquired again.
     /// - If `present_id` is `Some`, then it must be greater than any present ID previously used
     ///   for the same swapchain.
     ///
@@ -484,7 +380,7 @@ impl<'a> QueueGuard<'a> {
     {
         self.validate_present(present_info)?;
 
-        Ok(self.present_unchecked(present_info)?)
+        Ok(unsafe { self.present_unchecked(present_info) }?)
     }
 
     fn validate_present(&self, present_info: &PresentInfo) -> Result<(), Box<ValidationError>> {
@@ -505,7 +401,7 @@ impl<'a> QueueGuard<'a> {
 
         let &PresentInfo {
             wait_semaphores: _,
-            ref swapchains,
+            swapchain_infos: ref swapchains,
             _ne: _,
         } = present_info;
 
@@ -515,16 +411,17 @@ impl<'a> QueueGuard<'a> {
                 image_index: _,
                 present_id: _,
                 present_mode: _,
-                present_regions: _,
+                present_region: _,
                 _ne: _,
             } = swapchain_info;
 
-            if unsafe {
-                !device
+            let surface_support = unsafe {
+                device
                     .physical_device
                     .surface_support_unchecked(self.queue.queue_family_index, swapchain.surface())
-                    .unwrap_or_default()
-            } {
+            };
+
+            if !surface_support.unwrap_or_default() {
                 return Err(Box::new(ValidationError {
                     context: format!(
                         "present_info.swapchain_infos[{}].swapchain.surface()",
@@ -552,128 +449,19 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         present_info: &PresentInfo,
     ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
-        let PresentInfo {
-            wait_semaphores,
-            swapchains,
-            _ne: _,
-        } = present_info;
-
-        let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
-            .iter()
-            .map(|semaphore_present_info| {
-                let &SemaphorePresentInfo {
-                    ref semaphore,
-                    _ne: _,
-                } = semaphore_present_info;
-
-                semaphore.handle()
-            })
-            .collect();
-
-        let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut present_modes_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut present_regions_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-
-        let mut has_present_ids = false;
-        let mut has_present_modes = false;
-        let mut has_present_regions = false;
-
-        for swapchain_info in swapchains {
-            let &SwapchainPresentInfo {
-                ref swapchain,
-                image_index,
-                present_id,
-                present_mode,
-                ref present_regions,
-                _ne: _,
-            } = swapchain_info;
-
-            swapchains_vk.push(swapchain.handle());
-            image_indices_vk.push(image_index);
-            present_ids_vk.push(present_id.map_or(0, u64::from));
-            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
-            present_regions_vk.push(ash::vk::PresentRegionKHR::default());
-            rectangles_vk.push(
-                present_regions
-                    .iter()
-                    .map(ash::vk::RectLayerKHR::from)
-                    .collect::<SmallVec<[_; 4]>>(),
-            );
-
-            if present_id.is_some() {
-                has_present_ids = true;
-            }
-
-            if present_mode.is_some() {
-                has_present_modes = true;
-            }
-
-            if !present_regions.is_empty() {
-                has_present_regions = true;
-            }
-        }
-
-        let mut results = vec![ash::vk::Result::SUCCESS; swapchains.len()];
-        let mut info_vk = ash::vk::PresentInfoKHR {
-            wait_semaphore_count: wait_semaphores_vk.len() as u32,
-            p_wait_semaphores: wait_semaphores_vk.as_ptr(),
-            swapchain_count: swapchains_vk.len() as u32,
-            p_swapchains: swapchains_vk.as_ptr(),
-            p_image_indices: image_indices_vk.as_ptr(),
-            p_results: results.as_mut_ptr(),
-            ..Default::default()
-        };
-        let mut present_id_info_vk = None;
-        let mut present_mode_info_vk = None;
-        let mut present_region_info_vk = None;
-
-        if has_present_ids {
-            let next = present_id_info_vk.insert(ash::vk::PresentIdKHR {
-                swapchain_count: present_ids_vk.len() as u32,
-                p_present_ids: present_ids_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if has_present_modes {
-            let next = present_mode_info_vk.insert(ash::vk::SwapchainPresentModeInfoEXT {
-                swapchain_count: present_modes_vk.len() as u32,
-                p_present_modes: present_modes_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next as _;
-            info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if has_present_regions {
-            for (present_regions_vk, rectangles_vk) in
-                (present_regions_vk.iter_mut()).zip(rectangles_vk.iter())
-            {
-                *present_regions_vk = ash::vk::PresentRegionKHR {
-                    rectangle_count: rectangles_vk.len() as u32,
-                    p_rectangles: rectangles_vk.as_ptr(),
-                };
-            }
-
-            let next = present_region_info_vk.insert(ash::vk::PresentRegionsKHR {
-                swapchain_count: present_regions_vk.len() as u32,
-                p_regions: present_regions_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
-        }
+        let present_info_fields2_vk = present_info.to_vk_fields2();
+        let present_info_fields1_vk = present_info.to_vk_fields1(&present_info_fields2_vk);
+        let mut results_vk = present_info.to_vk_results();
+        let mut present_info_extensions_vk =
+            present_info.to_vk_extensions(&present_info_fields1_vk);
+        let info_vk = present_info.to_vk(
+            &present_info_fields1_vk,
+            &mut results_vk,
+            &mut present_info_extensions_vk,
+        );
 
         let fns = self.queue.device().fns();
-        let result = (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk);
+        let result = unsafe { (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk) };
 
         // Per the documentation of `vkQueuePresentKHR`, certain results indicate that the whole
         // operation has failed, while others only indicate failure of a particular present.
@@ -681,18 +469,18 @@ impl<'a> QueueGuard<'a> {
         // Otherwise, we consider the present to be enqueued.
         if !matches!(
             result,
-            ash::vk::Result::SUCCESS
-                | ash::vk::Result::SUBOPTIMAL_KHR
-                | ash::vk::Result::ERROR_OUT_OF_DATE_KHR
-                | ash::vk::Result::ERROR_SURFACE_LOST_KHR
-                | ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+            vk::Result::SUCCESS
+                | vk::Result::SUBOPTIMAL_KHR
+                | vk::Result::ERROR_OUT_OF_DATE_KHR
+                | vk::Result::ERROR_SURFACE_LOST_KHR
+                | vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
         ) {
             return Err(VulkanError::from(result));
         }
 
-        Ok(results.into_iter().map(|result| match result {
-            ash::vk::Result::SUCCESS => Ok(false),
-            ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+        Ok(results_vk.into_iter().map(|result| match result {
+            vk::Result::SUCCESS => Ok(false),
+            vk::Result::SUBOPTIMAL_KHR => Ok(true),
             err => Err(VulkanError::from(err)),
         }))
     }
@@ -718,8 +506,8 @@ impl<'a> QueueGuard<'a> {
     /// - If the command buffer's `usage` is [`CommandBufferUsage::MultipleSubmit`], then it must
     ///   not be currently submitted and not yet completed.
     /// - If a recorded command performs a queue family transfer acquire operation, then a
-    ///   corresponding queue family transfer release operation with matching parameters must
-    ///   have been previously submitted, and must happen-before it.
+    ///   corresponding queue family transfer release operation with matching parameters must have
+    ///   been previously submitted, and must happen-before it.
     /// - If a recorded command references an [`Event`], then that `Event` must not be referenced
     ///   by a command that is currently executing on another queue.
     ///
@@ -744,7 +532,7 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_submit(submit_infos, fence)?;
 
-        Ok(self.submit_unchecked(submit_infos, fence)?)
+        Ok(unsafe { self.submit_unchecked(submit_infos, fence) }?)
     }
 
     fn validate_submit(
@@ -873,300 +661,79 @@ impl<'a> QueueGuard<'a> {
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
-            struct PerSubmitInfo {
-                wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
-                command_buffer_infos_vk: SmallVec<[ash::vk::CommandBufferSubmitInfo; 4]>,
-                signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
-            }
+            let submit_infos_fields1_vk: SmallVec<[_; 4]> = submit_infos
+                .iter()
+                .map(SubmitInfo::to_vk2_fields1)
+                .collect();
 
-            let (mut submit_info_vk, mut per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
-                submit_infos
-                    .iter()
-                    .map(|submit_info| {
-                        let &SubmitInfo {
-                            ref wait_semaphores,
-                            ref command_buffers,
-                            ref signal_semaphores,
-                            _ne: _,
-                        } = submit_info;
-
-                        let mut per_submit_vk = PerSubmitInfo {
-                            wait_semaphore_infos_vk: SmallVec::with_capacity(wait_semaphores.len()),
-                            command_buffer_infos_vk: SmallVec::with_capacity(command_buffers.len()),
-                            signal_semaphore_infos_vk: SmallVec::with_capacity(
-                                signal_semaphores.len(),
-                            ),
-                        };
-                        let PerSubmitInfo {
-                            wait_semaphore_infos_vk,
-                            command_buffer_infos_vk,
-                            signal_semaphore_infos_vk,
-                        } = &mut per_submit_vk;
-
-                        for semaphore_submit_info in wait_semaphores {
-                            let &SemaphoreSubmitInfo {
-                                ref semaphore,
-                                value,
-                                stages,
-                                _ne: _,
-                            } = semaphore_submit_info;
-
-                            wait_semaphore_infos_vk.push(ash::vk::SemaphoreSubmitInfo {
-                                semaphore: semaphore.handle(),
-                                value,
-                                stage_mask: stages.into(),
-                                device_index: 0, // TODO:
-                                ..Default::default()
-                            });
-                        }
-
-                        for command_buffer_submit_info in command_buffers {
-                            let &CommandBufferSubmitInfo {
-                                ref command_buffer,
-                                _ne: _,
-                            } = command_buffer_submit_info;
-
-                            command_buffer_infos_vk.push(ash::vk::CommandBufferSubmitInfo {
-                                command_buffer: command_buffer.handle(),
-                                device_mask: 0, // TODO:
-                                ..Default::default()
-                            });
-                        }
-
-                        for semaphore_submit_info in signal_semaphores {
-                            let &SemaphoreSubmitInfo {
-                                ref semaphore,
-                                value,
-                                stages,
-                                _ne: _,
-                            } = semaphore_submit_info;
-
-                            signal_semaphore_infos_vk.push(ash::vk::SemaphoreSubmitInfo {
-                                semaphore: semaphore.handle(),
-                                value,
-                                stage_mask: stages.into(),
-                                device_index: 0, // TODO:
-                                ..Default::default()
-                            });
-                        }
-
-                        (
-                            ash::vk::SubmitInfo2 {
-                                flags: ash::vk::SubmitFlags::empty(), // TODO:
-                                wait_semaphore_info_count: 0,
-                                p_wait_semaphore_infos: ptr::null(),
-                                command_buffer_info_count: 0,
-                                p_command_buffer_infos: ptr::null(),
-                                signal_semaphore_info_count: 0,
-                                p_signal_semaphore_infos: ptr::null(),
-                                ..Default::default()
-                            },
-                            per_submit_vk,
-                        )
-                    })
-                    .unzip();
-
-            for (
-                submit_info_vk,
-                PerSubmitInfo {
-                    wait_semaphore_infos_vk,
-                    command_buffer_infos_vk,
-                    signal_semaphore_infos_vk,
-                },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
-            {
-                *submit_info_vk = ash::vk::SubmitInfo2 {
-                    wait_semaphore_info_count: wait_semaphore_infos_vk.len() as u32,
-                    p_wait_semaphore_infos: wait_semaphore_infos_vk.as_ptr(),
-                    command_buffer_info_count: command_buffer_infos_vk.len() as u32,
-                    p_command_buffer_infos: command_buffer_infos_vk.as_ptr(),
-                    signal_semaphore_info_count: signal_semaphore_infos_vk.len() as u32,
-                    p_signal_semaphore_infos: signal_semaphore_infos_vk.as_ptr(),
-                    ..*submit_info_vk
-                };
-            }
+            let submit_infos_vk: SmallVec<[_; 4]> = submit_infos
+                .iter()
+                .zip(&submit_infos_fields1_vk)
+                .map(|(submit_info, fields1_vk)| submit_info.to_vk2(fields1_vk))
+                .collect();
 
             let fns = self.queue.device.fns();
 
             if self.queue.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.queue_submit2)(
-                    self.queue.handle,
-                    submit_info_vk.len() as u32,
-                    submit_info_vk.as_ptr(),
-                    fence
-                        .as_ref()
-                        .map_or_else(Default::default, VulkanObject::handle),
-                )
+                unsafe {
+                    (fns.v1_3.queue_submit2)(
+                        self.queue.handle,
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence
+                            .as_ref()
+                            .map_or_else(Default::default, VulkanObject::handle),
+                    )
+                }
             } else {
                 debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
-                (fns.khr_synchronization2.queue_submit2_khr)(
-                    self.queue.handle,
-                    submit_info_vk.len() as u32,
-                    submit_info_vk.as_ptr(),
-                    fence
-                        .as_ref()
-                        .map_or_else(Default::default, VulkanObject::handle),
-                )
+                unsafe {
+                    (fns.khr_synchronization2.queue_submit2_khr)(
+                        self.queue.handle,
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence
+                            .as_ref()
+                            .map_or_else(Default::default, VulkanObject::handle),
+                    )
+                }
             }
             .result()
             .map_err(VulkanError::from)
         } else {
-            struct PerSubmitInfo {
-                timeline_semaphore_submit_info_vk: Option<ash::vk::TimelineSemaphoreSubmitInfo>,
-                wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-                wait_semaphore_values_vk: SmallVec<[u64; 4]>,
-                wait_dst_stage_mask_vk: SmallVec<[ash::vk::PipelineStageFlags; 4]>,
-                command_buffers_vk: SmallVec<[ash::vk::CommandBuffer; 4]>,
-                signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-                signal_semaphore_values_vk: SmallVec<[u64; 4]>,
-            }
+            let fields1_vk: SmallVec<[_; 4]> = submit_infos
+                .iter()
+                .map(|submit_info| submit_info.to_vk_fields1())
+                .collect();
 
-            let (mut submit_info_vk, mut per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
-                submit_infos
-                    .iter()
-                    .map(|submit_info| {
-                        let &SubmitInfo {
-                            ref wait_semaphores,
-                            ref command_buffers,
-                            ref signal_semaphores,
-                            _ne: _,
-                        } = submit_info;
+            let mut submit_infos_extensions_vk: SmallVec<[_; 4]> = submit_infos
+                .iter()
+                .zip(&fields1_vk)
+                .map(|(submit_info, submit_info_fields1_vk)| {
+                    submit_info.to_vk_extensions(submit_info_fields1_vk)
+                })
+                .collect();
 
-                        let mut per_submit_vk = PerSubmitInfo {
-                            timeline_semaphore_submit_info_vk: None,
-                            wait_semaphores_vk: SmallVec::with_capacity(wait_semaphores.len()),
-                            wait_semaphore_values_vk: SmallVec::with_capacity(
-                                wait_semaphores.len(),
-                            ),
-                            wait_dst_stage_mask_vk: SmallVec::with_capacity(wait_semaphores.len()),
-                            command_buffers_vk: SmallVec::with_capacity(command_buffers.len()),
-                            signal_semaphores_vk: SmallVec::with_capacity(signal_semaphores.len()),
-                            signal_semaphore_values_vk: SmallVec::with_capacity(
-                                signal_semaphores.len(),
-                            ),
-                        };
-                        let PerSubmitInfo {
-                            timeline_semaphore_submit_info_vk,
-                            wait_semaphores_vk,
-                            wait_semaphore_values_vk,
-                            wait_dst_stage_mask_vk,
-                            command_buffers_vk,
-                            signal_semaphores_vk,
-                            signal_semaphore_values_vk,
-                        } = &mut per_submit_vk;
-
-                        let mut has_timeline_semaphores = false;
-
-                        for semaphore_submit_info in wait_semaphores {
-                            let &SemaphoreSubmitInfo {
-                                ref semaphore,
-                                value,
-                                stages,
-                                _ne: _,
-                            } = semaphore_submit_info;
-
-                            if semaphore.semaphore_type() == SemaphoreType::Timeline {
-                                has_timeline_semaphores = true;
-                            }
-
-                            wait_semaphores_vk.push(semaphore.handle());
-                            wait_semaphore_values_vk.push(value);
-                            wait_dst_stage_mask_vk.push(stages.into());
-                        }
-
-                        for command_buffer_submit_info in command_buffers {
-                            let &CommandBufferSubmitInfo {
-                                ref command_buffer,
-                                _ne: _,
-                            } = command_buffer_submit_info;
-
-                            command_buffers_vk.push(command_buffer.handle());
-                        }
-
-                        for semaphore_submit_info in signal_semaphores {
-                            let &SemaphoreSubmitInfo {
-                                ref semaphore,
-                                value,
-                                stages: _,
-                                _ne: _,
-                            } = semaphore_submit_info;
-
-                            if semaphore.semaphore_type() == SemaphoreType::Timeline {
-                                has_timeline_semaphores = true;
-                            }
-
-                            signal_semaphores_vk.push(semaphore.handle());
-                            signal_semaphore_values_vk.push(value);
-                        }
-
-                        if has_timeline_semaphores {
-                            *timeline_semaphore_submit_info_vk =
-                                Some(ash::vk::TimelineSemaphoreSubmitInfo::default());
-                        }
-
-                        (
-                            ash::vk::SubmitInfo {
-                                wait_semaphore_count: 0,
-                                p_wait_semaphores: ptr::null(),
-                                p_wait_dst_stage_mask: ptr::null(),
-                                command_buffer_count: 0,
-                                p_command_buffers: ptr::null(),
-                                signal_semaphore_count: 0,
-                                p_signal_semaphores: ptr::null(),
-                                ..Default::default()
-                            },
-                            per_submit_vk,
-                        )
-                    })
-                    .unzip();
-
-            for (
-                submit_info_vk,
-                PerSubmitInfo {
-                    timeline_semaphore_submit_info_vk,
-                    wait_semaphores_vk,
-                    wait_semaphore_values_vk,
-                    wait_dst_stage_mask_vk,
-                    command_buffers_vk,
-                    signal_semaphores_vk,
-                    signal_semaphore_values_vk,
-                },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
-            {
-                *submit_info_vk = ash::vk::SubmitInfo {
-                    wait_semaphore_count: wait_semaphores_vk.len() as u32,
-                    p_wait_semaphores: wait_semaphores_vk.as_ptr(),
-                    p_wait_dst_stage_mask: wait_dst_stage_mask_vk.as_ptr(),
-                    command_buffer_count: command_buffers_vk.len() as u32,
-                    p_command_buffers: command_buffers_vk.as_ptr(),
-                    signal_semaphore_count: signal_semaphores_vk.len() as u32,
-                    p_signal_semaphores: signal_semaphores_vk.as_ptr(),
-                    ..*submit_info_vk
-                };
-
-                if let Some(timeline_semaphore_submit_info_vk) = timeline_semaphore_submit_info_vk {
-                    *timeline_semaphore_submit_info_vk = ash::vk::TimelineSemaphoreSubmitInfo {
-                        wait_semaphore_value_count: wait_semaphore_values_vk.len() as u32,
-                        p_wait_semaphore_values: wait_semaphore_values_vk.as_ptr(),
-                        signal_semaphore_value_count: signal_semaphore_values_vk.len() as u32,
-                        p_signal_semaphore_values: signal_semaphore_values_vk.as_ptr(),
-                        ..*timeline_semaphore_submit_info_vk
-                    };
-
-                    timeline_semaphore_submit_info_vk.p_next = submit_info_vk.p_next;
-                    submit_info_vk.p_next = timeline_semaphore_submit_info_vk as *mut _ as *mut _;
-                }
-            }
+            let submit_infos_vk: SmallVec<[_; 4]> = submit_infos
+                .iter()
+                .zip(&fields1_vk)
+                .zip(&mut submit_infos_extensions_vk)
+                .map(|((submit_infos, fields1_vk), extensions_vk)| {
+                    submit_infos.to_vk(fields1_vk, extensions_vk)
+                })
+                .collect();
 
             let fns = self.queue.device.fns();
-            (fns.v1_0.queue_submit)(
-                self.queue.handle,
-                submit_info_vk.len() as u32,
-                submit_info_vk.as_ptr(),
-                fence
-                    .as_ref()
-                    .map_or_else(Default::default, VulkanObject::handle),
-            )
+            unsafe {
+                (fns.v1_0.queue_submit)(
+                    self.queue.handle,
+                    submit_infos_vk.len() as u32,
+                    submit_infos_vk.as_ptr(),
+                    fence
+                        .as_ref()
+                        .map_or_else(Default::default, VulkanObject::handle),
+                )
+            }
             .result()
             .map_err(VulkanError::from)
         }
@@ -1184,10 +751,9 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Box<ValidationError>> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
-        unsafe {
-            self.begin_debug_utils_label_unchecked(label_info);
-            Ok(())
-        }
+        unsafe { self.begin_debug_utils_label_unchecked(label_info) };
+
+        Ok(())
     }
 
     fn validate_begin_debug_utils_label(
@@ -1215,21 +781,16 @@ impl<'a> QueueGuard<'a> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn begin_debug_utils_label_unchecked(&mut self, label_info: DebugUtilsLabel) {
-        let DebugUtilsLabel {
-            label_name,
-            color,
-            _ne: _,
-        } = label_info;
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
+        let fns = self.queue.device.fns();
+        unsafe {
+            (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(
+                self.queue.handle,
+                &label_info_vk,
+            )
         };
-
-        let fns = self.queue.device.instance().fns();
-        (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(self.queue.handle, &label_info);
     }
 
     /// Closes a queue debug label region.
@@ -1244,7 +805,7 @@ impl<'a> QueueGuard<'a> {
     #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
-        self.end_debug_utils_label_unchecked();
+        unsafe { self.end_debug_utils_label_unchecked() };
 
         Ok(())
     }
@@ -1274,8 +835,8 @@ impl<'a> QueueGuard<'a> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) {
-        let fns = self.queue.device.instance().fns();
-        (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle);
+        let fns = self.queue.device.fns();
+        unsafe { (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle) };
     }
 
     /// Inserts a queue debug label.
@@ -1289,10 +850,9 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Box<ValidationError>> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
-        unsafe {
-            self.insert_debug_utils_label_unchecked(label_info);
-            Ok(())
-        }
+        unsafe { self.insert_debug_utils_label_unchecked(label_info) };
+
+        Ok(())
     }
 
     fn validate_insert_debug_utils_label(
@@ -1320,21 +880,16 @@ impl<'a> QueueGuard<'a> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn insert_debug_utils_label_unchecked(&mut self, label_info: DebugUtilsLabel) {
-        let DebugUtilsLabel {
-            label_name,
-            color,
-            _ne: _,
-        } = label_info;
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
+        let fns = self.queue.device.fns();
+        unsafe {
+            (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(
+                self.queue.handle,
+                &label_info_vk,
+            )
         };
-
-        let fns = self.queue.device.instance().fns();
-        (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(self.queue.handle, &label_info);
     }
 }
 
@@ -1359,22 +914,41 @@ pub struct QueueFamilyProperties {
     /// If timestamps are not supported, this is `None`.
     pub timestamp_valid_bits: Option<u32>,
 
-    /// The minimum granularity supported for image transfers, in terms of `[width, height, depth]`.
+    /// The minimum granularity supported for image transfers, in terms of `[width, height,
+    /// depth]`.
     pub min_image_transfer_granularity: [u32; 3],
 }
 
-impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
-    #[inline]
-    fn from(val: ash::vk::QueueFamilyProperties) -> Self {
+impl QueueFamilyProperties {
+    pub(crate) fn to_mut_vk2() -> vk::QueueFamilyProperties2<'static> {
+        vk::QueueFamilyProperties2::default()
+    }
+
+    pub(crate) fn from_vk2(val_vk: &vk::QueueFamilyProperties2<'_>) -> Self {
+        let &vk::QueueFamilyProperties2 {
+            ref queue_family_properties,
+            ..
+        } = val_vk;
+
+        Self::from_vk(queue_family_properties)
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::QueueFamilyProperties) -> Self {
+        let &vk::QueueFamilyProperties {
+            queue_flags,
+            queue_count,
+            timestamp_valid_bits,
+            min_image_transfer_granularity,
+        } = val_vk;
+
         Self {
-            queue_flags: val.queue_flags.into(),
-            queue_count: val.queue_count,
-            timestamp_valid_bits: (val.timestamp_valid_bits != 0)
-                .then_some(val.timestamp_valid_bits),
+            queue_flags: queue_flags.into(),
+            queue_count,
+            timestamp_valid_bits: (timestamp_valid_bits != 0).then_some(timestamp_valid_bits),
             min_image_transfer_granularity: [
-                val.min_image_transfer_granularity.width,
-                val.min_image_transfer_granularity.height,
-                val.min_image_transfer_granularity.depth,
+                min_image_transfer_granularity.width,
+                min_image_transfer_granularity.height,
+                min_image_transfer_granularity.depth,
             ],
         }
     }
@@ -1439,18 +1013,16 @@ mod tests {
 
     #[test]
     fn signal_fence() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
-            assert!(!fence.is_signaled().unwrap());
+        let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
+        assert!(!fence.is_signaled().unwrap());
 
-            queue
-                .with(|mut q| q.submit(&[Default::default()], Some(&fence)))
-                .unwrap();
+        queue
+            .with(|mut q| unsafe { q.submit(&[Default::default()], Some(&fence)) })
+            .unwrap();
 
-            fence.wait(Some(Duration::from_secs(5))).unwrap();
-            assert!(fence.is_signaled().unwrap());
-        }
+        fence.wait(Some(Duration::from_secs(5))).unwrap();
+        assert!(fence.is_signaled().unwrap());
     }
 }

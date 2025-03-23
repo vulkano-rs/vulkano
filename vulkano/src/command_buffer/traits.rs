@@ -1,14 +1,5 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{
-    CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
+    CommandBuffer, CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
     CommandBufferSubmitInfo, CommandBufferUsage, SecondaryCommandBufferResourcesUsage,
     SemaphoreSubmitInfo, SubmitInfo,
 };
@@ -26,6 +17,7 @@ use crate::{
     },
     DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use std::{
     borrow::Cow,
@@ -40,8 +32,11 @@ use std::{
 };
 
 pub unsafe trait PrimaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
+    VulkanObject<Handle = vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
+    /// Returns the underlying raw command buffer.
+    fn as_raw(&self) -> &CommandBuffer;
+
     /// Returns the queue family index of this command buffer.
     fn queue_family_index(&self) -> u32;
 
@@ -120,7 +115,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
         assert_eq!(self.device().handle(), future.device().handle());
 
         if !future.queue_change_allowed() {
-            assert!(future.queue().unwrap() == queue);
+            assert_eq!(future.queue().unwrap(), queue);
         }
 
         Ok(CommandBufferExecFuture {
@@ -147,9 +142,13 @@ impl Debug for dyn PrimaryCommandBufferAbstract {
 
 unsafe impl<T> PrimaryCommandBufferAbstract for T
 where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
+    T: VulkanObject<Handle = vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBufferAbstract,
 {
+    fn as_raw(&self) -> &CommandBuffer {
+        (**self).as_raw()
+    }
+
     fn queue_family_index(&self) -> u32 {
         (**self).queue_family_index()
     }
@@ -168,8 +167,11 @@ where
 }
 
 pub unsafe trait SecondaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
+    VulkanObject<Handle = vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
+    /// Returns the underlying raw command buffer.
+    fn as_raw(&self) -> &CommandBuffer;
+
     /// Returns the usage of this command buffer.
     fn usage(&self) -> CommandBufferUsage;
 
@@ -196,9 +198,13 @@ pub unsafe trait SecondaryCommandBufferAbstract:
 
 unsafe impl<T> SecondaryCommandBufferAbstract for T
 where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
+    T: VulkanObject<Handle = vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: SecondaryCommandBufferAbstract,
 {
+    fn as_raw(&self) -> &CommandBuffer {
+        (**self).as_raw()
+    }
+
     fn usage(&self) -> CommandBufferUsage {
         (**self).usage()
     }
@@ -212,7 +218,7 @@ where
     }
 
     unsafe fn unlock(&self) {
-        (**self).unlock();
+        unsafe { (**self).unlock() };
     }
 
     fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
@@ -245,7 +251,7 @@ where
     // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
     // You must make sure to not submit same command buffer multiple times.
     unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
-        Ok(match self.previous.build_submission()? {
+        Ok(match unsafe { self.previous.build_submission() }? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 SubmitInfo {
                     command_buffers: vec![CommandBufferSubmitInfo::new(
@@ -307,28 +313,27 @@ where
             return Ok(SubmitAnyBuilder::Empty);
         }
 
-        self.build_submission_impl()
+        unsafe { self.build_submission_impl() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            let mut submitted = self.submitted.lock();
-            if *submitted {
-                return Ok(());
-            }
+        let mut submitted = self.submitted.lock();
 
-            match self.build_submission_impl()? {
-                SubmitAnyBuilder::Empty => {}
-                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    queue_submit(&self.queue, submit_info, fence, &self.previous).unwrap();
-                }
-                _ => unreachable!(),
-            };
-
-            // Only write `true` here in order to try again next time if we failed to submit.
-            *submitted = true;
-            Ok(())
+        if *submitted {
+            return Ok(());
         }
+
+        match unsafe { self.build_submission_impl() }? {
+            SubmitAnyBuilder::Empty => {}
+            SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
+                unsafe { queue_submit(&self.queue, submit_info, fence, &self.previous) }.unwrap();
+            }
+            _ => unreachable!(),
+        };
+
+        // Only write `true` here in order to try again next time if we failed to submit.
+        *submitted = true;
+        Ok(())
     }
 
     unsafe fn signal_finished(&self) {
@@ -340,9 +345,9 @@ where
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_unlock(range.clone());
+                        unsafe { state.gpu_write_unlock(range.clone()) };
                     } else {
-                        state.gpu_read_unlock(range.clone());
+                        unsafe { state.gpu_read_unlock(range.clone()) };
                     }
                 }
             }
@@ -352,17 +357,17 @@ where
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_unlock(range.clone());
+                        unsafe { state.gpu_write_unlock(range.clone()) };
                     } else {
-                        state.gpu_read_unlock(range.clone());
+                        unsafe { state.gpu_read_unlock(range.clone()) };
                     }
                 }
             }
 
-            self.command_buffer.state().set_submit_finished();
+            unsafe { self.command_buffer.state().set_submit_finished() };
         }
 
-        self.previous.signal_finished();
+        unsafe { self.previous.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {

@@ -1,19 +1,10 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to use dynamic uniform buffers.
 //
 // Dynamic uniform and storage buffers store buffer data for different calls in one large buffer.
 // Each draw or dispatch call can specify an offset into the buffer to read object data from,
 // without having to rebind descriptor sets.
 
-use std::{iter::repeat, mem::size_of, sync::Arc};
+use std::{iter::repeat, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -21,7 +12,7 @@ use vulkano::{
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
-        DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
+        DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -91,6 +82,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     mod cs {
@@ -148,16 +140,20 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // Create the input buffer. Data in a dynamic buffer **MUST** be aligned to
     // `min_uniform_buffer_offset_align` or `min_storage_buffer_offset_align`, depending on the
@@ -218,9 +214,9 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+    let layout = &pipeline.layout().set_layouts()[0];
+    let set = DescriptorSet::new(
+        descriptor_set_allocator,
         layout.clone(),
         [
             // When writing to the dynamic buffer binding, the range of the buffer that the shader
@@ -242,43 +238,26 @@ fn main() {
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
-    #[allow(clippy::erasing_op, clippy::identity_op)]
-    builder
-        .bind_pipeline_compute(pipeline.clone())
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.clone().offsets([0 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.clone().offsets([1 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.offsets([2 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap();
+    builder.bind_pipeline_compute(pipeline.clone()).unwrap();
+
+    for index in 0..3 {
+        builder
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                pipeline.layout().clone(),
+                0,
+                set.clone().offsets([index * align as u32]),
+            )
+            .unwrap();
+        unsafe { builder.dispatch([12, 1, 1]) }.unwrap();
+    }
+
     let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)

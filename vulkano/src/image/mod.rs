@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Image storage (1D, 2D, 3D, arrays, etc.) and image views.
 //!
 //! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
@@ -34,7 +25,7 @@
 //!
 //! In the vulkano library, images that have memory bound to them are represented by [`Image`]. You
 //! can [create an `Image` directly] by providing a memory allocator and all the info for the image
-//! and allocation you want to create. This should satisify most use cases. The more low-level use
+//! and allocation you want to create. This should satisfy most use cases. The more low-level use
 //! cases such as importing memory for the image are described below.
 //!
 //! You can create an [`ImageView`] from any `Image`.
@@ -52,7 +43,7 @@
 //! You can [create a `ResourceMemory` from `DeviceMemory`] if you want to bind its own block of
 //! memory to an image.
 //!
-//! [`ImageView`]: crate::image::view::ImageView
+//! [`ImageView`]: view::ImageView
 //! [create an `Image` directly]: Image::new
 //! [create a `RawImage`]: RawImage::new
 //! [bind memory to it]: RawImage::bind_memory
@@ -78,6 +69,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
@@ -124,6 +116,7 @@ pub struct Image {
 
 /// The type of backing memory that an image can have.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImageMemory {
     /// The image is backed by normal memory, bound with [`bind_memory`].
     ///
@@ -133,13 +126,16 @@ pub enum ImageMemory {
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
-    Sparse(Vec<SparseImageMemoryRequirements>),
+    Sparse,
 
     /// The image is backed by memory owned by a [`Swapchain`].
     Swapchain {
         swapchain: Arc<Swapchain>,
         image_index: u32,
     },
+
+    /// The image is backed by external memory not managed by vulkano.
+    External,
 }
 
 impl Image {
@@ -170,6 +166,7 @@ impl Image {
             .map_err(AllocateImageError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
+        // SAFETY: we just created this raw image and hasn't bound any memory to it.
         let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
             err.map(AllocateImageError::BindMemory)
                 .map_validation(|err| err.add_context("RawImage::bind_memory"))
@@ -178,7 +175,7 @@ impl Image {
         Ok(Arc::new(image))
     }
 
-    fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
+    unsafe fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
         let aspects = inner.format().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.array_layers() as DeviceSize;
@@ -202,7 +199,7 @@ impl Image {
     }
 
     pub(crate) unsafe fn from_swapchain(
-        handle: ash::vk::Image,
+        handle: vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
     ) -> Result<Self, VulkanError> {
@@ -227,19 +224,25 @@ impl Image {
             _ne: crate::NonExhaustive(()),
         };
 
-        Ok(Self::from_raw(
+        let image = unsafe {
             RawImage::from_handle_with_destruction(
                 swapchain.device().clone(),
                 handle,
                 create_info,
                 false,
-            )?,
-            ImageMemory::Swapchain {
-                swapchain,
-                image_index,
-            },
-            ImageLayout::PresentSrc,
-        ))
+            )
+        }?;
+
+        Ok(unsafe {
+            Self::from_raw(
+                image,
+                ImageMemory::Swapchain {
+                    swapchain,
+                    image_index,
+                },
+                ImageLayout::PresentSrc,
+            )
+        })
     }
 
     /// Returns the type of memory that is backing this image.
@@ -251,12 +254,22 @@ impl Image {
     /// Returns the memory requirements for this image.
     ///
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
-    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
-    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().planes().len()`.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, this returns a slice
+    ///   with a length of 1.
+    /// - If `self.flags()` does contain `ImageCreateFlags::DISJOINT`, this returns a slice with a
+    ///   length equal to `self.format().unwrap().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         self.inner.memory_requirements()
+    }
+
+    /// Returns the sparse memory requirements for this image.
+    ///
+    /// If `self.flags()` does not contain both `ImageCreateFlags::SPARSE_BINDING` and
+    /// `ImageCreateFlags::SPARSE_RESIDENCY`, this returns an empty slice.
+    #[inline]
+    pub fn sparse_memory_requirements(&self) -> &[SparseImageMemoryRequirements] {
+        self.inner.sparse_memory_requirements()
     }
 
     /// Returns the flags the image was created with.
@@ -403,8 +416,10 @@ impl Image {
         mip_level: u32,
         array_layer: u32,
     ) -> SubresourceLayout {
-        self.inner
-            .subresource_layout_unchecked(aspect, mip_level, array_layer)
+        unsafe {
+            self.inner
+                .subresource_layout_unchecked(aspect, mip_level, array_layer)
+        }
     }
 
     pub(crate) fn range_size(&self) -> DeviceSize {
@@ -514,7 +529,7 @@ impl Image {
 
     pub(crate) unsafe fn layout_initialized(&self) {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.store(true, Ordering::Release);
             }
             ImageMemory::Swapchain {
@@ -528,7 +543,7 @@ impl Image {
 
     pub(crate) fn is_layout_initialized(&self) -> bool {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.load(Ordering::Acquire)
             }
             ImageMemory::Swapchain {
@@ -540,7 +555,7 @@ impl Image {
 }
 
 unsafe impl VulkanObject for Image {
-    type Handle = ash::vk::Image;
+    type Handle = vk::Image;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -895,7 +910,7 @@ impl SubresourceRangeIterator {
             .collect::<SmallVec<[usize; 4]>>()
             .into_iter()
             .peekable();
-        assert!(aspect_nums.len() != 0);
+        assert_ne!(aspect_nums.len(), 0);
         let current_aspect_num = aspect_nums.next();
         let current_mip_level = subresource_range.mip_levels.start;
 
@@ -984,20 +999,21 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of an image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
-    /* TODO: enable
-    /// The image will be backed by sparse memory binding (through queue commands) instead of
-    /// regular binding (through [`bind_memory`]).
+    /// The image will be backed by sparse memory binding (through the [`bind_sparse`] queue
+    /// command) instead of regular binding (through [`bind_memory`]).
     ///
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
+    /// [`bind_sparse`]: crate::device::queue::QueueGuard::bind_sparse
     /// [`bind_memory`]: sys::RawImage::bind_memory
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,*/
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
+    SPARSE_BINDING = SPARSE_BINDING,
 
-    /* TODO: enable
     /// The image can be used without being fully resident in memory at the time of use.
+    /// It also allows non-opaque sparse binding operations, using the dimensions of the image,
+    /// to be performed.
     ///
-    /// This requires the `sparse_binding` flag as well.
+    /// This requires the [`ImageCreateFlags::SPARSE_BINDING`] flag as well.
     ///
     /// Depending on the image type, either the [`sparse_residency_image2_d`] or the
     /// [`sparse_residency_image3_d`] feature must be enabled on the device.
@@ -1006,14 +1022,14 @@ vulkan_bitflags! {
     /// [`sparse_residency16_samples`], corresponding to the sample count of the image, must
     /// be enabled on the device.
     ///
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    /// [`sparse_residency_image2_d`]: crate::device::Features::sparse_residency_image2_d
-    /// [`sparse_residency_image2_3`]: crate::device::Features::sparse_residency_image3_d
-    /// [`sparse_residency2_samples`]: crate::device::Features::sparse_residency2_samples
-    /// [`sparse_residency4_samples`]: crate::device::Features::sparse_residency4_samples
-    /// [`sparse_residency8_samples`]: crate::device::Features::sparse_residency8_samples
-    /// [`sparse_residency16_samples`]: crate::device::Features::sparse_residency16_samples
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
+    /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image2_d
+    /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image3_d
+    /// [`sparse_residency2_samples`]: crate::device::DeviceFeatures::sparse_residency2_samples
+    /// [`sparse_residency4_samples`]: crate::device::DeviceFeatures::sparse_residency4_samples
+    /// [`sparse_residency8_samples`]: crate::device::DeviceFeatures::sparse_residency8_samples
+    /// [`sparse_residency16_samples`]: crate::device::DeviceFeatures::sparse_residency16_samples
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /* TODO: enable
     /// The buffer's memory can alias with another image or a different part of the same image.
@@ -1022,7 +1038,7 @@ vulkan_bitflags! {
     ///
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    /// [`sparse_residency_aliased`]: crate::device::DeviceFeatures::sparse_residency_aliased
     SPARSE_ALIASED = SPARSE_ALIASED,*/
 
     /// For non-multi-planar formats, whether an image view wrapping the image can have a
@@ -1034,9 +1050,6 @@ vulkan_bitflags! {
 
     /// For 2D images, whether an image view of type [`ImageViewType::Cube`] or
     /// [`ImageViewType::CubeArray`] can be created from the image.
-    ///
-    /// [`ImageViewType::Cube`]: crate::image::view::ImageViewType::Cube
-    /// [`ImageViewType::CubeArray`]: crate::image::view::ImageViewType::CubeArray
     CUBE_COMPATIBLE = CUBE_COMPATIBLE,
 
     /* TODO: enable
@@ -1065,11 +1078,9 @@ vulkan_bitflags! {
     /// On [portability subset] devices, the [`image_view2_d_on3_d_image`] feature must be enabled
     /// on the device.
     ///
-    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
-    /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
     /// [`DIM2D_VIEW_COMPATIBLE`]: ImageCreateFlags::DIM2D_VIEW_COMPATIBLE
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
-    /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
+    /// [`image_view2_d_on3_d_image`]: crate::device::DeviceFeatures::image_view2_d_on3_d_image
     DIM2D_ARRAY_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
@@ -1148,10 +1159,9 @@ vulkan_bitflags! {
     /// - [`image2_d_view_of3_d`] for storage images.
     /// - [`sampler2_d_view_of3_d`] for sampled images.
     ///
-    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
     /// [`DIM2D_ARRAY_COMPATIBLE`]: ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE
-    /// [`image2_d_view_of3_d`]: crate::device::Features::image2_d_view_of3_d
-    /// [`sampler2_d_view_of3_d`]: crate::device::Features::sampler2_d_view_of3_d
+    /// [`image2_d_view_of3_d`]: crate::device::DeviceFeatures::image2_d_view_of3_d
+    /// [`sampler2_d_view_of3_d`]: crate::device::DeviceFeatures::sampler2_d_view_of3_d
     DIM2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_image_2d_view_of_3d)]),
@@ -1329,8 +1339,7 @@ pub fn max_mip_levels(extent: [u32; 3]) -> u32 {
 ///
 /// # Panics
 ///
-/// - In debug mode, panics if `extent` contains 0.
-///   In release, returns an unspecified value.
+/// - In debug mode, panics if `extent` contains 0. In release, returns an unspecified value.
 #[inline]
 pub fn mip_level_extent(extent: [u32; 3], level: u32) -> Option<[u32; 3]> {
     if level == 0 {
@@ -1462,26 +1471,20 @@ impl ImageSubresourceLayers {
     }
 }
 
-impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
-    #[inline]
-    fn from(val: ImageSubresourceLayers) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            mip_level: val.mip_level,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
-        }
-    }
-}
+impl ImageSubresourceLayers {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> vk::ImageSubresourceLayers {
+        let &Self {
+            aspects,
+            mip_level,
+            ref array_layers,
+        } = self;
 
-impl From<&ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
-    #[inline]
-    fn from(val: &ImageSubresourceLayers) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            mip_level: val.mip_level,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
+        vk::ImageSubresourceLayers {
+            aspect_mask: aspects.into(),
+            mip_level,
+            base_array_layer: array_layers.start,
+            layer_count: array_layers.end - array_layers.start,
         }
     }
 }
@@ -1591,17 +1594,21 @@ impl ImageSubresourceRange {
 
         Ok(())
     }
-}
 
-impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
-    #[inline]
-    fn from(val: ImageSubresourceRange) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            base_mip_level: val.mip_levels.start,
-            level_count: val.mip_levels.end - val.mip_levels.start,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> vk::ImageSubresourceRange {
+        let &Self {
+            aspects,
+            ref mip_levels,
+            ref array_layers,
+        } = self;
+
+        vk::ImageSubresourceRange {
+            aspect_mask: aspects.into(),
+            base_mip_level: mip_levels.start,
+            level_count: mip_levels.end - mip_levels.start,
+            base_array_layer: array_layers.start,
+            layer_count: array_layers.end - array_layers.start,
         }
     }
 }
@@ -1643,8 +1650,29 @@ pub struct SubresourceLayout {
     pub depth_pitch: Option<DeviceSize>,
 }
 
+impl SubresourceLayout {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> vk::SubresourceLayout {
+        let &Self {
+            offset,
+            size,
+            row_pitch,
+            array_pitch,
+            depth_pitch,
+        } = self;
+
+        vk::SubresourceLayout {
+            offset,
+            size,
+            row_pitch,
+            array_pitch: array_pitch.unwrap_or(0),
+            depth_pitch: depth_pitch.unwrap_or(0),
+        }
+    }
+}
+
 /// The image configuration to query in
-/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
     /// The `flags` that the image will have.
@@ -1728,6 +1756,14 @@ pub struct ImageFormatInfo {
 impl Default for ImageFormatInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageFormatInfo {
+    /// Returns a default `ImageFormatInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
             format: Format::UNDEFINED,
@@ -1742,9 +1778,7 @@ impl Default for ImageFormatInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageFormatInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -1983,10 +2017,137 @@ impl ImageFormatInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        extensions_vk: &'a mut ImageFormatInfo2ExtensionsVk<'_>,
+    ) -> vk::PhysicalDeviceImageFormatInfo2<'a> {
+        let &Self {
+            flags,
+            format,
+            image_type,
+            tiling,
+            usage,
+            stencil_usage: _,
+            external_memory_handle_type: _,
+            image_view_type: _,
+            drm_format_modifier_info: _,
+            view_formats: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = vk::PhysicalDeviceImageFormatInfo2::default()
+            .format(format.into())
+            .ty(image_type.into())
+            .tiling(tiling.into())
+            .usage(usage.into())
+            .flags(flags.into());
+
+        let ImageFormatInfo2ExtensionsVk {
+            drm_format_modifier_vk,
+            external_vk,
+            format_list_vk,
+            image_view_vk,
+            stencil_usage_vk,
+        } = extensions_vk;
+
+        if let Some(next) = drm_format_modifier_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = external_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = format_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = image_view_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = stencil_usage_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk2_extensions<'a>(
+        &'a self,
+        fields1_vk: &'a ImageFormatInfo2Fields1Vk,
+    ) -> ImageFormatInfo2ExtensionsVk<'a> {
+        let &Self {
+            flags: _,
+            format: _,
+            image_type: _,
+            tiling: _,
+            usage: _,
+            stencil_usage,
+            external_memory_handle_type,
+            image_view_type,
+            ref drm_format_modifier_info,
+            view_formats: _,
+            _ne: _,
+        } = self;
+        let ImageFormatInfo2Fields1Vk { view_formats_vk } = fields1_vk;
+
+        let drm_format_modifier_vk = drm_format_modifier_info
+            .as_ref()
+            .map(ImageDrmFormatModifierInfo::to_vk);
+
+        let external_vk = external_memory_handle_type.map(|handle_type| {
+            vk::PhysicalDeviceExternalImageFormatInfo::default().handle_type(handle_type.into())
+        });
+
+        let format_list_vk = (!view_formats_vk.is_empty())
+            .then(|| vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+
+        let image_view_vk = image_view_type.map(|image_view_type| {
+            vk::PhysicalDeviceImageViewImageFormatInfoEXT::default()
+                .image_view_type(image_view_type.into())
+        });
+
+        let stencil_usage_vk = stencil_usage.map(|stencil_usage| {
+            vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
+        });
+
+        ImageFormatInfo2ExtensionsVk {
+            drm_format_modifier_vk,
+            external_vk,
+            format_list_vk,
+            image_view_vk,
+            stencil_usage_vk,
+        }
+    }
+
+    pub(crate) fn to_vk2_fields1(&self) -> ImageFormatInfo2Fields1Vk {
+        let view_formats_vk = self
+            .view_formats
+            .iter()
+            .copied()
+            .map(vk::Format::from)
+            .collect();
+
+        ImageFormatInfo2Fields1Vk { view_formats_vk }
+    }
+}
+
+pub(crate) struct ImageFormatInfo2ExtensionsVk<'a> {
+    pub(crate) drm_format_modifier_vk: Option<vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'a>>,
+    pub(crate) external_vk: Option<vk::PhysicalDeviceExternalImageFormatInfo<'static>>,
+    pub(crate) format_list_vk: Option<vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) image_view_vk: Option<vk::PhysicalDeviceImageViewImageFormatInfoEXT<'static>>,
+    pub(crate) stencil_usage_vk: Option<vk::ImageStencilUsageCreateInfo<'static>>,
+}
+
+pub(crate) struct ImageFormatInfo2Fields1Vk {
+    pub(crate) view_formats_vk: Vec<vk::Format>,
 }
 
 /// The image's DRM format modifier configuration to query in
-/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageDrmFormatModifierInfo {
     /// The DRM format modifier to query.
@@ -2005,15 +2166,21 @@ pub struct ImageDrmFormatModifierInfo {
 impl Default for ImageDrmFormatModifierInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageDrmFormatModifierInfo {
+    /// Returns a default `ImageDrmFormatModifierInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             drm_format_modifier: 0,
             sharing: Sharing::Exclusive,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageDrmFormatModifierInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -2071,6 +2238,26 @@ impl ImageDrmFormatModifierInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'_> {
+        let &Self {
+            drm_format_modifier,
+            ref sharing,
+            _ne: _,
+        } = self;
+
+        let (sharing_mode, queue_family_indices) = match sharing {
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
+        };
+
+        vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
+            .drm_format_modifier(drm_format_modifier)
+            .sharing_mode(sharing_mode)
+            .queue_family_indices(queue_family_indices)
+    }
 }
 
 /// The properties that are supported by a physical device for images of a certain type.
@@ -2098,38 +2285,125 @@ pub struct ImageFormatProperties {
     pub external_memory_properties: ExternalMemoryProperties,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    /// a [`Cubic`](sampler::Filter::Cubic) `mag_filter` or `min_filter`.
     pub filter_cubic: bool,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
-    /// [`Min`](crate::image::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::image::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    /// a [`Cubic`](sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](sampler::SamplerReductionMode::Min) or
+    /// [`Max`](sampler::SamplerReductionMode::Max) `reduction_mode`.
     pub filter_cubic_minmax: bool,
 }
 
-impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
-    #[inline]
-    fn from(props: ash::vk::ImageFormatProperties) -> Self {
-        Self {
-            max_extent: [
-                props.max_extent.width,
-                props.max_extent.height,
-                props.max_extent.depth,
-            ],
-            max_mip_levels: props.max_mip_levels,
-            max_array_layers: props.max_array_layers,
-            sample_counts: props.sample_counts.into(),
-            max_resource_size: props.max_resource_size,
+impl ImageFormatProperties {
+    pub(crate) fn to_mut_vk2(
+        extensions_vk: &mut ImageFormatProperties2ExtensionsVk,
+    ) -> vk::ImageFormatProperties2<'_> {
+        let mut val_vk = vk::ImageFormatProperties2::default();
+
+        let ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        } = extensions_vk;
+
+        if let Some(next) = external_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = filter_cubic_image_view_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk2_extensions(
+        image_format_info: &ImageFormatInfo,
+    ) -> ImageFormatProperties2ExtensionsVk {
+        let external_vk = (image_format_info.external_memory_handle_type.is_some())
+            .then(vk::ExternalImageFormatProperties::default);
+
+        let filter_cubic_image_view_vk = (image_format_info.image_view_type.is_some())
+            .then(vk::FilterCubicImageViewImageFormatPropertiesEXT::default);
+
+        ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        }
+    }
+
+    pub(crate) fn from_vk2(
+        val_vk: &vk::ImageFormatProperties2<'_>,
+        extensions_vk: &ImageFormatProperties2ExtensionsVk,
+    ) -> Self {
+        let &vk::ImageFormatProperties2 {
+            image_format_properties:
+                vk::ImageFormatProperties {
+                    max_extent,
+                    max_mip_levels,
+                    max_array_layers,
+                    sample_counts,
+                    max_resource_size,
+                },
+            ..
+        } = val_vk;
+
+        let mut val = Self {
+            max_extent: [max_extent.width, max_extent.height, max_extent.depth],
+            max_mip_levels,
+            max_array_layers,
+            sample_counts: sample_counts.into(),
+            max_resource_size,
             external_memory_properties: Default::default(),
             filter_cubic: false,
             filter_cubic_minmax: false,
+        };
+
+        let ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        } = extensions_vk;
+
+        if let Some(val_vk) = external_vk {
+            let vk::ExternalImageFormatProperties {
+                external_memory_properties,
+                ..
+            } = val_vk;
+
+            val = Self {
+                external_memory_properties: ExternalMemoryProperties::from_vk(
+                    external_memory_properties,
+                ),
+                ..val
+            };
         }
+
+        if let Some(val_vk) = filter_cubic_image_view_vk {
+            let &vk::FilterCubicImageViewImageFormatPropertiesEXT {
+                filter_cubic,
+                filter_cubic_minmax,
+                ..
+            } = val_vk;
+
+            val = Self {
+                filter_cubic: filter_cubic != vk::FALSE,
+                filter_cubic_minmax: filter_cubic_minmax != vk::FALSE,
+                ..val
+            };
+        }
+
+        val
     }
 }
 
+pub(crate) struct ImageFormatProperties2ExtensionsVk {
+    pub(crate) external_vk: Option<vk::ExternalImageFormatProperties<'static>>,
+    pub(crate) filter_cubic_image_view_vk:
+        Option<vk::FilterCubicImageViewImageFormatPropertiesEXT<'static>>,
+}
+
 /// The image configuration to query in
-/// [`PhysicalDevice::sparse_image_format_properties`](crate::device::physical::PhysicalDevice::sparse_image_format_properties).
+/// [`PhysicalDevice::sparse_image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.
@@ -2163,6 +2437,14 @@ pub struct SparseImageFormatInfo {
 impl Default for SparseImageFormatInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseImageFormatInfo {
+    /// Returns a default `SparseImageFormatInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             image_type: ImageType::Dim2d,
@@ -2172,9 +2454,7 @@ impl Default for SparseImageFormatInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SparseImageFormatInfo {
     pub(crate) fn validate(
         &self,
         physical_device: &PhysicalDevice,
@@ -2237,6 +2517,24 @@ impl SparseImageFormatInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceSparseImageFormatInfo2<'static> {
+        let &Self {
+            format,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = self;
+
+        vk::PhysicalDeviceSparseImageFormatInfo2::default()
+            .format(format.into())
+            .ty(image_type.into())
+            .samples(samples.into())
+            .usage(usage.into())
+            .tiling(tiling.into())
+    }
 }
 
 /// The properties that are supported by a physical device for sparse images of a certain type.
@@ -2254,6 +2552,34 @@ pub struct SparseImageFormatProperties {
 
     /// Additional information about the sparse image.
     pub flags: SparseImageFormatFlags,
+}
+
+impl SparseImageFormatProperties {
+    pub(crate) fn to_mut_vk2() -> vk::SparseImageFormatProperties2<'static> {
+        vk::SparseImageFormatProperties2::default()
+    }
+
+    pub(crate) fn to_mut_vk() -> vk::SparseImageFormatProperties {
+        vk::SparseImageFormatProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::SparseImageFormatProperties) -> Self {
+        let &vk::SparseImageFormatProperties {
+            aspect_mask,
+            image_granularity,
+            flags,
+        } = val_vk;
+
+        SparseImageFormatProperties {
+            aspects: aspect_mask.into(),
+            image_granularity: [
+                image_granularity.width,
+                image_granularity.height,
+                image_granularity.depth,
+            ],
+            flags: flags.into(),
+        }
+    }
 }
 
 vulkan_bitflags! {
@@ -2294,9 +2620,49 @@ pub struct SparseImageMemoryRequirements {
     /// The memory offset that must be used to bind the mip tail region.
     pub image_mip_tail_offset: DeviceSize,
 
-    /// If `format_properties.flags.single_miptail` is not set, specifies the stride between
-    /// the mip tail regions of each array layer.
+    /// If `format_properties.flags` does not contain `SparseImageFormatFlags::SINGLE_MIPTAIL`,
+    /// then this specifies the stride between the mip tail regions of each array layer.
     pub image_mip_tail_stride: Option<DeviceSize>,
+}
+
+impl SparseImageMemoryRequirements {
+    pub(crate) fn to_mut_vk2() -> vk::SparseImageMemoryRequirements2<'static> {
+        vk::SparseImageMemoryRequirements2::default()
+    }
+
+    pub(crate) fn to_mut_vk() -> vk::SparseImageMemoryRequirements {
+        vk::SparseImageMemoryRequirements::default()
+    }
+
+    pub(crate) fn from_vk2(val_vk: &vk::SparseImageMemoryRequirements2<'_>) -> Self {
+        let vk::SparseImageMemoryRequirements2 {
+            memory_requirements,
+            ..
+        } = val_vk;
+
+        SparseImageMemoryRequirements::from_vk(memory_requirements)
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::SparseImageMemoryRequirements) -> Self {
+        let &vk::SparseImageMemoryRequirements {
+            ref format_properties,
+            image_mip_tail_first_lod,
+            image_mip_tail_size,
+            image_mip_tail_offset,
+            image_mip_tail_stride,
+        } = val_vk;
+
+        SparseImageMemoryRequirements {
+            format_properties: SparseImageFormatProperties::from_vk(format_properties),
+            image_mip_tail_first_lod,
+            image_mip_tail_size,
+            image_mip_tail_offset,
+            image_mip_tail_stride: (!format_properties
+                .flags
+                .intersects(vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
+            .then_some(image_mip_tail_stride),
+        }
+    }
 }
 
 #[cfg(test)]

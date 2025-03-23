@@ -1,12 +1,4 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
+use ash::vk;
 use bytemuck::cast_slice;
 
 /// Properties of an extension in the loader or a physical device.
@@ -19,9 +11,9 @@ pub struct ExtensionProperties {
     pub spec_version: u32,
 }
 
-impl From<ash::vk::ExtensionProperties> for ExtensionProperties {
+impl From<vk::ExtensionProperties> for ExtensionProperties {
     #[inline]
-    fn from(val: ash::vk::ExtensionProperties) -> Self {
+    fn from(val: vk::ExtensionProperties) -> Self {
         Self {
             extension_name: {
                 let bytes = cast_slice(val.extension_name.as_slice());

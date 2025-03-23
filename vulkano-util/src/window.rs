@@ -2,21 +2,13 @@
 // Their licences: https://github.com/bevyengine/bevy/blob/main/LICENSE-MIT
 // https://github.com/bevyengine/bevy/blob/main/LICENSE-APACHE
 
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{context::VulkanoContext, renderer::VulkanoWindowRenderer};
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::collections::hash_map::{Iter, IterMut};
 use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
 use winit::{
     dpi::LogicalSize,
+    event_loop::ActiveEventLoop,
     window::{CursorGrabMode, WindowId},
 };
 
@@ -26,25 +18,23 @@ use winit::{
 /// ## Examples
 ///
 /// ```
-/// use vulkano_util::context::{VulkanoConfig, VulkanoContext};
-/// use winit::event_loop::EventLoop;
-/// use vulkano_util::window::VulkanoWindows;
+/// use vulkano_util::{
+///     context::{VulkanoConfig, VulkanoContext},
+///     window::VulkanoWindows,
+/// };
 ///
-/// #[test]
-/// fn test() {
-///     let context = VulkanoContext::new(VulkanoConfig::default());
-///     let event_loop = EventLoop::new();
-///     let mut vulkano_windows = VulkanoWindows::default();
-///     let _id1 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
-///     let _id2 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+/// # let event_loop = return;
+/// let context = VulkanoContext::new(VulkanoConfig::default());
+/// let mut vulkano_windows = VulkanoWindows::default();
+/// let _id1 = vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
+/// let _id2 = vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
 ///
-///     // You should now have two windows.
-/// }
+/// // You should now have two windows.
 /// ```
 #[derive(Default)]
 pub struct VulkanoWindows {
-    windows: HashMap<winit::window::WindowId, VulkanoWindowRenderer>,
-    primary: Option<winit::window::WindowId>,
+    windows: HashMap<WindowId, VulkanoWindowRenderer>,
+    primary: Option<WindowId>,
 }
 
 impl VulkanoWindows {
@@ -52,30 +42,23 @@ impl VulkanoWindows {
     /// [`WindowDescriptor`] input and swapchain creation modifications.
     pub fn create_window(
         &mut self,
-        event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
+        event_loop: &ActiveEventLoop,
         vulkano_context: &VulkanoContext,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-    ) -> winit::window::WindowId {
-        #[cfg(target_os = "windows")]
-        let mut winit_window_builder = {
-            use winit::platform::windows::WindowBuilderExtWindows;
-            winit::window::WindowBuilder::new().with_drag_and_drop(false)
-        };
+    ) -> WindowId {
+        let mut winit_window_attributes = winit::window::Window::default_attributes();
 
-        #[cfg(not(target_os = "windows"))]
-        let mut winit_window_builder = winit::window::WindowBuilder::new();
-
-        winit_window_builder = match window_descriptor.mode {
-            WindowMode::BorderlessFullscreen => winit_window_builder.with_fullscreen(Some(
+        winit_window_attributes = match window_descriptor.mode {
+            WindowMode::BorderlessFullscreen => winit_window_attributes.with_fullscreen(Some(
                 winit::window::Fullscreen::Borderless(event_loop.primary_monitor()),
             )),
             WindowMode::Fullscreen => {
-                winit_window_builder.with_fullscreen(Some(winit::window::Fullscreen::Exclusive(
+                winit_window_attributes.with_fullscreen(Some(winit::window::Fullscreen::Exclusive(
                     get_best_videomode(&event_loop.primary_monitor().unwrap()),
                 )))
             }
-            WindowMode::SizedFullscreen => winit_window_builder.with_fullscreen(Some(
+            WindowMode::SizedFullscreen => winit_window_attributes.with_fullscreen(Some(
                 winit::window::Fullscreen::Exclusive(get_fitting_videomode(
                     &event_loop.primary_monitor().unwrap(),
                     window_descriptor.width as u32,
@@ -93,7 +76,7 @@ impl VulkanoWindows {
 
                 if let Some(position) = position {
                     if let Some(sf) = scale_factor_override {
-                        winit_window_builder = winit_window_builder.with_position(
+                        winit_window_attributes = winit_window_attributes.with_position(
                             winit::dpi::LogicalPosition::new(
                                 position[0] as f64,
                                 position[1] as f64,
@@ -101,20 +84,20 @@ impl VulkanoWindows {
                             .to_physical::<f64>(*sf),
                         );
                     } else {
-                        winit_window_builder =
-                            winit_window_builder.with_position(winit::dpi::LogicalPosition::new(
+                        winit_window_attributes = winit_window_attributes.with_position(
+                            winit::dpi::LogicalPosition::new(
                                 position[0] as f64,
                                 position[1] as f64,
-                            ));
+                            ),
+                        );
                     }
                 }
+
                 if let Some(sf) = scale_factor_override {
-                    winit_window_builder.with_inner_size(
-                        winit::dpi::LogicalSize::new(*width, *height).to_physical::<f64>(*sf),
-                    )
+                    winit_window_attributes
+                        .with_inner_size(LogicalSize::new(*width, *height).to_physical::<f64>(*sf))
                 } else {
-                    winit_window_builder
-                        .with_inner_size(winit::dpi::LogicalSize::new(*width, *height))
+                    winit_window_attributes.with_inner_size(LogicalSize::new(*width, *height))
                 }
             }
             .with_resizable(window_descriptor.resizable)
@@ -132,19 +115,20 @@ impl VulkanoWindows {
             height: constraints.max_height,
         };
 
-        let winit_window_builder =
+        let winit_window_attributes =
             if constraints.max_width.is_finite() && constraints.max_height.is_finite() {
-                winit_window_builder
+                winit_window_attributes
                     .with_min_inner_size(min_inner_size)
                     .with_max_inner_size(max_inner_size)
             } else {
-                winit_window_builder.with_min_inner_size(min_inner_size)
+                winit_window_attributes.with_min_inner_size(min_inner_size)
             };
 
         #[allow(unused_mut)]
-        let mut winit_window_builder = winit_window_builder.with_title(&window_descriptor.title);
+        let mut winit_window_attributes =
+            winit_window_attributes.with_title(&window_descriptor.title);
 
-        let winit_window = winit_window_builder.build(event_loop).unwrap();
+        let winit_window = event_loop.create_window(winit_window_attributes).unwrap();
 
         if window_descriptor.cursor_locked {
             match winit_window.set_cursor_grab(CursorGrabMode::Confined) {
@@ -206,34 +190,31 @@ impl VulkanoWindows {
 
     /// Get a mutable reference to the renderer by winit window id.
     #[inline]
-    pub fn get_renderer_mut(
-        &mut self,
-        id: winit::window::WindowId,
-    ) -> Option<&mut VulkanoWindowRenderer> {
+    pub fn get_renderer_mut(&mut self, id: WindowId) -> Option<&mut VulkanoWindowRenderer> {
         self.windows.get_mut(&id)
     }
 
     /// Get a reference to the renderer by winit window id.
     #[inline]
-    pub fn get_renderer(&self, id: winit::window::WindowId) -> Option<&VulkanoWindowRenderer> {
+    pub fn get_renderer(&self, id: WindowId) -> Option<&VulkanoWindowRenderer> {
         self.windows.get(&id)
     }
 
     /// Get a reference to the winit window by winit window id.
     #[inline]
-    pub fn get_window(&self, id: winit::window::WindowId) -> Option<&winit::window::Window> {
+    pub fn get_window(&self, id: WindowId) -> Option<&winit::window::Window> {
         self.windows.get(&id).map(|v_window| v_window.window())
     }
 
     /// Return primary window id.
     #[inline]
-    pub fn primary_window_id(&self) -> Option<winit::window::WindowId> {
+    pub fn primary_window_id(&self) -> Option<WindowId> {
         self.primary
     }
 
     /// Remove renderer by window id.
     #[inline]
-    pub fn remove_renderer(&mut self, id: winit::window::WindowId) {
+    pub fn remove_renderer(&mut self, id: WindowId) {
         self.windows.remove(&id);
         if let Some(primary) = self.primary {
             if primary == id {
@@ -259,7 +240,7 @@ fn get_fitting_videomode(
     monitor: &winit::monitor::MonitorHandle,
     width: u32,
     height: u32,
-) -> winit::monitor::VideoMode {
+) -> winit::monitor::VideoModeHandle {
     let mut modes = monitor.video_modes().collect::<Vec<_>>();
 
     fn abs_diff(a: u32, b: u32) -> u32 {
@@ -287,7 +268,7 @@ fn get_fitting_videomode(
     modes.first().unwrap().clone()
 }
 
-fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor::VideoMode {
+fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor::VideoModeHandle {
     let mut modes = monitor.video_modes().collect::<Vec<_>>();
     modes.sort_by(|a, b| {
         use std::cmp::Ordering::*;
@@ -414,7 +395,7 @@ impl Default for WindowResizeConstraints {
 impl WindowResizeConstraints {
     #[must_use]
     pub fn check_constraints(&self) -> Self {
-        let WindowResizeConstraints {
+        let &WindowResizeConstraints {
             mut min_width,
             mut min_height,
             mut max_width,

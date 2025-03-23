@@ -4,60 +4,109 @@ members = [
     "vulkano",
     "vulkano-macros",
     "vulkano-shaders",
+    "vulkano-taskgraph",
     "vulkano-util",
-    # "vulkano-win",
 ]
+# NOTE(Marc): Linux CI is failing because of a transitive dependency of the old winit that this
+# example depends on. I don't know how to update glium to the new version.
+exclude = ["examples/gl-interop"]
 resolver = "2"
 
+[workspace.package]
+edition = "2021"
+rust-version = "1.80.0"
+license = "MIT OR Apache-2.0"
+homepage = "https://vulkano.rs"
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
+categories = ["rendering::graphics-api"]
+
 [workspace.dependencies.vulkano]
-version = "0.34"
+version = "0.35"
 path = "vulkano"
 default-features = false
 
 [workspace.dependencies.vulkano-macros]
-version = "0.34"
+version = "0.35"
 path = "vulkano-macros"
 
 [workspace.dependencies.vulkano-shaders]
-version = "0.34"
+version = "0.35"
 path = "vulkano-shaders"
 
+[workspace.dependencies.vulkano-taskgraph]
+version = "0.35"
+path = "vulkano-taskgraph"
+
 [workspace.dependencies.vulkano-util]
-version = "0.34"
+version = "0.35"
 path = "vulkano-util"
 
 [workspace.dependencies]
-ahash = "0.8"
 # When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
 # All versions of vk.xml can be found at:
 # https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml
-ash = "0.37.3"
+ash = "0.38.0"
 bytemuck = "1.9"
-core-graphics-types = "0.1"
+concurrent-slotmap = { git = "https://github.com/vulkano-rs/concurrent-slotmap", rev = "c10c56adeae11fcc9cd0a1d5c36d3cf258d9f505" }
 crossbeam-queue = "0.3"
+foldhash = "0.1"
 half = "2.0"
 heck = "0.4"
 indexmap = "2.0"
 libloading = "0.8"
-objc = "0.2.5"
-once_cell = "1.17"
+nom = "7.1"
 parking_lot = "0.12"
 proc-macro2 = "1.0"
-proc-macro-crate = "2.0"
+proc-macro-crate = "3.0"
 quote = "1.0"
+rangemap = "1.5"
 raw-window-handle = "0.6"
-regex = "1.8"
+raw-window-metal = "1.0"
 serde = "1.0"
 serde_json = "1.0"
-shaderc = "0.8"
+shaderc = "0.8.3"
+slabbin = "1.2"
 smallvec = "1.8"
 syn = "2.0"
 thread_local = "1.1"
-vk-parse = "0.12"
-winit = "0.29"
+vk-parse = "0.15"
+winit = "0.30"
+x11-dl = "2.0"
+x11rb = "0.13"
 
 # Only used in examples
-cgmath = "0.18"
+glam = "0.29"
 png = "0.17"
 rand = "0.8"
 ron = "0.8"
+
+[workspace.lints]
+rust.missing_docs = "allow"                                       # TODO: warn eventually
+rust.rust_2018_idioms = { level = "warn", priority = -1 }
+rust.rust_2024_compatibility = { level = "allow", priority = -1 } # TODO: warn eventually
+rust.rust_2024_incompatible_pat = "warn"
+rust.unsafe_op_in_unsafe_fn = "warn"
+clippy.borrow_as_ptr = "warn"
+clippy.missing_safety_doc = "allow"                               # TODO: warn eventually
+clippy.multiple_unsafe_ops_per_block = "warn"
+clippy.ptr_as_ptr = "warn"
+clippy.ptr_cast_constness = "warn"
+clippy.ref_as_ptr = "warn"
+clippy.trivially_copy_pass_by_ref = "warn"
+# These lints are a bit too pedantic, so they're disabled here.
+# They can be removed if they no longer happen in the future.
+clippy.arc_with_non_send_sync = "allow"
+clippy.collapsible_else_if = "allow"
+clippy.collapsible_if = "allow"
+clippy.len_without_is_empty = "allow"
+clippy.needless_borrowed_reference = "allow"
+clippy.nonminimal_bool = "allow"
+clippy.result_large_err = "allow"
+clippy.too_many_arguments = "allow"
+clippy.type_complexity = "allow"
+
+[profile.CI]
+inherits = "dev"
+debug = 0
+codegen-units = 1
+incremental = false

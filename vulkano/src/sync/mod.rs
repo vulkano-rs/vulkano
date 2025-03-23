@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Synchronization on the GPU.
 //!
 //! Just like for CPU code, you have to ensure that buffers and images are not accessed mutably by
@@ -17,7 +8,7 @@
 //! knowledge if you want to avoid errors.
 
 #[allow(unused)]
-pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessFlags};
+pub(crate) use self::pipeline::*;
 pub use self::{
     future::{now, GpuFuture},
     pipeline::{
@@ -26,6 +17,8 @@ pub use self::{
     },
 };
 use crate::{device::Queue, VulkanError};
+use ash::vk;
+use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -83,6 +76,29 @@ where
     Concurrent(I),
 }
 
+impl Sharing<SmallVec<[u32; 4]>> {
+    /// Returns `true` if `self` is the `Exclusive` variant.
+    #[inline]
+    pub fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive)
+    }
+
+    /// Returns `true` if `self` is the `Concurrent` variant.
+    #[inline]
+    pub fn is_concurrent(&self) -> bool {
+        matches!(self, Self::Concurrent(..))
+    }
+
+    pub(crate) fn to_vk(&self) -> (vk::SharingMode, &[u32]) {
+        match self {
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
+        }
+    }
+}
+
 /// How the memory of a resource is currently being accessed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CurrentAccess {
@@ -104,6 +120,7 @@ pub(crate) enum CurrentAccess {
 pub enum HostAccessError {
     AccessConflict(AccessConflict),
     Invalidate(VulkanError),
+    Unmanaged,
     NotHostMapped,
     OutOfMappedRange,
 }
@@ -124,6 +141,7 @@ impl Display for HostAccessError {
             Self::AccessConflict(_) => {
                 write!(f, "the resource is already in use in a conflicting way")
             }
+            Self::Unmanaged => write!(f, "the resource is not managed by vulkano"),
             HostAccessError::Invalidate(_) => write!(f, "invalidating the device memory failed"),
             HostAccessError::NotHostMapped => {
                 write!(f, "the device memory is not current host-mapped")

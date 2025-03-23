@@ -1,12 +1,3 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Extraction of information from SPIR-V modules, that is needed by the rest of Vulkano.
 
 use super::DescriptorBindingRequirements;
@@ -15,31 +6,30 @@ use crate::{
     image::view::ImageViewType,
     pipeline::layout::PushConstantRange,
     shader::{
-        spirv::{Decoration, Dim, ExecutionModel, Id, Instruction, Spirv, StorageClass},
-        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderInterface,
-        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage, SpecializationConstant,
+        spirv::{Decoration, Dim, Id, Instruction, Spirv, StorageClass},
+        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderStage,
+        ShaderStages, SpecializationConstant,
     },
-    DeviceSize,
+    DeviceSize, Version,
 };
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use half::f16;
-use std::borrow::Cow;
+use smallvec::{smallvec, SmallVec};
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
 pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)> + '_ {
     let interface_variables = interface_variables(spirv);
 
-    spirv.iter_entry_point().filter_map(move |instruction| {
-        let (execution_model, function_id, entry_point_name, interface) = match *instruction {
-            Instruction::EntryPoint {
-                execution_model,
-                entry_point,
-                ref name,
-                ref interface,
-                ..
-            } => (execution_model, entry_point, name, interface),
-            _ => return None,
+    spirv.entry_points().iter().filter_map(move |instruction| {
+        let &Instruction::EntryPoint {
+            execution_model,
+            entry_point,
+            ref name,
+            ..
+        } = instruction
+        else {
+            return None;
         };
 
         let stage = ShaderStage::from(execution_model);
@@ -48,36 +38,22 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
             &interface_variables.descriptor_binding,
             spirv,
             stage,
-            function_id,
+            entry_point,
         );
-        let push_constant_requirements = push_constant_requirements(spirv, stage);
-        let input_interface = shader_interface(
+        let push_constant_requirements = push_constant_requirements(
+            &interface_variables.push_constant,
             spirv,
-            interface,
-            StorageClass::Input,
-            matches!(
-                execution_model,
-                ExecutionModel::TessellationControl
-                    | ExecutionModel::TessellationEvaluation
-                    | ExecutionModel::Geometry
-            ),
-        );
-        let output_interface = shader_interface(
-            spirv,
-            interface,
-            StorageClass::Output,
-            matches!(execution_model, ExecutionModel::TessellationControl),
+            stage,
+            entry_point,
         );
 
         Some((
-            function_id,
+            entry_point,
             EntryPointInfo {
-                name: entry_point_name.clone(),
+                name: name.clone(),
                 execution_model,
                 descriptor_binding_requirements,
                 push_constant_requirements,
-                input_interface,
-                output_interface,
             },
         ))
     })
@@ -86,6 +62,7 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
 #[derive(Clone, Debug, Default)]
 struct InterfaceVariables {
     descriptor_binding: HashMap<Id, DescriptorBindingVariable>,
+    push_constant: HashMap<Id, PushConstantRange>,
 }
 
 // See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface.
@@ -99,10 +76,10 @@ struct DescriptorBindingVariable {
 fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
     let mut variables = InterfaceVariables::default();
 
-    for instruction in spirv.iter_global() {
+    for instruction in spirv.global_variables() {
         if let Instruction::Variable {
             result_id,
-            result_type_id: _,
+            result_type_id,
             storage_class,
             ..
         } = instruction
@@ -114,6 +91,12 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
                     variables.descriptor_binding.insert(
                         *result_id,
                         descriptor_binding_requirements_of(spirv, *result_id),
+                    );
+                }
+                StorageClass::PushConstant => {
+                    variables.push_constant.insert(
+                        *result_id,
+                        push_constant_requirements_of(spirv, *result_type_id),
                     );
                 }
                 _ => (),
@@ -138,12 +121,12 @@ fn inspect_entry_point(
         result: HashMap<Id, DescriptorBindingVariable>,
     }
 
-    impl<'a> Context<'a> {
+    impl Context<'_> {
         fn instruction_chain<const N: usize>(
             &mut self,
             chain: [fn(&Spirv, Id) -> Option<Id>; N],
             id: Id,
-        ) -> Option<(&mut DescriptorBindingVariable, Option<u32>)> {
+        ) -> Option<(&mut DescriptorBindingVariable, Option<u64>)> {
             let mut id = chain
                 .into_iter()
                 .try_fold(id, |id, func| func(self.spirv, id))?;
@@ -157,6 +140,9 @@ fn inspect_entry_point(
 
             while let Instruction::AccessChain {
                 base, ref indexes, ..
+            }
+            | Instruction::InBoundsAccessChain {
+                base, ref indexes, ..
             } = *self.spirv.id(id).instruction()
             {
                 id = base;
@@ -165,10 +151,7 @@ fn inspect_entry_point(
                     // Variable was accessed with an access chain.
                     // Retrieve index from instruction if it's a constant value.
                     // TODO: handle a `None` index too?
-                    let index = match *self.spirv.id(*indexes.first().unwrap()).instruction() {
-                        Instruction::Constant { ref value, .. } => Some(value[0]),
-                        _ => None,
-                    };
+                    let index = get_constant(self.spirv, *indexes.first().unwrap());
                     let variable = self.result.entry(id).or_insert_with(|| variable.clone());
                     variable.reqs.stages = self.stage.into();
                     return Some((variable, index));
@@ -180,10 +163,15 @@ fn inspect_entry_point(
 
         fn inspect_entry_point_r(&mut self, function: Id) {
             fn desc_reqs(
-                descriptor_variable: Option<(&mut DescriptorBindingVariable, Option<u32>)>,
+                descriptor_variable: Option<(&mut DescriptorBindingVariable, Option<u64>)>,
             ) -> Option<&mut DescriptorRequirements> {
-                descriptor_variable
-                    .map(|(variable, index)| variable.reqs.descriptors.entry(index).or_default())
+                descriptor_variable.map(|(variable, index)| {
+                    variable
+                        .reqs
+                        .descriptors
+                        .entry(index.map(|index| index.try_into().unwrap()))
+                        .or_default()
+                })
             }
 
             fn inst_image_texel_pointer(spirv: &Spirv, id: Id) -> Option<Id> {
@@ -209,7 +197,7 @@ fn inspect_entry_point(
 
             self.inspected_functions.insert(function);
 
-            for instruction in self.spirv.function(function).iter_instructions() {
+            for instruction in self.spirv.function(function).instructions() {
                 let stage = self.stage;
 
                 match *instruction {
@@ -327,7 +315,7 @@ fn inspect_entry_point(
                             desc_reqs.memory_read = stage.into();
                             desc_reqs.sampler_no_ycbcr_conversion = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.bias.is_some()
                                     || image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
@@ -374,7 +362,7 @@ fn inspect_entry_point(
                             desc_reqs.memory_read = stage.into();
                             desc_reqs.sampler_no_unnormalized_coordinates = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
                             }) {
@@ -434,7 +422,7 @@ fn inspect_entry_point(
                             desc_reqs.sampler_no_unnormalized_coordinates = true;
                             desc_reqs.sampler_compare = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
                             }) {
@@ -557,7 +545,7 @@ fn inspect_entry_point(
                             Some((variable, Some(index))) => DescriptorIdentifier {
                                 set: variable.set,
                                 binding: variable.binding,
-                                index,
+                                index: index.try_into().unwrap(),
                             },
                             _ => continue,
                         };
@@ -631,7 +619,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
         next_type_id = match *id_info.instruction() {
             Instruction::TypeStruct { .. } => {
-                let decoration_block = id_info.iter_decoration().any(|instruction| {
+                let decoration_block = id_info.decorations().iter().any(|instruction| {
                     matches!(
                         instruction,
                         Instruction::Decorate {
@@ -641,7 +629,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     )
                 });
 
-                let decoration_buffer_block = id_info.iter_decoration().any(|instruction| {
+                let decoration_buffer_block = id_info.decorations().iter().any(|instruction| {
                     matches!(
                         instruction,
                         Instruction::Decorate {
@@ -682,8 +670,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 image_format,
                 ..
             } => {
-                assert!(
-                    sampled != 0,
+                assert_ne!(
+                    sampled, 0,
                     "Vulkan requires that variables of type OpTypeImage have a Sampled operand of \
                     1 or 2",
                 );
@@ -693,7 +681,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     Instruction::TypeInt {
                         width, signedness, ..
                     } => {
-                        assert!(width == 32); // TODO: 64-bit components
+                        assert_eq!(width, 32); // TODO: 64-bit components
                         match signedness {
                             0 => NumericType::Uint,
                             1 => NumericType::Int,
@@ -701,7 +689,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                         }
                     }
                     Instruction::TypeFloat { width, .. } => {
-                        assert!(width == 32); // TODO: 64-bit components
+                        assert_eq!(width, 32); // TODO: 64-bit components
                         NumericType::Float
                     }
                     _ => unreachable!(),
@@ -713,8 +701,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                             reqs.image_format.is_none(),
                             "If Dim is SubpassData, Image Format must be Unknown",
                         );
-                        assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
-                        assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
+                        assert_eq!(sampled, 2, "If Dim is SubpassData, Sampled must be 2");
+                        assert_eq!(arrayed, 0, "If Dim is SubpassData, Arrayed must be 0");
 
                         reqs.descriptor_types = vec![DescriptorType::InputAttachment];
                     }
@@ -783,12 +771,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 reqs.descriptor_types
                     .retain(|&d| d != DescriptorType::InlineUniformBlock);
 
-                let len = match spirv.id(length).instruction() {
-                    Instruction::Constant { value, .. } => {
-                        value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
-                    }
-                    _ => panic!("failed to find array length"),
-                };
+                let len = get_constant(spirv, length).expect("failed to find array length");
 
                 if let Some(count) = reqs.descriptor_count.as_mut() {
                     *count *= len as u32
@@ -809,7 +792,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
             _ => {
                 let name = variable_id_info
-                    .iter_name()
+                    .names()
+                    .iter()
                     .find_map(|instruction| match *instruction {
                         Instruction::Name { ref name, .. } => Some(name.as_str()),
                         _ => None,
@@ -827,7 +811,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
     DescriptorBindingVariable {
         set: variable_id_info
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::DescriptorSet { descriptor_set },
@@ -837,7 +822,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
             })
             .unwrap(),
         binding: variable_id_info
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::Binding { binding_point },
@@ -850,33 +836,125 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
     }
 }
 
-/// Extracts the `PushConstantRange` from `spirv`.
-fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
-    spirv
-        .iter_global()
-        .find_map(|instruction| match *instruction {
-            Instruction::TypePointer {
-                ty,
-                storage_class: StorageClass::PushConstant,
-                ..
-            } => {
-                let id_info = spirv.id(ty);
-                assert!(matches!(
-                    id_info.instruction(),
-                    Instruction::TypeStruct { .. }
-                ));
-                let start = offset_of_struct(spirv, ty);
-                let end =
-                    size_of_type(spirv, ty).expect("Found runtime-sized push constants") as u32;
+fn push_constant_requirements_of(spirv: &Spirv, pointer_type_id: Id) -> PushConstantRange {
+    let struct_type_id = match *spirv.id(pointer_type_id).instruction() {
+        Instruction::TypePointer {
+            ty,
+            storage_class: StorageClass::PushConstant,
+            ..
+        } => ty,
+        _ => unreachable!(),
+    };
 
-                Some(PushConstantRange {
-                    stages: stage.into(),
-                    offset: start,
-                    size: end - start,
-                })
+    assert!(
+        matches!(
+            spirv.id(struct_type_id).instruction(),
+            Instruction::TypeStruct { .. }
+        ),
+        "VUID-StandaloneSpirv-PushConstant-06808"
+    );
+    let start = offset_of_struct(spirv, struct_type_id);
+    let end =
+        size_of_type(spirv, struct_type_id).expect("Found runtime-sized push constants") as u32;
+
+    PushConstantRange {
+        stages: ShaderStages::default(),
+        offset: start,
+        size: end - start,
+    }
+}
+
+/// Extracts the `PushConstantRange` from `spirv`.
+fn push_constant_requirements(
+    global: &HashMap<Id, PushConstantRange>,
+    spirv: &Spirv,
+    stage: ShaderStage,
+    function_id: Id,
+) -> Option<PushConstantRange> {
+    fn find_variables_used(
+        function_id: Id,
+        global: &HashMap<Id, PushConstantRange>,
+        spirv: &Spirv,
+        visited_fns: &mut HashSet<Id>,
+        variables: &mut HashSet<Id>,
+    ) {
+        visited_fns.insert(function_id);
+        let function_info = spirv.function(function_id);
+        for instruction in function_info.instructions() {
+            match instruction {
+                Instruction::FunctionCall {
+                    function,
+                    arguments,
+                    ..
+                } => {
+                    for arg in arguments {
+                        if global.contains_key(arg) {
+                            variables.insert(*arg);
+                        }
+                    }
+                    if !visited_fns.contains(function) {
+                        find_variables_used(*function, global, spirv, visited_fns, variables);
+                    }
+                }
+                Instruction::AccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::InBoundsAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::PtrAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::InBoundsPtrAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::Load {
+                    pointer: variable_id,
+                    ..
+                }
+                | Instruction::CopyMemory {
+                    source: variable_id,
+                    ..
+                }
+                | Instruction::CopyObject {
+                    result_id: variable_id,
+                    ..
+                } => {
+                    if global.contains_key(variable_id) {
+                        variables.insert(*variable_id);
+                    }
+                }
+                _ => (),
             }
-            _ => None,
-        })
+        }
+    }
+
+    if global.is_empty() {
+        return None;
+    }
+    let mut variables = HashSet::default();
+    if spirv.version() < Version::V1_4 {
+        let mut visited_fns = HashSet::default();
+        find_variables_used(function_id, global, spirv, &mut visited_fns, &mut variables);
+    } else if let Instruction::EntryPoint { interface, .. } =
+        spirv.function(function_id).entry_point().unwrap()
+    {
+        for id in interface {
+            if global.contains_key(id) {
+                variables.insert(*id);
+            }
+        }
+    } else {
+        unreachable!();
+    }
+    assert!(
+        variables.len() <= 1,
+        "VUID-StandaloneSpirv-OpEntryPoint-06674"
+    );
+    let variable_id = variables.into_iter().next()?;
+    let mut push_constant_range = global.get(&variable_id).copied().unwrap();
+    push_constant_range.stages = stage.into();
+    Some(push_constant_range)
 }
 
 /// Extracts the `SpecializationConstant` map from `spirv`.
@@ -884,7 +962,8 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
     let get_constant_id = |result_id| {
         spirv
             .id(result_id)
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration:
@@ -898,7 +977,8 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
     };
 
     spirv
-        .iter_global()
+        .constants()
+        .iter()
         .filter_map(|instruction| match *instruction {
             Instruction::SpecConstantFalse { result_id, .. } => get_constant_id(result_id)
                 .map(|constant_id| (constant_id, SpecializationConstant::Bool(false))),
@@ -914,9 +994,9 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
                         width, signedness, ..
                     } => {
                         if width == 64 {
-                            assert!(value.len() == 2);
+                            assert_eq!(value.len(), 2);
                         } else {
-                            assert!(value.len() == 1);
+                            assert_eq!(value.len(), 1);
                         }
 
                         match (signedness, width) {
@@ -937,9 +1017,9 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
                     }
                     Instruction::TypeFloat { width, .. } => {
                         if width == 64 {
-                            assert!(value.len() == 2);
+                            assert_eq!(value.len(), 2);
                         } else {
-                            assert!(value.len() == 1);
+                            assert_eq!(value.len(), 1);
                         }
 
                         match width {
@@ -964,127 +1044,23 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
         .collect()
 }
 
-/// Extracts the `ShaderInterface` with the given storage class from `spirv`.
-fn shader_interface(
-    spirv: &Spirv,
-    interface: &[Id],
-    filter_storage_class: StorageClass,
-    ignore_first_array: bool,
-) -> ShaderInterface {
-    let elements: Vec<_> = interface
-        .iter()
-        .filter_map(|&id| {
-            let (result_type_id, result_id) = match *spirv.id(id).instruction() {
-                Instruction::Variable {
-                    result_type_id,
-                    result_id,
-                    storage_class,
-                    ..
-                } if storage_class == filter_storage_class => (result_type_id, result_id),
-                _ => return None,
-            };
-
-            if is_builtin(spirv, result_id) {
-                return None;
-            }
-
-            let id_info = spirv.id(result_id);
-
-            let name = id_info
-                .iter_name()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Name { ref name, .. } => Some(Cow::Owned(name.clone())),
-                    _ => None,
-                });
-
-            let location = id_info
-                .iter_decoration()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Location { location },
-                        ..
-                    } => Some(location),
-                    _ => None,
-                })
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Input/output variable with id {} (name {:?}) is missing a location",
-                        result_id, name,
-                    )
-                });
-            let component = id_info
-                .iter_decoration()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Component { component },
-                        ..
-                    } => Some(component),
-                    _ => None,
-                })
-                .unwrap_or(0);
-            let index = id_info
-                .iter_decoration()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Index { index },
-                        ..
-                    } => Some(index),
-                    _ => None,
-                })
-                .unwrap_or(0);
-
-            let ty = shader_interface_type_of(spirv, result_type_id, ignore_first_array);
-            assert!(ty.num_elements >= 1);
-
-            Some(ShaderInterfaceEntry {
-                location,
-                index,
-                component,
-                ty,
-                name,
-            })
-        })
-        .collect();
-
-    // Checking for overlapping elements.
-    for (offset, element1) in elements.iter().enumerate() {
-        for element2 in elements.iter().skip(offset + 1) {
-            if element1.index == element2.index
-                && (element1.location == element2.location
-                    || (element1.location < element2.location
-                        && element1.location + element1.ty.num_locations() > element2.location)
-                    || (element2.location < element1.location
-                        && element2.location + element2.ty.num_locations() > element1.location))
-            {
-                panic!(
-                    "The locations of attributes `{:?}` ({}..{}) and `{:?}` ({}..{}) overlap",
-                    element1.name,
-                    element1.location,
-                    element1.location + element1.ty.num_locations(),
-                    element2.name,
-                    element2.location,
-                    element2.location + element2.ty.num_locations(),
-                );
-            }
-        }
-    }
-
-    ShaderInterface { elements }
-}
-
 /// Returns the size of a type, or `None` if its size cannot be determined.
-fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
+pub(crate) fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
     let id_info = spirv.id(id);
 
     match *id_info.instruction() {
-        Instruction::TypeBool { .. } => {
-            panic!("Can't put booleans in structs")
-        }
+        Instruction::TypeVoid { .. } => Some(0),
+        Instruction::TypeBool { .. } => Some(4),
         Instruction::TypeInt { width, .. } | Instruction::TypeFloat { width, .. } => {
-            assert!(width % 8 == 0);
+            assert_eq!(width % 8, 0);
             Some(width as DeviceSize / 8)
         }
-        Instruction::TypePointer { .. } => Some(8),
+        Instruction::TypePointer {
+            storage_class, ty, ..
+        } => match storage_class {
+            StorageClass::PhysicalStorageBuffer => Some(8),
+            _ => size_of_type(spirv, ty),
+        },
         Instruction::TypeVector {
             component_type,
             component_count,
@@ -1097,72 +1073,76 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             ..
         } => {
             // FIXME: row-major or column-major
-            size_of_type(spirv, column_type)
-                .map(|column_size| column_size * column_count as DeviceSize)
-        }
-        Instruction::TypeArray { length, .. } => {
-            let stride = id_info
-                .iter_decoration()
+            // FIXME: `MatrixStride` applies to a struct member containing the matrix, not the
+            // matrix type itself.
+            id_info
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
-                        decoration: Decoration::ArrayStride { array_stride },
+                        decoration: Decoration::MatrixStride { matrix_stride },
                         ..
-                    } => Some(array_stride),
+                    } => Some(matrix_stride as DeviceSize),
                     _ => None,
                 })
-                .unwrap();
-            let length = match spirv.id(length).instruction() {
-                Instruction::Constant { value, .. } => Some(
-                    value
-                        .iter()
-                        .rev()
-                        .fold(0u64, |a, &b| (a << 32) | b as DeviceSize),
-                ),
-                _ => None,
-            }
-            .unwrap();
-
-            Some(stride as DeviceSize * length)
+                .or_else(|| size_of_type(spirv, column_type))
+                .map(|stride| stride * column_count as DeviceSize)
         }
+        Instruction::TypeArray {
+            element_type,
+            length,
+            ..
+        } => id_info
+            .decorations()
+            .iter()
+            .find_map(|instruction| match *instruction {
+                Instruction::Decorate {
+                    decoration: Decoration::ArrayStride { array_stride },
+                    ..
+                } => Some(array_stride as DeviceSize),
+                _ => None,
+            })
+            .or_else(|| size_of_type(spirv, element_type))
+            .map(|stride| {
+                let length = get_constant(spirv, length).unwrap();
+                stride * length
+            }),
         Instruction::TypeRuntimeArray { .. } => None,
         Instruction::TypeStruct {
             ref member_types, ..
         } => {
-            let mut end_of_struct = 0;
-
-            for (&member, member_info) in member_types.iter().zip(id_info.iter_members()) {
-                // Built-ins have an unknown size.
-                if member_info.iter_decoration().any(|instruction| {
-                    matches!(
-                        instruction,
-                        Instruction::MemberDecorate {
-                            decoration: Decoration::BuiltIn { .. },
-                            ..
-                        }
-                    )
-                }) {
-                    return None;
-                }
-
-                // Some structs don't have `Offset` decorations, in the case they are used as local
-                // variables only. Ignoring these.
-                let offset =
-                    member_info
-                        .iter_decoration()
-                        .find_map(|instruction| match *instruction {
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::Offset { byte_offset },
-                                ..
-                            } => Some(byte_offset),
-                            _ => None,
-                        })?;
-                let size = size_of_type(spirv, member)?;
-                end_of_struct = end_of_struct.max(offset as DeviceSize + size);
-            }
-
-            Some(end_of_struct)
+            member_types.iter().zip(id_info.members()).try_fold(
+                0,
+                |end_of_struct, (&member, member_info)| {
+                    let offset = member_info
+                        .decorations()
+                        .iter()
+                        .find_map(|instruction| {
+                            match *instruction {
+                                // Built-ins have an unknown size.
+                                Instruction::MemberDecorate {
+                                    decoration: Decoration::BuiltIn { .. },
+                                    ..
+                                } => Some(None),
+                                Instruction::MemberDecorate {
+                                    decoration: Decoration::Offset { byte_offset },
+                                    ..
+                                } => Some(Some(byte_offset as DeviceSize)),
+                                _ => None,
+                            }
+                        })
+                        .unwrap_or(Some(end_of_struct))?;
+                    let size = size_of_type(spirv, member)?;
+                    Some(end_of_struct.max(offset + size))
+                },
+            )
         }
-        _ => panic!("Type {} not found", id),
+        ref instruction => todo!(
+            "An unknown type was passed to `size_of_type`. \
+            This is a Vulkano bug and should be reported.\n
+            Instruction::{:?}",
+            instruction
+        ),
     }
 }
 
@@ -1170,10 +1150,12 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
 fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
     spirv
         .id(id)
-        .iter_members()
+        .members()
+        .iter()
         .filter_map(|member_info| {
             member_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
@@ -1186,150 +1168,337 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
         .unwrap_or(0)
 }
 
-/// If `ignore_first_array` is true, the function expects the outermost instruction to be
-/// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
-/// panic.
-fn shader_interface_type_of(
-    spirv: &Spirv,
-    id: Id,
-    ignore_first_array: bool,
-) -> ShaderInterfaceEntryType {
-    match *spirv.id(id).instruction() {
-        Instruction::TypeInt {
-            width, signedness, ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                base_type: match signedness {
-                    0 => NumericType::Uint,
-                    1 => NumericType::Int,
-                    _ => unreachable!(),
-                },
-                num_components: 1,
-                num_elements: 1,
-                is_64bit: match width {
-                    8 | 16 | 32 => false,
-                    64 => true,
-                    _ => unimplemented!(),
-                },
-            }
-        }
-        Instruction::TypeFloat { width, .. } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                base_type: NumericType::Float,
-                num_components: 1,
-                num_elements: 1,
-                is_64bit: match width {
-                    16 | 32 => false,
-                    64 => true,
-                    _ => unimplemented!(),
-                },
-            }
-        }
-        Instruction::TypeVector {
-            component_type,
-            component_count,
-            ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                num_components: component_count,
-                ..shader_interface_type_of(spirv, component_type, false)
-            }
-        }
-        Instruction::TypeMatrix {
-            column_type,
-            column_count,
-            ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                num_elements: column_count,
-                ..shader_interface_type_of(spirv, column_type, false)
-            }
-        }
-        Instruction::TypeArray {
-            element_type,
-            length,
-            ..
-        } => {
-            if ignore_first_array {
-                shader_interface_type_of(spirv, element_type, false)
-            } else {
-                let mut ty = shader_interface_type_of(spirv, element_type, false);
-                let num_elements = spirv
-                    .iter_global()
-                    .find_map(|instruction| match *instruction {
-                        Instruction::Constant {
-                            result_id,
-                            ref value,
-                            ..
-                        } if result_id == length => Some(value.clone()),
-                        _ => None,
-                    })
-                    .expect("failed to find array length")
-                    .iter()
-                    .rev()
-                    .fold(0u64, |a, &b| (a << 32) | b as u64)
-                    as u32;
-                ty.num_elements *= num_elements;
-                ty
-            }
-        }
-        Instruction::TypePointer { ty, .. } => {
-            shader_interface_type_of(spirv, ty, ignore_first_array)
-        }
-        _ => panic!("Type {} not found or invalid", id),
+pub(crate) fn get_constant(spirv: &Spirv, id: Id) -> Option<u64> {
+    match spirv.id(id).instruction() {
+        Instruction::Constant { value, .. } => match value.len() {
+            1 => Some(value[0] as u64),
+            2 => Some(value[0] as u64 | ((value[1] as u64) << 32)),
+            _ => panic!("constant {} is larger than 64 bits", id),
+        },
+        _ => None,
     }
 }
 
-/// Returns true if a `BuiltIn` decorator is applied on an id.
-fn is_builtin(spirv: &Spirv, id: Id) -> bool {
-    let id_info = spirv.id(id);
+pub(crate) fn get_constant_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[u64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant { value, .. } => match value.len() {
+                        1 => value[0] as u64,
+                        2 => value[0] as u64 | ((value[1] as u64) << 32),
+                        _ => panic!("constant {} is larger than 64 bits", id),
+                    },
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
 
-    if id_info.iter_decoration().any(|instruction| {
-        matches!(
-            instruction,
-            Instruction::Decorate {
-                decoration: Decoration::BuiltIn { .. },
-                ..
+pub(crate) fn get_constant_float_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[f64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant { value, .. } => match value.len() {
+                        1 => f32::from_bits(value[0]) as f64,
+                        2 => f64::from_bits(value[0] as u64 | ((value[1] as u64) << 32)),
+                        _ => panic!("constant {} is larger than 64 bits", id),
+                    },
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+fn integer_constant_to_i64(spirv: &Spirv, value: &[u32], result_type_id: Id) -> i64 {
+    let type_id_instruction = spirv.id(result_type_id).instruction();
+    match type_id_instruction {
+        Instruction::TypeInt {
+            width, signedness, ..
+        } => {
+            if *width == 64 {
+                assert_eq!(value.len(), 2);
+            } else {
+                assert_eq!(value.len(), 1);
             }
-        )
-    }) {
-        return true;
+
+            match (signedness, width) {
+                (0, 8) => value[0] as u8 as i64,
+                (0, 16) => value[0] as u16 as i64,
+                (0, 32) => value[0] as i64,
+                (0, 64) => i64::try_from((value[0] as u64) | ((value[1] as u64) << 32)).unwrap(),
+                (1, 8) => value[0] as i8 as i64,
+                (1, 16) => value[0] as i16 as i64,
+                (1, 32) => value[0] as i32 as i64,
+                (1, 64) => (value[0] as i64) | ((value[1] as i64) << 32),
+                _ => unimplemented!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) fn get_constant_signed_maybe_composite(
+    spirv: &Spirv,
+    id: Id,
+) -> Option<SmallVec<[i64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::Constant {
+            value,
+            result_type_id,
+            ..
+        } => Some(smallvec![integer_constant_to_i64(
+            spirv,
+            value,
+            *result_type_id
+        )]),
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant {
+                        value,
+                        result_type_id,
+                        ..
+                    } => integer_constant_to_i64(spirv, value, *result_type_id),
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn get_constant_signed_composite_composite(
+    spirv: &Spirv,
+    id: Id,
+) -> Option<SmallVec<[SmallVec<[i64; 4]>; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::ConstantComposite { constituents, .. } => constituents
+                        .iter()
+                        .map(|&id| match spirv.id(id).instruction() {
+                            Instruction::Constant {
+                                value,
+                                result_type_id,
+                                ..
+                            } => integer_constant_to_i64(spirv, value, *result_type_id),
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HashMap, PushConstantRange, ShaderStages, Version};
+
+    #[test]
+    fn push_constant_range() {
+        /*
+            ; SPIR-V
+            ; Version: 1.0
+            ; Generator: Google Shaderc over Glslang; 10
+            ; Bound: 27
+            ; Schema: 0
+            OpCapability Shader
+            %glsl_std450 = OpExtInstImport "GLSL.std.450"
+            OpMemoryModel Logical GLSL450
+            OpEntryPoint GLCompute %main_cs "main_cs" %push_cs
+            OpEntryPoint Fragment %main_fs "main_fs" %push_fs
+            OpExecutionMode %main_cs LocalSize 1 1 1
+            OpExecutionMode %main_fs OriginUpperLeft
+            OpName %main_cs "main_cs"
+            OpName %PushConstsCS "PushCS"
+            OpMemberName %PushConstsCS 0 "a"
+            OpMemberName %PushConstsCS 1 "b"
+            OpName %main_fs "main_fs"
+            OpName %push_fs "PushFS"
+            OpMemberName %PushConstsFS 0 "a"
+            OpMemberDecorate %PushConstsCS 0 Offset 0
+            OpMemberDecorate %PushConstsCS 1 Offset 4
+            OpDecorate %PushConstsCS Block
+            OpMemberDecorate %PushConstsFS 0 Offset 0
+            OpDecorate %PushConstsFS Block
+            %void = OpTypeVoid
+            %fn_void = OpTypeFunction %void
+            %uint = OpTypeInt 32 0
+            %int = OpTypeInt 32 1
+            %float = OpTypeFloat 32
+            %PushConstsCS = OpTypeStruct %uint %float
+            %_ptr_PushConstant_PushConstsCS = OpTypePointer PushConstant %PushConstsCS
+            %push_cs = OpVariable %_ptr_PushConstant_PushConstsCS PushConstant
+            %_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+            %int_0 = OpConstant %int 0
+            %int_1 = OpConstant %int 1
+            %_ptr_PushConstant_float = OpTypePointer PushConstant %float
+            %PushConstsFS = OpTypeStruct %float
+            %_ptr_PushConstant_PushConstsFS = OpTypePointer PushConstant %PushConstsFS
+            %push_fs = OpVariable %_ptr_PushConstant_PushConstsFS PushConstant
+            %main_cs = OpFunction %void None %fn_void
+                %main_cs_label = OpLabel
+                %push_cs_access_0 = OpAccessChain %_ptr_PushConstant_uint %push_cs %int_0
+                %push_cs_access_1 = OpAccessChain %_ptr_PushConstant_float %push_cs %int_1
+                %push_cs_load_0 = OpLoad %uint %push_cs_access_0
+                %push_cs_load_1 = OpLoad %float %push_cs_access_1
+                OpReturn
+            OpFunctionEnd
+            %main_fs = OpFunction %void None %fn_void
+                %main_fs_label = OpLabel
+                %push_fs_access_0 = OpAccessChain %_ptr_PushConstant_float %push_fs %int_0
+                %push_fs_load_0 = OpLoad %float %push_fs_access_0
+                OpReturn
+            OpFunctionEnd
+        */
+        const MODULE: [u32; 186] = [
+            119734787, 65536, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
+            808793134, 0, 196622, 0, 1, 393231, 5, 2, 1852399981, 7562079, 3, 393231, 4, 4,
+            1852399981, 7562847, 5, 393232, 2, 17, 1, 1, 1, 196624, 4, 7, 262149, 2, 1852399981,
+            7562079, 262149, 6, 1752397136, 21315, 262150, 6, 0, 97, 262150, 6, 1, 98, 262149, 4,
+            1852399981, 7562847, 262149, 5, 1752397136, 21318, 262150, 7, 0, 97, 327752, 6, 0, 35,
+            0, 327752, 6, 1, 35, 4, 196679, 6, 2, 327752, 7, 0, 35, 0, 196679, 7, 2, 131091, 8,
+            196641, 9, 8, 262165, 10, 32, 0, 262165, 11, 32, 1, 196630, 12, 32, 262174, 6, 10, 12,
+            262176, 13, 9, 6, 262203, 13, 3, 9, 262176, 14, 9, 10, 262187, 11, 15, 0, 262187, 11,
+            16, 1, 262176, 17, 9, 12, 196638, 7, 12, 262176, 18, 9, 7, 262203, 18, 5, 9, 327734, 8,
+            2, 0, 9, 131320, 19, 327745, 14, 20, 3, 15, 327745, 17, 21, 3, 16, 262205, 10, 22, 20,
+            262205, 12, 23, 21, 65789, 65592, 327734, 8, 4, 0, 9, 131320, 24, 327745, 17, 25, 5,
+            15, 262205, 12, 26, 25, 65789, 65592,
+        ];
+        let spirv = crate::shader::spirv::Spirv::new(&MODULE).unwrap();
+        assert_eq!(spirv.version(), Version::V1_0);
+        let entry_points: HashMap<_, _> = super::entry_points(&spirv)
+            .map(|(_, v)| (v.name.clone(), v))
+            .collect();
+        assert_eq!(entry_points.len(), 2);
+        let main_cs = &entry_points["main_cs"];
+        assert_eq!(
+            main_cs.push_constant_requirements,
+            Some(PushConstantRange {
+                stages: ShaderStages::COMPUTE,
+                offset: 0,
+                size: 8,
+            })
+        );
+        let main_fs = &entry_points["main_fs"];
+        assert_eq!(
+            main_fs.push_constant_requirements,
+            Some(PushConstantRange {
+                stages: ShaderStages::FRAGMENT,
+                offset: 0,
+                size: 4,
+            })
+        );
     }
 
-    if id_info
-        .iter_members()
-        .flat_map(|member_info| member_info.iter_decoration())
-        .any(|instruction| {
-            matches!(
-                instruction,
-                Instruction::MemberDecorate {
-                    decoration: Decoration::BuiltIn { .. },
-                    ..
-                }
-            )
-        })
-    {
-        return true;
-    }
-
-    match id_info.instruction() {
-        Instruction::Variable {
-            result_type_id: ty, ..
-        }
-        | Instruction::TypeArray {
-            element_type: ty, ..
-        }
-        | Instruction::TypeRuntimeArray {
-            element_type: ty, ..
-        }
-        | Instruction::TypePointer { ty, .. } => is_builtin(spirv, *ty),
-        Instruction::TypeStruct { member_types, .. } => {
-            member_types.iter().any(|ty| is_builtin(spirv, *ty))
-        }
-        _ => false,
+    #[test]
+    fn push_constant_range_spirv_1_4() {
+        /*
+            ; SPIR-V
+            ; Version: 1.4
+            ; Generator: Google Shaderc over Glslang; 10
+            ; Bound: 27
+            ; Schema: 0
+            OpCapability Shader
+            %glsl_std450 = OpExtInstImport "GLSL.std.450"
+            OpMemoryModel Logical GLSL450
+            OpEntryPoint GLCompute %main_cs "main_cs" %push_cs
+            OpEntryPoint Fragment %main_fs "main_fs" %push_fs
+            OpExecutionMode %main_cs LocalSize 1 1 1
+            OpExecutionMode %main_fs OriginUpperLeft
+            OpName %main_cs "main_cs"
+            OpName %PushConstsCS "PushCS"
+            OpMemberName %PushConstsCS 0 "a"
+            OpMemberName %PushConstsCS 1 "b"
+            OpName %main_fs "main_fs"
+            OpName %push_fs "PushFS"
+            OpMemberName %PushConstsFS 0 "a"
+            OpMemberDecorate %PushConstsCS 0 Offset 0
+            OpMemberDecorate %PushConstsCS 1 Offset 4
+            OpDecorate %PushConstsCS Block
+            OpMemberDecorate %PushConstsFS 0 Offset 0
+            OpDecorate %PushConstsFS Block
+            %void = OpTypeVoid
+            %fn_void = OpTypeFunction %void
+            %uint = OpTypeInt 32 0
+            %int = OpTypeInt 32 1
+            %float = OpTypeFloat 32
+            %PushConstsCS = OpTypeStruct %uint %float
+            %_ptr_PushConstant_PushConstsCS = OpTypePointer PushConstant %PushConstsCS
+            %push_cs = OpVariable %_ptr_PushConstant_PushConstsCS PushConstant
+            %_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+            %int_0 = OpConstant %int 0
+            %int_1 = OpConstant %int 1
+            %_ptr_PushConstant_float = OpTypePointer PushConstant %float
+            %PushConstsFS = OpTypeStruct %float
+            %_ptr_PushConstant_PushConstsFS = OpTypePointer PushConstant %PushConstsFS
+            %push_fs = OpVariable %_ptr_PushConstant_PushConstsFS PushConstant
+            %main_cs = OpFunction %void None %fn_void
+                %main_cs_label = OpLabel
+                %push_cs_access_0 = OpAccessChain %_ptr_PushConstant_uint %push_cs %int_0
+                %push_cs_access_1 = OpAccessChain %_ptr_PushConstant_float %push_cs %int_1
+                %push_cs_load_0 = OpLoad %uint %push_cs_access_0
+                %push_cs_load_1 = OpLoad %float %push_cs_access_1
+                OpReturn
+            OpFunctionEnd
+            %main_fs = OpFunction %void None %fn_void
+                %main_fs_label = OpLabel
+                %push_fs_access_0 = OpAccessChain %_ptr_PushConstant_float %push_fs %int_0
+                %push_fs_load_0 = OpLoad %float %push_fs_access_0
+                OpReturn
+            OpFunctionEnd
+        */
+        const MODULE: [u32; 186] = [
+            119734787, 66560, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
+            808793134, 0, 196622, 0, 1, 393231, 5, 2, 1852399981, 7562079, 3, 393231, 4, 4,
+            1852399981, 7562847, 5, 393232, 2, 17, 1, 1, 1, 196624, 4, 7, 262149, 2, 1852399981,
+            7562079, 262149, 6, 1752397136, 21315, 262150, 6, 0, 97, 262150, 6, 1, 98, 262149, 4,
+            1852399981, 7562847, 262149, 5, 1752397136, 21318, 262150, 7, 0, 97, 327752, 6, 0, 35,
+            0, 327752, 6, 1, 35, 4, 196679, 6, 2, 327752, 7, 0, 35, 0, 196679, 7, 2, 131091, 8,
+            196641, 9, 8, 262165, 10, 32, 0, 262165, 11, 32, 1, 196630, 12, 32, 262174, 6, 10, 12,
+            262176, 13, 9, 6, 262203, 13, 3, 9, 262176, 14, 9, 10, 262187, 11, 15, 0, 262187, 11,
+            16, 1, 262176, 17, 9, 12, 196638, 7, 12, 262176, 18, 9, 7, 262203, 18, 5, 9, 327734, 8,
+            2, 0, 9, 131320, 19, 327745, 14, 20, 3, 15, 327745, 17, 21, 3, 16, 262205, 10, 22, 20,
+            262205, 12, 23, 21, 65789, 65592, 327734, 8, 4, 0, 9, 131320, 24, 327745, 17, 25, 5,
+            15, 262205, 12, 26, 25, 65789, 65592,
+        ];
+        let spirv = crate::shader::spirv::Spirv::new(&MODULE).unwrap();
+        assert_eq!(spirv.version(), Version::V1_4);
+        let entry_points: HashMap<_, _> = super::entry_points(&spirv)
+            .map(|(_, v)| (v.name.clone(), v))
+            .collect();
+        assert_eq!(entry_points.len(), 2);
+        let main_cs = &entry_points["main_cs"];
+        assert_eq!(
+            main_cs.push_constant_requirements,
+            Some(PushConstantRange {
+                stages: ShaderStages::COMPUTE,
+                offset: 0,
+                size: 8,
+            })
+        );
+        let main_fs = &entry_points["main_fs"];
+        assert_eq!(
+            main_fs.push_constant_requirements,
+            Some(PushConstantRange {
+                stages: ShaderStages::FRAGMENT,
+                offset: 0,
+                size: 4,
+            })
+        );
     }
 }

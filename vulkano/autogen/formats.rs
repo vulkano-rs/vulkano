@@ -1,24 +1,14 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
+use nom::{character::complete, combinator::eof, sequence::tuple};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::iter;
 use vk_parse::{
     Enum, EnumSpec, Extension, ExtensionChild, Feature, Format, FormatChild, InterfaceItem,
 };
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     write_file(
         "formats.rs",
         format!(
@@ -60,6 +50,7 @@ struct FormatMember {
 
     type_std_array: Option<TokenStream>,
     type_cgmath: Option<TokenStream>,
+    type_glam: Option<TokenStream>,
     type_nalgebra: Option<TokenStream>,
 }
 
@@ -152,6 +143,19 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             }
         },
     );
+    let locations_items = members.iter().filter_map(
+        |FormatMember {
+             name, components, ..
+         }| {
+            if components.starts_with(&[64, 64, 64]) {
+                Some(quote! {
+                    Self::#name => 2,
+                })
+            } else {
+                None
+            }
+        },
+    );
     let compression_items = members.iter().filter_map(
         |FormatMember {
              name, compression, ..
@@ -175,7 +179,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         .filter(
             |&FormatMember {
                  texels_per_block, ..
-             }| (*texels_per_block != 1),
+             }| *texels_per_block != 1,
         )
         .map(
             |FormatMember {
@@ -253,8 +257,20 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_cgmath,
              ..
          }| {
-            (type_cgmath.as_ref().or(type_std_array.as_ref())).map(|ty| {
+            type_cgmath.as_ref().or(type_std_array.as_ref()).map(|ty| {
                 quote! { (cgmath, #name) => { #ty }; }
+            })
+        },
+    );
+    let type_for_format_glam_items = members.iter().filter_map(
+        |FormatMember {
+             name,
+             type_std_array,
+             type_glam,
+             ..
+         }| {
+            type_glam.as_ref().or(type_std_array.as_ref()).map(|ty| {
+                quote! { (glam, #name) => { #ty }; }
             })
         },
     );
@@ -265,9 +281,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_nalgebra,
              ..
          }| {
-            (type_nalgebra.as_ref().or(type_std_array.as_ref())).map(|ty| {
-                quote! { (nalgebra, #name) => { #ty }; }
-            })
+            type_nalgebra
+                .as_ref()
+                .or(type_std_array.as_ref())
+                .map(|ty| {
+                    quote! { (nalgebra, #name) => { #ty }; }
+                })
         },
     );
 
@@ -282,43 +301,47 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      api_version,
                      device_extensions,
                      instance_extensions,
-                     features: _,
+                     device_features: _,
                  }| {
-                    let condition_items = (api_version.iter().map(|(major, minor)| {
-                        let version = format_ident!("V{}_{}", major, minor);
-                        quote! { device_api_version >= crate::Version::#version }
-                    }))
-                    .chain(device_extensions.iter().map(|ext_name| {
-                        let ident = format_ident!("{}", ext_name);
-                        quote! { device_extensions.#ident }
-                    }))
-                    .chain(instance_extensions.iter().map(|ext_name| {
-                        let ident = format_ident!("{}", ext_name);
-                        quote! { instance_extensions.#ident }
-                    }));
+                    let condition_items = api_version
+                        .iter()
+                        .map(|(major, minor)| {
+                            let version = format_ident!("V{}_{}", major, minor);
+                            quote! { device_api_version >= crate::Version::#version }
+                        })
+                        .chain(device_extensions.iter().map(|ext_name| {
+                            let ident = format_ident!("{}", ext_name);
+                            quote! { device_extensions.#ident }
+                        }))
+                        .chain(instance_extensions.iter().map(|ext_name| {
+                            let ident = format_ident!("{}", ext_name);
+                            quote! { instance_extensions.#ident }
+                        }));
                     let required_for = format!("is `Format::{}`", name);
-                    let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
-                        let version = format_ident!("V{}_{}", major, minor);
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::APIVersion(crate::Version::#version),
-                            ]),
-                        }
-                    }))
-                    .chain(device_extensions.iter().map(|ext_name| {
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::DeviceExtension(#ext_name),
-                            ]),
-                        }
-                    }))
-                    .chain(instance_extensions.iter().map(|ext_name| {
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::InstanceExtension(#ext_name),
-                            ]),
-                        }
-                    }));
+                    let requires_one_of_items = api_version
+                        .iter()
+                        .map(|(major, minor)| {
+                            let version = format_ident!("V{}_{}", major, minor);
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::APIVersion(crate::Version::#version),
+                                ]),
+                            }
+                        })
+                        .chain(device_extensions.iter().map(|ext_name| {
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::DeviceExtension(#ext_name),
+                                ]),
+                            }
+                        }))
+                        .chain(instance_extensions.iter().map(|ext_name| {
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::InstanceExtension(#ext_name),
+                                ]),
+                            }
+                        }));
 
                     quote! {
                         if !(#(#condition_items)||*) {
@@ -412,6 +435,15 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub fn components(self) -> [u8; 4] {
                 match self {
                     #(#components_items)*
+                }
+            }
+
+            /// Returns the number of shader input/output locations that a single element of this
+            /// format takes up.
+            pub fn locations(self) -> u32 {
+                match self {
+                    #(#locations_items)*
+                    _ => 1,
                 }
             }
 
@@ -514,7 +546,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {
@@ -570,6 +602,13 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         /// pixel = cgmath::Vector4::new(1.0f32, 0.0, 0.0, 1.0);
         /// ```
         ///
+        /// For [`glam`]:
+        ///
+        /// ```ignore
+        /// let pixel: type_for_format!(glam, R32G32B32A32_SFLOAT);
+        /// pixel = glam::Vec4::new(1.0f32, 0.0, 0.0, 1.0);
+        /// ```
+        ///
         /// For [`nalgebra`]:
         ///
         /// ```ignore
@@ -578,11 +617,13 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         /// ```
         ///
         /// [`cgmath`]: https://crates.io/crates/cgmath
+        /// [`glam`]: https://crates.io/crates/glam
         /// [`nalgebra`]: https://crates.io/crates/nalgebra
         #[macro_export]
         macro_rules! type_for_format {
             #(#type_for_format_items)*
             #(#type_for_format_cgmath_items)*
+            #(#type_for_format_glam_items)*
             #(#type_for_format_nalgebra_items)*
         }
     }
@@ -593,8 +634,17 @@ fn formats_members(
     features: &IndexMap<&str, &Feature>,
     extensions: &IndexMap<&str, &Extension>,
 ) -> Vec<FormatMember> {
-    static BLOCK_EXTENT_REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap());
+    fn parse_block_extent(input: &str) -> Result<[u32; 3], nom::Err<()>> {
+        tuple((
+            complete::u32::<_, ()>,
+            complete::char(','),
+            complete::u32,
+            complete::char(','),
+            complete::u32,
+            eof,
+        ))(input)
+        .map(|(_, (a, _, b, _, c, _))| [a, b, c])
+    }
 
     iter::once(
         FormatMember {
@@ -623,6 +673,7 @@ fn formats_members(
 
             type_std_array: None,
             type_cgmath: None,
+            type_glam: None,
             type_nalgebra: None,
         }
     ).chain(
@@ -634,7 +685,7 @@ fn formats_members(
 
             let mut parts = vulkan_name.split('_').collect::<Vec<_>>();
 
-            if ["EXT", "IMG"].contains(parts.last().unwrap()) {
+            if ["KHR", "EXT", "IMG"].contains(parts.last().unwrap()) {
                 parts.pop();
             }
 
@@ -672,6 +723,7 @@ fn formats_members(
 
                 type_std_array: None,
                 type_cgmath: None,
+                type_glam: None,
                 type_nalgebra: None,
             };
 
@@ -748,12 +800,7 @@ fn formats_members(
             }
 
             if let Some(block_extent) = format.blockExtent.as_ref() {
-                let captures = BLOCK_EXTENT_REGEX.captures(block_extent).unwrap();
-                member.block_extent = [
-                    captures.get(1).unwrap().as_str().parse().unwrap(),
-                    captures.get(2).unwrap().as_str().parse().unwrap(),
-                    captures.get(3).unwrap().as_str().parse().unwrap(),
-                ];
+                member.block_extent = parse_block_extent(block_extent).unwrap();
             } else {
                 match format.chroma.as_deref() {
                     Some("420") => member.block_extent = [2, 2, 1],
@@ -786,7 +833,7 @@ fn formats_members(
                         _ => unreachable!(),
                     };
                     let bits = member.components[0];
-                    let component_type = format_ident!("{}{}", prefix, bits);
+                    let component_type: Ident = format_ident!("{}{}", prefix, bits);
 
                     let component_count = if member.components[1] == 2 * bits {
                         // 422 format with repeated G component
@@ -816,6 +863,23 @@ fn formats_members(
                         if matches!(component_count, 1..=4) {
                             let ty = format_ident!("{}", format!("Vector{}", component_count));
                             member.type_cgmath = Some(quote! { cgmath::#ty<#component_type> });
+                        }
+
+                        // glam only has 2, 3 and 4-component vector types. And a limited set of component types.
+                        if matches!(component_count, 2..=4) {
+                            let ty = match (prefix, bits) {
+                                ("f", 32) => Some(format!("Vec{}", component_count)),
+                                ("f", 64) => Some(format!("DVec{}", component_count)),
+                                ("i", 16) => Some(format!("I16Vec{}", component_count)),
+                                ("i", 32) => Some(format!("IVec{}", component_count)),
+                                ("i", 64) => Some(format!("I64Vec{}", component_count)),
+                                ("u", 16) => Some(format!("U16Vec{}", component_count)),
+                                ("u", 32) => Some(format!("UVec{}", component_count)),
+                                ("u", 64) => Some(format!("U64Vec{}", component_count)),
+                                _ => None,
+                            }.map(|ty| format_ident!("{}", ty));
+
+                            member.type_glam = ty.map(|ty|quote! { glam::#component_type::#ty });
                         }
 
                         member.type_nalgebra = Some(quote! {

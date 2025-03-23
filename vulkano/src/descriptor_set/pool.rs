@@ -1,16 +1,7 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     descriptor_set::{
         layout::{DescriptorSetLayout, DescriptorSetLayoutCreateFlags, DescriptorType},
-        sys::UnsafeDescriptorSet,
+        sys::RawDescriptorSet,
     },
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
@@ -18,9 +9,10 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ahash::HashMap;
+use ash::vk;
+use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Pool that descriptors are allocated from.
 ///
@@ -28,9 +20,9 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 /// per descriptor type) it can allocate.
 #[derive(Debug)]
 pub struct DescriptorPool {
-    handle: ash::vk::DescriptorPool,
+    handle: vk::DescriptorPool,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: DescriptorPoolCreateFlags,
     max_sets: u32,
@@ -38,7 +30,7 @@ pub struct DescriptorPool {
     max_inline_uniform_block_bindings: u32,
 
     // Unimplement `Sync`, as Vulkan descriptor pools are not thread safe.
-    _marker: PhantomData<Cell<ash::vk::DescriptorPool>>,
+    _marker: PhantomData<Cell<vk::DescriptorPool>>,
 }
 
 impl DescriptorPool {
@@ -50,7 +42,7 @@ impl DescriptorPool {
     ) -> Result<DescriptorPool, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -70,59 +62,28 @@ impl DescriptorPool {
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
     ) -> Result<DescriptorPool, VulkanError> {
-        let &DescriptorPoolCreateInfo {
-            flags,
-            max_sets,
-            ref pool_sizes,
-            max_inline_uniform_block_bindings,
-            _ne: _,
-        } = &create_info;
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        let pool_sizes_vk: SmallVec<[_; 8]> = pool_sizes
-            .iter()
-            .map(|(&ty, &descriptor_count)| ash::vk::DescriptorPoolSize {
-                ty: ty.into(),
-                descriptor_count,
-            })
-            .collect();
-
-        let mut create_info_vk = ash::vk::DescriptorPoolCreateInfo {
-            flags: flags.into(),
-            max_sets,
-            pool_size_count: pool_sizes_vk.len() as u32,
-            p_pool_sizes: pool_sizes_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        let mut inline_uniform_block_create_info_vk = None;
-
-        if max_inline_uniform_block_bindings != 0 {
-            let next = inline_uniform_block_create_info_vk.insert(
-                ash::vk::DescriptorPoolInlineUniformBlockCreateInfo {
-                    max_inline_uniform_block_bindings,
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_descriptor_pool)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_descriptor_pool)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        unsafe { Ok(Self::from_handle(device, handle, create_info)) }
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `DescriptorPool` from a raw object handle.
@@ -134,7 +95,7 @@ impl DescriptorPool {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::DescriptorPool,
+        handle: vk::DescriptorPool,
         create_info: DescriptorPoolCreateInfo,
     ) -> DescriptorPool {
         let DescriptorPoolCreateInfo {
@@ -192,14 +153,13 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - When the pool is dropped, the returned descriptor sets must not be in use by either
-    ///   the host or device.
+    /// - When the pool is dropped, the returned descriptor sets must not be in use by either the
+    ///   host or device.
     /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
-    ///   enabled on the device, then
-    ///   the length of `allocate_infos` must not be greater than the number of descriptor sets
-    ///   remaining in the pool, and
-    ///   the total number of descriptors of each type being allocated must not be greater than the
-    ///   number of descriptors of that type remaining in the pool.
+    ///   enabled on the device, then the length of `allocate_infos` must not be greater than the
+    ///   number of descriptor sets remaining in the pool, and the total number of descriptors of
+    ///   each type being allocated must not be greater than the number of descriptors of that type
+    ///   remaining in the pool.
     ///
     /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
     #[inline]
@@ -210,7 +170,7 @@ impl DescriptorPool {
         let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
         self.validate_allocate_descriptor_sets(&allocate_infos)?;
 
-        Ok(self.allocate_descriptor_sets_unchecked(allocate_infos)?)
+        Ok(unsafe { self.allocate_descriptor_sets_unchecked(allocate_infos) }?)
     }
 
     fn validate_allocate_descriptor_sets(
@@ -260,9 +220,10 @@ impl DescriptorPool {
         let allocate_infos = allocate_infos.into_iter();
 
         let (lower_size_bound, _) = allocate_infos.size_hint();
-        let mut layouts_vk = Vec::with_capacity(lower_size_bound);
-        let mut variable_descriptor_counts = Vec::with_capacity(lower_size_bound);
-        let mut layouts = Vec::with_capacity(lower_size_bound);
+        let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
+        let mut variable_descriptor_counts: SmallVec<[_; 1]> =
+            SmallVec::with_capacity(lower_size_bound);
+        let mut layouts: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
 
         for info in allocate_infos {
             let DescriptorSetAllocateInfo {
@@ -276,42 +237,36 @@ impl DescriptorPool {
             layouts.push(layout);
         }
 
-        let mut output = vec![];
+        let mut output: SmallVec<[_; 1]> = SmallVec::new();
 
         if !layouts_vk.is_empty() {
-            let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
+            let mut variable_desc_count_alloc_info = None;
+
+            let mut info_vk = vk::DescriptorSetAllocateInfo::default()
+                .descriptor_pool(self.handle)
+                .set_layouts(&layouts_vk);
+
+            if (self.device.api_version() >= Version::V1_2
                 || self.device.enabled_extensions().ext_descriptor_indexing)
                 && variable_descriptor_counts.iter().any(|c| *c != 0)
             {
-                Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                    descriptor_set_count: layouts_vk.len() as u32,
-                    p_descriptor_counts: variable_descriptor_counts.as_ptr(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-            let info_vk = ash::vk::DescriptorSetAllocateInfo {
-                descriptor_pool: self.handle,
-                descriptor_set_count: layouts_vk.len() as u32,
-                p_set_layouts: layouts_vk.as_ptr(),
-                p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
-                    next as *const _ as *const _
-                } else {
-                    ptr::null()
-                },
-                ..Default::default()
-            };
+                let next = variable_desc_count_alloc_info.insert(
+                    vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+                        .descriptor_counts(&variable_descriptor_counts),
+                );
+                info_vk = info_vk.push_next(next);
+            }
 
             output.reserve(layouts_vk.len());
 
             let fns = self.device.fns();
-            (fns.v1_0.allocate_descriptor_sets)(
-                self.device.handle(),
-                &info_vk,
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.allocate_descriptor_sets)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)
             .map_err(|err| match err {
@@ -324,7 +279,7 @@ impl DescriptorPool {
                 _ => VulkanError::FragmentedPool,
             })?;
 
-            output.set_len(layouts_vk.len());
+            unsafe { output.set_len(layouts_vk.len()) };
         }
 
         Ok(output
@@ -348,17 +303,17 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - All elements of `descriptor_sets` must have been allocated from `self`,
-    ///   and not freed previously.
+    /// - All elements of `descriptor_sets` must have been allocated from `self`, and not freed
+    ///   previously.
     /// - All elements of `descriptor_sets` must not be in use by the host or device.
     #[inline]
     pub unsafe fn free_descriptor_sets(
         &self,
-        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+        descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_free_descriptor_sets()?;
 
-        Ok(self.free_descriptor_sets_unchecked(descriptor_sets)?)
+        Ok(unsafe { self.free_descriptor_sets_unchecked(descriptor_sets) }?)
     }
 
     fn validate_free_descriptor_sets(&self) -> Result<(), Box<ValidationError>> {
@@ -380,17 +335,19 @@ impl DescriptorPool {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn free_descriptor_sets_unchecked(
         &self,
-        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+        descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
     ) -> Result<(), VulkanError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
-            (fns.v1_0.free_descriptor_sets)(
-                self.device.handle(),
-                self.handle,
-                sets.len() as u32,
-                sets.as_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.free_descriptor_sets)(
+                    self.device.handle(),
+                    self.handle,
+                    sets.len() as u32,
+                    sets.as_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
         }
@@ -409,11 +366,13 @@ impl DescriptorPool {
     #[inline]
     pub unsafe fn reset(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_descriptor_pool)(
-            self.device.handle(),
-            self.handle,
-            ash::vk::DescriptorPoolResetFlags::empty(),
-        )
+        unsafe {
+            (fns.v1_0.reset_descriptor_pool)(
+                self.device.handle(),
+                self.handle,
+                vk::DescriptorPoolResetFlags::empty(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -424,15 +383,15 @@ impl DescriptorPool {
 impl Drop for DescriptorPool {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_descriptor_pool)(self.device.handle(), self.handle, ptr::null());
-        }
+            (fns.v1_0.destroy_descriptor_pool)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 
 unsafe impl VulkanObject for DescriptorPool {
-    type Handle = ash::vk::DescriptorPool;
+    type Handle = vk::DescriptorPool;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -449,7 +408,7 @@ unsafe impl DeviceOwned for DescriptorPool {
 
 impl_id_counter!(DescriptorPool);
 
-/// Parameters to create a new `UnsafeDescriptorPool`.
+/// Parameters to create a new `DescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorPoolCreateInfo {
     /// Additional properties of the descriptor pool.
@@ -486,6 +445,15 @@ pub struct DescriptorPoolCreateInfo {
 impl Default for DescriptorPoolCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DescriptorPoolCreateInfo {
+    /// Returns a default `DescriptorPoolCreateInfo`.
+    // TODO: make const
+    #[inline]
+    pub fn new() -> Self {
         Self {
             flags: DescriptorPoolCreateFlags::empty(),
             max_sets: 0,
@@ -494,9 +462,7 @@ impl Default for DescriptorPoolCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl DescriptorPoolCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -573,6 +539,69 @@ impl DescriptorPoolCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DescriptorPoolCreateInfoFields1Vk,
+        extensions_vk: &'a mut DescriptorPoolCreateInfoExtensionsVk,
+    ) -> vk::DescriptorPoolCreateInfo<'a> {
+        let &Self {
+            flags,
+            max_sets,
+            pool_sizes: _,
+            max_inline_uniform_block_bindings: _,
+            _ne: _,
+        } = self;
+        let DescriptorPoolCreateInfoFields1Vk { pool_sizes_vk } = fields1_vk;
+
+        let mut val_vk = vk::DescriptorPoolCreateInfo::default()
+            .flags(flags.into())
+            .max_sets(max_sets)
+            .pool_sizes(pool_sizes_vk);
+
+        let DescriptorPoolCreateInfoExtensionsVk {
+            inline_uniform_block_vk,
+        } = extensions_vk;
+
+        if let Some(next) = inline_uniform_block_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DescriptorPoolCreateInfoFields1Vk {
+        let pool_sizes_vk = self
+            .pool_sizes
+            .iter()
+            .map(|(&ty, &descriptor_count)| vk::DescriptorPoolSize {
+                ty: ty.into(),
+                descriptor_count,
+            })
+            .collect();
+
+        DescriptorPoolCreateInfoFields1Vk { pool_sizes_vk }
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> DescriptorPoolCreateInfoExtensionsVk {
+        let inline_uniform_block_vk = (self.max_inline_uniform_block_bindings != 0).then(|| {
+            vk::DescriptorPoolInlineUniformBlockCreateInfo::default()
+                .max_inline_uniform_block_bindings(self.max_inline_uniform_block_bindings)
+        });
+
+        DescriptorPoolCreateInfoExtensionsVk {
+            inline_uniform_block_vk,
+        }
+    }
+}
+
+pub(crate) struct DescriptorPoolCreateInfoExtensionsVk {
+    pub(crate) inline_uniform_block_vk:
+        Option<vk::DescriptorPoolInlineUniformBlockCreateInfo<'static>>,
+}
+
+pub(crate) struct DescriptorPoolCreateInfoFields1Vk {
+    pub(crate) pool_sizes_vk: SmallVec<[vk::DescriptorPoolSize; 8]>,
 }
 
 vulkan_bitflags! {
@@ -607,7 +636,7 @@ vulkan_bitflags! {
     ]), */
 }
 
-/// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
+/// Parameters to allocate a new `DescriptorPoolAlloc` from a `DescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorSetAllocateInfo {
     /// The descriptor set layout to create the set for.
@@ -625,9 +654,9 @@ pub struct DescriptorSetAllocateInfo {
 }
 
 impl DescriptorSetAllocateInfo {
-    /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
+    /// Returns a default `DescriptorSetAllocateInfo` with the provided `layout`.
     #[inline]
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+    pub const fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         Self {
             layout,
             variable_descriptor_count: 0,
@@ -674,8 +703,8 @@ impl DescriptorSetAllocateInfo {
 /// Opaque type that represents a descriptor set allocated from a pool.
 #[derive(Debug)]
 pub struct DescriptorPoolAlloc {
-    handle: ash::vk::DescriptorSet,
-    id: NonZeroU64,
+    handle: vk::DescriptorSet,
+    id: NonZero<u64>,
     layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
     variable_descriptor_count: u32,
 }
@@ -695,7 +724,7 @@ impl DescriptorPoolAlloc {
 }
 
 unsafe impl VulkanObject for DescriptorPoolAlloc {
-    type Handle = ash::vk::DescriptorSet;
+    type Handle = vk::DescriptorSet;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -781,7 +810,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),
@@ -799,12 +828,10 @@ mod tests {
             },
         )
         .unwrap();
-        unsafe {
-            let sets = pool
-                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
+        let sets =
+            unsafe { pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]) }
                 .unwrap();
-            assert_eq!(sets.count(), 1);
-        }
+        assert_eq!(sets.count(), 1);
     }
 
     #[test]
@@ -819,7 +846,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),
@@ -839,9 +866,9 @@ mod tests {
             )
             .unwrap();
 
-            unsafe {
-                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]);
-            }
+            let _ = unsafe {
+                pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
+            };
         });
     }
 
@@ -858,9 +885,7 @@ mod tests {
             },
         )
         .unwrap();
-        unsafe {
-            let sets = pool.allocate_descriptor_sets([]).unwrap();
-            assert_eq!(sets.count(), 0);
-        }
+        let sets = unsafe { pool.allocate_descriptor_sets([]) }.unwrap();
+        assert_eq!(sets.count(), 0);
     }
 }

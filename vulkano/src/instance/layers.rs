@@ -1,19 +1,10 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::Version;
-use std::ffi::CStr;
+use ash::vk;
 
 /// Properties of a layer.
 #[derive(Clone)]
 pub struct LayerProperties {
-    pub(crate) props: ash::vk::LayerProperties,
+    pub(crate) props: vk::LayerProperties,
 }
 
 impl LayerProperties {
@@ -35,11 +26,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn name(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.props.layer_name.as_ptr())
-                .to_str()
-                .unwrap()
-        }
+        self.props.layer_name_as_c_str().unwrap().to_str().unwrap()
     }
 
     /// Returns a description of the layer.
@@ -59,11 +46,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn description(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.props.description.as_ptr())
-                .to_str()
-                .unwrap()
-        }
+        self.props.description_as_c_str().unwrap().to_str().unwrap()
     }
 
     /// Returns the version of Vulkan supported by this layer.
@@ -98,7 +81,11 @@ impl LayerProperties {
     /// let library = VulkanLibrary::new().unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
-    ///     println!("Layer {} - Version: {}", layer.name(), layer.implementation_version());
+    ///     println!(
+    ///         "Layer {} - Version: {}",
+    ///         layer.name(),
+    ///         layer.implementation_version(),
+    ///     );
     /// }
     /// ```
     #[inline]

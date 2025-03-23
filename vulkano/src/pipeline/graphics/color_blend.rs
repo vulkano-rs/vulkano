@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Configures how the color output of the fragment shader is written to the attachment.
 //!
 //! # Blending in details
@@ -21,11 +12,17 @@
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 
+use super::subpass::PipelineSubpassType;
 use crate::{
     device::Device,
+    format::Format,
     macros::{vulkan_bitflags, vulkan_enum},
+    pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
+use foldhash::HashMap;
+use smallvec::SmallVec;
 use std::iter;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
@@ -40,18 +37,19 @@ pub struct ColorBlendState {
     /// Sets the logical operation to perform between the incoming fragment color and the existing
     /// fragment in the framebuffer attachment.
     ///
-    /// If set to `Some`, the [`logic_op`](crate::device::Features::logic_op) feature must be
+    /// If set to `Some`, the [`logic_op`](crate::device::DeviceFeatures::logic_op) feature must be
     /// enabled on the device.
     ///
     /// The default value is `None`.
     pub logic_op: Option<LogicOp>,
 
-    /// Sets the blend and output state for each color attachment. The number of elements must match
-    /// the number of color attachments in the subpass.
+    /// Sets the blend and output state for each color attachment. The number of elements must
+    /// match the number of color attachments in the subpass.
     ///
     /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
-    /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)
-    /// feature must be enabled on the device.
+    /// element differ, then the
+    /// [`independent_blend`](crate::device::DeviceFeatures::independent_blend) feature must be
+    /// enabled on the device.
     ///
     /// The default value is empty,
     /// which must be overridden if the subpass has color attachments.
@@ -69,6 +67,14 @@ impl Default for ColorBlendState {
     /// Returns [`ColorBlendState::new(1)`].
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ColorBlendState {
+    /// Returns a default `ColorBlendState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ColorBlendStateFlags::empty(),
             logic_op: None,
@@ -77,9 +83,7 @@ impl Default for ColorBlendState {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ColorBlendState {
     /// Returns a default `ColorBlendState` with `count` duplicates of `attachment_state`.
     #[inline]
     pub fn with_attachment_states(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
@@ -88,23 +92,6 @@ impl ColorBlendState {
                 .take(count as usize)
                 .collect(),
             ..Default::default()
-        }
-    }
-
-    /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
-    /// and `num` attachment entries that have blending disabled, and color write and all color
-    /// components enabled.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn new(num: u32) -> Self {
-        Self {
-            flags: ColorBlendStateFlags::empty(),
-            logic_op: None,
-            attachments: (0..num)
-                .map(|_| ColorBlendAttachmentState::default())
-                .collect(),
-            blend_constants: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -122,7 +109,7 @@ impl ColorBlendState {
     pub fn blend(mut self, blend: AttachmentBlend) -> Self {
         self.attachments
             .iter_mut()
-            .for_each(|attachment_state| attachment_state.blend = Some(blend));
+            .for_each(|attachment_state| attachment_state.blend = Some(blend.clone()));
         self
     }
 
@@ -183,7 +170,7 @@ impl ColorBlendState {
                 return Err(Box::new(ValidationError {
                     context: "logic_op".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "logic_op",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606"],
@@ -215,9 +202,9 @@ impl ColorBlendState {
                             index
                         )
                         .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "independent_blend",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("independent_blend"),
+                        ])]),
                         vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605"],
                         ..Default::default()
                     }));
@@ -227,6 +214,327 @@ impl ColorBlendState {
 
         Ok(())
     }
+
+    pub(crate) fn validate_required_fragment_outputs(
+        &self,
+        subpass: &PipelineSubpassType,
+        fragment_shader_outputs: &HashMap<u32, ShaderInterfaceLocationInfo>,
+    ) -> Result<(), Box<ValidationError>> {
+        let validate_location =
+            |attachment_index: usize, format: Format| -> Result<(), Box<ValidationError>> {
+                let &ColorBlendAttachmentState {
+                    ref blend,
+                    color_write_mask,
+                    color_write_enable,
+                } = &self.attachments[attachment_index];
+
+                if !color_write_enable || color_write_mask.is_empty() {
+                    return Ok(());
+                }
+
+                // An output component is written if it exists in the format,
+                // and is included in the write mask.
+                let format_components = format.components();
+                let written_output_components = [
+                    format_components[0] != 0 && color_write_mask.intersects(ColorComponents::R),
+                    format_components[1] != 0 && color_write_mask.intersects(ColorComponents::G),
+                    format_components[2] != 0 && color_write_mask.intersects(ColorComponents::B),
+                    format_components[3] != 0 && color_write_mask.intersects(ColorComponents::A),
+                ];
+
+                // Gather the input components (for source0 and source1) that are needed to
+                // produce the components in `written_components`.
+                let mut source_components_used = [ColorComponents::empty(); 2];
+
+                fn add_components(dst: &mut [ColorComponents; 2], src: [ColorComponents; 2]) {
+                    for (dst, src) in dst.iter_mut().zip(src) {
+                        *dst |= src;
+                    }
+                }
+
+                if let Some(blend) = blend {
+                    let &AttachmentBlend {
+                        src_color_blend_factor,
+                        dst_color_blend_factor,
+                        color_blend_op,
+                        src_alpha_blend_factor,
+                        dst_alpha_blend_factor,
+                        alpha_blend_op,
+                    } = blend;
+
+                    let mut add_blend =
+                        |output_component: usize,
+                         blend_op: BlendOp,
+                         blend_factors: [BlendFactor; 2]| {
+                            if written_output_components[output_component] {
+                                add_components(
+                                    &mut source_components_used,
+                                    blend_op.source_components_used(output_component),
+                                );
+
+                                if blend_op.uses_blend_factors() {
+                                    for blend_factor in blend_factors {
+                                        add_components(
+                                            &mut source_components_used,
+                                            blend_factor.source_components_used(output_component),
+                                        );
+                                    }
+                                }
+                            }
+                        };
+
+                    add_blend(
+                        0,
+                        color_blend_op,
+                        [src_color_blend_factor, dst_color_blend_factor],
+                    );
+                    add_blend(
+                        1,
+                        color_blend_op,
+                        [src_color_blend_factor, dst_color_blend_factor],
+                    );
+                    add_blend(
+                        2,
+                        color_blend_op,
+                        [src_color_blend_factor, dst_color_blend_factor],
+                    );
+                    add_blend(
+                        3,
+                        alpha_blend_op,
+                        [src_alpha_blend_factor, dst_alpha_blend_factor],
+                    );
+                } else {
+                    let mut add_passthrough = |output_component: usize| {
+                        if written_output_components[output_component] {
+                            add_components(
+                                &mut source_components_used,
+                                [
+                                    ColorComponents::from_index(output_component),
+                                    ColorComponents::empty(),
+                                ],
+                            )
+                        }
+                    };
+
+                    add_passthrough(0);
+                    add_passthrough(1);
+                    add_passthrough(2);
+                    add_passthrough(3);
+                }
+
+                // If no components from either input source are used,
+                // then there is nothing more to check.
+                if source_components_used == [ColorComponents::empty(); 2] {
+                    return Ok(());
+                }
+
+                let location = attachment_index as u32;
+                let location_info = fragment_shader_outputs.get(&location).ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "the subpass and color blend state of color attachment {0} use the \
+                            fragment shader output, but \
+                            the fragment shader does not have an output variable with location {0}",
+                            location,
+                        )
+                        .into(),
+                        ..Default::default()
+                    })
+                })?;
+                let attachment_numeric_type = format.numeric_format_color().unwrap().numeric_type();
+
+                if attachment_numeric_type != location_info.numeric_type {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the subpass and color blend state of color attachment {0} use the \
+                            fragment shader output, but \
+                            the numeric type of the color attachment format ({1:?}) \
+                            does not equal the numeric type of the fragment shader output \
+                            variable with location {0} ({2:?})",
+                            location, attachment_numeric_type, location_info.numeric_type,
+                        )
+                        .into(),
+                        ..Default::default()
+                    }));
+                }
+
+                if location_info.width != ShaderInterfaceLocationWidth::Bits32 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the subpass and color blend state of color attachment {0} use the \
+                            fragment shader output, and \
+                            the color attachment format is not 64 bit, but \
+                            the format of the fragment output variable with location {0} is 64-bit",
+                            location,
+                        )
+                        .into(),
+                        ..Default::default()
+                    }));
+                }
+
+                for (index, (source_components_provided, source_components_used)) in location_info
+                    .components
+                    .into_iter()
+                    .zip(source_components_used)
+                    .enumerate()
+                {
+                    let missing_components = source_components_used - source_components_provided;
+
+                    if !missing_components.is_empty() {
+                        let component = if missing_components.intersects(ColorComponents::R) {
+                            0
+                        } else if missing_components.intersects(ColorComponents::G) {
+                            1
+                        } else if missing_components.intersects(ColorComponents::B) {
+                            2
+                        } else if missing_components.intersects(ColorComponents::A) {
+                            3
+                        } else {
+                            unreachable!()
+                        };
+
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the subpass and color blend state of color attachment {0} use \
+                                location {0}, index {1}, component {2} from the fragment shader \
+                                output, but the fragment shader does not have an output variable \
+                                with that location, index and component",
+                                location, index, component,
+                            )
+                            .into(),
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                Ok(())
+            };
+
+        match subpass {
+            PipelineSubpassType::BeginRenderPass(subpass) => {
+                debug_assert_eq!(
+                    self.attachments.len(),
+                    subpass.subpass_desc().color_attachments.len()
+                );
+                let render_pass_attachments = subpass.render_pass().attachments();
+
+                for (attachment_index, atch_ref) in
+                    subpass.subpass_desc().color_attachments.iter().enumerate()
+                {
+                    match atch_ref {
+                        Some(atch_ref) => validate_location(
+                            attachment_index,
+                            render_pass_attachments[atch_ref.attachment as usize].format,
+                        )?,
+                        None => continue,
+                    }
+                }
+            }
+            PipelineSubpassType::BeginRendering(rendering_create_info) => {
+                debug_assert_eq!(
+                    self.attachments.len(),
+                    rendering_create_info.color_attachment_formats.len()
+                );
+
+                for (attachment_index, &format) in rendering_create_info
+                    .color_attachment_formats
+                    .iter()
+                    .enumerate()
+                {
+                    match format {
+                        Some(format) => validate_location(attachment_index, format)?,
+                        None => continue,
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a ColorBlendStateFields1Vk,
+        extensions_vk: &'a mut ColorBlendStateExtensionsVk<'_>,
+    ) -> vk::PipelineColorBlendStateCreateInfo<'a> {
+        let &Self {
+            flags,
+            logic_op,
+            attachments: _,
+            blend_constants,
+            _ne: _,
+        } = self;
+        let ColorBlendStateFields1Vk {
+            color_blend_attachments_vk,
+            color_write_enables_vk: _,
+        } = fields1_vk;
+
+        let (logic_op_enable_vk, logic_op_vk) = if let Some(logic_op) = logic_op {
+            (true, logic_op.into())
+        } else {
+            (false, Default::default())
+        };
+
+        let mut val_vk = vk::PipelineColorBlendStateCreateInfo::default()
+            .flags(flags.into())
+            .logic_op_enable(logic_op_enable_vk)
+            .logic_op(logic_op_vk)
+            .attachments(color_blend_attachments_vk)
+            .blend_constants(blend_constants);
+
+        let ColorBlendStateExtensionsVk { color_write_vk } = extensions_vk;
+
+        if let Some(next) = color_write_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a ColorBlendStateFields1Vk,
+    ) -> ColorBlendStateExtensionsVk<'a> {
+        let ColorBlendStateFields1Vk {
+            color_blend_attachments_vk: _,
+            color_write_enables_vk,
+        } = fields1_vk;
+
+        let color_write_vk = (!color_write_enables_vk.is_empty()).then(|| {
+            vk::PipelineColorWriteCreateInfoEXT::default()
+                .color_write_enables(color_write_enables_vk)
+        });
+
+        ColorBlendStateExtensionsVk { color_write_vk }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> ColorBlendStateFields1Vk {
+        let mut color_blend_attachments_vk = SmallVec::with_capacity(self.attachments.len());
+        let mut color_write_enables_vk = SmallVec::with_capacity(self.attachments.len());
+        let mut has_color_write_enables = false;
+
+        for color_blend_attachment_state in &self.attachments {
+            color_blend_attachments_vk.push(color_blend_attachment_state.to_vk());
+            color_write_enables_vk.push(color_blend_attachment_state.color_write_enable as _);
+            has_color_write_enables |= !color_blend_attachment_state.color_write_enable;
+        }
+
+        ColorBlendStateFields1Vk {
+            color_blend_attachments_vk,
+            color_write_enables_vk: has_color_write_enables
+                .then_some(color_write_enables_vk)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+pub(crate) struct ColorBlendStateExtensionsVk<'a> {
+    pub(crate) color_write_vk: Option<vk::PipelineColorWriteCreateInfoEXT<'a>>,
+}
+
+pub(crate) struct ColorBlendStateFields1Vk {
+    color_blend_attachments_vk: SmallVec<[vk::PipelineColorBlendAttachmentState; 4]>,
+    color_write_enables_vk: SmallVec<[vk::Bool32; 4]>,
 }
 
 vulkan_bitflags! {
@@ -332,9 +640,9 @@ pub struct ColorBlendAttachmentState {
     /// that is written is determined by the `color_write_mask`. If disabled, the mask is ignored
     /// and nothing is written.
     ///
-    /// If set to anything other than `Fixed(true)`, the
-    /// [`color_write_enable`](crate::device::Features::color_write_enable) feature must be enabled
-    /// on the device.
+    /// If set to `false`, the
+    /// [`color_write_enable`](crate::device::DeviceFeatures::color_write_enable) feature must be
+    /// enabled on the device.
     ///
     /// The default value is `true`.
     pub color_write_enable: bool,
@@ -343,15 +651,21 @@ pub struct ColorBlendAttachmentState {
 impl Default for ColorBlendAttachmentState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ColorBlendAttachmentState {
+    /// Returns a default `ColorBlendAttachmentState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             blend: None,
             color_write_mask: ColorComponents::all(),
             color_write_enable: true,
         }
     }
-}
 
-impl ColorBlendAttachmentState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref blend,
@@ -369,7 +683,7 @@ impl ColorBlendAttachmentState {
             return Err(Box::new(ValidationError {
                 context: "color_write_enable".into(),
                 problem: "is `false`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "color_write_enable",
                 )])]),
                 vuids: &["VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801"],
@@ -378,10 +692,26 @@ impl ColorBlendAttachmentState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> vk::PipelineColorBlendAttachmentState {
+        let &Self {
+            ref blend,
+            color_write_mask,
+            color_write_enable: _,
+        } = self;
+
+        vk::PipelineColorBlendAttachmentState {
+            color_write_mask: color_write_mask.into(),
+            ..blend
+                .as_ref()
+                .map(AttachmentBlend::to_vk)
+                .unwrap_or_default()
+        }
+    }
 }
 
 /// Describes how the blending system should behave for an attachment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachmentBlend {
     /// The operation to apply to the source color component before applying `color_op`.
     ///
@@ -419,6 +749,14 @@ pub struct AttachmentBlend {
 impl Default for AttachmentBlend {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AttachmentBlend {
+    /// Returns a default `AttachmentBlend`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             src_color_blend_factor: BlendFactor::SrcColor,
             dst_color_blend_factor: BlendFactor::Zero,
@@ -428,9 +766,7 @@ impl Default for AttachmentBlend {
             alpha_blend_op: BlendOp::Add,
         }
     }
-}
 
-impl AttachmentBlend {
     /// Builds an `AttachmentBlend` where the output of the fragment shader is ignored and the
     /// destination is untouched.
     #[inline]
@@ -536,7 +872,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "src_color_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-00608"],
@@ -553,7 +889,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "dst_color_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-00609"],
@@ -570,7 +906,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "src_alpha_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-00610"],
@@ -587,7 +923,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "dst_alpha_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-00611"],
@@ -606,7 +942,7 @@ impl AttachmentBlend {
                     problem: "this device is a portability subset device, and \
                         `src_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
                         `BlendFactor::OneMinusConstantAlpha`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "constant_alpha_color_blend_factors",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04454"],
@@ -622,7 +958,7 @@ impl AttachmentBlend {
                     problem: "this device is a portability subset device, and \
                         `dst_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
                         `BlendFactor::OneMinusConstantAlpha`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "constant_alpha_color_blend_factors",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04455"],
@@ -633,20 +969,26 @@ impl AttachmentBlend {
 
         Ok(())
     }
-}
 
-impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
-    #[inline]
-    fn from(val: AttachmentBlend) -> Self {
-        ash::vk::PipelineColorBlendAttachmentState {
-            blend_enable: ash::vk::TRUE,
-            src_color_blend_factor: val.src_color_blend_factor.into(),
-            dst_color_blend_factor: val.dst_color_blend_factor.into(),
-            color_blend_op: val.color_blend_op.into(),
-            src_alpha_blend_factor: val.src_alpha_blend_factor.into(),
-            dst_alpha_blend_factor: val.dst_alpha_blend_factor.into(),
-            alpha_blend_op: val.alpha_blend_op.into(),
-            color_write_mask: ash::vk::ColorComponentFlags::empty(),
+    pub(crate) fn to_vk(&self) -> vk::PipelineColorBlendAttachmentState {
+        let &Self {
+            src_color_blend_factor,
+            dst_color_blend_factor,
+            color_blend_op,
+            src_alpha_blend_factor,
+            dst_alpha_blend_factor,
+            alpha_blend_op,
+        } = self;
+
+        vk::PipelineColorBlendAttachmentState {
+            blend_enable: vk::TRUE,
+            src_color_blend_factor: src_color_blend_factor.into(),
+            dst_color_blend_factor: dst_color_blend_factor.into(),
+            color_blend_op: color_blend_op.into(),
+            src_alpha_blend_factor: src_alpha_blend_factor.into(),
+            dst_alpha_blend_factor: dst_alpha_blend_factor.into(),
+            alpha_blend_op: alpha_blend_op.into(),
+            color_write_mask: vk::ColorComponentFlags::empty(),
         }
     }
 }
@@ -659,7 +1001,7 @@ vulkan_enum! {
     /// and produces new inputs to be fed to `BlendOp`.
     ///
     /// Some operations take `source1` as an input, representing the second source value. The
-    /// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
+    /// [`dual_src_blend`](crate::device::DeviceFeatures::dual_src_blend) feature must be enabled on the
     /// device when these are used.
     BlendFactor = BlendFactor(i32);
 
@@ -704,7 +1046,7 @@ vulkan_enum! {
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
     /// then the
-    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// [`constant_alpha_color_blend_factors`](crate::device::DeviceFeatures::constant_alpha_color_blend_factors)
     /// feature must be enabled on the device.
     ConstantAlpha = CONSTANT_ALPHA,
 
@@ -713,7 +1055,7 @@ vulkan_enum! {
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
     /// then the
-    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// [`constant_alpha_color_blend_factors`](crate::device::DeviceFeatures::constant_alpha_color_blend_factors)
     /// feature must be enabled on the device.
     OneMinusConstantAlpha = ONE_MINUS_CONSTANT_ALPHA,
 
@@ -732,6 +1074,37 @@ vulkan_enum! {
 
     /// `1 - source1.a` for all components.
     OneMinusSrc1Alpha = ONE_MINUS_SRC1_ALPHA,
+}
+
+impl BlendFactor {
+    const fn source_components_used(self, output_component: usize) -> [ColorComponents; 2] {
+        match self {
+            BlendFactor::Zero
+            | BlendFactor::One
+            | BlendFactor::DstColor
+            | BlendFactor::OneMinusDstColor
+            | BlendFactor::DstAlpha
+            | BlendFactor::OneMinusDstAlpha
+            | BlendFactor::ConstantColor
+            | BlendFactor::OneMinusConstantColor
+            | BlendFactor::ConstantAlpha
+            | BlendFactor::OneMinusConstantAlpha => [ColorComponents::empty(); 2],
+            BlendFactor::SrcColor | BlendFactor::OneMinusSrcColor => [
+                ColorComponents::from_index(output_component),
+                ColorComponents::empty(),
+            ],
+            BlendFactor::Src1Color | BlendFactor::OneMinusSrc1Color => [
+                ColorComponents::empty(),
+                ColorComponents::from_index(output_component),
+            ],
+            BlendFactor::SrcAlpha
+            | BlendFactor::OneMinusSrcAlpha
+            | BlendFactor::SrcAlphaSaturate => [ColorComponents::A, ColorComponents::empty()],
+            BlendFactor::Src1Alpha | BlendFactor::OneMinusSrc1Alpha => {
+                [ColorComponents::empty(), ColorComponents::A]
+            }
+        }
+    }
 }
 
 vulkan_enum! {
@@ -1079,6 +1452,30 @@ vulkan_enum! {
     ]),*/
 }
 
+impl BlendOp {
+    /// Returns whether the blend op will use the specified blend factors, or ignore them.
+    #[inline]
+    pub const fn uses_blend_factors(self) -> bool {
+        match self {
+            BlendOp::Add | BlendOp::Subtract | BlendOp::ReverseSubtract => true,
+            BlendOp::Min | BlendOp::Max => false,
+        }
+    }
+
+    const fn source_components_used(self, output_component: usize) -> [ColorComponents; 2] {
+        match self {
+            BlendOp::Add
+            | BlendOp::Subtract
+            | BlendOp::ReverseSubtract
+            | BlendOp::Min
+            | BlendOp::Max => [
+                ColorComponents::from_index(output_component),
+                ColorComponents::empty(),
+            ],
+        }
+    }
+}
+
 vulkan_bitflags! {
     /// A mask specifying color components that can be written to a framebuffer attachment.
     ColorComponents = ColorComponentFlags(u32);
@@ -1094,4 +1491,17 @@ vulkan_bitflags! {
 
     /// The alpha component.
     A = A,
+}
+
+impl ColorComponents {
+    #[inline]
+    pub(crate) const fn from_index(index: usize) -> Self {
+        match index {
+            0 => ColorComponents::R,
+            1 => ColorComponents::G,
+            2 => ColorComponents::B,
+            3 => ColorComponents::A,
+            _ => unreachable!(),
+        }
+    }
 }

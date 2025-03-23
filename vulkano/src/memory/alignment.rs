@@ -1,10 +1,11 @@
-use crate::{DeviceSize, NonZeroDeviceSize};
+use crate::DeviceSize;
 use std::{
     cmp::Ordering,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
-    mem::{self, align_of, size_of},
+    mem,
+    num::NonZero,
 };
 
 /// Vulkan analog of std's [`Alignment`], stored as a [`DeviceSize`] that is guaranteed to be a
@@ -18,6 +19,8 @@ pub struct DeviceAlignment(AlignmentEnum);
 const _: () = assert!(size_of::<DeviceAlignment>() == size_of::<DeviceSize>());
 const _: () = assert!(align_of::<DeviceAlignment>() == align_of::<DeviceSize>());
 
+const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
+
 impl DeviceAlignment {
     /// The smallest possible alignment, 1.
     pub const MIN: Self = Self(AlignmentEnum::_Align1Shl0);
@@ -28,17 +31,15 @@ impl DeviceAlignment {
     /// Returns the alignment for a type.
     #[inline]
     pub const fn of<T>() -> Self {
-        #[cfg(any(
-            target_pointer_width = "64",
-            target_pointer_width = "32",
-            target_pointer_width = "16",
-        ))]
-        {
-            const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
+        // SAFETY: rustc guarantees that the alignment of types is a power of two.
+        unsafe { DeviceAlignment::new_unchecked(align_of::<T>() as DeviceSize) }
+    }
 
-            // SAFETY: rustc guarantees that the alignment of types is a power of two.
-            unsafe { DeviceAlignment::new_unchecked(align_of::<T>() as DeviceSize) }
-        }
+    /// Returns the alignment for a value.
+    #[inline]
+    pub fn of_val<T: ?Sized>(value: &T) -> Self {
+        // SAFETY: rustc guarantees that the alignment of types is a power of two.
+        unsafe { DeviceAlignment::new_unchecked(align_of_val(value) as DeviceSize) }
     }
 
     /// Tries to create a `DeviceAlignment` from a [`DeviceSize`], returning [`None`] if it's not a
@@ -70,11 +71,11 @@ impl DeviceAlignment {
         self.0 as DeviceSize
     }
 
-    /// Returns the alignment as a [`NonZeroDeviceSize`].
+    /// Returns the alignment as a `NonZero<DeviceSize>`.
     #[inline]
-    pub const fn as_nonzero(self) -> NonZeroDeviceSize {
+    pub const fn as_nonzero(self) -> NonZero<DeviceSize> {
         // SAFETY: All the discriminants are non-zero.
-        unsafe { NonZeroDeviceSize::new_unchecked(self.as_devicesize()) }
+        unsafe { NonZero::new_unchecked(self.as_devicesize()) }
     }
 
     /// Returns the base-2 logarithm of the alignment.
@@ -107,11 +108,11 @@ impl Default for DeviceAlignment {
     }
 }
 
-impl TryFrom<NonZeroDeviceSize> for DeviceAlignment {
+impl TryFrom<NonZero<DeviceSize>> for DeviceAlignment {
     type Error = TryFromIntError;
 
     #[inline]
-    fn try_from(alignment: NonZeroDeviceSize) -> Result<Self, Self::Error> {
+    fn try_from(alignment: NonZero<DeviceSize>) -> Result<Self, Self::Error> {
         if alignment.is_power_of_two() {
             Ok(unsafe { DeviceAlignment::new_unchecked(alignment.get()) })
         } else {
@@ -129,7 +130,7 @@ impl TryFrom<DeviceSize> for DeviceAlignment {
     }
 }
 
-impl From<DeviceAlignment> for NonZeroDeviceSize {
+impl From<DeviceAlignment> for NonZero<DeviceSize> {
     #[inline]
     fn from(alignment: DeviceAlignment) -> Self {
         alignment.as_nonzero()

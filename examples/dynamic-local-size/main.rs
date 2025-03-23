@@ -1,12 +1,3 @@
-// Copyright (c) 2020 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to define the compute shader local size layout at runtime through
 // specialization constants while considering the physical device properties.
 //
@@ -21,7 +12,7 @@ use vulkano::{
         CopyImageToBufferInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -108,7 +99,7 @@ fn main() {
 
                 // We set `local_size_x` and `local_size_y` to be variables configurable values 
                 // through specialization constants. Values `1` and `2` both define a constant ID 
-                // as well as a default value of 1 and 2 of the constants respecively. The 
+                // as well as a default value of 1 and 2 of the constants respectively. The 
                 // `local_size_z = 1` here is an ordinary constant of the local size on the Z axis.
                 //
                 // Unfortunately current GLSL language capabilities doesn't let us define exact 
@@ -205,16 +196,20 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let image = Image::new(
         memory_allocator.clone(),
@@ -230,9 +225,9 @@ fn main() {
     .unwrap();
     let view = ImageView::new_default(image.clone()).unwrap();
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+    let layout = &pipeline.layout().set_layouts()[0];
+    let set = DescriptorSet::new(
+        descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view(0, view)],
         [],
@@ -255,11 +250,12 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
     builder
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
@@ -269,12 +265,15 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        // Note that dispatch dimensions must be proportional to the local size.
-        .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
-        .unwrap()
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
+
+    // Note that dispatch dimensions must be proportional to the local size.
+    unsafe { builder.dispatch([1024 / local_size_x, 1024 / local_size_y, 1]) }.unwrap();
+
+    builder
+        .copy_image_to_buffer(CopyImageToBufferInfo::new(image, buf.clone()))
+        .unwrap();
+
     let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)

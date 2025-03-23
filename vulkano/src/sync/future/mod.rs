@@ -1,17 +1,8 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Represents an event that will happen on the GPU in the future.
 //!
 //! Whenever you ask the GPU to start an operation by using a function of the vulkano library (for
 //! example executing a command buffer), this function will return a *future*. A future is an
-//! object that implements [the `GpuFuture` trait](crate::sync::GpuFuture) and that represents the
+//! object that implements [the `GpuFuture` trait](GpuFuture) and that represents the
 //! point in time when this operation is over.
 //!
 //! No function in vulkano immediately sends an operation to the GPU (with the exception of some
@@ -106,11 +97,12 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout, ImageState},
-    memory::BindSparseInfo,
+    memory::sparse::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
+use ash::vk;
+use foldhash::HashMap;
 use parking_lot::MutexGuard;
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -411,7 +403,7 @@ where
     }
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
-        (**self).build_submission()
+        unsafe { (**self).build_submission() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
@@ -419,7 +411,7 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        (**self).signal_finished()
+        unsafe { (**self).signal_finished() }
     }
 
     fn queue_change_allowed(&self) -> bool {
@@ -565,7 +557,8 @@ pub(crate) unsafe fn queue_bind_sparse(
     fence: Option<Arc<Fence>>,
 ) -> Result<(), Validated<VulkanError>> {
     let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-    queue.with(|mut queue_guard| queue_guard.bind_sparse_unchecked(&bind_infos, fence.as_ref()))?;
+    queue
+        .with(|mut queue_guard| unsafe { queue_guard.bind_sparse(&bind_infos, fence.as_ref()) })?;
 
     Ok(())
 }
@@ -575,12 +568,12 @@ pub(crate) unsafe fn queue_present(
     present_info: PresentInfo,
 ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>> {
     let results: SmallVec<[_; 1]> = queue
-        .with(|mut queue_guard| queue_guard.present(&present_info))?
+        .with(|mut queue_guard| unsafe { queue_guard.present(&present_info) })?
         .collect();
 
     let PresentInfo {
         wait_semaphores: _,
-        swapchains,
+        swapchain_infos: swapchains,
         _ne: _,
     } = &present_info;
 
@@ -588,9 +581,7 @@ pub(crate) unsafe fn queue_present(
     // signal that to the relevant swapchain.
     for (&result, swapchain_info) in results.iter().zip(swapchains) {
         if result == Err(VulkanError::FullScreenExclusiveModeLost) {
-            swapchain_info
-                .swapchain
-                .full_screen_exclusive_held()
+            unsafe { swapchain_info.swapchain.full_screen_exclusive_held() }
                 .store(false, Ordering::SeqCst);
         }
     }
@@ -755,7 +746,7 @@ pub(crate) unsafe fn queue_submit(
         }
     }
 
-    queue.with(|mut queue_guard| queue_guard.submit(&submit_infos, fence.as_ref()))?;
+    queue.with(|mut queue_guard| unsafe { queue_guard.submit(&submit_infos, fence.as_ref()) })?;
 
     for submit_info in &submit_infos {
         let SubmitInfo {
@@ -775,7 +766,7 @@ pub(crate) unsafe fn queue_submit(
                 .command_buffers
                 .get_mut(&command_buffer.handle())
                 .unwrap();
-            state.add_queue_submit();
+            unsafe { state.add_queue_submit() };
 
             let CommandBufferResourcesUsage {
                 buffers,
@@ -789,9 +780,9 @@ pub(crate) unsafe fn queue_submit(
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_lock(range.clone());
+                        unsafe { state.gpu_write_lock(range.clone()) };
                     } else {
-                        state.gpu_read_lock(range.clone());
+                        unsafe { state.gpu_read_lock(range.clone()) };
                     }
                 }
             }
@@ -801,9 +792,9 @@ pub(crate) unsafe fn queue_submit(
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_lock(range.clone(), range_usage.final_layout);
+                        unsafe { state.gpu_write_lock(range.clone(), range_usage.final_layout) };
                     } else {
-                        state.gpu_read_lock(range.clone());
+                        unsafe { state.gpu_read_lock(range.clone()) };
                     }
                 }
             }
@@ -817,9 +808,9 @@ pub(crate) unsafe fn queue_submit(
 // Otherwise we get deadlocks.
 #[derive(Debug)]
 struct States<'a> {
-    buffers: HashMap<ash::vk::Buffer, MutexGuard<'a, BufferState>>,
-    command_buffers: HashMap<ash::vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
-    images: HashMap<ash::vk::Image, MutexGuard<'a, ImageState>>,
+    buffers: HashMap<vk::Buffer, MutexGuard<'a, BufferState>>,
+    command_buffers: HashMap<vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
+    images: HashMap<vk::Image, MutexGuard<'a, ImageState>>,
 }
 
 impl<'a> States<'a> {

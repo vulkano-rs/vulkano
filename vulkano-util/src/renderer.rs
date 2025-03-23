@@ -1,15 +1,6 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{context::VulkanoContext, window::WindowDescriptor};
-use ahash::HashMap;
-use std::sync::Arc;
+use foldhash::HashMap;
+use std::{sync::Arc, time::Duration};
 use vulkano::{
     device::{Device, Queue},
     format::Format,
@@ -44,7 +35,7 @@ pub struct VulkanoWindowRenderer {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     image_index: u32,
-    present_mode: vulkano::swapchain::PresentMode,
+    present_mode: PresentMode,
 }
 
 impl VulkanoWindowRenderer {
@@ -53,7 +44,7 @@ impl VulkanoWindowRenderer {
     /// [`SwapchainCreateInfo`] parameters.
     pub fn new(
         vulkano_context: &VulkanoContext,
-        window: winit::window::Window,
+        window: Window,
         descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> VulkanoWindowRenderer {
@@ -212,6 +203,16 @@ impl VulkanoWindowRenderer {
         dims[0] / dims[1]
     }
 
+    /// Returns a reference to the swapchain image views.
+    #[inline]
+    #[must_use]
+    // swapchain_image_views or swapchain_images_views, neither sounds good.
+    pub fn swapchain_image_views(&self) -> &[Arc<ImageView>] {
+        // Why do we use "final views" as the field name,
+        // yet always externally refer to them as "swapchain image views"?
+        &self.final_views
+    }
+
     /// Resize swapchain and camera view images at the beginning of next frame based on window
     /// size.
     #[inline]
@@ -254,21 +255,27 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`] representing the time after which the
-    /// swapchain image has been acquired and previous frame ended.
-    /// Execute your command buffers after calling this function and finish rendering by calling
-    /// [`VulkanoWindowRenderer::present`].
+    /// 'on_recreate_swapchain' is called when the swapchain gets recreated, due to being resized,
+    /// suboptimal, or changing the present mode. Returns a [`GpuFuture`] representing the time
+    /// after which the swapchain image has been acquired and previous frame ended.
+    /// Execute your command buffers after calling this function and
+    /// finish rendering by calling [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, VulkanError> {
+    pub fn acquire(
+        &mut self,
+        timeout: Option<Duration>,
+        on_recreate_swapchain: impl FnOnce(&[Arc<ImageView>]),
+    ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
             self.recreate_swapchain_and_views();
+            on_recreate_swapchain(&self.final_views);
         }
 
         // Acquire next image in the swapchain
         let (image_index, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None)
+            match swapchain::acquire_next_image(self.swapchain.clone(), timeout)
                 .map_err(Validated::unwrap)
             {
                 Ok(r) => r,
@@ -300,19 +307,13 @@ impl VulkanoWindowRenderer {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    self.swapchain.clone(),
-                    self.image_index,
-                ),
+                SwapchainPresentInfo::new(self.swapchain.clone(), self.image_index),
             )
             .then_signal_fence_and_flush();
         match future.map_err(Validated::unwrap) {
             Ok(mut future) => {
                 if wait_future {
-                    match future.wait(None) {
-                        Ok(x) => x,
-                        Err(e) => println!("{e}"),
-                    }
+                    future.wait(None).unwrap_or_else(|e| println!("{e}"))
                     // wait allows you to organize resource waiting yourself.
                 } else {
                     future.cleanup_finished();
@@ -368,10 +369,6 @@ impl VulkanoWindowRenderer {
             let usage = self.get_additional_image_view(i).usage();
             self.remove_additional_image_view(i);
             self.add_additional_image_view(i, format, usage);
-        }
-        #[cfg(target_os = "ios")]
-        unsafe {
-            self.surface.update_ios_sublayer_on_resize();
         }
         self.recreate_swapchain = false;
     }

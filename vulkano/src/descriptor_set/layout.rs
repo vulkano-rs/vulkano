@@ -1,12 +1,3 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Describes the layout of all descriptors within a descriptor set.
 //!
 //! When creating a new descriptor set, you must provide a *layout* object to create it from.
@@ -20,15 +11,17 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ahash::HashMap;
-use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use ash::vk;
+use foldhash::HashMap;
+use smallvec::SmallVec;
+use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
-    handle: ash::vk::DescriptorSetLayout,
+    handle: vk::DescriptorSetLayout,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: DescriptorSetLayoutCreateFlags,
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
@@ -45,7 +38,7 @@ impl DescriptorSetLayout {
     ) -> Result<Arc<DescriptorSetLayout>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -71,11 +64,7 @@ impl DescriptorSetLayout {
             // Safety: create_info is validated, and we only enter here if the
             // max_per_set_descriptors property exists (which means this function exists too).
             if total_descriptor_count > max_per_set_descriptors
-                && unsafe {
-                    device
-                        .descriptor_set_layout_support_unchecked(create_info)
-                        .is_none()
-                }
+                && unsafe { device.descriptor_set_layout_support_unchecked(create_info) }.is_none()
             {
                 return Err(Box::new(ValidationError {
                     problem: "the total number of descriptors across all bindings is greater than \
@@ -95,93 +84,29 @@ impl DescriptorSetLayout {
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
     ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
-        let &DescriptorSetLayoutCreateInfo {
-            flags,
-            ref bindings,
-            _ne: _,
-        } = &create_info;
-
-        struct PerBinding {
-            immutable_samplers_vk: Vec<ash::vk::Sampler>,
-        }
-
-        let mut bindings_vk = Vec::with_capacity(bindings.len());
-        let mut per_binding_vk = Vec::with_capacity(bindings.len());
-        let mut binding_flags_info_vk = None;
-        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
-
-        for (&binding_num, binding) in bindings.iter() {
-            let &DescriptorSetLayoutBinding {
-                binding_flags,
-                descriptor_type,
-                descriptor_count,
-                stages,
-                ref immutable_samplers,
-                _ne: _,
-            } = binding;
-
-            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
-                binding: binding_num,
-                descriptor_type: descriptor_type.into(),
-                descriptor_count,
-                stage_flags: stages.into(),
-                p_immutable_samplers: ptr::null(),
-            });
-            per_binding_vk.push(PerBinding {
-                immutable_samplers_vk: immutable_samplers
-                    .iter()
-                    .map(VulkanObject::handle)
-                    .collect(),
-            });
-            binding_flags_vk.push(binding_flags.into());
-        }
-
-        for (binding_vk, per_binding_vk) in bindings_vk.iter_mut().zip(per_binding_vk.iter()) {
-            let PerBinding {
-                immutable_samplers_vk,
-            } = per_binding_vk;
-
-            if !immutable_samplers_vk.is_empty() {
-                binding_vk.p_immutable_samplers = immutable_samplers_vk.as_ptr();
-            }
-        }
-
-        let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
-            flags: flags.into(),
-            binding_count: bindings_vk.len() as u32,
-            p_bindings: bindings_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        if device.api_version() >= Version::V1_2
-            || device.enabled_extensions().ext_descriptor_indexing
-        {
-            let next =
-                binding_flags_info_vk.insert(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                    binding_count: binding_flags_vk.len() as u32,
-                    p_binding_flags: binding_flags_vk.as_ptr(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
+        let create_info_fields2_vk = create_info.to_vk_fields2();
+        let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields2_vk);
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_descriptor_set_layout)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_descriptor_set_layout)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `DescriptorSetLayout` from a raw object handle.
@@ -193,7 +118,7 @@ impl DescriptorSetLayout {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::DescriptorSetLayout,
+        handle: vk::DescriptorSetLayout,
         create_info: DescriptorSetLayoutCreateInfo,
     ) -> Arc<DescriptorSetLayout> {
         let DescriptorSetLayoutCreateInfo {
@@ -275,19 +200,15 @@ impl DescriptorSetLayout {
 impl Drop for DescriptorSetLayout {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_descriptor_set_layout)(
-                self.device.handle(),
-                self.handle,
-                ptr::null(),
-            );
-        }
+            (fns.v1_0.destroy_descriptor_set_layout)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 
 unsafe impl VulkanObject for DescriptorSetLayout {
-    type Handle = ash::vk::DescriptorSetLayout;
+    type Handle = vk::DescriptorSetLayout;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -310,7 +231,7 @@ pub struct DescriptorSetLayoutCreateInfo {
     /// Specifies how to create the descriptor set layout.
     pub flags: DescriptorSetLayoutCreateFlags,
 
-    /// The bindings of the desriptor set layout. These are specified according to binding number.
+    /// The bindings of the descriptor set layout. These are specified according to binding number.
     ///
     /// It is generally advisable to keep the binding numbers low. Higher binding numbers may
     /// use more memory inside Vulkan.
@@ -321,7 +242,24 @@ pub struct DescriptorSetLayoutCreateInfo {
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for DescriptorSetLayoutCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DescriptorSetLayoutCreateInfo {
+    /// Returns a default `DescriptorSetLayoutCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            flags: DescriptorSetLayoutCreateFlags::empty(),
+            bindings: BTreeMap::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -488,17 +426,104 @@ impl DescriptorSetLayoutCreateInfo {
 
         Ok(())
     }
-}
 
-impl Default for DescriptorSetLayoutCreateInfo {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            flags: DescriptorSetLayoutCreateFlags::empty(),
-            bindings: BTreeMap::new(),
-            _ne: crate::NonExhaustive(()),
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DescriptorSetLayoutCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut DescriptorSetLayoutCreateInfoExtensionsVk<'_>,
+    ) -> vk::DescriptorSetLayoutCreateInfo<'a> {
+        let &Self {
+            flags,
+            bindings: _,
+            _ne: _,
+        } = self;
+        let DescriptorSetLayoutCreateInfoFields1Vk { bindings_vk } = fields1_vk;
+
+        let mut val_vk = vk::DescriptorSetLayoutCreateInfo::default()
+            .flags(flags.into())
+            .bindings(bindings_vk);
+
+        let DescriptorSetLayoutCreateInfoExtensionsVk { binding_flags_vk } = extensions_vk;
+
+        if let Some(next) = binding_flags_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a DescriptorSetLayoutCreateInfoFields2Vk,
+    ) -> DescriptorSetLayoutCreateInfoFields1Vk<'a> {
+        let DescriptorSetLayoutCreateInfoFields2Vk {
+            bindings_fields1_vk,
+            binding_flags_vk: _,
+        } = fields2_vk;
+
+        let bindings_vk = self
+            .bindings
+            .iter()
+            .zip(bindings_fields1_vk)
+            .map(|((&binding_num, binding), binding_fields1_vk)| {
+                let DescriptorSetLayoutBindingFields1Vk {
+                    immutable_samplers_vk,
+                } = binding_fields1_vk;
+
+                binding.to_vk(binding_num, immutable_samplers_vk)
+            })
+            .collect();
+
+        DescriptorSetLayoutCreateInfoFields1Vk { bindings_vk }
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields2_vk: &'a DescriptorSetLayoutCreateInfoFields2Vk,
+    ) -> DescriptorSetLayoutCreateInfoExtensionsVk<'a> {
+        let DescriptorSetLayoutCreateInfoFields2Vk {
+            binding_flags_vk, ..
+        } = fields2_vk;
+
+        let binding_flags_vk = self
+            .bindings
+            .values()
+            .any(|binding| !binding.binding_flags.is_empty())
+            .then(|| {
+                vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+                    .binding_flags(binding_flags_vk)
+            });
+
+        DescriptorSetLayoutCreateInfoExtensionsVk { binding_flags_vk }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> DescriptorSetLayoutCreateInfoFields2Vk {
+        let mut bindings_fields1_vk = SmallVec::new();
+        let mut binding_flags_vk = SmallVec::new();
+
+        for binding in self.bindings.values() {
+            bindings_fields1_vk.push(binding.to_vk_fields1());
+            binding_flags_vk.push(binding.to_vk_binding_flags());
+        }
+
+        DescriptorSetLayoutCreateInfoFields2Vk {
+            bindings_fields1_vk,
+            binding_flags_vk,
         }
     }
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoExtensionsVk<'a> {
+    pub(crate) binding_flags_vk: Option<vk::DescriptorSetLayoutBindingFlagsCreateInfo<'a>>,
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoFields1Vk<'a> {
+    pub(crate) bindings_vk: SmallVec<[vk::DescriptorSetLayoutBinding<'a>; 4]>,
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoFields2Vk {
+    pub(crate) bindings_fields1_vk: SmallVec<[DescriptorSetLayoutBindingFields1Vk; 4]>,
+    pub(crate) binding_flags_vk: SmallVec<[vk::DescriptorBindingFlags; 4]>,
 }
 
 vulkan_bitflags! {
@@ -533,7 +558,7 @@ vulkan_bitflags! {
     ///   [`DescriptorType::StorageBufferDynamic`] or [`DescriptorType::InlineUniformBlock`].
     /// - There must be no bindings with `variable_descriptor_count` enabled.
     /// - The total number of descriptors across all bindings must be less than the
-    ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
+    ///   [`max_push_descriptors`](crate::device::DeviceProperties::max_push_descriptors) limit.
     PUSH_DESCRIPTOR = PUSH_DESCRIPTOR_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_push_descriptor)]),
@@ -606,9 +631,9 @@ pub struct DescriptorSetLayoutBinding {
 }
 
 impl DescriptorSetLayoutBinding {
-    /// Returns a `DescriptorSetLayoutBinding` with the given type.
+    /// Returns a default `DescriptorSetLayoutBinding` with the provided `descriptor_type`.
     #[inline]
-    pub fn descriptor_type(descriptor_type: DescriptorType) -> Self {
+    pub const fn new(descriptor_type: DescriptorType) -> Self {
         Self {
             binding_flags: DescriptorBindingFlags::empty(),
             descriptor_type,
@@ -617,6 +642,12 @@ impl DescriptorSetLayoutBinding {
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn descriptor_type(descriptor_type: DescriptorType) -> Self {
+        Self::new(descriptor_type)
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the
@@ -679,6 +710,21 @@ impl DescriptorSetLayoutBinding {
             _ne: _,
         } = self;
 
+        if !binding_flags.is_empty()
+            && !(device.api_version() >= Version::V1_2
+                || device.enabled_extensions().ext_descriptor_indexing)
+        {
+            return Err(Box::new(ValidationError {
+                context: "binding_flags".into(),
+                problem: "is not empty".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("ext_descriptor_indexing")]),
+                ]),
+                ..Default::default()
+            }));
+        }
+
         binding_flags.validate_device(device).map_err(|err| {
             err.add_context("binding_flags").set_vuids(&[
                 "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-parameter",
@@ -695,7 +741,7 @@ impl DescriptorSetLayoutBinding {
                 return Err(Box::new(ValidationError {
                     context: "descriptor_type".into(),
                     problem: "`DescriptorType::InlineUniformBlock`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "inline_uniform_block",
                     )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-04604"],
@@ -806,7 +852,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::UniformBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_uniform_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformBufferUpdateAfterBind-03005"],
@@ -827,7 +873,7 @@ impl DescriptorSetLayoutBinding {
                                 `descriptor_type` is `DescriptorType::Sampler`, \
                                 `DescriptorType::CombinedImageSampler` or \
                                 `DescriptorType::SampledImage`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_sampled_image_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingSampledImageUpdateAfterBind-03006"],
@@ -844,7 +890,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageImage`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_image_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageImageUpdateAfterBind-03007"],
@@ -861,7 +907,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageBufferUpdateAfterBind-03008"],
@@ -878,7 +924,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::UniformTexelBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_uniform_texel_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformTexelBufferUpdateAfterBind-03009"],
@@ -895,7 +941,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageTexelBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_texel_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageTexelBufferUpdateAfterBind-03010"],
@@ -912,7 +958,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::InlineUniformBlock`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_inline_uniform_block_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingInlineUniformBlockUpdateAfterBind-02211"],
@@ -929,7 +975,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::AccelerationStructure`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_acceleration_structure_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingAccelerationStructureUpdateAfterBind-03570"],
@@ -962,7 +1008,7 @@ impl DescriptorSetLayoutBinding {
             return Err(Box::new(ValidationError {
                 context: "binding_flags".into(),
                 problem: "contains `DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "descriptor_binding_update_unused_while_pending"
                 )])]),
                 vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUpdateUnusedWhilePending-03012"],
@@ -975,7 +1021,7 @@ impl DescriptorSetLayoutBinding {
             return Err(Box::new(ValidationError {
                 context: "binding_flags".into(),
                 problem: "contains `DescriptorBindingFlags::PARTIALLY_BOUND`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "descriptor_binding_partially_bound"
                 )])]),
                 vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingPartiallyBound-03013"],
@@ -990,7 +1036,7 @@ impl DescriptorSetLayoutBinding {
                 return Err(Box::new(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "descriptor_binding_variable_descriptor_count"
                     )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
@@ -1017,6 +1063,53 @@ impl DescriptorSetLayoutBinding {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        binding_num: u32,
+        immutable_samplers_vk: &'a [vk::Sampler],
+    ) -> vk::DescriptorSetLayoutBinding<'a> {
+        let &Self {
+            binding_flags: _,
+            descriptor_type,
+            descriptor_count,
+            stages,
+            immutable_samplers: _,
+            _ne: _,
+        } = self;
+
+        let mut binding_vk = vk::DescriptorSetLayoutBinding::default()
+            .binding(binding_num)
+            .descriptor_type(descriptor_type.into())
+            .descriptor_count(descriptor_count)
+            .stage_flags(stages.into());
+
+        if !immutable_samplers_vk.is_empty() {
+            binding_vk = binding_vk.immutable_samplers(immutable_samplers_vk);
+        }
+
+        binding_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DescriptorSetLayoutBindingFields1Vk {
+        let immutable_samplers_vk = self
+            .immutable_samplers
+            .iter()
+            .map(VulkanObject::handle)
+            .collect();
+
+        DescriptorSetLayoutBindingFields1Vk {
+            immutable_samplers_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_binding_flags(&self) -> vk::DescriptorBindingFlags {
+        self.binding_flags.into()
+    }
+}
+
+pub(crate) struct DescriptorSetLayoutBindingFields1Vk {
+    pub(crate) immutable_samplers_vk: Vec<vk::Sampler>,
 }
 
 impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
@@ -1051,11 +1144,7 @@ vulkan_bitflags! {
     /// descriptor type of the binding must be enabled.
     ///
     /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`]: crate::descriptor_set::pool::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
-    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND,
 
     /// Allows descriptors in this binding to be updated after a command buffer has already
     /// recorded a bind command containing a descriptor set with this layout, as long as the
@@ -1071,12 +1160,8 @@ vulkan_bitflags! {
     /// flag is also set. If it is set, then only *dynamic use* by a shader invocation counts as
     /// being used, otherwise all *static use* by a shader invocation is considered used.
     ///
-    /// [`descriptor_binding_update_unused_while_pending`]: crate::device::Features::descriptor_binding_update_unused_while_pending
-    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    /// [`descriptor_binding_update_unused_while_pending`]: crate::device::DeviceFeatures::descriptor_binding_update_unused_while_pending
+    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING,
 
     /// Allows descriptors to be left empty or invalid even if they are *statically used* by a
     /// shader invocation, as long as they are not *dynamically used* . Additionally, if
@@ -1086,12 +1171,8 @@ vulkan_bitflags! {
     ///
     /// The [`descriptor_binding_partially_bound`] feature must be enabled on the device.
     ///
-    /// [`descriptor_binding_partially_bound`]: crate::device::Features::descriptor_binding_partially_bound
-    PARTIALLY_BOUND = PARTIALLY_BOUND
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    /// [`descriptor_binding_partially_bound`]: crate::device::DeviceFeatures::descriptor_binding_partially_bound
+    PARTIALLY_BOUND = PARTIALLY_BOUND,
 
     /// Whether the binding has a variable number of descriptors.
     ///
@@ -1103,12 +1184,8 @@ vulkan_bitflags! {
     /// binding with the highest binding number. The `descriptor_type` must not be
     /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
     ///
-    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
-    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
+    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT,
 }
 
 vulkan_enum! {
@@ -1257,8 +1334,72 @@ pub struct DescriptorSetLayoutSupport {
     /// [`descriptor_binding_variable_descriptor_count`] feature isn't enabled on the device, this
     /// will be 0.
     ///
-    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
     pub max_variable_descriptor_count: u32,
+}
+
+impl DescriptorSetLayoutSupport {
+    pub(crate) fn to_mut_vk(
+        extensions_vk: &mut DescriptorSetLayoutSupportExtensionsVk,
+    ) -> vk::DescriptorSetLayoutSupport<'_> {
+        let mut val_vk = vk::DescriptorSetLayoutSupport::default();
+
+        let DescriptorSetLayoutSupportExtensionsVk {
+            variable_descriptor_count_vk,
+        } = extensions_vk;
+
+        if let Some(next) = variable_descriptor_count_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk_extensions(device: &Device) -> DescriptorSetLayoutSupportExtensionsVk {
+        let variable_descriptor_count_vk = (device.api_version() >= Version::V1_2
+            || device.enabled_extensions().ext_descriptor_indexing)
+            .then(vk::DescriptorSetVariableDescriptorCountLayoutSupport::default);
+
+        DescriptorSetLayoutSupportExtensionsVk {
+            variable_descriptor_count_vk,
+        }
+    }
+
+    pub(crate) fn from_vk(
+        val_vk: &vk::DescriptorSetLayoutSupport<'_>,
+        extensions_vk: &DescriptorSetLayoutSupportExtensionsVk,
+    ) -> Option<Self> {
+        let &vk::DescriptorSetLayoutSupport { supported, .. } = val_vk;
+
+        (supported != vk::FALSE).then(|| {
+            let mut val = DescriptorSetLayoutSupport {
+                max_variable_descriptor_count: 0,
+            };
+
+            let DescriptorSetLayoutSupportExtensionsVk {
+                variable_descriptor_count_vk,
+            } = extensions_vk;
+
+            if let Some(val_vk) = variable_descriptor_count_vk {
+                let &vk::DescriptorSetVariableDescriptorCountLayoutSupport {
+                    max_variable_descriptor_count,
+                    ..
+                } = val_vk;
+
+                val = Self {
+                    max_variable_descriptor_count,
+                    ..val
+                };
+            }
+
+            val
+        })
+    }
+}
+
+pub(crate) struct DescriptorSetLayoutSupportExtensionsVk {
+    pub(crate) variable_descriptor_count_vk:
+        Option<vk::DescriptorSetVariableDescriptorCountLayoutSupport<'static>>,
 }
 
 #[cfg(test)]
@@ -1270,7 +1411,7 @@ mod tests {
         },
         shader::ShaderStages,
     };
-    use ahash::HashMap;
+    use foldhash::HashMap;
 
     #[test]
     fn empty() {
@@ -1289,7 +1430,7 @@ mod tests {
                     0,
                     DescriptorSetLayoutBinding {
                         stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
                     },
                 )]
                 .into(),

@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! A test to discard pixels that would be written to certain areas of a framebuffer.
 //!
 //! The discard rectangle test is similar to, but separate from the scissor test.
@@ -14,6 +5,8 @@
 use crate::{
     device::Device, macros::vulkan_enum, pipeline::graphics::viewport::Scissor, ValidationError,
 };
+use ash::vk;
+use smallvec::SmallVec;
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
@@ -44,23 +37,19 @@ pub struct DiscardRectangleState {
 impl Default for DiscardRectangleState {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DiscardRectangleState {
+    /// Returns a default `DiscardRectangleState`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl DiscardRectangleState {
-    /// Creates a `DiscardRectangleState` in exclusive mode with zero rectangles.
-    #[inline]
-    #[deprecated(
-        since = "0.34.0",
-        note = "use `DiscardRectangleState::default` instead"
-    )]
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -91,6 +80,43 @@ impl DiscardRectangleState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DiscardRectangleStateFields1Vk,
+    ) -> vk::PipelineDiscardRectangleStateCreateInfoEXT<'a> {
+        let &Self {
+            mode,
+            rectangles: _,
+            _ne: _,
+        } = self;
+        let DiscardRectangleStateFields1Vk {
+            discard_rectangles_vk,
+        } = fields1_vk;
+
+        vk::PipelineDiscardRectangleStateCreateInfoEXT::default()
+            .flags(vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty())
+            .discard_rectangle_mode(mode.into())
+            .discard_rectangles(discard_rectangles_vk)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DiscardRectangleStateFields1Vk {
+        let Self {
+            mode: _,
+            rectangles,
+            _ne: _,
+        } = self;
+
+        let discard_rectangles_vk = rectangles.iter().map(|rect| rect.to_vk()).collect();
+
+        DiscardRectangleStateFields1Vk {
+            discard_rectangles_vk,
+        }
+    }
+}
+
+pub(crate) struct DiscardRectangleStateFields1Vk {
+    pub(crate) discard_rectangles_vk: SmallVec<[vk::Rect2D; 2]>,
 }
 
 vulkan_enum! {

@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to use the compute capabilities of Vulkan.
 //
 // While graphics cards have traditionally been used for graphical operations, over time they have
@@ -20,7 +11,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -154,16 +145,20 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // We start by creating the buffer that will store the data.
     let data_buffer = Buffer::from_iter(
@@ -190,9 +185,9 @@ fn main() {
     //
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+    let layout = &pipeline.layout().set_layouts()[0];
+    let set = DescriptorSet::new(
+        descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         [],
@@ -201,19 +196,17 @@ fn main() {
 
     // In order to execute our operation, we have to build a command buffer.
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
+    // Note that we clone the pipeline and the set. Since they are both wrapped in an `Arc`,
+    // this only clones the `Arc` and not the whole pipeline or set (which aren't cloneable
+    // anyway). In this example we would avoid cloning them since this is the last time we use
+    // them, but in real code you would probably need to clone them.
     builder
-        // The command buffer only does one thing: execute the compute pipeline. This is called a
-        // *dispatch* operation.
-        //
-        // Note that we clone the pipeline and the set. Since they are both wrapped in an `Arc`,
-        // this only clones the `Arc` and not the whole pipeline or set (which aren't cloneable
-        // anyway). In this example we would avoid cloning them since this is the last time we use
-        // them, but in real code you would probably need to clone them.
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
         .bind_descriptor_sets(
@@ -222,9 +215,11 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+
+    // The command buffer only does one thing: execute the compute pipeline. This is called a
+    // *dispatch* operation.
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
 
     // Finish building the command buffer by calling `build`.
     let command_buffer = builder.build().unwrap();

@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 //! Safe and rich Rust wrapper around the Vulkan API.
 //!
@@ -24,32 +15,36 @@
 //!
 //! 3. If you intend to show graphics to the user on a window or a screen, create a [`Surface`].
 //!    A `Surface` is created from a window identifier or handle, that is specific to the display or
-//!    windowing system being used. The [`vulkano-win`] crate, which is part of the Vulkano
-//!    project, can make this step easier.
-//!
+//!    windowing system being used. Vulkano uses `raw-window-handle` to abstract over the different
+//!    windowing systems. Note that you have to make sure that the `raw-window-handle` that your
+//!    windowing library uses is compatible with the `raw-window-handle` that vulkano uses. For
+//!    example, if you use a `winit` version that uses a different version from the one vulkano
+//!    uses, you can add one of the [features](https://docs.rs/crate/winit/latest/features) that
+//!    starts with `rwh` to `winit`. Currently, vulkano is compatible with `rwh_06`.
+//!    
 //! 4. [Enumerate the physical devices] that are available on the `Instance`, and choose one that
 //!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
 //!    is available on the system, such as a graphics card, a software implementation, etc.
 //!
-//! 6. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`.
-//!    The `Device` is the most important object of Vulkan, and you need one to create almost
-//!    every other object. `Queue`s are created together with the `Device`, and are used to submit
-//!    work to the device to make it do something.
+//! 5. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`. The
+//!    `Device` is the most important object of Vulkan, and you need one to create almost every
+//!    other object. `Queue`s are created together with the `Device`, and are used to submit work
+//!    to the device to make it do something.
 //!
-//! 7. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
-//!    images that correspond to the contents of the surface. Whenever you want to
-//!    change the contents (show something new to the user), you must first *acquire* one of these
-//!    images from the swapchain, fill it with the new contents (by rendering, copying or any
-//!    other means), and then *present* it back to the swapchain.
-//!    A swapchain can become outdated if the properties of the surface change, such as when
-//!    the size of the window changes. It then becomes necessary to create a new swapchain.
+//! 6. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
+//!    images that correspond to the contents of the surface. Whenever you want to change the
+//!    contents (show something new to the user), you must first *acquire* one of these images from
+//!    the swapchain, fill it with the new contents (by rendering, copying or any other means), and
+//!    then *present* it back to the swapchain. A swapchain can become outdated if the properties
+//!    of the surface change, such as when the size of the window changes. It then becomes
+//!    necessary to create a new swapchain.
 //!
-//! 8. Record a [*command buffer*](crate::command_buffer), containing commands that the device must
+//! 7. Record a [*command buffer*](command_buffer), containing commands that the device must
 //!    execute. Then build the command buffer and submit it to a `Queue`.
 //!
 //! Many different operations can be recorded to a command buffer, such as *draw*, *compute* and
-//! *transfer* operations. To do any of these things, you will need to create several other objects,
-//! depending on your specific needs. This includes:
+//! *transfer* operations. To do any of these things, you will need to create several other
+//! objects, depending on your specific needs. This includes:
 //!
 //! - [*Buffers*] store general-purpose data on memory accessible by the device. This can include
 //!   mesh data (vertices, texture coordinates etc.), lighting information, matrices, and anything
@@ -59,8 +54,7 @@
 //!   as textures, depth/stencil buffers, framebuffers and as part of a swapchain.
 //!
 //! - [*Pipelines*] describe operations on the device. They include one or more [*shader*]s, small
-//!   programs that the device will execute as part of a pipeline.
-//!   Pipelines come in several types:
+//!   programs that the device will execute as part of a pipeline. Pipelines come in several types:
 //!   - A [`ComputePipeline`] describes how *dispatch* commands are to be performed.
 //!   - A [`GraphicsPipeline`] describes how *draw* commands are to be performed.
 //!
@@ -69,11 +63,11 @@
 //!   more of these layouts in turn forms a [`PipelineLayout`], which is used when creating a
 //!   pipeline object.
 //!
-//! - For more complex, multi-stage draw operations, you can create a [`RenderPass`] object.
-//!   This object describes the stages, known as subpasses, that draw operations consist of,
-//!   how they interact with one another, and which types of images are available in each subpass.
-//!   You must also create a [`Framebuffer`], which contains the image objects that are to be used
-//!   in a render pass.
+//! - For more complex, multi-stage draw operations, you can create a [`RenderPass`] object. This
+//!   object describes the stages, known as subpasses, that draw operations consist of, how they
+//!   interact with one another, and which types of images are available in each subpass. You must
+//!   also create a [`Framebuffer`], which contains the image objects that are to be used in a
+//!   render pass.
 //!
 //! # `_unchecked` functions
 //!
@@ -99,74 +93,47 @@
 //! | Feature              | Description                                                    |
 //! |----------------------|----------------------------------------------------------------|
 //! | `macros`             | Include reexports from [`vulkano-macros`]. Enabled by default. |
+//! | `x11`                | Support for X11 platforms. Enabled by default.                 |
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
 //!
-//! [`VulkanLibrary`]: crate::VulkanLibrary
-//! [`Instance`]: crate::instance::Instance
-//! [`Surface`]: crate::swapchain::Surface
-//! [`vulkano-win`]: https://crates.io/crates/vulkano-win
-//! [Enumerate the physical devices]: crate::instance::Instance::enumerate_physical_devices
-//! [`PhysicalDevice`]: crate::device::physical::PhysicalDevice
-//! [`Device`]: crate::device::Device
-//! [`Queue`]: crate::device::Queue
-//! [`Swapchain`]: crate::swapchain::Swapchain
-//! [*command buffer*]: crate::command_buffer
-//! [*Buffers*]: crate::buffer
-//! [*Images*]: crate::image
-//! [*Pipelines*]: crate::pipeline
-//! [*shader*]: crate::shader
-//! [`ComputePipeline`]: crate::pipeline::ComputePipeline
-//! [`GraphicsPipeline`]: crate::pipeline::GraphicsPipeline
-//! [*Descriptor sets*]: crate::descriptor_set
-//! [`DescriptorSetLayout`]: crate::descriptor_set::layout
-//! [`PipelineLayout`]: crate::pipeline::layout
-//! [`RenderPass`]: crate::render_pass::RenderPass
-//! [`Framebuffer`]: crate::render_pass::Framebuffer
+//! [`Instance`]: instance::Instance
+//! [`Surface`]: swapchain::Surface
+//! [Enumerate the physical devices]: instance::Instance::enumerate_physical_devices
+//! [`PhysicalDevice`]: device::physical::PhysicalDevice
+//! [`Device`]: device::Device
+//! [`Queue`]: device::Queue
+//! [`Swapchain`]: swapchain::Swapchain
+//! [*command buffer*]: command_buffer
+//! [*Buffers*]: buffer
+//! [*Images*]: image
+//! [*Pipelines*]: pipeline
+//! [*shader*]: shader
+//! [`ComputePipeline`]: pipeline::ComputePipeline
+//! [`GraphicsPipeline`]: pipeline::GraphicsPipeline
+//! [*Descriptor sets*]: descriptor_set
+//! [`DescriptorSetLayout`]: descriptor_set::layout
+//! [`PipelineLayout`]: pipeline::layout
+//! [`RenderPass`]: render_pass::RenderPass
+//! [`Framebuffer`]: render_pass::Framebuffer
 //! [`vulkano-macros`]: vulkano_macros
 //! [`serde`]: https://crates.io/crates/serde
 
-//#![warn(missing_docs)]        // TODO: activate
-#![warn(
-    rust_2018_idioms,
-    rust_2021_compatibility,
-    clippy::trivially_copy_pass_by_ref
-)]
-// These lints are a bit too pedantic, so they're disabled here.
-#![allow(
-    clippy::arc_with_non_send_sync,
-    clippy::collapsible_else_if,
-    clippy::collapsible_if,
-    clippy::derivable_impls, // TODO: remove
-    clippy::large_enum_variant,
-    clippy::len_without_is_empty,
-    clippy::missing_safety_doc, // TODO: remove
-    clippy::module_inception,
-    clippy::mutable_key_type,
-    clippy::needless_borrowed_reference,
-    clippy::new_without_default,
-    clippy::nonminimal_bool,
-    clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
-    clippy::result_large_err,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::vec_box,
-    clippy::wrong_self_convention
-)]
-
-pub use ash::vk::Handle;
+use ash::vk;
 use bytemuck::{Pod, Zeroable};
+pub use extensions::ExtensionProperties;
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
 use std::{
     borrow::Cow,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    num::NonZeroU64,
+    num::NonZero,
     ops::Deref,
     sync::Arc,
 };
-pub use {extensions::ExtensionProperties, version::Version};
+pub use version::Version;
+pub use vk::Handle;
 
 #[macro_use]
 mod tests;
@@ -201,16 +168,35 @@ pub mod sync;
 
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
-pub use ash::vk::DeviceSize;
+pub use vk::DeviceSize;
 
 /// A [`DeviceSize`] that is known not to equal zero.
-pub type NonZeroDeviceSize = NonZeroU64;
+pub type NonZeroDeviceSize = NonZero<DeviceSize>;
 
 /// Represents an address (pointer) on a Vulkan device.
-pub use ash::vk::DeviceAddress;
+pub use vk::DeviceAddress;
 
 /// A [`DeviceAddress`] that is known not to equal zero.
-pub type NonNullDeviceAddress = NonZeroU64;
+pub type NonNullDeviceAddress = NonZero<DeviceAddress>;
+
+/// Represents a region of device addresses with a stride.
+#[derive(Debug, Copy, Clone, Default)]
+pub struct StridedDeviceAddressRegion {
+    pub device_address: DeviceAddress,
+    pub stride: DeviceSize,
+    pub size: DeviceSize,
+}
+
+impl StridedDeviceAddressRegion {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> vk::StridedDeviceAddressRegionKHR {
+        vk::StridedDeviceAddressRegionKHR {
+            device_address: self.device_address,
+            stride: self.stride,
+            size: self.size,
+        }
+    }
+}
 
 /// Holds 24 bits in the least significant bits of memory,
 /// and 8 bytes in the most significant bits of that memory,
@@ -222,6 +208,7 @@ pub struct Packed24_8(u32);
 
 impl Packed24_8 {
     /// Returns a new `Packed24_8` value.
+    // TODO: make const
     #[inline]
     pub fn new(low_24: u32, high_8: u8) -> Self {
         Self((low_24 & 0x00ff_ffff) | (u32::from(high_8) << 24))
@@ -240,7 +227,7 @@ impl Packed24_8 {
     }
 }
 
-// Allow refering to crate by its name to work around limitations of proc-macros
+// Allow referring to crate by its name to work around limitations of proc-macros
 // in doctests.
 // See https://github.com/rust-lang/cargo/issues/9886
 // and https://github.com/bkchr/proc-macro-crate/issues/10
@@ -249,14 +236,14 @@ extern crate self as vulkano;
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
-unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
+unsafe impl<T: ?Sized> SafeDeref for &T {}
 unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
 unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
     /// The type of the object.
-    type Handle: ash::vk::Handle;
+    type Handle: Handle;
 
     /// Returns the raw Vulkan handle of the object.
     fn handle(&self) -> Self::Handle;
@@ -423,6 +410,7 @@ pub enum Validated<E> {
 impl<E> Validated<E> {
     /// Maps the inner `Error` value using the provided function, or does nothing if the value is
     /// `ValidationError`.
+    #[inline]
     pub fn map<F>(self, f: impl FnOnce(E) -> F) -> Validated<F> {
         match self {
             Self::Error(err) => Validated::Error(f(err)),
@@ -430,6 +418,7 @@ impl<E> Validated<E> {
         }
     }
 
+    #[inline]
     fn map_validation(self, f: impl FnOnce(Box<ValidationError>) -> Box<ValidationError>) -> Self {
         match self {
             Self::Error(err) => Self::Error(err),
@@ -438,6 +427,8 @@ impl<E> Validated<E> {
     }
 
     /// Returns the inner `Error` value, or panics if it contains `ValidationError`.
+    #[inline(always)]
+    #[track_caller]
     pub fn unwrap(self) -> E {
         match self {
             Self::Error(err) => err,
@@ -670,7 +661,7 @@ impl Display for RequiresAllOf {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Requires {
     APIVersion(Version),
-    Feature(&'static str),
+    DeviceFeature(&'static str),
     DeviceExtension(&'static str),
     InstanceExtension(&'static str),
 }
@@ -681,7 +672,9 @@ impl Display for Requires {
             Requires::APIVersion(Version { major, minor, .. }) => {
                 write!(f, "Vulkan API version {}.{}", major, minor)
             }
-            Requires::Feature(feature) => write!(f, "feature `{}`", feature),
+            Requires::DeviceFeature(device_feature) => {
+                write!(f, "device feature `{}`", device_feature)
+            }
             Requires::DeviceExtension(device_extension) => {
                 write!(f, "device extension `{}`", device_extension)
             }

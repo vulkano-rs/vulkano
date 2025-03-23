@@ -1,40 +1,30 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
-    command_buffer::{
-        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
-    },
+    command_buffer::{sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
+            fragment_shading_rate::{FragmentShadingRateCombinerOp, FragmentShadingRateState},
             input_assembly::PrimitiveTopology,
-            rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
+            rasterization::{
+                ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
+            },
+            vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
         DynamicState,
     },
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::ops::RangeInclusive;
 
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     // Helper function for dynamic state setting.
     fn validate_graphics_pipeline_fixed_state(
         &self,
@@ -44,7 +34,7 @@ where
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .map_or(false, |pipeline| pipeline.fixed_state().contains(&state))
+            .is_some_and(|pipeline| pipeline.fixed_state().contains(&state))
         {
             return Err(Box::new(ValidationError {
                 problem: "the state for this value in the currently bound graphics pipeline \
@@ -65,7 +55,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_blend_constants(constants)?;
 
-        unsafe { Ok(self.set_blend_constants_unchecked(constants)) }
+        Ok(unsafe { self.set_blend_constants_unchecked(constants) })
     }
 
     fn validate_set_blend_constants(
@@ -85,8 +75,8 @@ where
         self.add_command(
             "set_blend_constants",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_blend_constants_unchecked(constants);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_blend_constants_unchecked(constants) };
             },
         );
 
@@ -101,7 +91,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_color_write_enable(&enables)?;
 
-        unsafe { Ok(self.set_color_write_enable_unchecked(enables)) }
+        Ok(unsafe { self.set_color_write_enable_unchecked(enables) })
     }
 
     fn validate_set_color_write_enable(
@@ -142,8 +132,8 @@ where
         self.add_command(
             "set_color_write_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_color_write_enable_unchecked(&enables);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_color_write_enable_unchecked(&enables) };
             },
         );
 
@@ -157,7 +147,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_cull_mode(cull_mode)?;
 
-        unsafe { Ok(self.set_cull_mode_unchecked(cull_mode)) }
+        Ok(unsafe { self.set_cull_mode_unchecked(cull_mode) })
     }
 
     fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
@@ -174,8 +164,8 @@ where
         self.add_command(
             "set_cull_mode",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_cull_mode_unchecked(cull_mode);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_cull_mode_unchecked(cull_mode) };
             },
         );
 
@@ -191,7 +181,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        unsafe { Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor)) }
+        Ok(unsafe { self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) })
     }
 
     fn validate_set_depth_bias(
@@ -223,8 +213,8 @@ where
         self.add_command(
             "set_depth_bias",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) };
             },
         );
 
@@ -238,7 +228,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_bias_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_bias_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bias_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -255,8 +245,8 @@ where
         self.add_command(
             "set_depth_bias_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bias_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_bias_enable_unchecked(enable) };
             },
         );
 
@@ -270,7 +260,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds(bounds.clone())?;
 
-        unsafe { Ok(self.set_depth_bounds_unchecked(bounds)) }
+        Ok(unsafe { self.set_depth_bounds_unchecked(bounds) })
     }
 
     fn validate_set_depth_bounds(
@@ -290,8 +280,8 @@ where
         self.add_command(
             "set_depth_bounds",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bounds_unchecked(bounds.clone());
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_bounds_unchecked(bounds.clone()) };
             },
         );
 
@@ -305,7 +295,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds_test_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_bounds_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_bounds_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bounds_test_enable(
@@ -325,8 +315,8 @@ where
         self.add_command(
             "set_depth_bounds_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bounds_test_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_bounds_test_enable_unchecked(enable) };
             },
         );
 
@@ -340,7 +330,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_compare_op(compare_op)?;
 
-        unsafe { Ok(self.set_depth_compare_op_unchecked(compare_op)) }
+        Ok(unsafe { self.set_depth_compare_op_unchecked(compare_op) })
     }
 
     fn validate_set_depth_compare_op(
@@ -360,8 +350,8 @@ where
         self.add_command(
             "set_depth_compare_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_compare_op_unchecked(compare_op);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_compare_op_unchecked(compare_op) };
             },
         );
 
@@ -375,7 +365,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_test_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -392,8 +382,8 @@ where
         self.add_command(
             "set_depth_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_test_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_test_enable_unchecked(enable) };
             },
         );
 
@@ -407,7 +397,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_write_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_write_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_write_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_write_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -424,8 +414,8 @@ where
         self.add_command(
             "set_depth_write_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_write_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_depth_write_enable_unchecked(enable) };
             },
         );
 
@@ -440,7 +430,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)?;
 
-        unsafe { Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles)) }
+        Ok(unsafe { self.set_discard_rectangle_unchecked(first_rectangle, rectangles) })
     }
 
     fn validate_set_discard_rectangle(
@@ -470,8 +460,8 @@ where
         self.add_command(
             "set_discard_rectangle",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_discard_rectangle_unchecked(first_rectangle, &rectangles);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_discard_rectangle_unchecked(first_rectangle, &rectangles) };
             },
         );
 
@@ -482,7 +472,7 @@ where
     pub fn set_front_face(&mut self, face: FrontFace) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_front_face(face)?;
 
-        unsafe { Ok(self.set_front_face_unchecked(face)) }
+        Ok(unsafe { self.set_front_face_unchecked(face) })
     }
 
     fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
@@ -499,8 +489,8 @@ where
         self.add_command(
             "set_front_face",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_front_face_unchecked(face);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_front_face_unchecked(face) };
             },
         );
 
@@ -515,7 +505,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_stipple(factor, pattern)?;
 
-        unsafe { Ok(self.set_line_stipple_unchecked(factor, pattern)) }
+        Ok(unsafe { self.set_line_stipple_unchecked(factor, pattern) })
     }
 
     fn validate_set_line_stipple(
@@ -536,8 +526,8 @@ where
         self.add_command(
             "set_line_stipple",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_line_stipple_unchecked(factor, pattern);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_line_stipple_unchecked(factor, pattern) };
             },
         );
 
@@ -548,7 +538,7 @@ where
     pub fn set_line_width(&mut self, line_width: f32) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_width(line_width)?;
 
-        unsafe { Ok(self.set_line_width_unchecked(line_width)) }
+        Ok(unsafe { self.set_line_width_unchecked(line_width) })
     }
 
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
@@ -565,8 +555,8 @@ where
         self.add_command(
             "set_line_width",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_line_width_unchecked(line_width);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_line_width_unchecked(line_width) };
             },
         );
 
@@ -577,7 +567,7 @@ where
     pub fn set_logic_op(&mut self, logic_op: LogicOp) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_logic_op(logic_op)?;
 
-        unsafe { Ok(self.set_logic_op_unchecked(logic_op)) }
+        Ok(unsafe { self.set_logic_op_unchecked(logic_op) })
     }
 
     fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
@@ -594,8 +584,8 @@ where
         self.add_command(
             "set_logic_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_logic_op_unchecked(logic_op);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_logic_op_unchecked(logic_op) };
             },
         );
 
@@ -609,7 +599,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_patch_control_points(num)?;
 
-        unsafe { Ok(self.set_patch_control_points_unchecked(num)) }
+        Ok(unsafe { self.set_patch_control_points_unchecked(num) })
     }
 
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
@@ -626,8 +616,8 @@ where
         self.add_command(
             "set_patch_control_points",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_patch_control_points_unchecked(num);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_patch_control_points_unchecked(num) };
             },
         );
 
@@ -641,7 +631,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_restart_enable(enable)?;
 
-        unsafe { Ok(self.set_primitive_restart_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_primitive_restart_enable_unchecked(enable) })
     }
 
     fn validate_set_primitive_restart_enable(
@@ -661,8 +651,8 @@ where
         self.add_command(
             "set_primitive_restart_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_primitive_restart_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_primitive_restart_enable_unchecked(enable) };
             },
         );
 
@@ -676,7 +666,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_topology(topology)?;
 
-        unsafe { Ok(self.set_primitive_topology_unchecked(topology)) }
+        Ok(unsafe { self.set_primitive_topology_unchecked(topology) })
     }
 
     fn validate_set_primitive_topology(
@@ -699,8 +689,8 @@ where
         self.add_command(
             "set_primitive_topology",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_primitive_topology_unchecked(topology);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_primitive_topology_unchecked(topology) };
             },
         );
 
@@ -714,7 +704,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_rasterizer_discard_enable(enable)?;
 
-        unsafe { Ok(self.set_rasterizer_discard_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_rasterizer_discard_enable_unchecked(enable) })
     }
 
     fn validate_set_rasterizer_discard_enable(
@@ -734,8 +724,8 @@ where
         self.add_command(
             "set_rasterizer_discard_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_rasterizer_discard_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_rasterizer_discard_enable_unchecked(enable) };
             },
         );
 
@@ -750,7 +740,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor(first_scissor, &scissors)?;
 
-        unsafe { Ok(self.set_scissor_unchecked(first_scissor, scissors)) }
+        Ok(unsafe { self.set_scissor_unchecked(first_scissor, scissors) })
     }
 
     fn validate_set_scissor(
@@ -781,8 +771,8 @@ where
         self.add_command(
             "set_scissor",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor_unchecked(first_scissor, &scissors);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_scissor_unchecked(first_scissor, &scissors) };
             },
         );
 
@@ -796,7 +786,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor_with_count(&scissors)?;
 
-        unsafe { Ok(self.set_scissor_with_count_unchecked(scissors)) }
+        Ok(unsafe { self.set_scissor_with_count_unchecked(scissors) })
     }
 
     fn validate_set_scissor_with_count(
@@ -819,8 +809,8 @@ where
         self.add_command(
             "set_scissor_with_count",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor_with_count_unchecked(&scissors);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_scissor_with_count_unchecked(&scissors) };
             },
         );
 
@@ -835,7 +825,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        unsafe { Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask)) }
+        Ok(unsafe { self.set_stencil_compare_mask_unchecked(faces, compare_mask) })
     }
 
     fn validate_set_stencil_compare_mask(
@@ -857,21 +847,21 @@ where
         faces: StencilFaces,
         compare_mask: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_compare_mask.front = Some(compare_mask);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_compare_mask.back = Some(compare_mask);
         }
 
         self.add_command(
             "set_stencil_compare_mask",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_compare_mask_unchecked(faces, compare_mask);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_stencil_compare_mask_unchecked(faces, compare_mask) };
             },
         );
 
@@ -889,9 +879,9 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
-        unsafe {
-            Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
-        }
+        Ok(unsafe {
+            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+        })
     }
 
     fn validate_set_stencil_op(
@@ -919,9 +909,9 @@ where
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_op.front = Some(StencilOps {
                 fail_op,
                 pass_op,
@@ -930,7 +920,7 @@ where
             });
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_op.back = Some(StencilOps {
                 fail_op,
                 pass_op,
@@ -942,8 +932,10 @@ where
         self.add_command(
             "set_stencil_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe {
+                    out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+                };
             },
         );
 
@@ -958,7 +950,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_reference(faces, reference)?;
 
-        unsafe { Ok(self.set_stencil_reference_unchecked(faces, reference)) }
+        Ok(unsafe { self.set_stencil_reference_unchecked(faces, reference) })
     }
 
     fn validate_set_stencil_reference(
@@ -980,21 +972,21 @@ where
         faces: StencilFaces,
         reference: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_reference.front = Some(reference);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_reference.back = Some(reference);
         }
 
         self.add_command(
             "set_stencil_reference",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_reference_unchecked(faces, reference);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_stencil_reference_unchecked(faces, reference) };
             },
         );
 
@@ -1008,7 +1000,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_test_enable(enable)?;
 
-        unsafe { Ok(self.set_stencil_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_stencil_test_enable_unchecked(enable) })
     }
 
     fn validate_set_stencil_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1025,8 +1017,8 @@ where
         self.add_command(
             "set_stencil_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_test_enable_unchecked(enable);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_stencil_test_enable_unchecked(enable) };
             },
         );
 
@@ -1041,7 +1033,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_write_mask(faces, write_mask)?;
 
-        unsafe { Ok(self.set_stencil_write_mask_unchecked(faces, write_mask)) }
+        Ok(unsafe { self.set_stencil_write_mask_unchecked(faces, write_mask) })
     }
 
     fn validate_set_stencil_write_mask(
@@ -1063,21 +1055,61 @@ where
         faces: StencilFaces,
         write_mask: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_write_mask.front = Some(write_mask);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_write_mask.back = Some(write_mask);
         }
 
         self.add_command(
             "set_stencil_write_mask",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_write_mask_unchecked(faces, write_mask);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_stencil_write_mask_unchecked(faces, write_mask) };
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic vertex input for future draw calls.
+    #[inline]
+    pub fn set_vertex_input(
+        &mut self,
+        vertex_input_state: VertexInputState,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_vertex_input(&vertex_input_state)?;
+
+        Ok(unsafe { self.set_vertex_input_unchecked(vertex_input_state) })
+    }
+
+    fn validate_set_vertex_input(
+        &self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_vertex_input(vertex_input_state)?;
+
+        self.validate_graphics_pipeline_fixed_state(DynamicState::VertexInput)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_vertex_input_unchecked(
+        &mut self,
+        vertex_input_state: VertexInputState,
+    ) -> &mut Self {
+        self.builder_state.vertex_input = Some(vertex_input_state.clone());
+
+        self.add_command(
+            "set_vertex_input",
+            Default::default(),
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_vertex_input_unchecked(&vertex_input_state) };
             },
         );
 
@@ -1092,7 +1124,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport(first_viewport, &viewports)?;
 
-        unsafe { Ok(self.set_viewport_unchecked(first_viewport, viewports)) }
+        Ok(unsafe { self.set_viewport_unchecked(first_viewport, viewports) })
     }
 
     fn validate_set_viewport(
@@ -1122,8 +1154,8 @@ where
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport_unchecked(first_viewport, &viewports);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_viewport_unchecked(first_viewport, &viewports) };
             },
         );
 
@@ -1137,7 +1169,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport_with_count(&viewports)?;
 
-        unsafe { Ok(self.set_viewport_with_count_unchecked(viewports)) }
+        Ok(unsafe { self.set_viewport_with_count_unchecked(viewports) })
     }
 
     fn validate_set_viewport_with_count(
@@ -1160,8 +1192,147 @@ where
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport_with_count_unchecked(&viewports);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_viewport_with_count_unchecked(&viewports) };
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic conservative rasterization mode for future draw calls.
+    #[inline]
+    pub fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_conservative_rasterization_mode()?;
+
+        Ok(unsafe {
+            self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)
+        })
+    }
+
+    fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_conservative_rasterization_mode()?;
+
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ConservativeRasterizationMode)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_conservative_rasterization_mode_unchecked(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+        self.builder_state.conservative_rasterization_mode = Some(conservative_rasterization_mode);
+
+        self.add_command(
+            "set_conservative_rasterization_mode",
+            Default::default(),
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe {
+                    out.set_conservative_rasterization_mode_unchecked(
+                        conservative_rasterization_mode,
+                    )
+                };
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic extra primitive overestimation size for future draw calls.
+    #[inline]
+    pub fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_extra_primitive_overestimation_size()?;
+
+        Ok(unsafe {
+            self.set_extra_primitive_overestimation_size_unchecked(
+                extra_primitive_overestimation_size,
+            )
+        })
+    }
+
+    fn validate_set_extra_primitive_overestimation_size(&self) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_conservative_rasterization_mode()?;
+
+        self.validate_graphics_pipeline_fixed_state(
+            DynamicState::ExtraPrimitiveOverestimationSize,
+        )?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_extra_primitive_overestimation_size_unchecked(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+        self.builder_state.extra_primitive_overestimation_size =
+            Some(extra_primitive_overestimation_size);
+
+        self.add_command(
+            "set_extra_primitive_overestimation_size",
+            Default::default(),
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe {
+                    out.set_extra_primitive_overestimation_size_unchecked(
+                        extra_primitive_overestimation_size,
+                    )
+                };
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic fragment shading rate for future draw calls.
+    #[inline]
+    pub fn set_fragment_shading_rate(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
+
+        Ok(unsafe { self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops) })
+    }
+
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
+
+        self.validate_graphics_pipeline_fixed_state(DynamicState::FragmentShadingRate)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_fragment_shading_rate_unchecked(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        self.builder_state.fragment_shading_rate = Some(FragmentShadingRateState {
+            fragment_size,
+            combiner_ops,
+            ..FragmentShadingRateState::default()
+        });
+
+        self.add_command(
+            "set_fragment_shading_rate",
+            Default::default(),
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops) };
             },
         );
 
@@ -1169,17 +1340,15 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn set_blend_constants(
         &mut self,
         constants: [f32; 4],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_blend_constants(constants)?;
 
-        Ok(self.set_blend_constants_unchecked(constants))
+        Ok(unsafe { self.set_blend_constants_unchecked(constants) })
     }
 
     fn validate_set_blend_constants(
@@ -1206,18 +1375,19 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_blend_constants_unchecked(&mut self, constants: [f32; 4]) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants);
+        unsafe { (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_color_write_enable(
         &mut self,
         enables: &[bool],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_color_write_enable(enables)?;
 
-        Ok(self.set_color_write_enable_unchecked(enables))
+        Ok(unsafe { self.set_color_write_enable_unchecked(enables) })
     }
 
     fn validate_set_color_write_enable(
@@ -1253,33 +1423,36 @@ where
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_color_write_enable_unchecked(&mut self, enables: &[bool]) -> &mut Self {
-        let enables = enables
+        let enables_vk = enables
             .iter()
             .copied()
-            .map(|v| v as ash::vk::Bool32)
+            .map(|v| v as vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
 
-        if enables.is_empty() {
+        if enables_vk.is_empty() {
             return self;
         }
 
         let fns = self.device().fns();
-        (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
-            self.handle(),
-            enables.len() as u32,
-            enables.as_ptr(),
-        );
+        unsafe {
+            (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
+                self.handle(),
+                enables_vk.len() as u32,
+                enables_vk.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_cull_mode(
         &mut self,
         cull_mode: CullMode,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_cull_mode(cull_mode)?;
 
-        Ok(self.set_cull_mode_unchecked(cull_mode))
+        Ok(unsafe { self.set_cull_mode_unchecked(cull_mode) })
     }
 
     fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
@@ -1289,7 +1462,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetCullMode-None-03384"],
                 ..Default::default()
@@ -1323,14 +1496,20 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_cull_mode)(self.handle(), cull_mode.into());
+            unsafe { (fns.v1_3.cmd_set_cull_mode)(self.handle(), cull_mode.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle(), cull_mode.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(
+                    self.handle(),
+                    cull_mode.into(),
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bias(
         &mut self,
         constant_factor: f32,
@@ -1339,7 +1518,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor))
+        Ok(unsafe { self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) })
     }
 
     fn validate_set_depth_bias(
@@ -1366,7 +1545,7 @@ where
             return Err(Box::new(ValidationError {
                 context: "clamp".into(),
                 problem: "is not `0.0`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "depth_bias_clamp",
                 )])]),
                 vuids: &["VUID-vkCmdSetDepthBias-depthBiasClamp-00790"],
@@ -1384,18 +1563,21 @@ where
         slope_factor: f32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor);
+        unsafe {
+            (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bias_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias_enable(enable)?;
 
-        Ok(self.set_depth_bias_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_bias_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1405,7 +1587,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthBiasEnable-None-04872"],
                 ..Default::default()
@@ -1434,22 +1616,25 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bias_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_bias_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bounds(
         &mut self,
         bounds: RangeInclusive<f32>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds(bounds.clone())?;
 
-        Ok(self.set_depth_bounds_unchecked(bounds))
+        Ok(unsafe { self.set_depth_bounds_unchecked(bounds) })
     }
 
     fn validate_set_depth_bounds(
@@ -1504,18 +1689,19 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end());
+        unsafe { (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end()) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bounds_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds_test_enable(enable)?;
 
-        Ok(self.set_depth_bounds_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_bounds_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bounds_test_enable(
@@ -1528,7 +1714,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthBoundsTestEnable-None-03349"],
                 ..Default::default()
@@ -1557,22 +1743,27 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_depth_bounds_test_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_depth_bounds_test_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_compare_op(
         &mut self,
         compare_op: CompareOp,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_compare_op(compare_op)?;
 
-        Ok(self.set_depth_compare_op_unchecked(compare_op))
+        Ok(unsafe { self.set_depth_compare_op_unchecked(compare_op) })
     }
 
     fn validate_set_depth_compare_op(
@@ -1585,7 +1776,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthCompareOp-None-03353"],
                 ..Default::default()
@@ -1619,24 +1810,27 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_compare_op)(self.handle(), compare_op.into());
+            unsafe { (fns.v1_3.cmd_set_depth_compare_op)(self.handle(), compare_op.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
-                self.handle(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
+                    self.handle(),
+                    compare_op.into(),
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_test_enable(enable)?;
 
-        Ok(self.set_depth_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1646,7 +1840,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthTestEnable-None-03352"],
                 ..Default::default()
@@ -1675,24 +1869,27 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
-                self.handle(),
-                enable.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
+                    self.handle(),
+                    enable.into(),
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_write_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_write_enable(enable)?;
 
-        Ok(self.set_depth_write_enable_unchecked(enable))
+        Ok(unsafe { self.set_depth_write_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1702,7 +1899,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthWriteEnable-None-03354"],
                 ..Default::default()
@@ -1731,15 +1928,18 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_write_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_depth_write_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_depth_write_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_depth_write_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
@@ -1747,7 +1947,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_discard_rectangle(first_rectangle, rectangles)?;
 
-        Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles))
+        Ok(unsafe { self.set_discard_rectangle_unchecked(first_rectangle, rectangles) })
     }
 
     fn validate_set_discard_rectangle(
@@ -1801,30 +2001,33 @@ where
     ) -> &mut Self {
         let rectangles = rectangles
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
             return self;
         }
 
         let fns = self.device().fns();
-        (fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext)(
-            self.handle(),
-            first_rectangle,
-            rectangles.len() as u32,
-            rectangles.as_ptr(),
-        );
+        unsafe {
+            (fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext)(
+                self.handle(),
+                first_rectangle,
+                rectangles.len() as u32,
+                rectangles.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_front_face(
         &mut self,
         face: FrontFace,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_front_face(face)?;
 
-        Ok(self.set_front_face_unchecked(face))
+        Ok(unsafe { self.set_front_face_unchecked(face) })
     }
 
     fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
@@ -1834,7 +2037,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetFrontFace-None-03383"],
                 ..Default::default()
@@ -1868,14 +2071,17 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_front_face)(self.handle(), face.into());
+            unsafe { (fns.v1_3.cmd_set_front_face)(self.handle(), face.into()) };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into())
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_line_stipple(
         &mut self,
         factor: u32,
@@ -1883,7 +2089,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_stipple(factor, pattern)?;
 
-        Ok(self.set_line_stipple_unchecked(factor, pattern))
+        Ok(unsafe { self.set_line_stipple_unchecked(factor, pattern) })
     }
 
     fn validate_set_line_stipple(
@@ -1929,18 +2135,21 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_line_stipple_unchecked(&mut self, factor: u32, pattern: u16) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern);
+        unsafe {
+            (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_line_width(
         &mut self,
         line_width: f32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_width(line_width)?;
 
-        Ok(self.set_line_width_unchecked(line_width))
+        Ok(unsafe { self.set_line_width_unchecked(line_width) })
     }
 
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
@@ -1962,7 +2171,7 @@ where
             return Err(Box::new(ValidationError {
                 context: "line_width".into(),
                 problem: "is not 1.0".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "wide_lines",
                 )])]),
                 vuids: &["VUID-vkCmdSetLineWidth-lineWidth-00788"],
@@ -1975,18 +2184,19 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_line_width_unchecked(&mut self, line_width: f32) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_line_width)(self.handle(), line_width);
+        unsafe { (fns.v1_0.cmd_set_line_width)(self.handle(), line_width) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_logic_op(
         &mut self,
         logic_op: LogicOp,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_logic_op(logic_op)?;
 
-        Ok(self.set_logic_op_unchecked(logic_op))
+        Ok(unsafe { self.set_logic_op_unchecked(logic_op) })
     }
 
     fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
@@ -1996,7 +2206,7 @@ where
             .extended_dynamic_state2_logic_op
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "extended_dynamic_state2_logic_op",
                 )])]),
                 vuids: &["VUID-vkCmdSetLogicOpEXT-None-04867"],
@@ -2029,18 +2239,21 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_logic_op_unchecked(&mut self, logic_op: LogicOp) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into());
+        unsafe {
+            (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into())
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_patch_control_points(
         &mut self,
         num: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_patch_control_points(num)?;
 
-        Ok(self.set_patch_control_points_unchecked(num))
+        Ok(unsafe { self.set_patch_control_points_unchecked(num) })
     }
 
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
@@ -2050,7 +2263,7 @@ where
             .extended_dynamic_state2_patch_control_points
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "extended_dynamic_state2_patch_control_points",
                 )])]),
                 vuids: &["VUID-vkCmdSetPatchControlPointsEXT-None-04873"],
@@ -2098,19 +2311,22 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_patch_control_points_unchecked(&mut self, num: u32) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state2
-            .cmd_set_patch_control_points_ext)(self.handle(), num);
+        unsafe {
+            (fns.ext_extended_dynamic_state2
+                .cmd_set_patch_control_points_ext)(self.handle(), num)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_primitive_restart_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_restart_enable(enable)?;
 
-        Ok(self.set_primitive_restart_enable_unchecked(enable))
+        Ok(unsafe { self.set_primitive_restart_enable_unchecked(enable) })
     }
 
     fn validate_set_primitive_restart_enable(
@@ -2123,7 +2339,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetPrimitiveRestartEnable-None-04866"],
                 ..Default::default()
@@ -2152,22 +2368,27 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_primitive_restart_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_primitive_restart_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_primitive_topology(
         &mut self,
         topology: PrimitiveTopology,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_topology(topology)?;
 
-        Ok(self.set_primitive_topology_unchecked(topology))
+        Ok(unsafe { self.set_primitive_topology_unchecked(topology) })
     }
 
     fn validate_set_primitive_topology(
@@ -2180,7 +2401,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetPrimitiveTopology-None-03347"],
                 ..Default::default()
@@ -2218,9 +2439,9 @@ where
                         problem: "this device is a portability subset device, and `topology` \
                             is `PrimitiveTopology::TriangleFan`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "triangle_fans",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("triangle_fans"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2232,9 +2453,9 @@ where
                 if !self.device().enabled_features().geometry_shader {
                     return Err(Box::new(ValidationError {
                         problem: "`topology` is `PrimitiveTopology::*WithAdjacency`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shader"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2243,9 +2464,9 @@ where
                 if !self.device().enabled_features().tessellation_shader {
                     return Err(Box::new(ValidationError {
                         problem: "`topology` is `PrimitiveTopology::PatchList`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2264,22 +2485,25 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_topology)(self.handle(), topology.into());
+            unsafe { (fns.v1_3.cmd_set_primitive_topology)(self.handle(), topology.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_primitive_topology_ext)(self.handle(), topology.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_primitive_topology_ext)(self.handle(), topology.into())
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_rasterizer_discard_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_rasterizer_discard_enable(enable)?;
 
-        Ok(self.set_rasterizer_discard_enable_unchecked(enable))
+        Ok(unsafe { self.set_rasterizer_discard_enable_unchecked(enable) })
     }
 
     fn validate_set_rasterizer_discard_enable(
@@ -2292,7 +2516,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetRasterizerDiscardEnable-None-04871"],
                 ..Default::default()
@@ -2321,15 +2545,20 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state2
-                .cmd_set_rasterizer_discard_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state2
+                    .cmd_set_rasterizer_discard_enable_ext)(
+                    self.handle(), enable.into()
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_scissor(
         &mut self,
         first_scissor: u32,
@@ -2337,7 +2566,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor(first_scissor, scissors)?;
 
-        Ok(self.set_scissor_unchecked(first_scissor, scissors))
+        Ok(unsafe { self.set_scissor_unchecked(first_scissor, scissors) })
     }
 
     fn validate_set_scissor(
@@ -2374,7 +2603,7 @@ where
             if first_scissor != 0 {
                 return Err(Box::new(ValidationError {
                     problem: "`first_scissor` is not 0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetScissor-firstScissor-00593"],
@@ -2385,7 +2614,7 @@ where
             if scissors.len() > 1 {
                 return Err(Box::new(ValidationError {
                     problem: "`scissors.len()` is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetScissor-scissorCount-00594"],
@@ -2405,30 +2634,33 @@ where
     ) -> &mut Self {
         let scissors = scissors
             .iter()
-            .map(ash::vk::Rect2D::from)
+            .map(|s| s.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return self;
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_scissor)(
-            self.handle(),
-            first_scissor,
-            scissors.len() as u32,
-            scissors.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_set_scissor)(
+                self.handle(),
+                first_scissor,
+                scissors.len() as u32,
+                scissors.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_scissor_with_count(
         &mut self,
         scissors: &[Scissor],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor_with_count(scissors)?;
 
-        Ok(self.set_scissor_with_count_unchecked(scissors))
+        Ok(unsafe { self.set_scissor_with_count_unchecked(scissors) })
     }
 
     fn validate_set_scissor_with_count(
@@ -2441,7 +2673,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetScissorWithCount-None-03396"],
                 ..Default::default()
@@ -2475,7 +2707,7 @@ where
         if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
             return Err(Box::new(ValidationError {
                 problem: "`scissors.len()` is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-vkCmdSetScissorWithCount-scissorCount-03398"],
@@ -2490,7 +2722,7 @@ where
     pub unsafe fn set_scissor_with_count_unchecked(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
-            .map(ash::vk::Rect2D::from)
+            .map(|s| s.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return self;
@@ -2499,23 +2731,28 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_scissor_with_count)(
-                self.handle(),
-                scissors.len() as u32,
-                scissors.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_scissor_with_count)(
+                    self.handle(),
+                    scissors.len() as u32,
+                    scissors.as_ptr(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_scissor_with_count_ext)(
-                self.handle(),
-                scissors.len() as u32,
-                scissors.as_ptr(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_scissor_with_count_ext)(
+                    self.handle(),
+                    scissors.len() as u32,
+                    scissors.as_ptr(),
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
@@ -2523,7 +2760,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask))
+        Ok(unsafe { self.set_stencil_compare_mask_unchecked(faces, compare_mask) })
     }
 
     fn validate_set_stencil_compare_mask(
@@ -2560,11 +2797,14 @@ where
         compare_mask: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), faces.into(), compare_mask);
+        unsafe {
+            (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), faces.into(), compare_mask)
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_op(
         &mut self,
         faces: StencilFaces,
@@ -2575,7 +2815,9 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
-        Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
+        Ok(unsafe {
+            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+        })
     }
 
     fn validate_set_stencil_op(
@@ -2592,7 +2834,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetStencilOp-None-03351"],
                 ..Default::default()
@@ -2655,28 +2897,33 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_op)(
-                self.handle(),
-                faces.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_stencil_op)(
+                    self.handle(),
+                    faces.into(),
+                    fail_op.into(),
+                    pass_op.into(),
+                    depth_fail_op.into(),
+                    compare_op.into(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
-                self.handle(),
-                faces.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
+                    self.handle(),
+                    faces.into(),
+                    fail_op.into(),
+                    pass_op.into(),
+                    depth_fail_op.into(),
+                    compare_op.into(),
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_reference(
         &mut self,
         faces: StencilFaces,
@@ -2684,7 +2931,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_reference(faces, reference)?;
 
-        Ok(self.set_stencil_reference_unchecked(faces, reference))
+        Ok(unsafe { self.set_stencil_reference_unchecked(faces, reference) })
     }
 
     fn validate_set_stencil_reference(
@@ -2721,18 +2968,19 @@ where
         reference: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_reference)(self.handle(), faces.into(), reference);
+        unsafe { (fns.v1_0.cmd_set_stencil_reference)(self.handle(), faces.into(), reference) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_test_enable(enable)?;
 
-        Ok(self.set_stencil_test_enable_unchecked(enable))
+        Ok(unsafe { self.set_stencil_test_enable_unchecked(enable) })
     }
 
     fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
@@ -2742,7 +2990,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetStencilTestEnable-None-03350"],
                 ..Default::default()
@@ -2771,15 +3019,18 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into());
+            unsafe { (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into()) };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into())
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_write_mask(
         &mut self,
         faces: StencilFaces,
@@ -2787,7 +3038,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_write_mask(faces, write_mask)?;
 
-        Ok(self.set_stencil_write_mask_unchecked(faces, write_mask))
+        Ok(unsafe { self.set_stencil_write_mask_unchecked(faces, write_mask) })
     }
 
     fn validate_set_stencil_write_mask(
@@ -2824,11 +3075,100 @@ where
         write_mask: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask);
+        unsafe { (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask) };
 
         self
     }
 
+    #[inline]
+    pub unsafe fn set_vertex_input(
+        &mut self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_vertex_input(vertex_input_state)?;
+
+        Ok(unsafe { self.set_vertex_input_unchecked(vertex_input_state) })
+    }
+
+    fn validate_set_vertex_input(
+        &self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().enabled_features().vertex_input_dynamic_state
+            || self.device().enabled_features().shader_object)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::DeviceFeature("vertex_input_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetVertexInputEXT-None-08546"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetVertexInputEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        vertex_input_state
+            .validate(self.device())
+            .map_err(|err| err.add_context("vertex_input_state"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_vertex_input_unchecked(
+        &mut self,
+        vertex_input_state: &VertexInputState,
+    ) -> &mut Self {
+        let mut vertex_binding_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut vertex_attribute_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+
+        let VertexInputState {
+            bindings,
+            attributes,
+            _ne: _,
+        } = vertex_input_state;
+
+        vertex_binding_descriptions_vk.extend(
+            bindings
+                .iter()
+                .map(|(&binding, binding_desc)| binding_desc.to_vk2(binding)),
+        );
+
+        vertex_attribute_descriptions_vk.extend(
+            attributes
+                .iter()
+                .map(|(&location, attribute_desc)| attribute_desc.to_vk2(location)),
+        );
+
+        let fns = self.device().fns();
+        unsafe {
+            (fns.ext_vertex_input_dynamic_state.cmd_set_vertex_input_ext)(
+                self.handle(),
+                vertex_binding_descriptions_vk.len() as u32,
+                vertex_binding_descriptions_vk.as_ptr(),
+                vertex_attribute_descriptions_vk.len() as u32,
+                vertex_attribute_descriptions_vk.as_ptr(),
+            )
+        };
+
+        self
+    }
+
+    #[inline]
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
@@ -2836,7 +3176,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport(first_viewport, viewports)?;
 
-        Ok(self.set_viewport_unchecked(first_viewport, viewports))
+        Ok(unsafe { self.set_viewport_unchecked(first_viewport, viewports) })
     }
 
     fn validate_set_viewport(
@@ -2873,7 +3213,7 @@ where
             if first_viewport != 0 {
                 return Err(Box::new(ValidationError {
                     problem: "`first_viewport` is not 0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetViewport-firstViewport-01224"],
@@ -2884,7 +3224,7 @@ where
             if viewports.len() > 1 {
                 return Err(Box::new(ValidationError {
                     problem: "`viewports.len()` is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetViewport-viewportCount-01225"],
@@ -2904,30 +3244,33 @@ where
     ) -> &mut Self {
         let viewports = viewports
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return self;
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_set_viewport)(
-            self.handle(),
-            first_viewport,
-            viewports.len() as u32,
-            viewports.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_set_viewport)(
+                self.handle(),
+                first_viewport,
+                viewports.len() as u32,
+                viewports.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn set_viewport_with_count(
         &mut self,
         viewports: &[Viewport],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport_with_count(viewports)?;
 
-        Ok(self.set_viewport_with_count_unchecked(viewports))
+        Ok(unsafe { self.set_viewport_with_count_unchecked(viewports) })
     }
 
     fn validate_set_viewport_with_count(
@@ -2940,7 +3283,7 @@ where
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetViewportWithCount-None-03393"],
                 ..Default::default()
@@ -2974,7 +3317,7 @@ where
         if viewports.len() > 1 && !self.device().enabled_features().multi_viewport {
             return Err(Box::new(ValidationError {
                 problem: "`viewports.len()` is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-vkCmdSetViewportWithCount-viewportCount-03395"],
@@ -2992,7 +3335,7 @@ where
     ) -> &mut Self {
         let viewports = viewports
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return self;
@@ -3001,19 +3344,214 @@ where
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_viewport_with_count)(
-                self.handle(),
-                viewports.len() as u32,
-                viewports.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_3.cmd_set_viewport_with_count)(
+                    self.handle(),
+                    viewports.len() as u32,
+                    viewports.as_ptr(),
+                )
+            };
         } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_viewport_with_count_ext)(
-                self.handle(),
-                viewports.len() as u32,
-                viewports.as_ptr(),
-            );
+            unsafe {
+                (fns.ext_extended_dynamic_state
+                    .cmd_set_viewport_with_count_ext)(
+                    self.handle(),
+                    viewports.len() as u32,
+                    viewports.as_ptr(),
+                )
+            };
         }
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_conservative_rasterization_mode()?;
+
+        Ok(unsafe {
+            self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)
+        })
+    }
+
+    fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
+        if !(self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state3_conservative_rasterization_mode)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::DeviceFeature(
+                        "extended_dynamic_state3_conservative_rasterization_mode",
+                    )]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetConservativeRasterizationModeEXT-None-09423"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetConservativeRasterizationModeEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_conservative_rasterization_mode_unchecked(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        unsafe {
+            (fns.ext_extended_dynamic_state3
+                .cmd_set_conservative_rasterization_mode_ext)(
+                self.handle(),
+                conservative_rasterization_mode.into(),
+            )
+        };
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)?;
+
+        Ok(unsafe {
+            self.set_extra_primitive_overestimation_size_unchecked(
+                extra_primitive_overestimation_size,
+            )
+        })
+    }
+
+    fn validate_set_extra_primitive_overestimation_size(
+        &self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<(), Box<ValidationError>> {
+        let properties = self.device().physical_device().properties();
+
+        if !(self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state3_extra_primitive_overestimation_size)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::DeviceFeature(
+                        "extended_dynamic_state3_extra_primitive_overestimation_size",
+                    )]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-None-09423"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if extra_primitive_overestimation_size < 0.0
+            || extra_primitive_overestimation_size
+                > properties.max_extra_primitive_overestimation_size.unwrap()
+        {
+            return Err(Box::new(ValidationError {
+                context: "overestimation size".into(),
+                problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
+                vuids: &[
+                    "VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-extraPrimitiveOverestimationSize-07428",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_extra_primitive_overestimation_size_unchecked(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        unsafe {
+            (fns.ext_extended_dynamic_state3
+                .cmd_set_extra_primitive_overestimation_size_ext)(
+                self.handle(),
+                extra_primitive_overestimation_size,
+            )
+        };
+
+        self
+    }
+
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        FragmentShadingRateState {
+            fragment_size,
+            combiner_ops,
+            ..FragmentShadingRateState::default()
+        }
+        .validate(self.device())?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_fragment_shading_rate_unchecked(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        let fragment_size = vk::Extent2D {
+            width: fragment_size[0],
+            height: fragment_size[1],
+        };
+        let combiner_ops: [vk::FragmentShadingRateCombinerOpKHR; 2] =
+            [combiner_ops[0].into(), combiner_ops[1].into()];
+
+        unsafe {
+            (fns.khr_fragment_shading_rate
+                .cmd_set_fragment_shading_rate_khr)(
+                self.handle(),
+                &fragment_size,
+                combiner_ops.as_ptr().cast(),
+            )
+        };
 
         self
     }

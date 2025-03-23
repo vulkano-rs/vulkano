@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! A program that is run on the device.
 //!
 //! In Vulkan, shaders are grouped in *shader modules*. Each shader module is built from SPIR-V
@@ -34,15 +25,15 @@
 //! ## Layout of data
 //!
 //! When buffers, push constants or other user-provided data are accessed in shaders,
-//! the shader expects the values inside to be laid out in a specific way. For every uniform buffer,
-//! storage buffer or push constant block, the SPIR-V specification requires the SPIR-V code to
-//! provide the `Offset` decoration for every member of a struct, indicating where it is placed
-//! relative to the start of the struct. If there are arrays or matrices among the variables, the
-//! SPIR-V code must also provide an `ArrayStride` or `MatrixStride` decoration for them,
-//! indicating the number of bytes between the start of each element in the array or column in the
-//! matrix. When providing data to shaders, you must make sure that your data is placed at the
-//! locations indicated within the SPIR-V code, or the shader will read the wrong data and produce
-//! nonsense.
+//! the shader expects the values inside to be laid out in a specific way. For every uniform
+//! buffer, storage buffer or push constant block, the SPIR-V specification requires the SPIR-V
+//! code to provide the `Offset` decoration for every member of a struct, indicating where it is
+//! placed relative to the start of the struct. If there are arrays or matrices among the
+//! variables, the SPIR-V code must also provide an `ArrayStride` or `MatrixStride` decoration for
+//! them, indicating the number of bytes between the start of each element in the array or column
+//! in the matrix. When providing data to shaders, you must make sure that your data is placed at
+//! the locations indicated within the SPIR-V code, or the shader will read the wrong data and
+//! produce nonsense.
 //!
 //! GLSL does not require you to give explicit offsets and/or strides to your variables (although
 //! it has the option to provide them if you wish). Instead, the shader compiler automatically
@@ -72,12 +63,12 @@
 //!   [`#[repr(C)]`](https://doc.rust-lang.org/nomicon/other-reprs.html#reprc) attribute.
 //!   The shader compiler does not use this alignment by default, so you must use the GLSL
 //!   qualifier. You must also enable the [`scalar_block_layout`] feature in Vulkan.
-//! - **Base alignment**, also known as **std430** (GLSL qualifier: `layout(std430)`).
-//!   The shader compiler uses this alignment by default for all shader data except uniform buffers.
-//!   If you use the base alignment for a uniform buffer, you must also enable the
+//! - **Base alignment**, also known as **std430** (GLSL qualifier: `layout(std430)`). The shader
+//!   compiler uses this alignment by default for all shader data except uniform buffers. If you
+//!   use the base alignment for a uniform buffer, you must also enable the
 //!   [`uniform_buffer_standard_layout`] feature in Vulkan.
-//! - **Extended alignment**, also known as **std140** (GLSL qualifier: `layout(std140)`).
-//!   The shader compiler uses this alignment by default for uniform buffers.
+//! - **Extended alignment**, also known as **std140** (GLSL qualifier: `layout(std140)`). The
+//!   shader compiler uses this alignment by default for uniform buffers.
 //!
 //! Each alignment type is a subset of the ones above it, so if something adheres to the extended
 //! alignment rules, it also follows the rules for the base and scalar alignments.
@@ -126,12 +117,303 @@
 //! of the alignments of its members. As with arrays, in the extended alignment, the alignment
 //! of a struct is at least 16.
 //!
-//! [alignment rules]: <https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout>
-//! [`GL_EXT_scalar_block_layout`]: <https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt>
-//! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
-//! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
+//! # Safety
+//!
+//! The following general safety requirements apply to the descriptors in a shader, and to the
+//! resources that were bound to them. They apply to all shader types, and must be met at the
+//! moment the shader executes on the device.
+//!
+//! Vulkano will validate many of these requirements, but it is only able to do so when the
+//! resources involved are statically known. This means that either the descriptor binding must not
+//! be arrayed, or if it is arrayed, that the array must be indexed only by constants. If the
+//! array index is dynamic (meaning that it depends on values that are inputs to the shader),
+//! then Vulkano cannot check these requirements, and you must ensure them yourself.
+//!
+//! Some requirements, such as the validity of pointers to device memory, cannot be validated
+//! by Vulkano at all.
+//!
+//! ## Descriptors
+//!
+//! - If a descriptor set binding was created with [`DescriptorBindingFlags::PARTIALLY_BOUND`],
+//!   then if the shader accesses a descriptor in that binding, the descriptor must be initialized
+//!   and contain a valid resource.
+//!
+//! ## Buffers and memory accesses
+//!
+//! - If the [`robust_buffer_access`](DeviceFeatures::robust_buffer_access) feature is not enabled
+//!   on the device, then the shader must not access any values outside the range of the buffer, as
+//!   specified when writing the descriptor set. <sup>[\[06935\]] [\[06936\]]</sup>
+//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader,
+//!   then:
+//!   - The pointer must point to valid memory of the correct type.
+//!   - The pointer must be aligned to a multiple of the largest scalar type within the type that
+//!     it points to. <sup>[\[06314\]]</sup>
+//!   - If the instruction has `Aligned` as one of its memory operands, the pointer must be aligned
+//!     to the specified alignment. <sup>[\[06315\]]</sup>
+//! - For `OpCooperativeMatrixLoadKHR`, `OpCooperativeMatrixStoreKHR`, `OpCooperativeMatrixLoadNV`
+//!   and `OpCooperativeMatrixStoreNV` instructions, the `Pointer` and `Stride` operands must both
+//!   be aligned to the minimum of either 16 bytes or the number of bytes per row/column of the
+//!   matrix (depending on the `ColumnMajor` and `RowMajor` decorations). <sup>[\[06324\]]
+//!   [\[08986\]]</sup>
+//!
+//! ## Image views and buffer views
+//!
+//! - The [`view_type`](ImageView::view_type) of the bound image view must match the `Dim` operand
+//!   of the `OpImageType`. <sup>[\[07752\]]</sup>
+//! - The numeric type of the [`format`](ImageView::format) of the bound image view must match the
+//!   `Sampled Type` operand of the `OpImageType`. <sup>[\[07753\]]</sup>
+//! - For every `OpImageWrite` instruction, the type of the `Texel` operand must have at least as
+//!   many components as the format of the bound image view or buffer view. If the bound image
+//!   view's format is [`Format::A8_UNORM`], then the type of the `Texel` operand must have four
+//!   components. <sup>[\[04469\]] [\[08795\]] [\[08796\]]</sup>
+//! - The `Sampled Type` operand of the `OpTypeImage` declaration must have a `Width` of 64, if and
+//!   only if the format of the bound image view or buffer view also has a 64-bit component.
+//!   Otherwise, it must have a `Width` of 32. <sup>[\[04470\]] [\[04471\]] [\[04472\]]
+//!   [\[04473\]]</sup>
+//! - The [`samples`](Image::samples) of the underlying image of the bound image view must match
+//!   the `MS` operand of the `OpImageType`. <sup>[\[08725\]] [\[08726\]]</sup>
+//! - For a storage image/texel buffer declared with `OpTypeImage` with an `Unknown` format:
+//!   - If it is written to in the shader, the format of the bound image view or buffer view must
+//!     have the [`FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`] format feature. <sup>[\[07027\]]
+//!     [\[07029\]]</sup>
+//!   - If it is read from in the shader, the format of the bound image view or buffer view must
+//!     have the [`FormatFeatures::STORAGE_READ_WITHOUT_FORMAT`] format feature. <sup>[\[07028\]]
+//!     [\[07030\]]</sup>
+//! - If atomic operations are used on a storage image/texel buffer:
+//!   - The bound image view's format must have the [`FormatFeatures::STORAGE_IMAGE_ATOMIC`] format
+//!     feature. <sup>[\[02691\]]</sup>
+//!   - The bound buffer view's format must have the
+//!     [`FormatFeatures::STORAGE_TEXEL_BUFFER_ATOMIC`] format feature. <sup>[\[07888\]]</sup>
+//!
+//! ## Image sampling
+//!
+//! If the bound sampler uses [`Filter::Linear`] or [`SamplerMipmapMode::Linear`]:
+//! - The bound image view's format must have the [`FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR`]
+//!   format feature. <sup>[\[04553\]] [\[04770\]]</sup>
+//!
+//! If the bound sampler uses [`Filter::Cubic`]:
+//! - The bound image view's format must have the [`FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC`]
+//!   format feature. <sup>[\[02692\]]</sup>
+//! - The bound image view's type and format must support cubic filtering, as indicated in
+//!   [`ImageFormatProperties::filter_cubic`] returned from
+//!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02694\]]</sup>
+//! - If the sampler's reduction mode is [`SamplerReductionMode::Min`] or
+//!   [`SamplerReductionMode::Max`], the image view type and format must support cubic minmax
+//!   filtering, as indicated in [`ImageFormatProperties::filter_cubic_minmax`] returned from
+//!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02695\]]</sup>
+//!
+//! If the bound sampler uses [depth comparison](SamplerCreateInfo::compare):
+//! - The bound image view's format must have the
+//!   [`FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON`] format feature. <sup>[\[06479\]]</sup>
+//!
+//! If the bound sampler uses [unnormalized
+//! coordinates](SamplerCreateInfo::unnormalized_coordinates):
+//! - The bound image view must have a type of [`ImageViewType::Dim1d`] or
+//!   [`ImageViewType::Dim2d`]. <sup>[\[08609\]]</sup>
+//! - The sampler must not be used in any `OpImageSample*` or `OpImageSparseSample*` instructions,
+//!   that contain `ImplicitLod`, `Dref` or `Proj` in their name. <sup>[\[08610\]]</sup>
+//! - The sampler must not be used in any `OpImageSample*` or `OpImageSparseSample*` instructions,
+//!   that include an LOD bias or offset operand. <sup>[\[08611\]]</sup>
+//!
+//! If the bound sampler has a [sampler YCbCr conversion](crate::image::sampler::ycbcr):
+//! - The sampler must only be used in `OpImageSample*` or `OpImageSparseSample*` instructions.
+//!   <sup>[\[06550\]]</sup>
+//! - The sampler must not be used with the `ConstOffset` or `Offset` image operands.
+//!   <sup>[\[06551\]]</sup>
+//!
+//! ## Mesh shading
+//!
+//! - If the shader declares the `OutputPoints` execution mode with a value greater than 0, and the
+//!   [`maintenance5`](DeviceFeatures::maintenance5) feature is not enabled on the device, then the
+//!   shader must write to a variable decorated with `PointSize` for each output point.
+//!   <sup>[\[09218\]]</sup>
+//!
+//! For `OpSetMeshOutputsEXT` instructions:
+//!
+//! - The `Vertex Count` operand must be less than or equal to the value declared with the shader's
+//!   `OutputVertices` execution mode. <sup>[\[07332\]]</sup>
+//! - The `Primitive Count` operand must be less than or equal to the value declared with the
+//!   shader's `OutputPrimitivesEXT` execution mode. <sup>[\[07333\]]</sup>
+//!
+//! ## Acceleration structures, ray queries and ray tracing
+//!
+//! - Acceleration structures that are used as operands to an instruction must have been built as a
+//!   top-level acceleration structure. <sup>[\[06352\]] [\[06359\]] [\[06365\]] [\[07709\]]</sup>
+//! - In any top-level acceleration structure, the pointers that refer to the contained
+//!   bottom-level acceleration structure instances must point to valid bottom-level acceleration
+//!   structures.
+//!
+//! For `OpRayQueryInitializeKHR` and `OpTraceRayKHR` instructions:
+//!
+//! - The `Rayflags` operand must not contain more than one of:
+//!   - `SkipTrianglesKHR`, `CullBackFacingTrianglesKHR` and `CullFrontFacingTrianglesKHR`
+//!     <sup>[\[06889\]] [\[06892\]]</sup>
+//!   - `SkipTrianglesKHR` and `SkipAABBsKHR` <sup>[\[06890\]] [\[06552\]] [\[07712\]]</sup>
+//!   - `OpaqueKHR`, `NoOpaqueKHR`, `CullOpaqueKHR`, and `CullNoOpaqueKHR` <sup>[\[06891\]]
+//!     [\[06893\]]</sup>
+//! - The `RayOrigin` and `RayDirection` operands must not contain infinite or NaN values. <sup>
+//!   [\[06348\]] [\[06351\]] [\[06355\]] [\[06358\]] </sup>
+//! - The `RayTmin` and `RayTmax` operands must not contain negative or NaN values, and `RayTmin`
+//!   must be less than or equal to `RayTmax`. <sup> [\[06349\]] [\[06350\]] [\[06351\]]
+//!   [\[06356\]] [\[06357\]] [\[06358\]] </sup>
+//!
+//! For `OpRayQueryGenerateIntersectionKHR` instructions:
+//!
+//! - The `Hit T` operand must be greater than or equal to the value that would be returned by
+//!   `OpRayQueryGetRayTMinKHR`. <sup>[\[06353\]]</sup>
+//! - The `Hit T` operand must be less than or equal to the value that would be returned by
+//!   `OpRayQueryGetIntersectionTKHR` for the current committed intersection.
+//!   <sup>[\[06353\]]</sup>
+//!
+//! For `OpReportIntersectionKHR` instructions:
+//!
+//! - The `Hit Kind` operand must be between 0 and 127 inclusive. <sup>[\[06998\]]</sup>
+//!
+//! ## Dynamically uniform values and control flow
+//!
+//! In a shader, a value (expression, variable) is *[dynamically uniform]* if its value is the same
+//! for all shader invocations within an *invocation group*. What counts as an invocation group
+//! depends on the type of shader being executed:
+//!
+//! - For compute, task and mesh shaders, an invocation group is the same as the (local) workgroup.
+//!   A single `dispatch` command value spawns one distinct invocation group for every element in
+//!   the product of the given `group_counts` argument.
+//! - For all other graphics shaders, an invocation group is all shaders invoked by a single draw
+//!   command. For indirect draws, each element of the indirect buffer creates one draw call.
+//! - For ray tracing shaders, an invocation group is an implementation-dependent subset of the
+//!   shaders invoked by a single ray tracing command.
+//!
+//! Vulkan and SPIR-V assume that certain values within a shader are dynamically uniform, and will
+//! optimize the generated shader code accordingly. If such a value is not actually dynamically
+//! uniform, this results in undefined behavior. This concerns the following values:
+//!
+//! - The index into an arrayed descriptor binding. If the index is not dynamically uniform, you
+//!   must explicitly mark it with the `NonUniform` decoration in SPIR-V, or the `nonuniformEXT`
+//!   function in GLSL. <sup>[\[06274\]]</sup>
+//! - The `Index` argument of the `OpGroupNonUniformQuadBroadcast` instruction.
+//!   <sup>[\[06276\]]</sup>
+//! - The `Id` argument of the `OpGroupNonUniformBroadcast` instruction. <sup>[\[06277\]]</sup>
+//! - The arguments of the `OpEmitMeshTasksEXT` and `OpSetMeshOutputsEXT` instructions.
+//!   <sup>[\[07117\]] [\[07118\]]</sup>
+//! - The `Texture Sampled Image` and `Weight Image` arguments of the `OpImageWeightedSampleQCOM`
+//!   instruction. <sup>[\[06979\]]</sup>
+//! - The `Texture Sampled Image`, `Reference Sampled Image` and `Block Size` arguments of the
+//!   `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSSDQCOM` instructions.
+//!   <sup>[\[06982\]]</sup>
+//! - The `Sampled Texture Image` and `Box Size` arguments of the `OpImageBoxFilterQCOM`
+//!   instruction. <sup>[\[06990\]]</sup>
+//! - The `Target Sampled Image`, `Reference Sampled Image` and `Block Size` arguments of any
+//!   `OpImageBlockMatchWindow*QCOM` or `OpImageBlockMatchGather*QCOM` instructions.
+//!   <sup>[\[09219\]]</sup>
+//!
+//! Some operations have specific requirements for control flow within the shader:
+//!
+//! - The `OpEmitMeshTasksEXT` and `OpSetMeshOutputsEXT` instructions must be executed uniformly
+//!   within the invocation group. That means that, either all shader invocations within the
+//!   invocation group must execute the instruction, or none of them must execute it.
+//!   <sup>[\[07117\]] [\[07118\]]</sup>
+//! - If the `PointSize` built-in is written to, then all execution paths must write to it.
+//!   <sup>[\[09190\]]</sup>
+//!
+//! [alignment rules]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
+//! [`GL_EXT_scalar_block_layout`]: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt
+//! [`scalar_block_layout`]: DeviceFeatures::scalar_block_layout
+//! [`uniform_buffer_standard_layout`]: DeviceFeatures::uniform_buffer_standard_layout
+//! [dynamically uniform]: https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_uniformity
+//! [\[02691\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691
+//! [\[02692\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692
+//! [\[02694\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubic-02694
+//! [\[02695\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubicMinmax-02695
+//! [\[04469\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-04469
+//! [\[04470\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04470
+//! [\[04471\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04471
+//! [\[04472\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04472
+//! [\[04473\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04473
+//! [\[04553\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-magFilter-04553
+//! [\[04770\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-mipmapMode-04770
+//! [\[06274\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-NonUniform-06274
+//! [\[06276\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06276
+//! [\[06277\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06277
+//! [\[06314\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-PhysicalStorageBuffer64-06314
+//! [\[06315\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-PhysicalStorageBuffer64-06315
+//! [\[06324\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpCooperativeMatrixLoadNV-06324
+//! [\[06348\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06348
+//! [\[06349\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06349
+//! [\[06350\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06350
+//! [\[06351\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06351
+//! [\[06352\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06352
+//! [\[06353\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryGenerateIntersectionKHR-06353
+//! [\[06355\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06355
+//! [\[06356\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06356
+//! [\[06357\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06357
+//! [\[06358\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06358
+//! [\[06359\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06359
+//! [\[06361\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06361
+//! [\[06362\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06362
+//! [\[06363\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06363
+//! [\[06364\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06364
+//! [\[06365\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06365
+//! [\[06366\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06366
+//! [\[06479\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06479
+//! [\[06550\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06550
+//! [\[06551\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-ConstOffset-06551
+//! [\[06552\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06552
+//! [\[06889\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06889
+//! [\[06890\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06890
+//! [\[06891\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06891
+//! [\[06892\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06892
+//! [\[06893\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06893
+//! [\[06935\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935
+//! [\[06936\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936
+//! [\[06979\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageWeightedSampleQCOM-06979
+//! [\[06982\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBlockMatchSADQCOM-06982
+//! [\[06990\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBoxFilterQCOM-06990
+//! [\[06998\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpReportIntersectionKHR-06998
+//! [\[07027\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07027
+//! [\[07029\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07029
+//! [\[07028\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07028
+//! [\[07030\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07030
+//! [\[07117\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-TaskEXT-07117
+//! [\[07118\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07118
+//! [\[07332\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07332
+//! [\[07333\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07333
+//! [\[07705\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07705
+//! [\[07706\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07706
+//! [\[07707\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07707
+//! [\[07708\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07708
+//! [\[07709\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayMotionNV-07709
+//! [\[07710\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07710
+//! [\[07712\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07712
+//! [\[07713\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07713
+//! [\[07714\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07714
+//! [\[07752\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752
+//! [\[07753\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-format-07753
+//! [\[07888\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-07888
+//! [\[08609\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08609
+//! [\[08610\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08610
+//! [\[08611\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08611
+//! [\[08725\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-samples-08725
+//! [\[08726\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-samples-08726
+//! [\[08795\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08795
+//! [\[08796\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08796
+//! [\[08986\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpCooperativeMatrixLoadKHR-08986
+//! [\[09190\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-maintenance5-09190
+//! [\[09218\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-09218
+//! [\[09219\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBlockMatchWindow-09219
 
 use self::spirv::{Id, Instruction};
+#[cfg(doc)]
+use crate::{
+    acceleration_structure::BuildAccelerationStructureFlags,
+    descriptor_set::layout::DescriptorBindingFlags,
+    device::{physical::PhysicalDevice, DeviceFeatures, DeviceProperties},
+    format::FormatFeatures,
+    image::{
+        sampler::{Filter, Sampler, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode},
+        view::ImageView,
+        Image, ImageFormatProperties,
+    },
+};
 use crate::{
     descriptor_set::layout::DescriptorType,
     device::{Device, DeviceOwned},
@@ -145,16 +427,16 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ahash::{HashMap, HashSet};
+use ash::vk;
 use bytemuck::bytes_of;
+use foldhash::{HashMap, HashSet};
 use half::f16;
 use smallvec::SmallVec;
 use spirv::ExecutionModel;
 use std::{
-    borrow::Cow,
     collections::hash_map::Entry,
-    mem::{discriminant, size_of_val, MaybeUninit},
-    num::NonZeroU64,
+    mem::{discriminant, MaybeUninit},
+    num::NonZero,
     ptr,
     sync::Arc,
 };
@@ -168,9 +450,9 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 /// Contains SPIR-V code with one or more entry points.
 #[derive(Debug)]
 pub struct ShaderModule {
-    handle: ash::vk::ShaderModule,
+    handle: vk::ShaderModule,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     spirv: Spirv,
     specialization_constants: HashMap<u32, SpecializationConstant>,
@@ -197,7 +479,7 @@ impl ShaderModule {
 
         Self::validate_new(&device, &create_info, &spirv)?;
 
-        Ok(Self::new_with_spirv_unchecked(device, create_info, spirv)?)
+        Ok(unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }?)
     }
 
     fn validate_new(
@@ -218,7 +500,7 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let spirv = Spirv::new(create_info.code).unwrap();
-        Self::new_with_spirv_unchecked(device, create_info, spirv)
+        unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }
     }
 
     unsafe fn new_with_spirv_unchecked(
@@ -226,35 +508,25 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
-        let &ShaderModuleCreateInfo { code, _ne: _ } = &create_info;
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
-            let infos = ash::vk::ShaderModuleCreateInfo {
-                flags: ash::vk::ShaderModuleCreateFlags::empty(),
-                code_size: size_of_val(code),
-                p_code: code.as_ptr(),
-                ..Default::default()
-            };
-
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_shader_module)(
-                device.handle(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_shader_module)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle_with_spirv(
-            device,
-            handle,
-            create_info,
-            spirv,
-        ))
+        Ok(unsafe { Self::from_handle_with_spirv(device, handle, create_info, spirv) })
     }
 
     /// Creates a new `ShaderModule` from a raw object handle.
@@ -265,16 +537,16 @@ impl ShaderModule {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::ShaderModule,
+        handle: vk::ShaderModule,
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Arc<ShaderModule> {
         let spirv = Spirv::new(create_info.code).unwrap();
-        Self::from_handle_with_spirv(device, handle, create_info, spirv)
+        unsafe { Self::from_handle_with_spirv(device, handle, create_info, spirv) }
     }
 
     unsafe fn from_handle_with_spirv(
         device: Arc<Device>,
-        handle: ash::vk::ShaderModule,
+        handle: vk::ShaderModule,
         create_info: ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Arc<ShaderModule> {
@@ -303,7 +575,7 @@ impl ShaderModule {
         device: Arc<Device>,
         words: &[u32],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        Self::new(device, ShaderModuleCreateInfo::new(words))
+        unsafe { Self::new(device, ShaderModuleCreateInfo::new(words)) }
     }
 
     /// As `from_words`, but takes a slice of bytes.
@@ -322,7 +594,7 @@ impl ShaderModule {
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let words = spirv::bytes_to_words(bytes).unwrap();
-        Self::new(device, ShaderModuleCreateInfo::new(&words))
+        unsafe { Self::new(device, ShaderModuleCreateInfo::new(&words)) }
     }
 
     /// Returns the specialization constants that are defined in the module,
@@ -358,7 +630,7 @@ impl ShaderModule {
         self: &Arc<Self>,
         specialization_info: HashMap<u32, SpecializationConstant>,
     ) -> Arc<SpecializedShaderModule> {
-        SpecializedShaderModule::new_unchecked(self.clone(), specialization_info)
+        unsafe { SpecializedShaderModule::new_unchecked(self.clone(), specialization_info) }
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -367,10 +639,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .entry_point(name)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }.entry_point(name)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -383,10 +652,8 @@ impl ShaderModule {
         name: &str,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .entry_point_with_execution(name, execution)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }
+            .entry_point_with_execution(name, execution)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -395,10 +662,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .single_entry_point()
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }.single_entry_point()
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -410,25 +674,21 @@ impl ShaderModule {
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .single_entry_point_with_execution(execution)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }
+            .single_entry_point_with_execution(execution)
     }
 }
 
 impl Drop for ShaderModule {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for ShaderModule {
-    type Handle = ash::vk::ShaderModule;
+    type Handle = vk::ShaderModule;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -455,9 +715,9 @@ pub struct ShaderModuleCreateInfo<'a> {
 }
 
 impl<'a> ShaderModuleCreateInfo<'a> {
-    /// Returns a `ShaderModuleCreateInfo` with the specified `code`.
+    /// Returns a default `ShaderModuleCreateInfo` with the provided `code`.
     #[inline]
-    pub fn new(code: &'a [u32]) -> Self {
+    pub const fn new(code: &'a [u32]) -> Self {
         Self {
             code,
             _ne: crate::NonExhaustive(()),
@@ -537,7 +797,8 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         })?;
 
         for &capability in spirv
-            .iter_capability()
+            .capabilities()
+            .iter()
             .filter_map(|instruction| match instruction {
                 Instruction::Capability { capability } => Some(capability),
                 _ => None,
@@ -547,7 +808,8 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         }
 
         for extension in spirv
-            .iter_extension()
+            .extensions()
+            .iter()
             .filter_map(|instruction| match instruction {
                 Instruction::Extension { name } => Some(name.as_str()),
                 _ => None,
@@ -562,6 +824,14 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         // Unsafe
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::ShaderModuleCreateInfo<'_> {
+        let &Self { code, _ne: _ } = self;
+
+        vk::ShaderModuleCreateInfo::default()
+            .flags(vk::ShaderModuleCreateFlags::empty())
+            .code(code)
     }
 }
 
@@ -587,8 +857,8 @@ impl SpecializationConstant {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            Self::Bool(false) => bytes_of(&ash::vk::FALSE),
-            Self::Bool(true) => bytes_of(&ash::vk::TRUE),
+            Self::Bool(false) => bytes_of(&vk::FALSE),
+            Self::Bool(true) => bytes_of(&vk::TRUE),
             Self::U8(value) => bytes_of(value),
             Self::U16(value) => bytes_of(value),
             Self::U32(value) => bytes_of(value),
@@ -712,7 +982,7 @@ impl SpecializedShaderModule {
     ) -> Result<Arc<Self>, Box<ValidationError>> {
         Self::validate_new(&base_module, &specialization_info)?;
 
-        unsafe { Ok(Self::new_unchecked(base_module, specialization_info)) }
+        Ok(unsafe { Self::new_unchecked(base_module, specialization_info) })
     }
 
     fn validate_new(
@@ -783,9 +1053,9 @@ impl SpecializedShaderModule {
         self.spirv.as_ref().unwrap_or(&self.base_module.spirv)
     }
 
-    /// Returns information about the entry point with the provided name. Returns `None` if no entry
-    /// point with that name exists in the shader module or if multiple entry points with the same
-    /// name exist.
+    /// Returns information about the entry point with the provided name. Returns `None` if no
+    /// entry point with that name exists in the shader module or if multiple entry points with
+    /// the same name exist.
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
         self.single_entry_point_filter(|info| info.name == name)
@@ -844,7 +1114,7 @@ impl SpecializedShaderModule {
 }
 
 unsafe impl VulkanObject for SpecializedShaderModule {
-    type Handle = ash::vk::ShaderModule;
+    type Handle = vk::ShaderModule;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -866,8 +1136,6 @@ pub struct EntryPointInfo {
     pub execution_model: ExecutionModel,
     pub descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
-    pub input_interface: ShaderInterface,
-    pub output_interface: ShaderInterface,
 }
 
 /// Represents a shader entry point in a shader module.
@@ -985,7 +1253,7 @@ impl DescriptorBindingRequirements {
             descriptor_types,
             descriptor_count,
             image_format,
-            image_multisampled,
+            image_multisampled: _,
             image_scalar_type,
             image_view_type,
             stages,
@@ -1001,40 +1269,6 @@ impl DescriptorBindingRequirements {
             return Err(Box::new(ValidationError {
                 problem: "the allowed descriptor types of the two descriptors do not overlap"
                     .into(),
-                ..Default::default()
-            }));
-        }
-
-        if let (Some(first), Some(second)) = (*image_format, other.image_format) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different formats".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if let (Some(first), Some(second)) = (*image_scalar_type, other.image_scalar_type) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different scalar types".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if let (Some(first), Some(second)) = (*image_view_type, other.image_view_type) {
-            if first != second {
-                return Err(Box::new(ValidationError {
-                    problem: "the descriptors require different image view types".into(),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if *image_multisampled != other.image_multisampled {
-            return Err(Box::new(ValidationError {
-                problem: "the multisampling requirements of the descriptors differ".into(),
                 ..Default::default()
             }));
         }
@@ -1085,145 +1319,6 @@ impl DescriptorRequirements {
         *sampler_no_ycbcr_conversion |= other.sampler_no_ycbcr_conversion;
         sampler_with_images.extend(&other.sampler_with_images);
         *storage_image_atomic |= other.storage_image_atomic;
-    }
-}
-
-/// Type that contains the definition of an interface between two shader stages, or between
-/// the outside and a shader stage.
-#[derive(Clone, Debug)]
-pub struct ShaderInterface {
-    elements: Vec<ShaderInterfaceEntry>,
-}
-
-impl ShaderInterface {
-    /// Constructs a new `ShaderInterface`.
-    ///
-    /// # Safety
-    ///
-    /// - Must only provide one entry per location.
-    /// - The format of each element must not be larger than 128 bits.
-    // TODO: 4x64 bit formats are possible, but they require special handling.
-    // TODO: could this be made safe?
-    #[inline]
-    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {
-        ShaderInterface { elements }
-    }
-
-    /// Creates a description of an empty shader interface.
-    #[inline]
-    pub const fn empty() -> ShaderInterface {
-        ShaderInterface {
-            elements: Vec::new(),
-        }
-    }
-
-    /// Returns a slice containing the elements of the interface.
-    #[inline]
-    pub fn elements(&self) -> &[ShaderInterfaceEntry] {
-        self.elements.as_ref()
-    }
-
-    /// Checks whether the interface is potentially compatible with another one.
-    ///
-    /// Returns `Ok` if the two interfaces are compatible.
-    #[inline]
-    pub fn matches(&self, other: &ShaderInterface) -> Result<(), Box<ValidationError>> {
-        if self.elements().len() != other.elements().len() {
-            return Err(Box::new(ValidationError {
-                problem: "the number of elements in the shader interfaces are not equal".into(),
-                ..Default::default()
-            }));
-        }
-
-        for a in self.elements() {
-            let location_range = a.location..a.location + a.ty.num_locations();
-            for loc in location_range {
-                let b = match other
-                    .elements()
-                    .iter()
-                    .find(|e| loc >= e.location && loc < e.location + e.ty.num_locations())
-                {
-                    None => {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "the second shader is missing an interface element at location {}",
-                                loc
-                            )
-                            .into(),
-                            ..Default::default()
-                        }));
-                    }
-                    Some(b) => b,
-                };
-
-                if a.ty != b.ty {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the interface element at location {} does not have the same type \
-                            in both shaders",
-                            loc
-                        )
-                        .into(),
-                        ..Default::default()
-                    }));
-                }
-
-                // TODO: enforce this?
-                /*match (a.name, b.name) {
-                    (Some(ref an), Some(ref bn)) => if an != bn { return false },
-                    _ => ()
-                };*/
-            }
-        }
-
-        // NOTE: since we check that the number of elements is the same, we don't need to iterate
-        // over b's elements.
-
-        Ok(())
-    }
-}
-
-/// Entry of a shader interface definition.
-#[derive(Debug, Clone)]
-pub struct ShaderInterfaceEntry {
-    /// The location slot that the variable starts at.
-    pub location: u32,
-
-    /// The index within the location slot that the variable is located.
-    /// Only meaningful for fragment outputs.
-    pub index: u32,
-
-    /// The component slot that the variable starts at. Must be in the range 0..=3.
-    pub component: u32,
-
-    /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
-
-    /// The type of the variable.
-    pub ty: ShaderInterfaceEntryType,
-}
-
-/// The type of a variable in a shader interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ShaderInterfaceEntryType {
-    /// The base numeric type.
-    pub base_type: NumericType,
-
-    /// The number of vector components. Must be in the range 1..=4.
-    pub num_components: u32,
-
-    /// The number of array elements or matrix columns.
-    pub num_elements: u32,
-
-    /// Whether the base type is 64 bits wide. If true, each item of the base type takes up two
-    /// component slots instead of one.
-    pub is_64bit: bool,
-}
-
-impl ShaderInterfaceEntryType {
-    pub(crate) fn num_locations(&self) -> u32 {
-        assert!(!self.is_64bit); // TODO: implement
-        self.num_elements
     }
 }
 
@@ -1403,7 +1498,7 @@ impl From<ShaderStages> for PipelineStages {
         }
 
         if stages.intersects(ShaderStages::SUBPASS_SHADING) {
-            result |= PipelineStages::SUBPASS_SHADING;
+            result |= PipelineStages::SUBPASS_SHADER;
         }
 
         result

@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Device memory allocation and memory pools.
 //!
 //! By default, memory allocation is automatically handled by the vulkano library when you create
@@ -21,7 +12,12 @@
 //! ```
 //! // Enumerating memory heaps.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
-//! for (index, heap) in physical_device.memory_properties().memory_heaps.iter().enumerate() {
+//! for (index, heap) in physical_device
+//!     .memory_properties()
+//!     .memory_heaps
+//!     .iter()
+//!     .enumerate()
+//! {
 //!     println!("Heap #{:?} has a capacity of {:?} bytes", index, heap.size);
 //! }
 //! ```
@@ -77,7 +73,8 @@
 //!         memory_type_index,
 //!         ..Default::default()
 //!     },
-//! ).expect("Failed to allocate memory");
+//! )
+//! .expect("Failed to allocate memory");
 //!
 //! // The memory is automatically freed when `memory` is destroyed.
 //! ```
@@ -97,17 +94,18 @@ use self::allocator::{
 };
 pub use self::{alignment::*, device_memory::*};
 use crate::{
-    buffer::{sys::RawBuffer, Subbuffer},
+    buffer::sys::RawBuffer,
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
-    image::{sys::RawImage, Image, ImageAspects},
+    image::sys::RawImage,
     macros::vulkan_bitflags,
-    sync::{semaphore::Semaphore, HostAccessError},
-    DeviceSize, Validated, ValidationError, VulkanError,
+    sync::HostAccessError,
+    DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{
     cmp,
     mem::ManuallyDrop,
-    num::NonZeroU64,
+    num::NonZero,
     ops::{Bound, Range, RangeBounds, RangeTo},
     ptr::NonNull,
     sync::Arc,
@@ -116,6 +114,7 @@ use std::{
 mod alignment;
 pub mod allocator;
 mod device_memory;
+pub mod sparse;
 
 /// Memory that can be bound to resources.
 ///
@@ -124,7 +123,7 @@ mod device_memory;
 /// block of `DeviceMemory` to a resource, or can't go through an allocator, you can use [the
 /// dedicated constructor].
 ///
-/// [memory allocator]: allocator::MemoryAllocator
+/// [memory allocator]: MemoryAllocator
 /// [the dedicated constructor]: Self::new_dedicated
 #[derive(Debug)]
 pub struct ResourceMemory {
@@ -149,11 +148,45 @@ impl ResourceMemory {
         unsafe { Self::new_dedicated_unchecked(Arc::new(device_memory)) }
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    /// Same as [`new_dedicated`], except that this allows creating aliasing resources.
+    ///
+    /// # Safety
+    ///
+    /// - Two resources must not alias each other, and if they do, you must ensure correct
+    ///   synchronization yourself.
+    ///
+    /// [`new_dedicated`]: Self::new_dedicated
     pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
+        let size = device_memory.allocation_size();
+
+        unsafe { Self::from_device_memory_unchecked(device_memory, 0, size) }
+    }
+
+    /// Creates a new `ResourceMemory` from the given portion of the given device memory block. You
+    /// may use this when you need to portion an existing memory block in a specific way. Note that
+    /// when you don't have this requirement of placing resources at specific offsets, you should
+    /// use a memory allocator instead.
+    ///
+    /// # Safety
+    ///
+    /// - Two resources must not alias each other (as returned by
+    ///   [`RawBuffer::memory_requirements`] or [`RawImage::memory_requirements`]), and if they do,
+    ///   you must ensure correct synchronization yourself.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `offset + size` is greater than `device_memory.allocation_size()`.
+    pub unsafe fn from_device_memory_unchecked(
+        device_memory: Arc<DeviceMemory>,
+        offset: DeviceSize,
+        size: DeviceSize,
+    ) -> Self {
+        assert!(offset <= device_memory.allocation_size());
+        assert!(size <= device_memory.allocation_size() - offset);
+
         ResourceMemory {
-            offset: 0,
-            size: device_memory.allocation_size(),
+            offset,
+            size,
             allocation_type: AllocationType::Unknown,
             allocation_handle: AllocationHandle::null(),
             suballocation_handle: None,
@@ -254,8 +287,6 @@ impl ResourceMemory {
     /// range of the memory mapping given to [`DeviceMemory::map`].
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
-    ///
-    /// [`MappingState::slice`]: crate::memory::MappingState::slice
     #[inline]
     pub fn mapped_slice(
         &self,
@@ -280,7 +311,7 @@ impl ResourceMemory {
         &self,
         range: impl RangeBounds<DeviceSize>,
     ) -> Result<NonNull<[u8]>, HostAccessError> {
-        let mut range = self::range_unchecked(range, ..self.size());
+        let mut range = range_unchecked(range, ..self.size());
         range.start += self.offset();
         range.end += self.offset();
 
@@ -291,7 +322,10 @@ impl ResourceMemory {
         }
     }
 
-    pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
+    // TODO: Expose (in a better way).
+    #[doc(hidden)]
+    #[inline]
+    pub fn atom_size(&self) -> Option<DeviceAlignment> {
         let memory = self.device_memory();
 
         (!memory.is_coherent()).then_some(memory.atom_size())
@@ -309,8 +343,8 @@ impl ResourceMemory {
     ///   cache, then there must not be any references in Rust code to any portion of the specified
     ///   `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn invalidate_range(
         &self,
@@ -318,8 +352,10 @@ impl ResourceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        self.device_memory()
-            .invalidate_range(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .invalidate_range(self.create_memory_range(memory_range))
+        }
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -328,8 +364,10 @@ impl ResourceMemory {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
-        self.device_memory()
-            .invalidate_range_unchecked(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .invalidate_range_unchecked(self.create_memory_range(memory_range))
+        }
     }
 
     /// Flushes the host cache for a range of the `ResourceMemory`.
@@ -343,8 +381,8 @@ impl ResourceMemory {
     /// - There must be no operations pending or executing in a device queue, that access any
     ///   portion of the specified `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn flush_range(
         &self,
@@ -352,8 +390,10 @@ impl ResourceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        self.device_memory()
-            .flush_range(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .flush_range(self.create_memory_range(memory_range))
+        }
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -362,8 +402,10 @@ impl ResourceMemory {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
-        self.device_memory()
-            .flush_range_unchecked(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .flush_range_unchecked(self.create_memory_range(memory_range))
+        }
     }
 
     fn validate_memory_range(
@@ -416,6 +458,38 @@ impl ResourceMemory {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn to_vk_bind_buffer_memory_info(
+        &self,
+        buffer_vk: vk::Buffer,
+    ) -> vk::BindBufferMemoryInfo<'static> {
+        let &Self {
+            ref device_memory,
+            offset,
+            ..
+        } = self;
+
+        vk::BindBufferMemoryInfo::default()
+            .buffer(buffer_vk)
+            .memory(device_memory.handle())
+            .memory_offset(offset)
+    }
+
+    pub(crate) fn to_vk_bind_image_memory_info(
+        &self,
+        image_vk: vk::Image,
+    ) -> vk::BindImageMemoryInfo<'static> {
+        let &Self {
+            ref device_memory,
+            offset,
+            ..
+        } = self;
+
+        vk::BindImageMemoryInfo::default()
+            .image(image_vk)
+            .memory(device_memory.handle())
+            .memory_offset(offset)
+    }
 }
 
 impl Drop for ResourceMemory {
@@ -454,24 +528,27 @@ pub struct MemoryProperties {
     pub memory_heaps: Vec<MemoryHeap>,
 }
 
-impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
-    #[inline]
-    fn from(val: ash::vk::PhysicalDeviceMemoryProperties) -> Self {
+impl MemoryProperties {
+    pub(crate) fn to_mut_vk2() -> vk::PhysicalDeviceMemoryProperties2KHR<'static> {
+        vk::PhysicalDeviceMemoryProperties2KHR::default()
+    }
+
+    pub(crate) fn from_vk2(val_vk: &vk::PhysicalDeviceMemoryProperties2<'_>) -> Self {
+        let &vk::PhysicalDeviceMemoryProperties2 {
+            ref memory_properties,
+            ..
+        } = val_vk;
+
+        Self::from_vk(memory_properties)
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::PhysicalDeviceMemoryProperties) -> Self {
+        let memory_types_vk = val_vk.memory_types_as_slice();
+        let memory_heaps_vk = val_vk.memory_heaps_as_slice();
+
         Self {
-            memory_types: val.memory_types[0..val.memory_type_count as usize]
-                .iter()
-                .map(|vk_memory_type| MemoryType {
-                    property_flags: vk_memory_type.property_flags.into(),
-                    heap_index: vk_memory_type.heap_index,
-                })
-                .collect(),
-            memory_heaps: val.memory_heaps[0..val.memory_heap_count as usize]
-                .iter()
-                .map(|vk_memory_heap| MemoryHeap {
-                    size: vk_memory_heap.size,
-                    flags: vk_memory_heap.flags.into(),
-                })
-                .collect(),
+            memory_types: memory_types_vk.iter().map(MemoryType::from_vk).collect(),
+            memory_heaps: memory_heaps_vk.iter().map(MemoryHeap::from_vk).collect(),
         }
     }
 }
@@ -485,6 +562,21 @@ pub struct MemoryType {
 
     /// The index of the memory heap that this memory type corresponds to.
     pub heap_index: u32,
+}
+
+impl MemoryType {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(crate) fn from_vk(val_vk: &vk::MemoryType) -> Self {
+        let &vk::MemoryType {
+            property_flags,
+            heap_index,
+        } = val_vk;
+
+        MemoryType {
+            property_flags: property_flags.into(),
+            heap_index,
+        }
+    }
 }
 
 vulkan_bitflags! {
@@ -541,8 +633,8 @@ vulkan_bitflags! {
     /// Host access to the memory does not require calling [`invalidate_range`] to make device
     /// writes visible to the host, nor [`flush_range`] to flush host writes back to the device.
     ///
-    /// [`invalidate_range`]: MappedDeviceMemory::invalidate_range
-    /// [`flush_range`]: MappedDeviceMemory::flush_range
+    /// [`invalidate_range`]: DeviceMemory::invalidate_range
+    /// [`flush_range`]: DeviceMemory::flush_range
     HOST_COHERENT = HOST_COHERENT,
 
     /// The memory is cached by the host.
@@ -618,6 +710,17 @@ pub struct MemoryHeap {
     pub flags: MemoryHeapFlags,
 }
 
+impl MemoryHeap {
+    pub(crate) fn from_vk(val_vk: &vk::MemoryHeap) -> Self {
+        let &vk::MemoryHeap { size, flags } = val_vk;
+
+        Self {
+            size,
+            flags: flags.into(),
+        }
+    }
+}
+
 vulkan_bitflags! {
     #[non_exhaustive]
 
@@ -662,6 +765,81 @@ pub struct MemoryRequirements {
     pub requires_dedicated_allocation: bool,
 }
 
+impl MemoryRequirements {
+    pub(crate) fn to_mut_vk2(
+        extensions_vk: &mut MemoryRequirements2ExtensionsVk,
+    ) -> vk::MemoryRequirements2<'_> {
+        let mut val_vk = vk::MemoryRequirements2::default();
+
+        let MemoryRequirements2ExtensionsVk { dedicated_vk } = extensions_vk;
+
+        if let Some(next) = dedicated_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk2_extensions(device: &Device) -> MemoryRequirements2ExtensionsVk {
+        let dedicated_vk = (device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_dedicated_allocation)
+            .then(|| {
+                debug_assert!(
+                    device.api_version() >= Version::V1_1
+                        || device.enabled_extensions().khr_get_memory_requirements2
+                );
+
+                vk::MemoryDedicatedRequirements::default()
+            });
+
+        MemoryRequirements2ExtensionsVk { dedicated_vk }
+    }
+
+    pub(crate) fn from_vk2(
+        val_vk: &vk::MemoryRequirements2<'_>,
+        extensions_vk: &MemoryRequirements2ExtensionsVk,
+    ) -> Self {
+        let &vk::MemoryRequirements2 {
+            memory_requirements:
+                vk::MemoryRequirements {
+                    size,
+                    alignment,
+                    memory_type_bits,
+                },
+            ..
+        } = val_vk;
+
+        let mut val = Self {
+            layout: DeviceLayout::from_size_alignment(size, alignment).unwrap(),
+            memory_type_bits,
+            prefers_dedicated_allocation: false,
+            requires_dedicated_allocation: false,
+        };
+
+        let MemoryRequirements2ExtensionsVk { dedicated_vk } = extensions_vk;
+
+        if let Some(val_vk) = dedicated_vk {
+            let &vk::MemoryDedicatedRequirements {
+                prefers_dedicated_allocation,
+                requires_dedicated_allocation,
+                ..
+            } = val_vk;
+
+            val = Self {
+                prefers_dedicated_allocation: prefers_dedicated_allocation != 0,
+                requires_dedicated_allocation: requires_dedicated_allocation != 0,
+                ..val
+            };
+        }
+
+        val
+    }
+}
+
+pub(crate) struct MemoryRequirements2ExtensionsVk {
+    pub(crate) dedicated_vk: Option<vk::MemoryDedicatedRequirements<'static>>,
+}
+
 /// Indicates a specific resource to allocate memory for.
 ///
 /// Using dedicated allocations can yield better performance, but requires the
@@ -680,8 +858,8 @@ pub enum DedicatedAllocation<'a> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DedicatedTo {
-    Buffer(NonZeroU64),
-    Image(NonZeroU64),
+    Buffer(NonZero<u64>),
+    Image(NonZero<u64>),
 }
 
 impl From<DedicatedAllocation<'_>> for DedicatedTo {
@@ -718,183 +896,47 @@ pub struct ExternalMemoryProperties {
     pub compatible_handle_types: ExternalMemoryHandleTypes,
 }
 
-impl From<ash::vk::ExternalMemoryProperties> for ExternalMemoryProperties {
-    #[inline]
-    fn from(val: ash::vk::ExternalMemoryProperties) -> Self {
+impl ExternalMemoryProperties {
+    pub(crate) fn from_vk(val_vk: &vk::ExternalMemoryProperties) -> Self {
+        let &vk::ExternalMemoryProperties {
+            external_memory_features,
+            export_from_imported_handle_types,
+            compatible_handle_types,
+        } = val_vk;
+
         Self {
-            dedicated_only: val
-                .external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::DEDICATED_ONLY),
-            exportable: val
-                .external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::EXPORTABLE),
-            importable: val
-                .external_memory_features
-                .intersects(ash::vk::ExternalMemoryFeatureFlags::IMPORTABLE),
-            export_from_imported_handle_types: val.export_from_imported_handle_types.into(),
-            compatible_handle_types: val.compatible_handle_types.into(),
+            dedicated_only: external_memory_features
+                .intersects(vk::ExternalMemoryFeatureFlags::DEDICATED_ONLY),
+            exportable: external_memory_features
+                .intersects(vk::ExternalMemoryFeatureFlags::EXPORTABLE),
+            importable: external_memory_features
+                .intersects(vk::ExternalMemoryFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: export_from_imported_handle_types.into(),
+            compatible_handle_types: compatible_handle_types.into(),
         }
     }
 }
 
-/// Parameters to execute sparse bind operations on a queue.
+/// The properties of a Unix file descriptor when it is imported.
 #[derive(Clone, Debug)]
-pub struct BindSparseInfo {
-    /// The semaphores to wait for before beginning the execution of this batch of
-    /// sparse bind operations.
-    ///
-    /// The default value is empty.
-    pub wait_semaphores: Vec<Arc<Semaphore>>,
-
-    /// The bind operations to perform for buffers.
-    ///
-    /// The default value is empty.
-    pub buffer_binds: Vec<(Subbuffer<[u8]>, Vec<SparseBufferMemoryBind>)>,
-
-    /// The bind operations to perform for images with an opaque memory layout.
-    ///
-    /// This should be used for mip tail regions, the metadata aspect, and for the normal regions
-    /// of images that do not have the `sparse_residency` flag set.
-    ///
-    /// The default value is empty.
-    pub image_opaque_binds: Vec<(Arc<Image>, Vec<SparseImageOpaqueMemoryBind>)>,
-
-    /// The bind operations to perform for images with a known memory layout.
-    ///
-    /// This type of sparse bind can only be used for images that have the `sparse_residency`
-    /// flag set.
-    /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
-    /// aspect.
-    ///
-    /// The default value is empty.
-    pub image_binds: Vec<(Arc<Image>, Vec<SparseImageMemoryBind>)>,
-
-    /// The semaphores to signal after the execution of this batch of sparse bind operations
-    /// has completed.
-    ///
-    /// The default value is empty.
-    pub signal_semaphores: Vec<Arc<Semaphore>>,
-
-    pub _ne: crate::NonExhaustive,
+#[non_exhaustive]
+pub struct MemoryFdProperties {
+    /// A bitmask of the indices of memory types that can be used with the file.
+    pub memory_type_bits: u32,
 }
 
-impl Default for BindSparseInfo {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            wait_semaphores: Vec::new(),
-            buffer_binds: Vec::new(),
-            image_opaque_binds: Vec::new(),
-            image_binds: Vec::new(),
-            signal_semaphores: Vec::new(),
-            _ne: crate::NonExhaustive(()),
-        }
+impl MemoryFdProperties {
+    pub(crate) fn to_mut_vk() -> vk::MemoryFdPropertiesKHR<'static> {
+        vk::MemoryFdPropertiesKHR::default()
     }
-}
 
-/// Parameters for a single sparse bind operation on a buffer.
-#[derive(Clone, Debug, Default)]
-pub struct SparseBufferMemoryBind {
-    /// The offset in bytes from the start of the buffer's memory, where memory is to be (un)bound.
-    ///
-    /// The default value is `0`.
-    pub offset: DeviceSize,
+    pub(crate) fn from_vk(val_vk: &vk::MemoryFdPropertiesKHR<'_>) -> Self {
+        let &vk::MemoryFdPropertiesKHR {
+            memory_type_bits, ..
+        } = val_vk;
 
-    /// The size in bytes of the memory to be (un)bound.
-    ///
-    /// The default value is `0`, which must be overridden.
-    pub size: DeviceSize,
-
-    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
-    /// The provided memory must match the buffer's memory requirements.
-    ///
-    /// If `None`, specifies that existing memory at the specified location is to be unbound.
-    ///
-    /// The default value is `None`.
-    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
-}
-
-/// Parameters for a single sparse bind operation on parts of an image with an opaque memory layout.
-///
-/// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
-/// normal regions of images that do not have the `sparse_residency` flag set.
-#[derive(Clone, Debug, Default)]
-pub struct SparseImageOpaqueMemoryBind {
-    /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
-    ///
-    /// The default value is `0`.
-    pub offset: DeviceSize,
-
-    /// The size in bytes of the memory to be (un)bound.
-    ///
-    /// The default value is `0`, which must be overridden.
-    pub size: DeviceSize,
-
-    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
-    /// The provided memory must match the image's memory requirements.
-    ///
-    /// If `None`, specifies that existing memory at the specified location is to be unbound.
-    ///
-    /// The default value is `None`.
-    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
-
-    /// Sets whether the binding should apply to the metadata aspect of the image, or to the
-    /// normal texel data.
-    ///
-    /// The default value is `false`.
-    pub metadata: bool,
-}
-
-/// Parameters for a single sparse bind operation on parts of an image with a known memory layout.
-///
-/// This type of sparse bind can only be used for images that have the `sparse_residency` flag set.
-/// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
-/// aspect.
-#[derive(Clone, Debug, Default)]
-pub struct SparseImageMemoryBind {
-    /// The aspects of the image where memory is to be (un)bound.
-    ///
-    /// The default value is `ImageAspects::empty()`, which must be overridden.
-    pub aspects: ImageAspects,
-
-    /// The mip level of the image where memory is to be (un)bound.
-    ///
-    /// The default value is `0`.
-    pub mip_level: u32,
-
-    /// The array layer of the image where memory is to be (un)bound.
-    ///
-    /// The default value is `0`.
-    pub array_layer: u32,
-
-    /// The offset in texels (or for compressed images, texel blocks) from the origin of the image,
-    /// where memory is to be (un)bound.
-    ///
-    /// This must be a multiple of the
-    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
-    /// value of the image.
-    ///
-    /// The default value is `[0; 3]`.
-    pub offset: [u32; 3],
-
-    /// The extent in texels (or for compressed images, texel blocks) of the image where
-    /// memory is to be (un)bound.
-    ///
-    /// This must be a multiple of the
-    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
-    /// value of the image, or `offset + extent` for that dimension must equal the image's total
-    /// extent.
-    ///
-    /// The default value is `[0; 3]`, which must be overridden.
-    pub extent: [u32; 3],
-
-    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
-    /// The provided memory must match the image's memory requirements.
-    ///
-    /// If `None`, specifies that existing memory at the specified location is to be unbound.
-    ///
-    /// The default value is `None`.
-    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+        Self { memory_type_bits }
+    }
 }
 
 #[inline(always)]

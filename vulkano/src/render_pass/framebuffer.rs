@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::RenderPass;
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -17,8 +8,9 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
 
 /// The image views that are attached to a render pass during drawing.
 ///
@@ -46,9 +38,9 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 /// ```
 #[derive(Debug)]
 pub struct Framebuffer {
-    handle: ash::vk::Framebuffer,
+    handle: vk::Framebuffer,
     render_pass: DeviceOwnedDebugWrapper<Arc<RenderPass>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: FramebufferCreateFlags,
     attachments: Vec<DeviceOwnedDebugWrapper<Arc<ImageView>>>,
@@ -65,7 +57,7 @@ impl Framebuffer {
         create_info.set_auto_extent_layers(&render_pass);
         Self::validate_new(&render_pass, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(render_pass, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(render_pass, create_info) }?)
     }
 
     fn validate_new(
@@ -256,43 +248,26 @@ impl Framebuffer {
     ) -> Result<Arc<Framebuffer>, VulkanError> {
         create_info.set_auto_extent_layers(&render_pass);
 
-        let &FramebufferCreateInfo {
-            flags,
-            ref attachments,
-            extent,
-            layers,
-            _ne: _,
-        } = &create_info;
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let create_info_vk = create_info.to_vk(render_pass.handle(), &create_info_fields1_vk);
 
-        let attachments_vk: SmallVec<[_; 4]> =
-            attachments.iter().map(VulkanObject::handle).collect();
-
-        let create_info_vk = ash::vk::FramebufferCreateInfo {
-            flags: flags.into(),
-            render_pass: render_pass.handle(),
-            attachment_count: attachments_vk.len() as u32,
-            p_attachments: attachments_vk.as_ptr(),
-            width: extent[0],
-            height: extent[1],
-            layers,
-            ..Default::default()
-        };
-
-        let handle = unsafe {
+        let handle = {
             let fns = render_pass.device().fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_framebuffer)(
-                render_pass.device().handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_framebuffer)(
+                    render_pass.device().handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(render_pass, handle, create_info))
+        Ok(unsafe { Self::from_handle(render_pass, handle, create_info) })
     }
 
     /// Creates a new `Framebuffer` from a raw object handle.
@@ -304,7 +279,7 @@ impl Framebuffer {
     #[inline]
     pub unsafe fn from_handle(
         render_pass: Arc<RenderPass>,
-        handle: ash::vk::Framebuffer,
+        handle: vk::Framebuffer,
         mut create_info: FramebufferCreateInfo,
     ) -> Arc<Framebuffer> {
         create_info.set_auto_extent_layers(&render_pass);
@@ -375,15 +350,13 @@ impl Framebuffer {
 impl Drop for Framebuffer {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device().fns();
-            (fns.v1_0.destroy_framebuffer)(self.device().handle(), self.handle, ptr::null());
-        }
+        let fns = self.device().fns();
+        unsafe { (fns.v1_0.destroy_framebuffer)(self.device().handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for Framebuffer {
-    type Handle = ash::vk::Framebuffer;
+    type Handle = vk::Framebuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -433,8 +406,9 @@ pub struct FramebufferCreateInfo {
     /// must be specified in that case.
     ///
     /// The extent, whether automatically calculated or specified explicitly, must not be larger
-    /// than the [`max_framebuffer_width`](crate::device::Properties::max_framebuffer_width) and
-    /// [`max_framebuffer_height`](crate::device::Properties::max_framebuffer_height) limits.
+    /// than the [`max_framebuffer_width`](crate::device::DeviceProperties::max_framebuffer_width)
+    /// and [`max_framebuffer_height`](crate::device::DeviceProperties::max_framebuffer_height)
+    /// limits.
     ///
     /// The default value is `[0, 0]`.
     pub extent: [u32; 2],
@@ -448,7 +422,7 @@ pub struct FramebufferCreateInfo {
     ///
     /// The number of layers, whether automatically calculated or specified explicitly, must not be
     /// larger than the
-    /// [`max_framebuffer_layers`](crate::device::Properties::max_framebuffer_layers) limit.
+    /// [`max_framebuffer_layers`](crate::device::DeviceProperties::max_framebuffer_layers) limit.
     ///
     /// If the render pass has multiview enabled (`views_used` does not return 0), then this value
     /// must be 0 or 1.
@@ -462,6 +436,14 @@ pub struct FramebufferCreateInfo {
 impl Default for FramebufferCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FramebufferCreateInfo {
+    /// Returns a default `FramebufferCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: FramebufferCreateFlags::empty(),
             attachments: Vec::new(),
@@ -470,9 +452,7 @@ impl Default for FramebufferCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl FramebufferCreateInfo {
     fn set_auto_extent_layers(&mut self, render_pass: &RenderPass) {
         let Self {
             flags: _,
@@ -555,7 +535,9 @@ impl FramebufferCreateInfo {
             match image_view.view_type() {
                 ImageViewType::Dim2d | ImageViewType::Dim2dArray => {
                     if image_view.image().image_type() == ImageType::Dim3d
-                        && (image_view.format().aspects())
+                        && image_view
+                            .format()
+                            .aspects()
                             .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(Box::new(ValidationError {
@@ -638,6 +620,44 @@ impl FramebufferCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        render_pass_vk: vk::RenderPass,
+        fields1_vk: &'a FramebufferCreateInfoFields1Vk,
+    ) -> vk::FramebufferCreateInfo<'a> {
+        let &Self {
+            flags,
+            attachments: _,
+            extent,
+            layers,
+            _ne: _,
+        } = self;
+        let FramebufferCreateInfoFields1Vk { attachments_vk } = fields1_vk;
+
+        vk::FramebufferCreateInfo::default()
+            .flags(flags.into())
+            .render_pass(render_pass_vk)
+            .attachments(attachments_vk)
+            .width(extent[0])
+            .height(extent[1])
+            .layers(layers)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> FramebufferCreateInfoFields1Vk {
+        let &Self {
+            ref attachments, ..
+        } = self;
+
+        let attachments_vk: SmallVec<[_; 4]> =
+            attachments.iter().map(VulkanObject::handle).collect();
+
+        FramebufferCreateInfoFields1Vk { attachments_vk }
+    }
+}
+
+pub(crate) struct FramebufferCreateInfoFields1Vk {
+    pub(crate) attachments_vk: SmallVec<[vk::ImageView; 4]>,
 }
 
 vulkan_bitflags! {

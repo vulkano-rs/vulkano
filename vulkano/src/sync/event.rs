@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! An event provides fine-grained synchronization within a single queue, or from the host to a
 //! queue.
 //!
@@ -19,9 +10,9 @@
 //! An event can also be signaled from the host, by calling the [`set`] method directly on the
 //! [`Event`].
 //!
-//! [`set_event`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::set_event
-//! [pipeline barrier]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::pipeline_barrier
-//! [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
+//! [`set_event`]: crate::command_buffer::RecordingCommandBuffer::set_event
+//! [pipeline barrier]: crate::command_buffer::RecordingCommandBuffer::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
 //! [`set`]: Event::set
 
 use crate::{
@@ -30,7 +21,8 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use ash::vk;
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -40,9 +32,9 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// device loss.
 #[derive(Debug)]
 pub struct Event {
-    handle: ash::vk::Event,
+    handle: vk::Event,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
     must_put_in_pool: bool,
 
     flags: EventCreateFlags,
@@ -51,9 +43,10 @@ pub struct Event {
 impl Event {
     /// Creates a new `Event`.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, the
-    /// [`events`](crate::device::Features::events)
+    /// [`events`](crate::device::DeviceFeatures::events)
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
@@ -62,7 +55,7 @@ impl Event {
     ) -> Result<Event, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -72,7 +65,9 @@ impl Event {
         if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
             return Err(Box::new(ValidationError {
                 problem: "this device is a portability subset device".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("events")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "events",
+                )])]),
                 vuids: &["VUID-vkCreateEvent-events-04468"],
                 ..Default::default()
             }));
@@ -90,28 +85,25 @@ impl Event {
         device: Arc<Device>,
         create_info: EventCreateInfo,
     ) -> Result<Event, VulkanError> {
-        let &EventCreateInfo { flags, _ne: _ } = &create_info;
+        let create_info_vk = create_info.to_vk();
 
-        let create_info_vk = ash::vk::EventCreateInfo {
-            flags: flags.into(),
-            ..Default::default()
-        };
-
-        let handle = unsafe {
+        let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
-            (fns.v1_0.create_event)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_event)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Takes an event from the vulkano-provided event pool.
@@ -125,13 +117,14 @@ impl Event {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
+                // Make sure the event isn't signaled
+                let fns = device.fns();
                 unsafe {
-                    // Make sure the event isn't signaled
-                    let fns = device.fns();
                     (fns.v1_0.reset_event)(device.handle(), handle)
                         .result()
-                        .map_err(VulkanError::from)?;
-                }
+                        .map_err(VulkanError::from)
+                }?;
+
                 Event {
                     handle,
                     device: InstanceOwnedDebugWrapper(device),
@@ -143,7 +136,7 @@ impl Event {
             }
             None => {
                 // Pool is empty, alloc new event
-                let mut event = unsafe { Event::new_unchecked(device, Default::default())? };
+                let mut event = unsafe { Event::new_unchecked(device, Default::default()) }?;
                 event.must_put_in_pool = true;
                 event
             }
@@ -161,7 +154,7 @@ impl Event {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Event,
+        handle: vk::Event,
         create_info: EventCreateInfo,
     ) -> Event {
         let EventCreateInfo { flags, _ne: _ } = create_info;
@@ -186,7 +179,7 @@ impl Event {
     pub fn is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
         self.validate_is_signaled()?;
 
-        unsafe { Ok(self.is_signaled_unchecked()?) }
+        Ok(unsafe { self.is_signaled_unchecked() }?)
     }
 
     fn validate_is_signaled(&self) -> Result<(), Box<ValidationError>> {
@@ -196,14 +189,12 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn is_signaled_unchecked(&self) -> Result<bool, VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            let result = (fns.v1_0.get_event_status)(self.device.handle(), self.handle);
-            match result {
-                ash::vk::Result::EVENT_SET => Ok(true),
-                ash::vk::Result::EVENT_RESET => Ok(false),
-                err => Err(VulkanError::from(err)),
-            }
+        let fns = self.device.fns();
+        let result = unsafe { (fns.v1_0.get_event_status)(self.device.handle(), self.handle) };
+        match result {
+            vk::Result::EVENT_SET => Ok(true),
+            vk::Result::EVENT_RESET => Ok(false),
+            err => Err(VulkanError::from(err)),
         }
     }
 
@@ -213,7 +204,7 @@ impl Event {
     pub fn set(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_set()?;
 
-        unsafe { Ok(self.set_unchecked()?) }
+        Ok(unsafe { self.set_unchecked() }?)
     }
 
     fn validate_set(&mut self) -> Result<(), Box<ValidationError>> {
@@ -223,28 +214,26 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn set_unchecked(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.set_event)(self.device.handle(), self.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.set_event)(self.device.handle(), self.handle) }
+            .result()
+            .map_err(VulkanError::from)?;
+        Ok(())
     }
 
     /// Changes the `Event` to the unsignaled state.
     ///
     /// # Safety
     ///
-    /// - There must be an execution dependency between `reset` and the execution of any \
-    /// [`wait_events`] command that includes this event in its `events` parameter.
+    /// - There must be an execution dependency between `reset` and the execution of any
+    ///   [`wait_events`] command that includes this event in its `events` parameter.
     ///
-    /// [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
+    /// [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
     #[inline]
     pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
 
-        Ok(self.reset_unchecked()?)
+        Ok(unsafe { self.reset_unchecked() }?)
     }
 
     fn validate_reset(&mut self) -> Result<(), Box<ValidationError>> {
@@ -258,33 +247,29 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn reset_unchecked(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.reset_event)(self.device.handle(), self.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.reset_event)(self.device.handle(), self.handle) }
+            .result()
+            .map_err(VulkanError::from)?;
+        Ok(())
     }
 }
 
 impl Drop for Event {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_event = self.handle;
-                self.device.event_pool().lock().push(raw_event);
-            } else {
-                let fns = self.device.fns();
-                (fns.v1_0.destroy_event)(self.device.handle(), self.handle, ptr::null());
-            }
+        if self.must_put_in_pool {
+            let raw_event = self.handle;
+            self.device.event_pool().lock().push(raw_event);
+        } else {
+            let fns = self.device.fns();
+            unsafe { (fns.v1_0.destroy_event)(self.device.handle(), self.handle, ptr::null()) };
         }
     }
 }
 
 unsafe impl VulkanObject for Event {
-    type Handle = ash::vk::Event;
+    type Handle = vk::Event;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -315,14 +300,20 @@ pub struct EventCreateInfo {
 impl Default for EventCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EventCreateInfo {
+    /// Returns a default `EventCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: EventCreateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl EventCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { flags, _ne: _ } = self;
 
@@ -332,6 +323,12 @@ impl EventCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::EventCreateInfo<'static> {
+        let &Self { flags, _ne: _ } = self;
+
+        vk::EventCreateInfo::default().flags(flags.into())
     }
 }
 

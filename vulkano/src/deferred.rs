@@ -1,12 +1,3 @@
-// Copyright (c) 2023 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Operations on the host that can be deferred.
 //!
 //! You typically pass a [`DeferredOperation`] object as part of a call to another function that
@@ -21,6 +12,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// An operation on the host that has been deferred.
@@ -30,7 +22,7 @@ use std::{mem::MaybeUninit, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct DeferredOperation {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::DeferredOperationKHR,
+    handle: vk::DeferredOperationKHR,
 }
 
 impl DeferredOperation {
@@ -43,7 +35,7 @@ impl DeferredOperation {
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device)?;
 
-        unsafe { Ok(Self::new_unchecked(device)?) }
+        Ok(unsafe { Self::new_unchecked(device) }?)
     }
 
     fn validate_new(device: &Device) -> Result<(), Box<ValidationError>> {
@@ -64,16 +56,20 @@ impl DeferredOperation {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_deferred_host_operations
-                .create_deferred_operation_khr)(
-                device.handle(), ptr::null(), output.as_mut_ptr()
-            )
+            unsafe {
+                (fns.khr_deferred_host_operations
+                    .create_deferred_operation_khr)(
+                    device.handle(),
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle))
+        Ok(unsafe { Self::from_handle(device, handle) })
     }
 
     /// Creates a new `DeferredOperation` from a raw object handle.
@@ -82,10 +78,7 @@ impl DeferredOperation {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     #[inline]
-    pub unsafe fn from_handle(
-        device: Arc<Device>,
-        handle: ash::vk::DeferredOperationKHR,
-    ) -> Arc<Self> {
+    pub unsafe fn from_handle(device: Arc<Device>, handle: vk::DeferredOperationKHR) -> Arc<Self> {
         Arc::new(Self {
             device: InstanceOwnedDebugWrapper(device),
             handle,
@@ -94,8 +87,8 @@ impl DeferredOperation {
 
     /// Executes a portion of the operation on the current thread.
     pub fn join(&self) -> Result<DeferredOperationJoinStatus, VulkanError> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations.deferred_operation_join_khr)(
                 self.device.handle(),
                 self.handle,
@@ -103,24 +96,24 @@ impl DeferredOperation {
         };
 
         match result {
-            ash::vk::Result::SUCCESS => Ok(DeferredOperationJoinStatus::Complete),
-            ash::vk::Result::THREAD_DONE_KHR => Ok(DeferredOperationJoinStatus::ThreadDone),
-            ash::vk::Result::THREAD_IDLE_KHR => Ok(DeferredOperationJoinStatus::ThreadIdle),
+            vk::Result::SUCCESS => Ok(DeferredOperationJoinStatus::Complete),
+            vk::Result::THREAD_DONE_KHR => Ok(DeferredOperationJoinStatus::ThreadDone),
+            vk::Result::THREAD_IDLE_KHR => Ok(DeferredOperationJoinStatus::ThreadIdle),
             err => Err(VulkanError::from(err)),
         }
     }
 
     /// Returns the result of the operation, or `None` if the operation is not yet complete.
     pub fn result(&self) -> Option<Result<(), VulkanError>> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .get_deferred_operation_result_khr)(self.device.handle(), self.handle)
         };
 
         match result {
-            ash::vk::Result::NOT_READY => None,
-            ash::vk::Result::SUCCESS => Some(Ok(())),
+            vk::Result::NOT_READY => None,
+            vk::Result::SUCCESS => Some(Ok(())),
             err => Some(Err(VulkanError::from(err))),
         }
     }
@@ -158,8 +151,8 @@ impl DeferredOperation {
     ///
     /// Returns `None` if no exact number of threads can be calculated.
     pub fn max_concurrency(&self) -> Option<u32> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .get_deferred_operation_max_concurrency_khr)(
                 self.device.handle(), self.handle
@@ -175,18 +168,18 @@ impl Drop for DeferredOperation {
     fn drop(&mut self) {
         let _ = self.wait(); // Ignore errors
 
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .destroy_deferred_operation_khr)(
                 self.device.handle(), self.handle, ptr::null()
-            );
-        }
+            )
+        };
     }
 }
 
 unsafe impl VulkanObject for DeferredOperation {
-    type Handle = ash::vk::DeferredOperationKHR;
+    type Handle = vk::DeferredOperationKHR;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

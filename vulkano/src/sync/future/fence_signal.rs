@@ -1,17 +1,8 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{AccessCheckError, GpuFuture};
 use crate::{
     buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
-    device::{Device, DeviceOwned, Queue, QueueFlags},
+    device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
@@ -68,8 +59,8 @@ pub enum FenceSignalFutureBehavior {
 /// Contrary to most other future types, it is possible to block the current thread until the event
 /// happens. This is done by calling the `wait()` function.
 ///
-/// This can also be done through Rust's Async system by simply `.await`ing this object. Note though
-/// that (due to the Vulkan API fence design) this will spin to check the fence, rather than
+/// This can also be done through Rust's Async system by simply `.await`ing this object. Note
+/// though that (due to the Vulkan API fence design) this will spin to check the fence, rather than
 /// blocking in the driver. Therefore if you have a long-running task, blocking may be less
 /// CPU intense (depending on the driver's implementation).
 ///
@@ -168,9 +159,7 @@ where
         match replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
                 fence.wait(timeout)?;
-                unsafe {
-                    previous.signal_finished();
-                }
+                unsafe { previous.signal_finished() };
                 Ok(())
             }
             FenceSignalFutureState::Cleaned => Ok(()),
@@ -191,7 +180,7 @@ where
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
                 if fence.wait(Some(Duration::from_secs(0))).is_ok() {
-                    unsafe { prev.signal_finished() }
+                    unsafe { prev.signal_finished() };
                     *state = FenceSignalFutureState::Cleaned;
                 } else {
                     prev.cleanup_finished();
@@ -212,48 +201,50 @@ where
         &self,
         state: &mut MutexGuard<'_, FenceSignalFutureState<F>>,
     ) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            // In this function we temporarily replace the current state with `Poisoned` at the
-            // beginning, and we take care to always put back a value into `state` before
-            // returning (even in case of error).
-            let old_state = replace(&mut **state, FenceSignalFutureState::Poisoned);
+        // In this function we temporarily replace the current state with `Poisoned` at the
+        // beginning, and we take care to always put back a value into `state` before
+        // returning (even in case of error).
+        let old_state = replace(&mut **state, FenceSignalFutureState::Poisoned);
 
-            let (previous, new_fence, partially_flushed) = match old_state {
-                FenceSignalFutureState::Pending(prev, fence) => (prev, fence, false),
-                FenceSignalFutureState::PartiallyFlushed(prev, fence) => (prev, fence, true),
-                other => {
-                    // We were already flushed in the past, or we're already poisoned. Don't do
-                    // anything.
-                    **state = other;
-                    return Ok(());
-                }
-            };
-
-            // TODO: meh for unwrap
-            let queue = previous.queue().unwrap();
-
-            // There are three possible outcomes for the flush operation: success, partial success
-            // in which case `result` will contain `Err(OutcomeErr::Partial)`, or total failure
-            // in which case `result` will contain `Err(OutcomeErr::Full)`.
-            enum OutcomeErr<E> {
-                Partial(E),
-                Full(E),
+        let (previous, new_fence, partially_flushed) = match old_state {
+            FenceSignalFutureState::Pending(prev, fence) => (prev, fence, false),
+            FenceSignalFutureState::PartiallyFlushed(prev, fence) => (prev, fence, true),
+            other => {
+                // We were already flushed in the past, or we're already poisoned. Don't do
+                // anything.
+                **state = other;
+                return Ok(());
             }
-            let result = match previous.build_submission()? {
-                SubmitAnyBuilder::Empty => {
-                    debug_assert!(!partially_flushed);
+        };
 
+        // TODO: meh for unwrap
+        let queue = previous.queue().unwrap();
+
+        // There are three possible outcomes for the flush operation: success, partial success
+        // in which case `result` will contain `Err(OutcomeErr::Partial)`, or total failure
+        // in which case `result` will contain `Err(OutcomeErr::Full)`.
+        enum OutcomeErr<E> {
+            Partial(E),
+            Full(E),
+        }
+        let result = match unsafe { previous.build_submission() }? {
+            SubmitAnyBuilder::Empty => {
+                debug_assert!(!partially_flushed);
+
+                unsafe {
                     queue_submit(
                         &queue,
                         Default::default(),
                         Some(new_fence.clone()),
                         &previous,
                     )
-                    .map_err(OutcomeErr::Full)
                 }
-                SubmitAnyBuilder::SemaphoresWait(semaphores) => {
-                    debug_assert!(!partially_flushed);
+                .map_err(OutcomeErr::Full)
+            }
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                debug_assert!(!partially_flushed);
 
+                unsafe {
                     queue_submit(
                         &queue,
                         SubmitInfo {
@@ -272,106 +263,106 @@ where
                         None,
                         &previous,
                     )
+                }
+                .map_err(OutcomeErr::Full)
+            }
+            SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
+                debug_assert!(!partially_flushed);
+                // The assert below could technically be a debug assertion as it is part of the
+                // safety contract of the trait. However it is easy to get this wrong if you
+                // write a custom implementation, and if so the consequences would be
+                // disastrous and hard to debug. Therefore we prefer to just use a regular
+                // assertion.
+                assert!(fence.is_none());
+
+                unsafe { queue_submit(&queue, submit_info, Some(new_fence.clone()), &previous) }
                     .map_err(OutcomeErr::Full)
-                }
-                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    debug_assert!(!partially_flushed);
-                    // The assert below could technically be a debug assertion as it is part of the
-                    // safety contract of the trait. However it is easy to get this wrong if you
-                    // write a custom implementation, and if so the consequences would be
-                    // disastrous and hard to debug. Therefore we prefer to just use a regular
-                    // assertion.
-                    assert!(fence.is_none());
+            }
+            SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
+                debug_assert!(!partially_flushed);
+                // Same remark as `CommandBuffer`.
+                assert!(fence.is_none());
 
-                    queue_submit(&queue, submit_info, Some(new_fence.clone()), &previous)
-                        .map_err(OutcomeErr::Full)
-                }
-                SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
-                    debug_assert!(!partially_flushed);
-                    // Same remark as `CommandBuffer`.
-                    assert!(fence.is_none());
-                    debug_assert!(queue.device().physical_device().queue_family_properties()
-                        [queue.queue_family_index() as usize]
-                        .queue_flags
-                        .intersects(QueueFlags::SPARSE_BINDING));
-
-                    queue_bind_sparse(&queue, bind_infos, Some(new_fence.clone()))
-                        .map_err(OutcomeErr::Full)
-                }
-                SubmitAnyBuilder::QueuePresent(present_info) => {
-                    if partially_flushed {
+                unsafe { queue_bind_sparse(&queue, bind_infos, Some(new_fence.clone())) }
+                    .map_err(OutcomeErr::Full)
+            }
+            SubmitAnyBuilder::QueuePresent(present_info) => {
+                if partially_flushed {
+                    unsafe {
                         queue_submit(
                             &queue,
                             Default::default(),
                             Some(new_fence.clone()),
                             &previous,
                         )
-                        .map_err(OutcomeErr::Partial)
-                    } else {
-                        for swapchain_info in &present_info.swapchains {
-                            if swapchain_info.present_id.map_or(false, |present_id| {
-                                !swapchain_info.swapchain.try_claim_present_id(present_id)
-                            }) {
-                                return Err(Box::new(ValidationError {
-                                    problem: "the provided `present_id` was not greater than any \
+                    }
+                    .map_err(OutcomeErr::Partial)
+                } else {
+                    for swapchain_info in &present_info.swapchain_infos {
+                        if swapchain_info.present_id.is_some_and(|present_id| !unsafe {
+                            swapchain_info.swapchain.try_claim_present_id(present_id)
+                        }) {
+                            return Err(Box::new(ValidationError {
+                                problem: "the provided `present_id` was not greater than any \
                                         `present_id` passed previously for the same swapchain"
-                                        .into(),
-                                    vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
-                                    ..Default::default()
-                                })
-                                .into());
-                            }
-
-                            match previous.check_swapchain_image_acquired(
-                                &swapchain_info.swapchain,
-                                swapchain_info.image_index,
-                                true,
-                            ) {
-                                Ok(_) => (),
-                                Err(AccessCheckError::Unknown) => {
-                                    return Err(Box::new(ValidationError::from_error(
-                                        AccessError::SwapchainImageNotAcquired,
-                                    ))
-                                    .into());
-                                }
-                                Err(AccessCheckError::Denied(err)) => {
-                                    return Err(Box::new(ValidationError::from_error(err)).into());
-                                }
-                            }
+                                    .into(),
+                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                                ..Default::default()
+                            })
+                            .into());
                         }
 
-                        let intermediary_result = queue_present(&queue, present_info)?
-                            .map(|r| r.map(|_| ()))
-                            .fold(Ok(()), Result::and);
+                        match previous.check_swapchain_image_acquired(
+                            &swapchain_info.swapchain,
+                            swapchain_info.image_index,
+                            true,
+                        ) {
+                            Ok(_) => (),
+                            Err(AccessCheckError::Unknown) => {
+                                return Err(Box::new(ValidationError::from_error(
+                                    AccessError::SwapchainImageNotAcquired,
+                                ))
+                                .into());
+                            }
+                            Err(AccessCheckError::Denied(err)) => {
+                                return Err(Box::new(ValidationError::from_error(err)).into());
+                            }
+                        }
+                    }
 
-                        match intermediary_result {
-                            Ok(()) => queue_submit(
+                    let intermediary_result = unsafe { queue_present(&queue, present_info) }?
+                        .map(|r| r.map(|_| ()))
+                        .fold(Ok(()), Result::and);
+
+                    match intermediary_result {
+                        Ok(()) => unsafe {
+                            queue_submit(
                                 &queue,
                                 Default::default(),
                                 Some(new_fence.clone()),
                                 &previous,
                             )
-                            .map_err(OutcomeErr::Partial),
-                            Err(err) => Err(OutcomeErr::Full(err.into())),
                         }
+                        .map_err(OutcomeErr::Partial),
+                        Err(err) => Err(OutcomeErr::Full(err.into())),
                     }
                 }
-            };
+            }
+        };
 
-            // Restore the state before returning.
-            match result {
-                Ok(()) => {
-                    **state = FenceSignalFutureState::Flushed(previous, new_fence);
-                    Ok(())
-                }
-                Err(OutcomeErr::Partial(err)) => {
-                    **state = FenceSignalFutureState::PartiallyFlushed(previous, new_fence);
-                    Err(err)
-                }
-                Err(OutcomeErr::Full(err)) => {
-                    **state = FenceSignalFutureState::Pending(previous, new_fence);
-                    Err(err)
-                }
+        // Restore the state before returning.
+        match result {
+            Ok(()) => {
+                **state = FenceSignalFutureState::Flushed(previous, new_fence);
+                Ok(())
+            }
+            Err(OutcomeErr::Partial(err)) => {
+                **state = FenceSignalFutureState::PartiallyFlushed(previous, new_fence);
+                Err(err)
+            }
+            Err(OutcomeErr::Full(err)) => {
+                **state = FenceSignalFutureState::Pending(previous, new_fence);
+                Err(err)
             }
         }
     }
@@ -445,7 +436,7 @@ where
         let state = self.state.lock();
         match *state {
             FenceSignalFutureState::Flushed(ref prev, _) => {
-                prev.signal_finished();
+                unsafe { prev.signal_finished() };
             }
             FenceSignalFutureState::Cleaned | FenceSignalFutureState::Poisoned => (),
             _ => unreachable!(),
@@ -545,9 +536,7 @@ where
                 // This is a normal situation. Submitting worked.
                 // TODO: handle errors?
                 fence.wait(None).unwrap();
-                unsafe {
-                    previous.signal_finished();
-                }
+                unsafe { previous.signal_finished() };
             }
             FenceSignalFutureState::Cleaned => {
                 // Also a normal situation. The user called `cleanup_finished()` before dropping.
@@ -575,7 +564,7 @@ where
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // Note that this is sound because we always return `SubmitAnyBuilder::Empty`. See the
         // documentation of `build_submission`.
-        (**self).build_submission()
+        unsafe { (**self).build_submission() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
@@ -583,7 +572,7 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        (**self).signal_finished()
+        unsafe { (**self).signal_finished() }
     }
 
     fn queue_change_allowed(&self) -> bool {

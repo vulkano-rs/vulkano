@@ -1,22 +1,14 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Subdivides primitives into smaller primitives.
 
 use crate::{
     device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
     Version,
 };
+use ash::vk;
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct TessellationState {
     /// The number of patch control points to use.
     ///
@@ -38,20 +30,19 @@ pub struct TessellationState {
 impl Default for TessellationState {
     #[inline]
     fn default() -> Self {
-        Self {
-            patch_control_points: 3,
-            domain_origin: TessellationDomainOrigin::default(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl TessellationState {
-    /// Creates a new `TessellationState` with 3 patch control points.
+    /// Returns a default `TessellationState`.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "use `TessellationState::default` instead")]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            patch_control_points: 3,
+            domain_origin: TessellationDomainOrigin::UpperLeft,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 
     /// Sets the number of patch control points.
@@ -113,6 +104,49 @@ impl TessellationState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut TessellationStateExtensionsVk,
+    ) -> vk::PipelineTessellationStateCreateInfo<'a> {
+        let &Self {
+            patch_control_points,
+            domain_origin: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = vk::PipelineTessellationStateCreateInfo::default()
+            .flags(vk::PipelineTessellationStateCreateFlags::empty())
+            .patch_control_points(patch_control_points);
+
+        let TessellationStateExtensionsVk { domain_origin_vk } = extensions_vk;
+
+        if let Some(next) = domain_origin_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> TessellationStateExtensionsVk {
+        let &Self {
+            patch_control_points: _,
+            domain_origin,
+            _ne: _,
+        } = self;
+
+        let domain_origin_vk = (domain_origin != TessellationDomainOrigin::default()).then(|| {
+            vk::PipelineTessellationDomainOriginStateCreateInfo::default()
+                .domain_origin(domain_origin.into())
+        });
+
+        TessellationStateExtensionsVk { domain_origin_vk }
+    }
+}
+
+pub(crate) struct TessellationStateExtensionsVk {
+    pub(crate) domain_origin_vk:
+        Option<vk::PipelineTessellationDomainOriginStateCreateInfo<'static>>,
 }
 
 vulkan_enum! {

@@ -1,12 +1,3 @@
-// Copyright (c) 2023 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Store user-defined data associated with Vulkan objects.
 //!
 //! A private data slot allows you to associate an arbitrary `u64` value with any device-owned
@@ -28,14 +19,14 @@ use crate::{
     instance::InstanceOwnedDebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
-use ash::vk::Handle;
+use ash::vk::{self, Handle};
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// An object that stores one `u64` value per Vulkan object.
 #[derive(Debug)]
 pub struct PrivateDataSlot {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::PrivateDataSlot,
+    handle: vk::PrivateDataSlot,
 }
 
 impl PrivateDataSlot {
@@ -49,7 +40,7 @@ impl PrivateDataSlot {
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -58,7 +49,7 @@ impl PrivateDataSlot {
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().private_data {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "private_data",
                 )])]),
                 vuids: &["VUID-vkCreatePrivateDataSlot-privateData-04564"],
@@ -78,39 +69,38 @@ impl PrivateDataSlot {
         device: Arc<Device>,
         create_info: PrivateDataSlotCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let &PrivateDataSlotCreateInfo { _ne: _ } = &create_info;
-
-        let create_info_vk = ash::vk::PrivateDataSlotCreateInfo {
-            flags: ash::vk::PrivateDataSlotCreateFlags::empty(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
             if device.api_version() >= Version::V1_3 {
-                (fns.v1_3.create_private_data_slot)(
-                    device.handle(),
-                    &create_info_vk,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.v1_3.create_private_data_slot)(
+                        device.handle(),
+                        &create_info_vk,
+                        ptr::null(),
+                        output.as_mut_ptr(),
+                    )
+                }
             } else {
-                (fns.ext_private_data.create_private_data_slot_ext)(
-                    device.handle(),
-                    &create_info_vk,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.ext_private_data.create_private_data_slot_ext)(
+                        device.handle(),
+                        &create_info_vk,
+                        ptr::null(),
+                        output.as_mut_ptr(),
+                    )
+                }
             }
             .result()
             .map_err(VulkanError::from)?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `PrivateDataSlot` from a raw object handle.
@@ -122,7 +112,7 @@ impl PrivateDataSlot {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::PrivateDataSlot,
+        handle: vk::PrivateDataSlot,
         _create_info: PrivateDataSlotCreateInfo,
     ) -> Self {
         Self {
@@ -142,7 +132,7 @@ impl PrivateDataSlot {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_set_private_data(object)?;
 
-        unsafe { Ok(self.set_private_data_unchecked(object, data)?) }
+        Ok(unsafe { self.set_private_data_unchecked(object, data) }?)
     }
 
     fn validate_set_private_data<T: VulkanObject + DeviceOwned>(
@@ -163,21 +153,25 @@ impl PrivateDataSlot {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.set_private_data)(
-                self.device.handle(),
-                T::Handle::TYPE,
-                object.handle().as_raw(),
-                self.handle,
-                data,
-            )
+            unsafe {
+                (fns.v1_3.set_private_data)(
+                    self.device.handle(),
+                    T::Handle::TYPE,
+                    object.handle().as_raw(),
+                    self.handle,
+                    data,
+                )
+            }
         } else {
-            (fns.ext_private_data.set_private_data_ext)(
-                self.device.handle(),
-                T::Handle::TYPE,
-                object.handle().as_raw(),
-                self.handle,
-                data,
-            )
+            unsafe {
+                (fns.ext_private_data.set_private_data_ext)(
+                    self.device.handle(),
+                    T::Handle::TYPE,
+                    object.handle().as_raw(),
+                    self.handle,
+                    data,
+                )
+            }
         }
         .result()
         .map_err(VulkanError::from)
@@ -188,11 +182,10 @@ impl PrivateDataSlot {
     /// If no private data was previously set, 0 is returned.
     pub fn get_private_data<T: VulkanObject + DeviceOwned>(&self, object: &T) -> u64 {
         let fns = self.device.fns();
+        let mut output = MaybeUninit::uninit();
 
-        unsafe {
-            let mut output = MaybeUninit::uninit();
-
-            if self.device.api_version() >= Version::V1_3 {
+        if self.device.api_version() >= Version::V1_3 {
+            unsafe {
                 (fns.v1_3.get_private_data)(
                     self.device.handle(),
                     T::Handle::TYPE,
@@ -200,7 +193,9 @@ impl PrivateDataSlot {
                     self.handle,
                     output.as_mut_ptr(),
                 )
-            } else {
+            }
+        } else {
+            unsafe {
                 (fns.ext_private_data.get_private_data_ext)(
                     self.device.handle(),
                     T::Handle::TYPE,
@@ -209,37 +204,35 @@ impl PrivateDataSlot {
                     output.as_mut_ptr(),
                 )
             }
-
-            output.assume_init()
         }
+
+        unsafe { output.assume_init() }
     }
 }
 
 impl Drop for PrivateDataSlot {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
+        let fns = self.device.fns();
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.destroy_private_data_slot)(
-                    self.device.handle(),
-                    self.handle,
-                    ptr::null(),
-                );
-            } else {
+        if self.device.api_version() >= Version::V1_3 {
+            unsafe {
+                (fns.v1_3.destroy_private_data_slot)(self.device.handle(), self.handle, ptr::null())
+            };
+        } else {
+            unsafe {
                 (fns.ext_private_data.destroy_private_data_slot_ext)(
                     self.device.handle(),
                     self.handle,
                     ptr::null(),
-                );
-            }
+                )
+            };
         }
     }
 }
 
 unsafe impl VulkanObject for PrivateDataSlot {
-    type Handle = ash::vk::PrivateDataSlot;
+    type Handle = vk::PrivateDataSlot;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -263,14 +256,26 @@ pub struct PrivateDataSlotCreateInfo {
 impl Default for PrivateDataSlotCreateInfo {
     #[inline]
     fn default() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl PrivateDataSlotCreateInfo {
+    /// Returns a default `PrivateDataSlotCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::PrivateDataSlotCreateInfo<'static> {
+        let &Self { _ne: _ } = self;
+
+        vk::PrivateDataSlotCreateInfo::default().flags(vk::PrivateDataSlotCreateFlags::empty())
     }
 }

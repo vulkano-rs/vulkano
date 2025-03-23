@@ -1,12 +1,3 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Parsing and analysis utilities for SPIR-V shader binaries.
 //!
 //! This can be used to inspect and validate a SPIR-V module at runtime. The `Spirv` type does some
@@ -16,7 +7,7 @@
 //! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::{shader::SpecializationConstant, Version};
-use ahash::HashMap;
+use foldhash::{HashMap, HashSet};
 use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Cow,
@@ -38,15 +29,17 @@ pub struct Spirv {
     ids: HashMap<Id, IdInfo>,
 
     // Items described in the spec section "Logical Layout of a Module"
-    instructions_capability: Vec<Instruction>,
-    instructions_extension: Vec<Instruction>,
-    instructions_ext_inst_import: Vec<Instruction>,
-    instruction_memory_model: Instruction,
-    instructions_entry_point: Vec<Instruction>,
-    instructions_execution_mode: Vec<Instruction>,
-    instructions_name: Vec<Instruction>,
-    instructions_decoration: Vec<Instruction>,
-    instructions_global: Vec<Instruction>,
+    capabilities: Vec<Instruction>,
+    extensions: Vec<Instruction>,
+    ext_inst_imports: Vec<Instruction>,
+    memory_model: Instruction,
+    entry_points: Vec<Instruction>,
+    execution_modes: Vec<Instruction>,
+    names: Vec<Instruction>,
+    decorations: Vec<Instruction>,
+    types: Vec<Instruction>,
+    constants: Vec<Instruction>,
+    global_variables: Vec<Instruction>,
     functions: HashMap<Id, FunctionInfo>,
 }
 
@@ -71,18 +64,20 @@ impl Spirv {
         let mut bound = 0;
         let mut ids = HashMap::default();
 
-        let mut instructions_capability = Vec::new();
-        let mut instructions_extension = Vec::new();
-        let mut instructions_ext_inst_import = Vec::new();
-        let mut instructions_memory_model = Vec::new();
-        let mut instructions_entry_point = Vec::new();
-        let mut instructions_execution_mode = Vec::new();
-        let mut instructions_name = Vec::new();
-        let mut instructions_decoration = Vec::new();
-        let mut instructions_global = Vec::new();
+        let mut capabilities = Vec::new();
+        let mut extensions = Vec::new();
+        let mut ext_inst_imports = Vec::new();
+        let mut memory_models = Vec::new();
+        let mut entry_points = Vec::new();
+        let mut execution_modes = Vec::new();
+        let mut names = Vec::new();
+        let mut decorations = Vec::new();
+        let mut types = Vec::new();
+        let mut constants = Vec::new();
+        let mut global_variables = Vec::new();
 
         let mut functions = HashMap::default();
-        let mut current_function: Option<&mut Vec<Instruction>> = None;
+        let mut current_function: Option<&mut FunctionInfo> = None;
 
         for instruction in iter_instructions(&words[5..]) {
             let instruction = instruction?;
@@ -121,134 +116,142 @@ impl Spirv {
                 continue;
             }
 
-            if current_function.is_some() {
-                match instruction {
-                    Instruction::FunctionEnd { .. } => {
-                        current_function.take().unwrap().push(instruction);
-                    }
-                    _ => current_function.as_mut().unwrap().push(instruction),
+            match instruction {
+                Instruction::Function { result_id, .. } => {
+                    current_function = None;
+                    let function = functions.entry(result_id).or_insert_with(|| {
+                        let entry_point = entry_points
+                            .iter()
+                            .find(|instruction| {
+                                matches!(
+                                    **instruction,
+                                    Instruction::EntryPoint { entry_point, .. }
+                                    if entry_point == result_id
+                                )
+                            })
+                            .cloned();
+                        let execution_modes = execution_modes
+                            .iter()
+                            .filter(|instruction| {
+                                matches!(
+                                    **instruction,
+                                    Instruction::ExecutionMode { entry_point, .. }
+                                    | Instruction::ExecutionModeId { entry_point, .. }
+                                    if entry_point == result_id
+                                )
+                            })
+                            .cloned()
+                            .collect();
+
+                        FunctionInfo {
+                            instructions: Vec::new(),
+                            called_functions: HashSet::default(),
+                            entry_point,
+                            execution_modes,
+                        }
+                    });
+                    let current_function = current_function.insert(function);
+                    current_function.instructions.push(instruction);
                 }
-            } else {
-                let destination = match instruction {
-                    Instruction::Function { result_id, .. } => {
-                        current_function = None;
-                        let function = functions.entry(result_id).or_insert_with(|| {
-                            let entry_point = instructions_entry_point
-                                .iter()
-                                .find(|instruction| {
-                                    matches!(
-                                        **instruction,
-                                        Instruction::EntryPoint { entry_point, .. }
-                                        if entry_point == result_id
-                                    )
-                                })
-                                .cloned();
-                            let execution_modes = instructions_execution_mode
-                                .iter()
-                                .filter(|instruction| {
-                                    matches!(
-                                        **instruction,
-                                        Instruction::ExecutionMode { entry_point, .. }
-                                        | Instruction::ExecutionModeId { entry_point, .. }
-                                        if entry_point == result_id
-                                    )
-                                })
-                                .cloned()
-                                .collect();
+                Instruction::FunctionEnd { .. } => {
+                    let current_function = current_function.take().unwrap();
+                    current_function.instructions.push(instruction);
+                }
+                _ => {
+                    if let Some(current_function) = current_function.as_mut() {
+                        if let Instruction::FunctionCall { function, .. } = instruction {
+                            current_function.called_functions.insert(function);
+                        }
 
-                            FunctionInfo {
-                                instructions: Vec::new(),
-                                entry_point,
-                                execution_modes,
+                        current_function.instructions.push(instruction);
+                    } else {
+                        let destination = match instruction {
+                            Instruction::Capability { .. } => &mut capabilities,
+                            Instruction::Extension { .. } => &mut extensions,
+                            Instruction::ExtInstImport { .. } => &mut ext_inst_imports,
+                            Instruction::MemoryModel { .. } => &mut memory_models,
+                            Instruction::EntryPoint { .. } => &mut entry_points,
+                            Instruction::ExecutionMode { .. }
+                            | Instruction::ExecutionModeId { .. } => &mut execution_modes,
+                            Instruction::Name { .. } | Instruction::MemberName { .. } => &mut names,
+                            Instruction::Decorate { .. }
+                            | Instruction::MemberDecorate { .. }
+                            | Instruction::DecorationGroup { .. }
+                            | Instruction::GroupDecorate { .. }
+                            | Instruction::GroupMemberDecorate { .. }
+                            | Instruction::DecorateId { .. }
+                            | Instruction::DecorateString { .. }
+                            | Instruction::MemberDecorateString { .. } => &mut decorations,
+                            Instruction::TypeVoid { .. }
+                            | Instruction::TypeBool { .. }
+                            | Instruction::TypeInt { .. }
+                            | Instruction::TypeFloat { .. }
+                            | Instruction::TypeVector { .. }
+                            | Instruction::TypeMatrix { .. }
+                            | Instruction::TypeImage { .. }
+                            | Instruction::TypeSampler { .. }
+                            | Instruction::TypeSampledImage { .. }
+                            | Instruction::TypeArray { .. }
+                            | Instruction::TypeRuntimeArray { .. }
+                            | Instruction::TypeStruct { .. }
+                            | Instruction::TypeOpaque { .. }
+                            | Instruction::TypePointer { .. }
+                            | Instruction::TypeFunction { .. }
+                            | Instruction::TypeEvent { .. }
+                            | Instruction::TypeDeviceEvent { .. }
+                            | Instruction::TypeReserveId { .. }
+                            | Instruction::TypeQueue { .. }
+                            | Instruction::TypePipe { .. }
+                            | Instruction::TypeForwardPointer { .. }
+                            | Instruction::TypePipeStorage { .. }
+                            | Instruction::TypeNamedBarrier { .. }
+                            | Instruction::TypeRayQueryKHR { .. }
+                            | Instruction::TypeAccelerationStructureKHR { .. }
+                            | Instruction::TypeCooperativeMatrixNV { .. }
+                            | Instruction::TypeVmeImageINTEL { .. }
+                            | Instruction::TypeAvcImePayloadINTEL { .. }
+                            | Instruction::TypeAvcRefPayloadINTEL { .. }
+                            | Instruction::TypeAvcSicPayloadINTEL { .. }
+                            | Instruction::TypeAvcMcePayloadINTEL { .. }
+                            | Instruction::TypeAvcMceResultINTEL { .. }
+                            | Instruction::TypeAvcImeResultINTEL { .. }
+                            | Instruction::TypeAvcImeResultSingleReferenceStreamoutINTEL {
+                                ..
                             }
-                        });
-                        current_function.insert(&mut function.instructions)
-                    }
-                    Instruction::Capability { .. } => &mut instructions_capability,
-                    Instruction::Extension { .. } => &mut instructions_extension,
-                    Instruction::ExtInstImport { .. } => &mut instructions_ext_inst_import,
-                    Instruction::MemoryModel { .. } => &mut instructions_memory_model,
-                    Instruction::EntryPoint { .. } => &mut instructions_entry_point,
-                    Instruction::ExecutionMode { .. } | Instruction::ExecutionModeId { .. } => {
-                        &mut instructions_execution_mode
-                    }
-                    Instruction::Name { .. } | Instruction::MemberName { .. } => {
-                        &mut instructions_name
-                    }
-                    Instruction::Decorate { .. }
-                    | Instruction::MemberDecorate { .. }
-                    | Instruction::DecorationGroup { .. }
-                    | Instruction::GroupDecorate { .. }
-                    | Instruction::GroupMemberDecorate { .. }
-                    | Instruction::DecorateId { .. }
-                    | Instruction::DecorateString { .. }
-                    | Instruction::MemberDecorateString { .. } => &mut instructions_decoration,
-                    Instruction::TypeVoid { .. }
-                    | Instruction::TypeBool { .. }
-                    | Instruction::TypeInt { .. }
-                    | Instruction::TypeFloat { .. }
-                    | Instruction::TypeVector { .. }
-                    | Instruction::TypeMatrix { .. }
-                    | Instruction::TypeImage { .. }
-                    | Instruction::TypeSampler { .. }
-                    | Instruction::TypeSampledImage { .. }
-                    | Instruction::TypeArray { .. }
-                    | Instruction::TypeRuntimeArray { .. }
-                    | Instruction::TypeStruct { .. }
-                    | Instruction::TypeOpaque { .. }
-                    | Instruction::TypePointer { .. }
-                    | Instruction::TypeFunction { .. }
-                    | Instruction::TypeEvent { .. }
-                    | Instruction::TypeDeviceEvent { .. }
-                    | Instruction::TypeReserveId { .. }
-                    | Instruction::TypeQueue { .. }
-                    | Instruction::TypePipe { .. }
-                    | Instruction::TypeForwardPointer { .. }
-                    | Instruction::TypePipeStorage { .. }
-                    | Instruction::TypeNamedBarrier { .. }
-                    | Instruction::TypeRayQueryKHR { .. }
-                    | Instruction::TypeAccelerationStructureKHR { .. }
-                    | Instruction::TypeCooperativeMatrixNV { .. }
-                    | Instruction::TypeVmeImageINTEL { .. }
-                    | Instruction::TypeAvcImePayloadINTEL { .. }
-                    | Instruction::TypeAvcRefPayloadINTEL { .. }
-                    | Instruction::TypeAvcSicPayloadINTEL { .. }
-                    | Instruction::TypeAvcMcePayloadINTEL { .. }
-                    | Instruction::TypeAvcMceResultINTEL { .. }
-                    | Instruction::TypeAvcImeResultINTEL { .. }
-                    | Instruction::TypeAvcImeResultSingleReferenceStreamoutINTEL { .. }
-                    | Instruction::TypeAvcImeResultDualReferenceStreamoutINTEL { .. }
-                    | Instruction::TypeAvcImeSingleReferenceStreaminINTEL { .. }
-                    | Instruction::TypeAvcImeDualReferenceStreaminINTEL { .. }
-                    | Instruction::TypeAvcRefResultINTEL { .. }
-                    | Instruction::TypeAvcSicResultINTEL { .. }
-                    | Instruction::ConstantTrue { .. }
-                    | Instruction::ConstantFalse { .. }
-                    | Instruction::Constant { .. }
-                    | Instruction::ConstantComposite { .. }
-                    | Instruction::ConstantSampler { .. }
-                    | Instruction::ConstantNull { .. }
-                    | Instruction::ConstantPipeStorage { .. }
-                    | Instruction::SpecConstantTrue { .. }
-                    | Instruction::SpecConstantFalse { .. }
-                    | Instruction::SpecConstant { .. }
-                    | Instruction::SpecConstantComposite { .. }
-                    | Instruction::SpecConstantOp { .. }
-                    | Instruction::Variable { .. }
-                    | Instruction::Undef { .. } => &mut instructions_global,
-                    _ => continue,
-                };
+                            | Instruction::TypeAvcImeResultDualReferenceStreamoutINTEL { .. }
+                            | Instruction::TypeAvcImeSingleReferenceStreaminINTEL { .. }
+                            | Instruction::TypeAvcImeDualReferenceStreaminINTEL { .. }
+                            | Instruction::TypeAvcRefResultINTEL { .. }
+                            | Instruction::TypeAvcSicResultINTEL { .. } => &mut types,
+                            Instruction::ConstantTrue { .. }
+                            | Instruction::ConstantFalse { .. }
+                            | Instruction::Constant { .. }
+                            | Instruction::ConstantComposite { .. }
+                            | Instruction::ConstantSampler { .. }
+                            | Instruction::ConstantNull { .. }
+                            | Instruction::ConstantPipeStorage { .. }
+                            | Instruction::SpecConstantTrue { .. }
+                            | Instruction::SpecConstantFalse { .. }
+                            | Instruction::SpecConstant { .. }
+                            | Instruction::SpecConstantComposite { .. }
+                            | Instruction::SpecConstantOp { .. }
+                            | Instruction::Undef { .. } => &mut constants,
+                            Instruction::Variable { .. } => &mut global_variables,
+                            _ => continue,
+                        };
 
-                destination.push(instruction);
+                        destination.push(instruction);
+                    }
+                }
             }
         }
 
-        let instruction_memory_model = instructions_memory_model.drain(..).next().unwrap();
+        let memory_model = memory_models.drain(..).next().unwrap();
 
         // Add decorations to ids,
         // while also expanding decoration groups into individual decorations.
         let mut decoration_groups: HashMap<Id, Vec<Instruction>> = HashMap::default();
-        let instructions_decoration = instructions_decoration
+        let decorations = decorations
             .into_iter()
             .flat_map(|instruction| -> SmallVec<[Instruction; 1]> {
                 match instruction {
@@ -295,7 +298,9 @@ impl Spirv {
                     } => {
                         let decorations = &decoration_groups[&decoration_group];
 
-                        (targets.iter().copied())
+                        targets
+                            .iter()
+                            .copied()
                             .flat_map(|target| {
                                 decorations
                                     .iter()
@@ -305,7 +310,7 @@ impl Spirv {
                                 let id_info = ids.get_mut(&target).unwrap();
 
                                 match instruction {
-                                    Instruction::Decorate { ref decoration, .. } => {
+                                    Instruction::Decorate { decoration, .. } => {
                                         let instruction = Instruction::Decorate {
                                             target,
                                             decoration: decoration.clone(),
@@ -313,7 +318,7 @@ impl Spirv {
                                         id_info.decorations.push(instruction.clone());
                                         instruction
                                     }
-                                    Instruction::DecorateId { ref decoration, .. } => {
+                                    Instruction::DecorateId { decoration, .. } => {
                                         let instruction = Instruction::DecorateId {
                                             target,
                                             decoration: decoration.clone(),
@@ -332,7 +337,9 @@ impl Spirv {
                     } => {
                         let decorations = &decoration_groups[&decoration_group];
 
-                        (targets.iter().copied())
+                        targets
+                            .iter()
+                            .copied()
                             .flat_map(|target| {
                                 decorations
                                     .iter()
@@ -344,7 +351,7 @@ impl Spirv {
                                         [member as usize];
 
                                 match instruction {
-                                    Instruction::Decorate { ref decoration, .. } => {
+                                    Instruction::Decorate { decoration, .. } => {
                                         let instruction = Instruction::MemberDecorate {
                                             structure_type,
                                             member,
@@ -371,7 +378,7 @@ impl Spirv {
             })
             .collect();
 
-        instructions_name.retain(|instruction| match *instruction {
+        names.retain(|instruction| match *instruction {
             Instruction::Name { target, .. } => {
                 if let Some(id_info) = ids.get_mut(&target) {
                     id_info.names.push(instruction.clone());
@@ -398,15 +405,17 @@ impl Spirv {
             bound,
             ids,
 
-            instructions_capability,
-            instructions_extension,
-            instructions_ext_inst_import,
-            instruction_memory_model,
-            instructions_entry_point,
-            instructions_execution_mode,
-            instructions_name,
-            instructions_decoration,
-            instructions_global,
+            capabilities,
+            extensions,
+            ext_inst_imports,
+            memory_model,
+            entry_points,
+            execution_modes,
+            names,
+            decorations,
+            types,
+            constants,
+            global_variables,
             functions,
         })
     }
@@ -421,7 +430,7 @@ impl Spirv {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
+    /// - Panics if `id` is not defined in this module. This can in theory only happen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
     pub fn id(&self, id: Id) -> &IdInfo {
@@ -432,86 +441,97 @@ impl Spirv {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
+    /// - Panics if `id` is not defined in this module. This can in theory only happen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
     pub fn function(&self, id: Id) -> &FunctionInfo {
         &self.functions[&id]
     }
 
-    /// Returns an iterator over all `Capability` instructions.
+    /// Returns all `Capability` instructions.
     #[inline]
-    pub fn iter_capability(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_capability.iter()
+    pub fn capabilities(&self) -> &[Instruction] {
+        &self.capabilities
     }
 
-    /// Returns an iterator over all `Extension` instructions.
+    /// Returns all `Extension` instructions.
     #[inline]
-    pub fn iter_extension(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_extension.iter()
+    pub fn extensions(&self) -> &[Instruction] {
+        &self.extensions
     }
 
-    /// Returns an iterator over all `ExtInstImport` instructions.
+    /// Returns all `ExtInstImport` instructions.
     #[inline]
-    pub fn iter_ext_inst_import(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_ext_inst_import.iter()
+    pub fn ext_inst_imports(&self) -> &[Instruction] {
+        &self.ext_inst_imports
     }
 
     /// Returns the `MemoryModel` instruction.
     #[inline]
     pub fn memory_model(&self) -> &Instruction {
-        &self.instruction_memory_model
+        &self.memory_model
     }
 
-    /// Returns an iterator over all `EntryPoint` instructions.
+    /// Returns all `EntryPoint` instructions.
     #[inline]
-    pub fn iter_entry_point(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_entry_point.iter()
+    pub fn entry_points(&self) -> &[Instruction] {
+        &self.entry_points
     }
 
-    /// Returns an iterator over all execution mode instructions.
+    /// Returns all execution mode instructions.
     #[inline]
-    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_execution_mode.iter()
+    pub fn execution_modes(&self) -> &[Instruction] {
+        &self.execution_modes
     }
 
-    /// Returns an iterator over all name debug instructions.
+    /// Returns all name debug instructions.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_name.iter()
+    pub fn names(&self) -> &[Instruction] {
+        &self.names
     }
 
-    /// Returns an iterator over all decoration instructions.
+    /// Returns all decoration instructions.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_decoration.iter()
+    pub fn decorations(&self) -> &[Instruction] {
+        &self.decorations
     }
 
-    /// Returns an iterator over all global declaration instructions: types,
-    /// constants and global variables.
+    /// Returns all type instructions.
     #[inline]
-    pub fn iter_global(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions_global.iter()
+    pub fn types(&self) -> &[Instruction] {
+        &self.types
     }
 
-    /// Returns an iterator over all functions.
+    /// Returns all constant and specialization constant instructions.
     #[inline]
-    pub fn iter_functions(&self) -> impl ExactSizeIterator<Item = &FunctionInfo> {
-        self.functions.values()
+    pub fn constants(&self) -> &[Instruction] {
+        &self.constants
+    }
+
+    /// Returns all global variable instructions.
+    #[inline]
+    pub fn global_variables(&self) -> &[Instruction] {
+        &self.global_variables
+    }
+
+    /// Returns all functions.
+    #[inline]
+    pub fn functions(&self) -> &HashMap<Id, FunctionInfo> {
+        &self.functions
     }
 
     pub fn apply_specialization(
         &mut self,
         specialization_info: &HashMap<u32, SpecializationConstant>,
     ) {
-        self.instructions_global = specialization::replace_specialization_instructions(
+        self.constants = specialization::replace_specialization_instructions(
             specialization_info,
-            self.instructions_global.drain(..),
+            self.constants.drain(..),
             &self.ids,
             self.bound,
         );
 
-        for instruction in &self.instructions_global {
+        for instruction in &self.constants {
             if let Some(id) = instruction.result_id() {
                 if let Some(id_info) = self.ids.get_mut(&id) {
                     id_info.instruction = instruction.clone();
@@ -539,7 +559,7 @@ impl Spirv {
             }
         }
 
-        self.instructions_decoration.retain(|instruction| {
+        self.decorations.retain(|instruction| {
             !matches!(
                 instruction,
                 Instruction::Decorate {
@@ -596,23 +616,23 @@ impl IdInfo {
         &self.instruction
     }
 
-    /// Returns an iterator over all name debug instructions that target this `Id`.
+    /// Returns all name debug instructions that target this `Id`.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.names.iter()
+    pub fn names(&self) -> &[Instruction] {
+        &self.names
     }
 
-    /// Returns an iterator over all decorate instructions, that target this `Id`.
+    /// Returns all decorate instructions that target this `Id`.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.decorations.iter()
+    pub fn decorations(&self) -> &[Instruction] {
+        &self.decorations
     }
 
-    /// If this `Id` refers to a `TypeStruct`, returns an iterator of information about each member
-    /// of the struct. Empty otherwise.
+    /// If this `Id` refers to a `TypeStruct`, returns information about each member of the struct.
+    /// Empty otherwise.
     #[inline]
-    pub fn iter_members(&self) -> impl ExactSizeIterator<Item = &StructMemberInfo> {
-        self.members.iter()
+    pub fn members(&self) -> &[StructMemberInfo] {
+        &self.members
     }
 }
 
@@ -624,16 +644,16 @@ pub struct StructMemberInfo {
 }
 
 impl StructMemberInfo {
-    /// Returns an iterator over all name debug instructions that target this struct member.
+    /// Returns all name debug instructions that target this struct member.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.names.iter()
+    pub fn names(&self) -> &[Instruction] {
+        &self.names
     }
 
-    /// Returns an iterator over all decorate instructions that target this struct member.
+    /// Returns all decorate instructions that target this struct member.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.decorations.iter()
+    pub fn decorations(&self) -> &[Instruction] {
+        &self.decorations
     }
 }
 
@@ -641,15 +661,23 @@ impl StructMemberInfo {
 #[derive(Clone, Debug)]
 pub struct FunctionInfo {
     instructions: Vec<Instruction>,
+    called_functions: HashSet<Id>,
     entry_point: Option<Instruction>,
     execution_modes: Vec<Instruction>,
 }
 
 impl FunctionInfo {
-    /// Returns an iterator over all instructions in the function.
+    /// Returns the instructions in the function.
     #[inline]
-    pub fn iter_instructions(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.instructions.iter()
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+
+    /// Returns `Id`s of all functions that are called by this function.
+    /// This may include recursive function calls.
+    #[inline]
+    pub fn called_functions(&self) -> &HashSet<Id> {
+        &self.called_functions
     }
 
     /// Returns the `EntryPoint` instruction that targets this function, if there is one.
@@ -658,10 +686,10 @@ impl FunctionInfo {
         self.entry_point.as_ref()
     }
 
-    /// Returns an iterator over all execution mode instructions that target this function.
+    /// Returns all execution mode instructions that target this function.
     #[inline]
-    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Instruction> {
-        self.execution_modes.iter()
+    pub fn execution_modes(&self) -> &[Instruction] {
+        &self.execution_modes
     }
 }
 
@@ -713,9 +741,9 @@ struct InstructionReader<'a> {
 }
 
 impl<'a> InstructionReader<'a> {
-    /// Constructs a new reader from a slice of words for a single instruction, including the opcode
-    /// word. `instruction` is the number of the instruction currently being read, and is used for
-    /// error reporting.
+    /// Constructs a new reader from a slice of words for a single instruction, including the
+    /// opcode word. `instruction` is the number of the instruction currently being read, and
+    /// is used for error reporting.
     fn new(words: &'a [u32], instruction: usize) -> Self {
         debug_assert!(!words.is_empty());
         Self {

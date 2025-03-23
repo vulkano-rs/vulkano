@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Configures the area of the framebuffer that pixels will be written to.
 //!
 //! There are two different concepts to determine where things will be drawn:
@@ -38,17 +29,17 @@
 //! Vulkan allows four different setups:
 //!
 //! - The state of both the viewports and scissor boxes is known at pipeline creation.
-//! - The state of viewports is known at pipeline creation, but the state of scissor boxes is
-//!   only known when submitting the draw command.
-//! - The state of scissor boxes is known at pipeline creation, but the state of viewports is
-//!   only known when submitting the draw command.
-//! - The state of both the viewports and scissor boxes is only known when submitting the
-//!   draw command.
+//! - The state of viewports is known at pipeline creation, but the state of scissor boxes is only
+//!   known when submitting the draw command.
+//! - The state of scissor boxes is known at pipeline creation, but the state of viewports is only
+//!   known when submitting the draw command.
+//! - The state of both the viewports and scissor boxes is only known when submitting the draw
+//!   command.
 //!
 //! In all cases the number of viewports and scissor boxes must be the same.
-//!
 
 use crate::{device::Device, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version};
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::ops::RangeInclusive;
 
@@ -97,22 +88,18 @@ pub struct ViewportState {
 impl Default for ViewportState {
     #[inline]
     fn default() -> Self {
-        Self {
-            viewports: smallvec![Viewport::default()],
-            scissors: smallvec![Scissor::default()],
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl ViewportState {
-    /// Creates a `ViewportState` with fixed state and no viewports or scissors.
-    #[deprecated(since = "0.34.0")]
+    /// Returns a default `ViewportState`.
+    // TODO: make const
     #[inline]
     pub fn new() -> Self {
         Self {
-            viewports: SmallVec::new(),
-            scissors: SmallVec::new(),
+            viewports: smallvec![Viewport::default()],
+            scissors: smallvec![Scissor::default()],
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -164,7 +151,8 @@ impl ViewportState {
             // VUID-VkPipelineViewportStateCreateInfo-x-02821
             // Ensured by the use of an unsigned integer.
 
-            if (i32::try_from(offset[0]).ok())
+            if i32::try_from(offset[0])
+                .ok()
                 .zip(i32::try_from(extent[0]).ok())
                 .and_then(|(o, e)| o.checked_add(e))
                 .is_none()
@@ -177,7 +165,8 @@ impl ViewportState {
                 }));
             }
 
-            if (i32::try_from(offset[1]).ok())
+            if i32::try_from(offset[1])
+                .ok()
                 .zip(i32::try_from(extent[1]).ok())
                 .and_then(|(o, e)| o.checked_add(e))
                 .is_none()
@@ -195,7 +184,7 @@ impl ViewportState {
             return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216"],
@@ -206,7 +195,7 @@ impl ViewportState {
             return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217"],
@@ -233,6 +222,50 @@ impl ViewportState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a ViewportStateFields1Vk,
+    ) -> vk::PipelineViewportStateCreateInfo<'a> {
+        let ViewportStateFields1Vk {
+            viewports_vk,
+            scissors_vk,
+        } = fields1_vk;
+
+        let mut val_vk = vk::PipelineViewportStateCreateInfo::default()
+            .flags(vk::PipelineViewportStateCreateFlags::empty());
+
+        if !viewports_vk.is_empty() {
+            val_vk = val_vk.viewports(viewports_vk);
+        }
+
+        if !scissors_vk.is_empty() {
+            val_vk = val_vk.scissors(scissors_vk);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> ViewportStateFields1Vk {
+        let Self {
+            viewports,
+            scissors,
+            _ne: _,
+        } = self;
+
+        let viewports_vk = viewports.iter().map(Viewport::to_vk).collect();
+        let scissors_vk = scissors.iter().map(Scissor::to_vk).collect();
+
+        ViewportStateFields1Vk {
+            viewports_vk,
+            scissors_vk,
+        }
+    }
+}
+
+pub(crate) struct ViewportStateFields1Vk {
+    pub(crate) viewports_vk: SmallVec<[vk::Viewport; 2]>,
+    pub(crate) scissors_vk: SmallVec<[vk::Rect2D; 2]>,
 }
 
 /// State of a single viewport.
@@ -264,15 +297,21 @@ pub struct Viewport {
 impl Default for Viewport {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Viewport {
+    /// Returns a default `Viewport`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: [0.0; 2],
             extent: [1.0; 2],
             depth_range: 0.0..=1.0,
         }
     }
-}
 
-impl Viewport {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset,
@@ -405,18 +444,22 @@ impl Viewport {
 
         Ok(())
     }
-}
 
-impl From<&Viewport> for ash::vk::Viewport {
-    #[inline]
-    fn from(val: &Viewport) -> Self {
-        ash::vk::Viewport {
-            x: val.offset[0],
-            y: val.offset[1],
-            width: val.extent[0],
-            height: val.extent[1],
-            min_depth: *val.depth_range.start(),
-            max_depth: *val.depth_range.end(),
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> vk::Viewport {
+        let &Self {
+            offset,
+            extent,
+            ref depth_range,
+        } = self;
+
+        vk::Viewport {
+            x: offset[0],
+            y: offset[1],
+            width: extent[0],
+            height: extent[1],
+            min_depth: *depth_range.start(),
+            max_depth: *depth_range.end(),
         }
     }
 }
@@ -437,46 +480,43 @@ pub struct Scissor {
 
 impl Default for Scissor {
     #[inline]
-    fn default() -> Scissor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scissor {
+    /// Returns a default `Scissor`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             offset: [0; 2],
             extent: [i32::MAX as u32; 2],
         }
     }
-}
 
-impl Scissor {
     /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
     /// framebuffer no matter its size.
-    #[deprecated(since = "0.34.0", note = "use `Scissor::default` instead")]
+    #[deprecated(since = "0.34.0", note = "use `Scissor::new` instead")]
     #[inline]
     pub fn irrelevant() -> Scissor {
-        Self::default()
+        Self::new()
     }
-}
 
-impl From<&Scissor> for ash::vk::Rect2D {
-    #[inline]
-    fn from(val: &Scissor) -> Self {
-        ash::vk::Rect2D {
-            offset: ash::vk::Offset2D {
-                x: val.offset[0] as i32,
-                y: val.offset[1] as i32,
-            },
-            extent: ash::vk::Extent2D {
-                width: val.extent[0],
-                height: val.extent[1],
-            },
-        }
-    }
-}
+    #[allow(clippy::wrong_self_convention)]
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> vk::Rect2D {
+        let &Self { offset, extent } = self;
 
-impl From<ash::vk::Rect2D> for Scissor {
-    #[inline]
-    fn from(val: ash::vk::Rect2D) -> Self {
-        Scissor {
-            offset: [val.offset.x as u32, val.offset.y as u32],
-            extent: [val.extent.width, val.extent.height],
+        vk::Rect2D {
+            offset: vk::Offset2D {
+                x: offset[0] as i32,
+                y: offset[1] as i32,
+            },
+            extent: vk::Extent2D {
+                width: extent[0],
+                height: extent[1],
+            },
         }
     }
 }

@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Efficiently suballocates buffers into smaller subbuffers.
 
 use super::{
@@ -22,7 +13,7 @@ use crate::{
         },
         DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize, Validated,
+    DeviceSize, Validated,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
@@ -96,7 +87,7 @@ const MAX_ARENAS: usize = 32;
 ///
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 /// #
 /// // Create the buffer allocator.
 /// let buffer_allocator = SubbufferAllocator::new(
@@ -117,7 +108,7 @@ const MAX_ARENAS: usize = 32;
 ///
 ///     // You can then use `subbuffer` as if it was an entirely separate buffer.
 ///     AutoCommandBufferBuilder::primary(
-///         &command_buffer_allocator,
+///         command_buffer_allocator.clone(),
 ///         queue.queue_family_index(),
 ///         CommandBufferUsage::OneTimeSubmit,
 ///     )
@@ -126,7 +117,8 @@ const MAX_ARENAS: usize = 32;
 ///     // it is pointless to do that.
 ///     .update_buffer(subbuffer.clone(), &[0.2, 0.3, 0.4, 0.5])
 ///     .unwrap()
-///     .build().unwrap()
+///     .build()
+///     .unwrap()
 ///     .execute(queue.clone())
 ///     .unwrap()
 ///     .then_signal_fence_and_flush()
@@ -192,7 +184,8 @@ where
     /// The next time you allocate a subbuffer, a new arena will be allocated with the new size,
     /// and all subsequently allocated arenas will also share the new size.
     pub fn set_arena_size(&self, size: DeviceSize) {
-        let state = unsafe { &mut *self.state.get() };
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
         state.arena_size = size;
         state.arena = None;
         state.reserve = None;
@@ -205,7 +198,8 @@ where
     /// this has no effect.
     pub fn reserve(&self, size: DeviceSize) -> Result<(), MemoryAllocatorError> {
         if size > self.arena_size() {
-            let state = unsafe { &mut *self.state.get() };
+            let state_ptr = self.state.get();
+            let state = unsafe { &mut *state_ptr };
             state.arena_size = size;
             state.reserve = None;
             state.arena = Some(state.next_arena()?);
@@ -221,7 +215,9 @@ where
     {
         let layout = T::LAYOUT.unwrap_sized();
 
-        unsafe { &mut *self.state.get() }
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
+        state
             .allocate(layout)
             .map(|subbuffer| unsafe { subbuffer.reinterpret_unchecked() })
     }
@@ -247,7 +243,6 @@ where
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
 
         unsafe { &mut *self.state.get() }
@@ -256,13 +251,7 @@ where
     }
 
     /// Allocates a subbuffer with the given `layout`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `layout.alignment()` exceeds `64`.
     pub fn allocate(&self, layout: DeviceLayout) -> Result<Subbuffer<[u8]>, MemoryAllocatorError> {
-        assert!(layout.alignment().as_devicesize() <= 64);
-
         unsafe { &mut *self.state.get() }.allocate(layout)
     }
 }
@@ -318,7 +307,7 @@ where
             let arena = self.arena.as_ref().unwrap();
             let allocation = match arena.buffer.memory() {
                 BufferMemory::Normal(a) => a,
-                BufferMemory::Sparse => unreachable!(),
+                BufferMemory::Sparse | BufferMemory::External => unreachable!(),
             };
             let arena_offset = allocation.offset();
             let atom_size = allocation.atom_size().unwrap_or(DeviceAlignment::MIN);
@@ -439,6 +428,14 @@ pub struct SubbufferAllocatorCreateInfo {
 impl Default for SubbufferAllocatorCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubbufferAllocatorCreateInfo {
+    /// Returns a default `SubbufferAllocatorCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         SubbufferAllocatorCreateInfo {
             arena_size: 0,
             buffer_usage: BufferUsage::empty(),

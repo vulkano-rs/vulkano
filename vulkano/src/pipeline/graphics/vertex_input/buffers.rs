@@ -1,16 +1,7 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-use super::VertexBufferDescription;
+use super::{definition::VertexDefinition, VertexBufferDescription};
 use crate::{
-    pipeline::graphics::vertex_input::{Vertex, VertexDefinition, VertexInputState},
-    shader::ShaderInterface,
+    pipeline::graphics::vertex_input::{Vertex, VertexInputState},
+    shader::EntryPoint,
     ValidationError,
 };
 
@@ -51,8 +42,8 @@ impl BuffersDefinition {
     /// `divisor` can be 0 if the [`vertex_attribute_instance_rate_zero_divisor`] feature is also
     /// enabled. This means that every vertex will use the same vertex and instance data.
     ///
-    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
-    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
+    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_divisor
+    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_zero_divisor
     pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
         self.0.push(V::per_instance_with_divisor(divisor));
         self
@@ -64,8 +55,8 @@ unsafe impl VertexDefinition for BuffersDefinition {
     #[inline]
     fn definition(
         &self,
-        interface: &ShaderInterface,
+        entry_point: &EntryPoint,
     ) -> Result<VertexInputState, Box<ValidationError>> {
-        self.0.definition(interface)
+        self.0.definition(entry_point)
     }
 }

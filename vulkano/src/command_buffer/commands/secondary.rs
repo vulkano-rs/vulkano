@@ -1,17 +1,7 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
+        sys::{CommandBuffer, RecordingCommandBuffer},
         AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
         ResourceInCommand, SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
@@ -21,16 +11,13 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, SafeDeref, ValidationError, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
-use std::{cmp::min, iter, ops::Deref, sync::Arc};
+use std::{cmp::min, iter, sync::Arc};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
@@ -43,7 +30,7 @@ where
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(iter::once(&**command_buffer))?;
 
-        unsafe { Ok(self.execute_commands_locked(smallvec![command_buffer])) }
+        Ok(unsafe { self.execute_commands_locked(smallvec![command_buffer]) })
     }
 
     /// Executes multiple secondary command buffers in a vector.
@@ -63,7 +50,7 @@ where
 
         self.validate_execute_commands(command_buffers.iter().map(|cb| &***cb))?;
 
-        unsafe { Ok(self.execute_commands_locked(command_buffers)) }
+        Ok(unsafe { self.execute_commands_locked(command_buffers) })
     }
 
     fn validate_execute_commands<'a>(
@@ -71,7 +58,7 @@ where
         command_buffers: impl Iterator<Item = &'a dyn SecondaryCommandBufferAbstract> + Clone,
     ) -> Result<(), Box<ValidationError>> {
         self.inner
-            .validate_execute_commands(command_buffers.clone())?;
+            .validate_execute_commands(command_buffers.clone().map(|cb| cb.as_raw()))?;
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
@@ -93,7 +80,7 @@ where
         {
             return Err(Box::new(ValidationError {
                 problem: "a query is active".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "inherited_queries",
                 )])]),
                 vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00101"],
@@ -102,17 +89,16 @@ where
         }
 
         for (command_buffer_index, command_buffer) in command_buffers.enumerate() {
+            let inheritance_info = command_buffer.inheritance_info();
+
             if let Some(render_pass_state) = &self.builder_state.render_pass {
-                let inheritance_render_pass = command_buffer
-                    .inheritance_info()
-                    .render_pass
-                    .as_ref()
-                    .ok_or_else(|| {
+                let inheritance_render_pass =
+                    inheritance_info.render_pass.as_ref().ok_or_else(|| {
                         Box::new(ValidationError {
                             problem: format!(
                                 "a render pass instance is active, but \
-                            `command_buffers[{}].inheritance_info().render_pass` is `None`",
-                                command_buffer_index
+                                `command_buffers[{}].inheritance_info().render_pass` is `None`",
+                                command_buffer_index,
                             )
                             .into(),
                             vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00096"],
@@ -202,12 +188,14 @@ where
                             }));
                         }
 
-                        for (color_attachment_index, image_view, inherited_format) in (attachments
+                        for (color_attachment_index, image_view, inherited_format) in attachments
                             .color_attachments
-                            .iter())
-                        .zip(inheritance_info.color_attachment_formats.iter().copied())
-                        .enumerate()
-                        .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
+                            .iter()
+                            .zip(inheritance_info.color_attachment_formats.iter().copied())
+                            .enumerate()
+                            .filter_map(|(i, (a, f))| {
+                                a.as_ref().map(|a| (i as u32, &a.image_view, f))
+                            })
                         {
                             let required_format = image_view.format();
 
@@ -388,7 +376,7 @@ where
                 // VUID-vkCmdExecuteCommands-pCommandBuffers-06535
                 // VUID-vkCmdExecuteCommands-pCommandBuffers-06536
             } else {
-                if command_buffer.inheritance_info().render_pass.is_some() {
+                if inheritance_info.render_pass.is_some() {
                     return Err(Box::new(ValidationError {
                         context: format!(
                             "command_buffers[{}].inheritance_info().render_pass",
@@ -405,10 +393,8 @@ where
             for state in self.builder_state.queries.values() {
                 match state.query_pool.query_type() {
                     QueryType::Occlusion => {
-                        let inherited_flags = command_buffer
-                            .inheritance_info()
-                            .occlusion_query
-                            .ok_or_else(|| {
+                        let inherited_flags =
+                            inheritance_info.occlusion_query.ok_or_else(|| {
                                 Box::new(ValidationError {
                                     context: format!(
                                         "command_buffers[{}].inheritance_info().occlusion_query",
@@ -438,19 +424,18 @@ where
                             }));
                         }
                     }
-                    &QueryType::PipelineStatistics(state_flags) => {
-                        let inherited_flags =
-                            command_buffer.inheritance_info().query_statistics_flags;
+                    QueryType::PipelineStatistics => {
+                        let inherited_flags = inheritance_info.pipeline_statistics;
 
-                        if !inherited_flags.contains(state_flags) {
+                        if !inherited_flags.contains(state.query_pool.pipeline_statistics()) {
                             return Err(Box::new(ValidationError {
                                 context: format!(
-                                    "command_buffers[{}].inheritance_info().query_statistics_flags",
+                                    "command_buffers[{}].inheritance_info().pipeline_statistics",
                                     command_buffer_index
                                 )
                                 .into(),
                                 problem: "is not a superset of the flags of the active \
-                                    pipeline statistics query"
+                                    `PipelineStatistics` query"
                                     .into(),
                                 vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00104"],
                                 ..Default::default()
@@ -476,13 +461,15 @@ where
         &mut self,
         command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
     ) -> &mut Self {
-        self.execute_commands_locked(
-            command_buffers
-                .into_iter()
-                .map(DropUnlockCommandBuffer::new)
-                .collect::<Result<_, _>>()
-                .unwrap(),
-        )
+        unsafe {
+            self.execute_commands_locked(
+                command_buffers
+                    .into_iter()
+                    .map(DropUnlockCommandBuffer::new)
+                    .collect::<Result<_, _>>()
+                    .unwrap(),
+            )
+        }
     }
 
     unsafe fn execute_commands_locked(
@@ -552,8 +539,8 @@ where
                     }))
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.execute_commands_locked(&command_buffers);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.execute_commands_locked(&command_buffers) };
             },
         );
 
@@ -561,22 +548,20 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn execute_commands(
         &mut self,
-        command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
+        command_buffers: &[&CommandBuffer],
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_execute_commands(command_buffers.iter().map(Deref::deref))?;
+        self.validate_execute_commands(command_buffers.iter().copied())?;
 
-        Ok(self.execute_commands_unchecked(command_buffers))
+        Ok(unsafe { self.execute_commands_unchecked(command_buffers) })
     }
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a dyn SecondaryCommandBufferAbstract>,
+        command_buffers: impl Iterator<Item = &'a CommandBuffer>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -600,9 +585,18 @@ where
             }));
         }
 
-        for (_command_buffer_index, command_buffer) in command_buffers.enumerate() {
+        for (command_buffer_index, command_buffer) in command_buffers.enumerate() {
             // VUID-vkCmdExecuteCommands-commonparent
             assert_eq!(self.device(), command_buffer.device());
+
+            if command_buffer.level() != CommandBufferLevel::Secondary {
+                return Err(Box::new(ValidationError {
+                    context: format!("command_buffers[{}]", command_buffer_index).into(),
+                    problem: "is not a secondary command buffer".into(),
+                    vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00088"],
+                    ..Default::default()
+                }));
+            }
 
             // TODO:
             // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
@@ -614,9 +608,8 @@ where
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00093
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00105
 
-        // VUID-vkCmdExecuteCommands-pCommandBuffers-00088
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00089
-        // Ensured by the SecondaryCommandBuffer trait.
+        // Partially ensured by the `RawCommandBuffer` type.
 
         Ok(())
     }
@@ -624,7 +617,7 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
+        command_buffers: &[&CommandBuffer],
     ) -> &mut Self {
         if command_buffers.is_empty() {
             return self;
@@ -634,11 +627,13 @@ where
             command_buffers.iter().map(|cb| cb.handle()).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_execute_commands)(
-            self.handle(),
-            command_buffers_vk.len() as u32,
-            command_buffers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_execute_commands)(
+                self.handle(),
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        };
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as
         // well.
@@ -662,11 +657,13 @@ where
             command_buffers.iter().map(|cb| cb.handle()).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_execute_commands)(
-            self.handle(),
-            command_buffers_vk.len() as u32,
-            command_buffers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_execute_commands)(
+                self.handle(),
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        };
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as
         // well.
@@ -697,6 +694,7 @@ impl std::ops::Deref for DropUnlockCommandBuffer {
         &self.0
     }
 }
+
 unsafe impl SafeDeref for DropUnlockCommandBuffer {}
 
 impl Drop for DropUnlockCommandBuffer {

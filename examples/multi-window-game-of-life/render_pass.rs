@@ -1,13 +1,4 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-use crate::{app::App, pixels_draw::PixelsDrawPipeline};
+use crate::{pixels_draw::PixelsDrawPipeline, App};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
@@ -15,11 +6,11 @@ use vulkano::{
         RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     device::Queue,
-    format::Format,
     image::view::ImageView,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
+use winit::window::WindowId;
 
 /// A render pass which places an incoming image over the frame, filling it.
 pub struct RenderPassPlaceOverFrame {
@@ -27,19 +18,17 @@ pub struct RenderPassPlaceOverFrame {
     render_pass: Arc<RenderPass>,
     pixels_draw_pipeline: PixelsDrawPipeline,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    framebuffers: Vec<Arc<Framebuffer>>,
 }
 
 impl RenderPassPlaceOverFrame {
-    pub fn new(
-        app: &App,
-        gfx_queue: Arc<Queue>,
-        output_format: Format,
-    ) -> RenderPassPlaceOverFrame {
+    pub fn new(app: &App, gfx_queue: Arc<Queue>, window_id: WindowId) -> RenderPassPlaceOverFrame {
+        let window_renderer = app.windows.get_renderer(window_id).unwrap();
         let render_pass = vulkano::single_pass_renderpass!(
             gfx_queue.device().clone(),
             attachments: {
                 color: {
-                    format: output_format,
+                    format: window_renderer.swapchain_format(),
                     samples: 1,
                     load_op: Clear,
                     store_op: Store,
@@ -56,9 +45,10 @@ impl RenderPassPlaceOverFrame {
 
         RenderPassPlaceOverFrame {
             gfx_queue,
-            render_pass,
+            render_pass: render_pass.clone(),
             pixels_draw_pipeline,
             command_buffer_allocator: app.command_buffer_allocator.clone(),
+            framebuffers: create_framebuffers(window_renderer.swapchain_image_views(), render_pass),
         }
     }
 
@@ -69,6 +59,7 @@ impl RenderPassPlaceOverFrame {
         before_future: F,
         image_view: Arc<ImageView>,
         target: Arc<ImageView>,
+        image_index: u32,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
@@ -76,19 +67,9 @@ impl RenderPassPlaceOverFrame {
         // Get the dimensions.
         let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
-        // Create the framebuffer.
-        let framebuffer = Framebuffer::new(
-            self.render_pass.clone(),
-            FramebufferCreateInfo {
-                attachments: vec![target],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
         // Create a primary command buffer builder.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.as_ref(),
+            self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -99,7 +80,9 @@ impl RenderPassPlaceOverFrame {
             .begin_render_pass(
                 RenderPassBeginInfo {
                     clear_values: vec![Some([0.0; 4].into())],
-                    ..RenderPassBeginInfo::framebuffer(framebuffer)
+                    ..RenderPassBeginInfo::framebuffer(
+                        self.framebuffers[image_index as usize].clone(),
+                    )
                 },
                 SubpassBeginInfo {
                     contents: SubpassContents::SecondaryCommandBuffers,
@@ -129,4 +112,27 @@ impl RenderPassPlaceOverFrame {
 
         after_future.boxed()
     }
+
+    pub fn recreate_framebuffers(&mut self, swapchain_image_views: &[Arc<ImageView>]) {
+        self.framebuffers = create_framebuffers(swapchain_image_views, self.render_pass.clone());
+    }
+}
+
+fn create_framebuffers(
+    swapchain_image_views: &[Arc<ImageView>],
+    render_pass: Arc<RenderPass>,
+) -> Vec<Arc<Framebuffer>> {
+    swapchain_image_views
+        .iter()
+        .map(|swapchain_image_view| {
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![swapchain_image_view.clone()],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
 }

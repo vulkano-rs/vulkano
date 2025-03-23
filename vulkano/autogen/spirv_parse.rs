@@ -1,23 +1,14 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{write_file, SpirvGrammar};
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
+use std::{borrow::Cow, sync::LazyLock};
 
 // From the documentation of the OpSpecConstantOp instruction.
 // The instructions requiring the Kernel capability are not listed,
 // as this capability is not supported by Vulkan.
-static SPEC_CONSTANT_OP: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+static SPEC_CONSTANT_OP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from_iter([
         "SConvert",
         "UConvert",
@@ -97,8 +88,19 @@ pub fn write(grammar: &SpirvGrammar) {
 #[derive(Clone, Debug)]
 struct InstructionMember {
     name: Ident,
+    is_atomic_operation: bool,
+    is_cooperative_matrix: bool,
+    is_cooperative_matrix_nv: bool,
+    is_group_operation: bool,
+    is_quad_group_operation: bool,
+    is_image_gather: bool,
+    is_image_fetch: bool,
+    is_image_sample: bool,
     has_result_id: bool,
     has_result_type_id: bool,
+    has_execution_scope_id: bool,
+    has_memory_scope_id: bool,
+    has_image_operands: Option<bool>,
     opcode: u16,
     operands: Vec<OperandMember>,
 }
@@ -183,12 +185,268 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                 }
             },
         );
+        let result_type_id_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 has_result_type_id,
+                 ..
+             }| {
+                if *has_result_type_id {
+                    Some(quote! { Self::#name { result_type_id, .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_cooperative_matrix_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_cooperative_matrix,
+                 ..
+             }| {
+                if *is_cooperative_matrix {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_cooperative_matrix_nv_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_cooperative_matrix_nv,
+                 ..
+             }| {
+                if *is_cooperative_matrix_nv {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_group_operation_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_group_operation,
+                 ..
+             }| {
+                if *is_group_operation {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_quad_group_operation_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_quad_group_operation,
+                 ..
+             }| {
+                if *is_quad_group_operation {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_image_fetch_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_image_fetch,
+                 ..
+             }| {
+                if *is_image_fetch {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_image_gather_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_image_gather,
+                 ..
+             }| {
+                if *is_image_gather {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let is_image_sample_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_image_sample,
+                 ..
+             }| {
+                if *is_image_sample {
+                    Some(quote! { Self::#name { .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let atomic_pointer_id_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 is_atomic_operation,
+                 ..
+             }| {
+                if *is_atomic_operation {
+                    Some(quote! { Self::#name { pointer, .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let execution_scope_id_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 has_execution_scope_id,
+                 ..
+             }| {
+                if *has_execution_scope_id {
+                    Some(quote! { Self::#name { execution, .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let memory_scope_id_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 has_memory_scope_id,
+                 ..
+             }| {
+                if *has_memory_scope_id {
+                    Some(quote! { Self::#name { memory, .. } })
+                } else {
+                    None
+                }
+            },
+        );
+        let image_operands_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 has_image_operands,
+                 ..
+             }| {
+                if let Some(has_image_operands) = *has_image_operands {
+                    if has_image_operands {
+                        Some(quote! { Self::#name { image_operands: Some(image_operands), .. } })
+                    } else {
+                        Some(quote! { Self::#name { image_operands, .. } })
+                    }
+                } else {
+                    None
+                }
+            },
+        );
 
         quote! {
             /// Returns the `Id` that is assigned by this instruction, if any.
             pub fn result_id(&self) -> Option<Id> {
                 match self {
                     #(#result_id_items)|* => Some(*result_id),
+                    _ => None
+                }
+            }
+
+            /// Returns the `Id` of the type of `result_id`, if any.
+            pub fn result_type_id(&self) -> Option<Id> {
+                match self {
+                    #(#result_type_id_items)|* => Some(*result_type_id),
+                    _ => None
+                }
+            }
+
+            /// Returns the `Id` of the pointer in an atomic operation, if any.
+            pub fn atomic_pointer_id(&self) -> Option<Id> {
+                match self {
+                    #(#atomic_pointer_id_items)|* => Some(*pointer),
+                    _ => None
+                }
+            }
+
+            /// Returns whether the instruction is a cooperative matrix instruction.
+            pub fn is_cooperative_matrix(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_cooperative_matrix_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is an NV cooperative matrix instruction.
+            pub fn is_cooperative_matrix_nv(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_cooperative_matrix_nv_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is a group operation instruction.
+            pub fn is_group_operation(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_group_operation_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is a quad group operation instruction.
+            pub fn is_quad_group_operation(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_quad_group_operation_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is an `ImageFetch*` instruction.
+            pub fn is_image_fetch(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_image_fetch_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is an `Image*Gather` instruction.
+            pub fn is_image_gather(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_image_gather_items)|*
+                )
+            }
+
+            /// Returns whether the instruction is an `ImageSample*` instruction.
+            pub fn is_image_sample(&self) -> bool {
+                matches!(
+                    self,
+                    #(#is_image_sample_items)|*
+                )
+            }
+
+            /// Returns the `Id` of the execution scope ID operand, if any.
+            pub fn execution_scope_id(&self) -> Option<Id> {
+                match self {
+                    #(#execution_scope_id_items)|* => Some(*execution),
+                    _ => None
+                }
+            }
+
+            /// Returns the `Id` of the memory scope ID operand, if any.
+            pub fn memory_scope_id(&self) -> Option<Id> {
+                match self {
+                    #(#memory_scope_id_items)|* => Some(*memory),
+                    _ => None
+                }
+            }
+
+            /// Returns the image operands, if any.
+            pub fn image_operands(&self) -> Option<&ImageOperands> {
+                match self {
+                    #(#image_operands_items)|* => Some(image_operands),
                     _ => None
                 }
             }
@@ -230,9 +488,23 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
         .instructions
         .iter()
         .map(|instruction| {
-            let name = format_ident!("{}", instruction.opname.strip_prefix("Op").unwrap());
+            let name = instruction.opname.strip_prefix("Op").unwrap();
+            let is_atomic_operation = instruction.class == "Atomic";
+            let is_cooperative_matrix =
+                name.starts_with("CooperativeMatrix") && !name.ends_with("NV");
+            let is_cooperative_matrix_nv =
+                name.starts_with("CooperativeMatrix") && name.ends_with("NV");
+            let is_group_operation =
+                instruction.class == "Group" || instruction.class == "Non-Uniform";
+            let is_quad_group_operation = is_group_operation && instruction.opname.contains("Quad");
+            let is_image_fetch = name.starts_with("ImageFetch");
+            let is_image_gather = name.starts_with("Image") && name.ends_with("Gather");
+            let is_image_sample = name.starts_with("ImageSample");
             let mut has_result_id = false;
             let mut has_result_type_id = false;
+            let mut has_execution_scope_id = false;
+            let mut has_memory_scope_id = false;
+            let mut has_image_operands = None;
             let mut operand_names = HashMap::default();
 
             let mut operands = instruction
@@ -246,7 +518,23 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
                         has_result_type_id = true;
                         format_ident!("result_type_id")
                     } else {
-                        to_member_name(&operand.kind, operand.name.as_deref())
+                        let member_name = to_member_name(&operand.kind, operand.name.as_deref());
+
+                        if operand.kind == "IdScope" {
+                            if member_name == "execution" {
+                                has_execution_scope_id = true;
+                            } else if member_name == "memory" {
+                                has_memory_scope_id = true;
+                            }
+                        } else if operand.kind == "ImageOperands" {
+                            if operand.quantifier == Some('?') {
+                                has_image_operands = Some(true);
+                            } else {
+                                has_image_operands = Some(false);
+                            }
+                        }
+
+                        format_ident!("{}", member_name)
                     };
 
                     *operand_names.entry(name.clone()).or_insert(0) += 1;
@@ -293,9 +581,20 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
             }
 
             InstructionMember {
-                name,
+                name: format_ident!("{}", name),
+                is_atomic_operation,
+                is_cooperative_matrix,
+                is_cooperative_matrix_nv,
+                is_group_operation,
+                is_quad_group_operation,
+                is_image_fetch,
+                is_image_gather,
+                is_image_sample,
                 has_result_id,
                 has_result_type_id,
+                has_execution_scope_id,
+                has_memory_scope_id,
+                has_image_operands,
                 opcode: instruction.opcode,
                 operands,
             }
@@ -334,6 +633,19 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                 }
             },
         );
+        let from_items = members.iter().map(
+            |KindEnumMember {
+                 name,
+                 value,
+                 parameters,
+             }| {
+                if parameters.is_empty() {
+                    quote! { #name: value & #value != 0, }
+                } else {
+                    quote! { #name: None, }
+                }
+            },
+        );
         let parse_items = members.iter().map(
             |KindEnumMember {
                  name,
@@ -365,7 +677,7 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         );
 
         quote! {
-            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
             #[allow(non_camel_case_types)]
             pub struct #name {
                 #(#members_items)*
@@ -379,6 +691,14 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                     Ok(Self {
                         #(#parse_items)*
                     })
+                }
+            }
+
+            impl From<u32> for #name {
+                fn from(value: u32) -> Self {
+                    Self {
+                        #(#from_items)*
+                    }
                 }
             }
         }
@@ -432,7 +752,10 @@ fn bit_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)>
                         .parameters
                         .iter()
                         .map(|param| {
-                            let name = to_member_name(&param.kind, param.name.as_deref());
+                            let name = format_ident!(
+                                "{}",
+                                to_member_name(&param.kind, param.name.as_deref())
+                            );
                             let (ty, parse) = parameter_kinds[param.kind.as_str()].clone();
 
                             OperandMember { name, ty, parse }
@@ -456,11 +779,11 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
     let enum_items = enums.iter().map(|(name, members)| {
         let members_items = members.iter().map(
             |KindEnumMember {
-                 name, parameters, ..
+                 name, value, parameters, ..
              }| {
                 if parameters.is_empty() {
                     quote! {
-                        #name,
+                        #name = #value,
                     }
                 } else {
                     let params = parameters.iter().map(|OperandMember { name, ty, .. }| {
@@ -469,11 +792,17 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                     quote! {
                         #name {
                             #(#params)*
-                        },
+                        } = #value,
                     }
                 }
             },
         );
+        let try_from_items = members
+            .iter()
+            .filter(|member| member.parameters.is_empty())
+            .map(|KindEnumMember { name, value, .. }| {
+                quote! { #value => Ok(Self::#name), }
+            });
         let parse_items = members.iter().map(
             |KindEnumMember {
                  name,
@@ -504,14 +833,14 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         let name_string = name.to_string();
 
         let derives = match name_string.as_str() {
-            "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
             "Decoration" => quote! { #[derive(Clone, Debug, PartialEq)] },
-            _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq)] },
+            _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] },
         };
 
         quote! {
             #derives
             #[allow(non_camel_case_types)]
+            #[repr(u32)]
             pub enum #name {
                 #(#members_items)*
             }
@@ -523,6 +852,17 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                         #(#parse_items)*
                         value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
                     })
+                }
+            }
+
+            impl TryFrom<u32> for #name {
+                type Error = ();
+
+                fn try_from(val: u32) -> Result<Self, Self::Error> {
+                    match val {
+                        #(#try_from_items)*
+                        _ => Err(()),
+                    }
                 }
             }
         }
@@ -564,7 +904,10 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
                         .parameters
                         .iter()
                         .map(|param| {
-                            let name = to_member_name(&param.kind, param.name.as_deref());
+                            let name = format_ident!(
+                                "{}",
+                                to_member_name(&param.kind, param.name.as_deref())
+                            );
                             let (ty, parse) = parameter_kinds[param.kind.as_str()].clone();
 
                             OperandMember { name, ty, parse }
@@ -584,24 +927,24 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
         .collect()
 }
 
-fn to_member_name(kind: &str, name: Option<&str>) -> Ident {
+fn to_member_name(kind: &str, name: Option<&str>) -> Cow<'static, str> {
     if let Some(name) = name {
         let name = name.to_snake_case();
 
         // Fix some weird names
         match name.as_str() {
-            "argument_0_argument_1" => format_ident!("arguments"),
-            "member_0_type_member_1_type" => format_ident!("member_types"),
-            "operand_1_operand_2" => format_ident!("operands"),
-            "parameter_0_type_parameter_1_type" => format_ident!("parameter_types"),
-            "the_name_of_the_opaque_type" => format_ident!("name"),
-            "d_ref" => format_ident!("dref"),
-            "type" => format_ident!("ty"),   // type is a keyword
-            "use" => format_ident!("usage"), // use is a keyword
-            _ => format_ident!("{}", name.replace("operand_", "operand")),
+            "argument_0_argument_1" => "arguments".into(),
+            "member_0_type_member_1_type" => "member_types".into(),
+            "operand_1_operand_2" => "operands".into(),
+            "parameter_0_type_parameter_1_type" => "parameter_types".into(),
+            "the_name_of_the_opaque_type" => "name".into(),
+            "d_ref" => "dref".into(),
+            "type" => "ty".into(),   // type is a keyword
+            "use" => "usage".into(), // use is a keyword
+            _ => name.replace("operand_", "operand").into(),
         }
     } else {
-        format_ident!("{}", kind.to_snake_case())
+        kind.to_snake_case().into()
     }
 }
 

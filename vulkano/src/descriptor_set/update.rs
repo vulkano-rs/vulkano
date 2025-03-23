@@ -1,16 +1,6 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{
-    allocator::DescriptorSetAlloc,
     layout::{DescriptorSetLayout, DescriptorType},
-    sys::UnsafeDescriptorSet,
+    sys::RawDescriptorSet,
     DescriptorSet,
 };
 use crate::{
@@ -28,8 +18,9 @@ use crate::{
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
-use std::{ops::Range, ptr, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -38,8 +29,8 @@ use std::{ops::Range, ptr, sync::Arc};
 /// provided for each resource type:
 /// - The basic constructor variant writes a single element to array index 0. It is intended for
 ///   non-arrayed bindings, where `descriptor_count` in the descriptor set layout is 1.
-/// - The `_array` variant writes several elements and allows specifying the target array index.
-///   At least one element must be provided; a panic results if the provided iterator is empty.
+/// - The `_array` variant writes several elements and allows specifying the target array index. At
+///   least one element must be provided; a panic results if the provided iterator is empty.
 #[derive(Clone, Debug)]
 pub struct WriteDescriptorSet {
     binding: u32,
@@ -54,8 +45,8 @@ impl WriteDescriptorSet {
     /// immutable samplers in the layout. The Vulkan spec requires these elements to be explicitly
     /// written, but since there is no data to write, a dummy write is provided instead.
     ///
-    /// For regular descriptor sets, the data for such descriptors is automatically valid, and dummy
-    /// writes are not allowed.
+    /// For regular descriptor sets, the data for such descriptors is automatically valid, and
+    /// dummy writes are not allowed.
     #[inline]
     pub fn none(binding: u32) -> Self {
         Self::none_array(binding, 0, 1)
@@ -66,7 +57,7 @@ impl WriteDescriptorSet {
     /// See [`none`](Self::none) for more information.
     #[inline]
     pub fn none_array(binding: u32, first_array_element: u32, num_elements: u32) -> Self {
-        assert!(num_elements != 0);
+        assert_ne!(num_elements, 0);
         Self {
             binding,
             first_array_element,
@@ -460,7 +451,7 @@ impl WriteDescriptorSet {
                                         )
                                         .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("image2_d_view_of3_d"),
+                                            Requires::DeviceFeature("image2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
                                     }));
@@ -478,7 +469,7 @@ impl WriteDescriptorSet {
                                         )
                                         .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("sampler2_d_view_of3_d"),
+                                            Requires::DeviceFeature("sampler2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
                                     }));
@@ -567,7 +558,7 @@ impl WriteDescriptorSet {
                                     the sampler has depth comparison enabled"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("mutable_comparison_samplers"),
+                                    Requires::DeviceFeature("mutable_comparison_samplers"),
                                 ])]),
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
@@ -688,7 +679,7 @@ impl WriteDescriptorSet {
                                     the sampler has depth comparison enabled"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("mutable_comparison_samplers"),
+                                    Requires::DeviceFeature("mutable_comparison_samplers"),
                                 ])]),
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
@@ -1337,170 +1328,161 @@ impl WriteDescriptorSet {
         Ok(())
     }
 
-    pub(crate) fn to_vulkan_info(&self, descriptor_type: DescriptorType) -> DescriptorWriteInfo {
-        let default_image_layout = descriptor_type.default_image_layout();
+    pub(crate) fn to_vk<'a>(
+        &self,
+        dst_set: vk::DescriptorSet,
+        descriptor_type: DescriptorType,
+        fields1_vk: &'a WriteDescriptorSetFields1,
+        extensions_vk: &'a mut WriteDescriptorSetExtensionsVk<'_>,
+    ) -> vk::WriteDescriptorSet<'a> {
+        let &Self {
+            binding,
+            first_array_element,
+            elements: _,
+        } = self;
+        let WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
+        } = fields1_vk;
 
-        match &self.elements {
-            WriteDescriptorSetElements::None(num_elements) => {
-                debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
-                DescriptorWriteInfo::Image(
-                    std::iter::repeat_with(|| ash::vk::DescriptorImageInfo {
-                        sampler: ash::vk::Sampler::null(),
-                        image_view: ash::vk::ImageView::null(),
-                        image_layout: ash::vk::ImageLayout::UNDEFINED,
-                    })
+        let mut val_vk = vk::WriteDescriptorSet::default()
+            .dst_set(dst_set)
+            .dst_binding(binding)
+            .dst_array_element(first_array_element)
+            .descriptor_type(descriptor_type.into());
+
+        match descriptor_infos_vk {
+            DescriptorInfosVk::Image(info) => val_vk = val_vk.image_info(info),
+            DescriptorInfosVk::Buffer(info) => val_vk = val_vk.buffer_info(info),
+            DescriptorInfosVk::BufferView(info) => val_vk = val_vk.texel_buffer_view(info),
+            _ => (),
+        }
+
+        let WriteDescriptorSetExtensionsVk {
+            descriptor_type_extension_vk,
+        } = extensions_vk;
+
+        if let Some(descriptor_type_extension_vk) = descriptor_type_extension_vk {
+            match descriptor_type_extension_vk {
+                DescriptorTypeExtensionVk::AccelerationStructure(next) => {
+                    val_vk = val_vk
+                        .descriptor_count(next.acceleration_structure_count)
+                        .push_next(next)
+                }
+                DescriptorTypeExtensionVk::InlineUniformBlock(next) => {
+                    val_vk = val_vk.descriptor_count(next.data_size).push_next(next)
+                }
+            }
+        }
+
+        debug_assert!(val_vk.descriptor_count != 0);
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a WriteDescriptorSetFields1,
+    ) -> WriteDescriptorSetExtensionsVk<'a> {
+        let WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
+        } = fields1_vk;
+
+        let descriptor_type_extension_vk = match descriptor_infos_vk {
+            DescriptorInfosVk::Image(_)
+            | DescriptorInfosVk::Buffer(_)
+            | DescriptorInfosVk::BufferView(_) => None,
+            DescriptorInfosVk::AccelerationStructure(info) => {
+                Some(DescriptorTypeExtensionVk::AccelerationStructure(
+                    vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                        .acceleration_structures(info),
+                ))
+            }
+            DescriptorInfosVk::InlineUniformBlock(data) => {
+                Some(DescriptorTypeExtensionVk::InlineUniformBlock(
+                    vk::WriteDescriptorSetInlineUniformBlock::default().data(data),
+                ))
+            }
+        };
+
+        WriteDescriptorSetExtensionsVk {
+            descriptor_type_extension_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(
+        &self,
+        default_image_layout: ImageLayout,
+    ) -> WriteDescriptorSetFields1 {
+        let descriptor_infos_vk = match &self.elements {
+            WriteDescriptorSetElements::None(num_elements) => DescriptorInfosVk::Image(
+                std::iter::repeat_with(vk::DescriptorImageInfo::default)
                     .take(*num_elements as usize)
                     .collect(),
-                )
-            }
-            WriteDescriptorSetElements::Buffer(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::UniformBuffer
-                        | DescriptorType::StorageBuffer
-                        | DescriptorType::UniformBufferDynamic
-                        | DescriptorType::StorageBufferDynamic
-                ));
-                DescriptorWriteInfo::Buffer(
-                    elements
-                        .iter()
-                        .map(|buffer_info| {
-                            let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                            debug_assert!(!range.is_empty());
-                            debug_assert!(range.end <= buffer.buffer().size());
-
-                            ash::vk::DescriptorBufferInfo {
-                                buffer: buffer.buffer().handle(),
-                                offset: buffer.offset() + range.start,
-                                range: range.end - range.start,
-                            }
-                        })
-                        .collect(),
-                )
-            }
+            ),
+            WriteDescriptorSetElements::Buffer(elements) => DescriptorInfosVk::Buffer(
+                elements.iter().map(DescriptorBufferInfo::to_vk).collect(),
+            ),
             WriteDescriptorSetElements::BufferView(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::UniformTexelBuffer | DescriptorType::StorageTexelBuffer
-                ));
-                DescriptorWriteInfo::BufferView(
-                    elements
-                        .iter()
-                        .map(|buffer_view| buffer_view.handle())
-                        .collect(),
-                )
+                DescriptorInfosVk::BufferView(elements.iter().map(VulkanObject::handle).collect())
             }
-            WriteDescriptorSetElements::ImageView(elements) => {
-                // NOTE: combined image sampler can occur with immutable samplers
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::CombinedImageSampler
-                        | DescriptorType::SampledImage
-                        | DescriptorType::StorageImage
-                        | DescriptorType::InputAttachment
-                ));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|image_view_info| {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            ash::vk::DescriptorImageInfo {
-                                sampler: ash::vk::Sampler::null(),
-                                image_view: image_view.handle(),
-                                image_layout: image_layout.into(),
-                            }
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::ImageViewSampler(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::CombinedImageSampler
-                ));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|(image_view_info, sampler)| {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            ash::vk::DescriptorImageInfo {
-                                sampler: sampler.handle(),
-                                image_view: image_view.handle(),
-                                image_layout: image_layout.into(),
-                            }
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::Sampler(elements) => {
-                debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|sampler| ash::vk::DescriptorImageInfo {
-                            sampler: sampler.handle(),
-                            image_view: ash::vk::ImageView::null(),
-                            image_layout: ash::vk::ImageLayout::UNDEFINED,
-                        })
-                        .collect(),
-                )
-            }
+            WriteDescriptorSetElements::ImageView(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|image_view_info| image_view_info.to_vk(default_image_layout))
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::ImageViewSampler(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|(image_view_info, sampler)| vk::DescriptorImageInfo {
+                        sampler: sampler.handle(),
+                        ..image_view_info.to_vk(default_image_layout)
+                    })
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::Sampler(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|sampler| vk::DescriptorImageInfo {
+                        sampler: sampler.handle(),
+                        ..Default::default()
+                    })
+                    .collect(),
+            ),
             WriteDescriptorSetElements::InlineUniformBlock(data) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::InlineUniformBlock
-                ));
-                DescriptorWriteInfo::InlineUniformBlock(data.clone())
+                DescriptorInfosVk::InlineUniformBlock(data.clone())
             }
             WriteDescriptorSetElements::AccelerationStructure(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::AccelerationStructure
-                ));
-                DescriptorWriteInfo::AccelerationStructure(
-                    elements
-                        .iter()
-                        .map(|acceleration_structure| acceleration_structure.handle())
-                        .collect(),
+                DescriptorInfosVk::AccelerationStructure(
+                    elements.iter().map(VulkanObject::handle).collect(),
                 )
             }
-        }
-    }
+        };
 
-    pub(crate) fn to_vulkan(
-        &self,
-        dst_set: ash::vk::DescriptorSet,
-        descriptor_type: DescriptorType,
-    ) -> ash::vk::WriteDescriptorSet {
-        ash::vk::WriteDescriptorSet {
-            dst_set,
-            dst_binding: self.binding,
-            dst_array_element: self.first_array_element,
-            descriptor_count: 0,
-            descriptor_type: descriptor_type.into(),
-            p_image_info: ptr::null(),
-            p_buffer_info: ptr::null(),
-            p_texel_buffer_view: ptr::null(),
-            ..Default::default()
+        WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
         }
     }
+}
+
+pub(crate) struct WriteDescriptorSetExtensionsVk<'a> {
+    pub(crate) descriptor_type_extension_vk: Option<DescriptorTypeExtensionVk<'a>>,
+}
+
+pub(crate) enum DescriptorTypeExtensionVk<'a> {
+    AccelerationStructure(vk::WriteDescriptorSetAccelerationStructureKHR<'a>),
+    InlineUniformBlock(vk::WriteDescriptorSetInlineUniformBlock<'a>),
+}
+
+pub(crate) struct WriteDescriptorSetFields1 {
+    pub(crate) descriptor_infos_vk: DescriptorInfosVk,
+}
+
+pub(crate) enum DescriptorInfosVk {
+    Image(SmallVec<[vk::DescriptorImageInfo; 1]>),
+    Buffer(SmallVec<[vk::DescriptorBufferInfo; 1]>),
+    BufferView(SmallVec<[vk::BufferView; 1]>),
+    InlineUniformBlock(Vec<u8>),
+    AccelerationStructure(SmallVec<[vk::AccelerationStructureKHR; 1]>),
 }
 
 /// The elements held by a `WriteDescriptorSet`.
@@ -1550,6 +1532,21 @@ pub struct DescriptorBufferInfo {
     pub range: Range<DeviceSize>,
 }
 
+impl DescriptorBufferInfo {
+    pub(crate) fn to_vk(&self) -> vk::DescriptorBufferInfo {
+        let Self { buffer, range } = self;
+
+        debug_assert!(!range.is_empty());
+        debug_assert!(range.end <= buffer.buffer().size());
+
+        vk::DescriptorBufferInfo {
+            buffer: buffer.buffer().handle(),
+            offset: buffer.offset() + range.start,
+            range: range.end - range.start,
+        }
+    }
+}
+
 /// Parameters to write an image view reference to a descriptor.
 #[derive(Clone, Debug)]
 pub struct DescriptorImageViewInfo {
@@ -1576,13 +1573,23 @@ pub struct DescriptorImageViewInfo {
     pub image_layout: ImageLayout,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) enum DescriptorWriteInfo {
-    Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
-    Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
-    BufferView(SmallVec<[ash::vk::BufferView; 1]>),
-    InlineUniformBlock(Vec<u8>),
-    AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
+impl DescriptorImageViewInfo {
+    pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> vk::DescriptorImageInfo {
+        let &Self {
+            ref image_view,
+            image_layout,
+        } = self;
+
+        vk::DescriptorImageInfo {
+            sampler: vk::Sampler::null(),
+            image_view: image_view.handle(),
+            image_layout: if image_layout == ImageLayout::Undefined {
+                default_image_layout.into()
+            } else {
+                image_layout.into()
+            },
+        }
+    }
 }
 
 /// Represents a single copy operation to the binding of a descriptor set.
@@ -1591,7 +1598,7 @@ pub struct CopyDescriptorSet {
     /// The source descriptor set to copy from.
     ///
     /// There is no default value.
-    pub src_set: Arc<dyn DescriptorSet>,
+    pub src_set: Arc<DescriptorSet>,
 
     /// The binding number in the source descriptor set to copy from.
     ///
@@ -1609,6 +1616,8 @@ pub struct CopyDescriptorSet {
     pub dst_binding: u32,
 
     /// The first array element in the destination descriptor set to copy into.
+    ///
+    /// The default value is 0.
     pub dst_first_array_element: u32,
 
     /// The number of descriptors (array elements) to copy.
@@ -1620,9 +1629,9 @@ pub struct CopyDescriptorSet {
 }
 
 impl CopyDescriptorSet {
-    /// Returns a `CopyDescriptorSet` with the specified `src_set`.
+    /// Returns a default `CopyDescriptorSet` with the provided `src_set`.
     #[inline]
-    pub fn new(src_set: Arc<dyn DescriptorSet>) -> Self {
+    pub const fn new(src_set: Arc<DescriptorSet>) -> Self {
         Self {
             src_set,
             src_binding: 0,
@@ -1634,13 +1643,7 @@ impl CopyDescriptorSet {
         }
     }
 
-    pub(crate) fn validate<P>(
-        &self,
-        dst_set: &UnsafeDescriptorSet<P>,
-    ) -> Result<(), Box<ValidationError>>
-    where
-        P: DescriptorSetAlloc,
-    {
+    pub(crate) fn validate(&self, dst_set: &RawDescriptorSet) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_set,
             src_binding,
@@ -1844,6 +1847,117 @@ impl CopyDescriptorSet {
 
         // VUID-VkCopyDescriptorSet-srcSet-00349
         // Ensured as long as copies can only occur during descriptor set construction.
+
+        Ok(())
+    }
+
+    pub(crate) fn to_vk(&self, dst_set: vk::DescriptorSet) -> vk::CopyDescriptorSet<'static> {
+        let &Self {
+            ref src_set,
+            src_binding,
+            src_first_array_element,
+            dst_binding,
+            dst_first_array_element,
+            descriptor_count,
+            _ne: _,
+        } = self;
+
+        vk::CopyDescriptorSet::default()
+            .src_set(src_set.handle())
+            .src_binding(src_binding)
+            .src_array_element(src_first_array_element)
+            .dst_set(dst_set)
+            .dst_binding(dst_binding)
+            .dst_array_element(dst_first_array_element)
+            .descriptor_count(descriptor_count)
+    }
+}
+
+/// Invalidates descriptors within a descriptor set. Doesn't actually call into vulkan and only
+/// invalidates the descriptors inside vulkano's resource tracking. Invalidated descriptors are
+/// equivalent to uninitialized descriptors, in that binding a descriptor set to a particular
+/// pipeline requires all shader-accessible descriptors to be valid.
+///
+/// The intended use-case is an update-after-bind or bindless system, where entries in an arrayed
+/// binding have to be invalidated so that the backing resource will be freed, and not stay forever
+/// referenced until overridden by some update.
+pub struct InvalidateDescriptorSet {
+    /// The binding number in the descriptor set to invalidate.
+    ///
+    /// The default value is 0.
+    pub binding: u32,
+
+    /// The first array element in the descriptor set to invalidate.
+    ///
+    /// The default value is 0.
+    pub first_array_element: u32,
+
+    /// The number of descriptors (array elements) to invalidate.
+    ///
+    /// The default value is 1.
+    pub descriptor_count: u32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl InvalidateDescriptorSet {
+    pub fn invalidate(binding: u32) -> Self {
+        Self::invalidate_array(binding, 0, 1)
+    }
+
+    pub fn invalidate_array(binding: u32, first_array_element: u32, descriptor_count: u32) -> Self {
+        Self {
+            binding,
+            first_array_element,
+            descriptor_count,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(
+        &self,
+        layout: &DescriptorSetLayout,
+        variable_descriptor_count: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            binding,
+            first_array_element,
+            descriptor_count,
+            ..
+        } = self;
+
+        let layout_binding = match layout.bindings().get(&binding) {
+            Some(layout_binding) => layout_binding,
+            None => {
+                return Err(Box::new(ValidationError {
+                    context: "binding".into(),
+                    problem: "does not exist in the descriptor set layout".into(),
+                    vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
+                    ..Default::default()
+                }));
+            }
+        };
+
+        debug_assert!(descriptor_count != 0);
+        let max_descriptor_count = if layout_binding
+            .binding_flags
+            .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+        {
+            variable_descriptor_count
+        } else {
+            layout_binding.descriptor_count
+        };
+
+        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
+        if first_array_element + descriptor_count > max_descriptor_count {
+            return Err(Box::new(ValidationError {
+                problem: "`first_array_element` + the number of provided elements is greater than \
+                    the number of descriptors in the descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }

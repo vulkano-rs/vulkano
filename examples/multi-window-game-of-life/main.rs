@@ -1,12 +1,3 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // A multi windowed game of life application. You could use this to learn:
 //
 // - how to handle multiple window inputs,
@@ -16,213 +7,278 @@
 //
 // The possibilities are limitless. ;)
 
-mod app;
+use game_of_life::GameOfLifeComputePipeline;
+use glam::{f32::Vec2, IVec2};
+use render_pass::RenderPassPlaceOverFrame;
+use std::{
+    collections::HashMap,
+    error::Error,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use vulkano::{
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
+};
+use vulkano_util::{
+    context::{VulkanoConfig, VulkanoContext},
+    renderer::VulkanoWindowRenderer,
+    window::{VulkanoWindows, WindowDescriptor},
+};
+use winit::{
+    application::ApplicationHandler,
+    event::{MouseButton, WindowEvent},
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::WindowId,
+};
+
 mod game_of_life;
 mod pixels_draw;
 mod render_pass;
 
-use crate::app::{App, RenderPipeline};
-use cgmath::Vector2;
-use std::{error::Error, time::Instant};
-use vulkano_util::renderer::VulkanoWindowRenderer;
-use winit::{
-    event::{ElementState, Event, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-};
-
-pub const WINDOW_WIDTH: f32 = 1024.0;
-pub const WINDOW_HEIGHT: f32 = 1024.0;
-pub const WINDOW2_WIDTH: f32 = 512.0;
-pub const WINDOW2_HEIGHT: f32 = 512.0;
-pub const SCALING: f32 = 2.0;
+const WINDOW_WIDTH: f32 = 1024.0;
+const WINDOW_HEIGHT: f32 = 1024.0;
+const WINDOW2_WIDTH: f32 = 512.0;
+const WINDOW2_HEIGHT: f32 = 512.0;
+const SCALING: f32 = 2.0;
 
 fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
+
     println!("Welcome to Vulkano Game of Life\nUse the mouse to draw life on the grid(s)\n");
 
-    // Create event loop.
-    let event_loop = EventLoop::new().unwrap();
-
-    // Create app with vulkano context.
-    let mut app = App::default();
-    app.open(&event_loop);
-
-    // Time & inputs...
-    let mut time = Instant::now();
-    let mut cursor_pos = Vector2::new(0.0, 0.0);
-
-    // An extremely crude way to handle input state... but works for this example.
-    let mut mouse_is_pressed_w1 = false;
-    let mut mouse_is_pressed_w2 = false;
-
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
-
-        if process_event(
-            &event,
-            &mut app,
-            &mut cursor_pos,
-            &mut mouse_is_pressed_w1,
-            &mut mouse_is_pressed_w2,
-        ) {
-            elwt.exit();
-            return;
-        } else if event == Event::AboutToWait {
-            for (_, renderer) in app.windows.iter() {
-                renderer.window().request_redraw();
-            }
-        }
-
-        // Draw life on windows if mouse is down.
-        draw_life(
-            &mut app,
-            cursor_pos,
-            mouse_is_pressed_w1,
-            mouse_is_pressed_w2,
-        );
-
-        // Compute life & render 60fps.
-        if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
-            compute_then_render_per_window(&mut app);
-            time = Instant::now();
-        }
-    })
+    event_loop.run_app(&mut app)
 }
 
-/// Processes a single event for an event loop.
-/// Returns true only if the window is to be closed.
-pub fn process_event(
-    event: &Event<()>,
-    app: &mut App,
-    cursor_pos: &mut Vector2<f32>,
-    mouse_pressed_w1: &mut bool,
-    mouse_pressed_w2: &mut bool,
-) -> bool {
-    if let Event::WindowEvent {
-        event, window_id, ..
-    } = &event
-    {
+struct App {
+    context: VulkanoContext,
+    windows: VulkanoWindows,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    rcxs: HashMap<WindowId, RenderContext>,
+    time: Instant,
+    cursor_pos: Vec2,
+}
+
+struct RenderContext {
+    compute_pipeline: GameOfLifeComputePipeline,
+    place_over_frame: RenderPassPlaceOverFrame,
+    life_color: [f32; 4],
+    dead_color: [f32; 4],
+    mouse_is_pressed: bool,
+}
+
+impl App {
+    fn new(_event_loop: &EventLoop<()>) -> Self {
+        let context = VulkanoContext::new(VulkanoConfig::default());
+        let windows = VulkanoWindows::default();
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            context.device().clone(),
+            Default::default(),
+        ));
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            context.device().clone(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 32,
+                ..Default::default()
+            },
+        ));
+
+        // Time & inputs...
+        let time = Instant::now();
+        let cursor_pos = Vec2::ZERO;
+
+        App {
+            context,
+            windows,
+            descriptor_set_allocator,
+            command_buffer_allocator,
+            rcxs: HashMap::new(),
+            time,
+            cursor_pos,
+        }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // Create windows & pipelines.
+        let id1 = self.windows.create_window(
+            event_loop,
+            &self.context,
+            &WindowDescriptor {
+                width: WINDOW_WIDTH,
+                height: WINDOW_HEIGHT,
+                title: "Game of Life Primary".to_string(),
+                ..Default::default()
+            },
+            |_| {},
+        );
+        let id2 = self.windows.create_window(
+            event_loop,
+            &self.context,
+            &WindowDescriptor {
+                width: WINDOW2_WIDTH,
+                height: WINDOW2_HEIGHT,
+                title: "Game of Life Secondary".to_string(),
+                ..Default::default()
+            },
+            |_| {},
+        );
+        let gfx_queue = self.context.graphics_queue();
+        self.rcxs.insert(
+            id1,
+            RenderContext {
+                compute_pipeline: GameOfLifeComputePipeline::new(
+                    self,
+                    gfx_queue.clone(),
+                    [
+                        (WINDOW_WIDTH / SCALING) as u32,
+                        (WINDOW_HEIGHT / SCALING) as u32,
+                    ],
+                ),
+                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue.clone(), id1),
+                life_color: [1.0, 0.0, 0.0, 1.0],
+                dead_color: [0.0; 4],
+                mouse_is_pressed: false,
+            },
+        );
+        self.rcxs.insert(
+            id2,
+            RenderContext {
+                compute_pipeline: GameOfLifeComputePipeline::new(
+                    self,
+                    gfx_queue.clone(),
+                    [
+                        (WINDOW2_WIDTH / SCALING) as u32,
+                        (WINDOW2_HEIGHT / SCALING) as u32,
+                    ],
+                ),
+                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue.clone(), id2),
+                life_color: [0.0, 0.0, 0.0, 1.0],
+                dead_color: [1.0; 4],
+                mouse_is_pressed: false,
+            },
+        );
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
-                if *window_id == app.windows.primary_window_id().unwrap() {
-                    return true;
+                if window_id == self.windows.primary_window_id().unwrap() {
+                    event_loop.exit();
                 } else {
                     // Destroy window by removing its renderer.
-                    app.windows.remove_renderer(*window_id);
-                    app.pipelines.remove(window_id);
+                    self.windows.remove_renderer(window_id);
+                    self.rcxs.remove(&window_id);
                 }
             }
             // Resize window and its images.
             WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
-                vulkano_window.resize();
+                let window_renderer = self.windows.get_renderer_mut(window_id).unwrap();
+                window_renderer.resize();
             }
             // Handle mouse position events.
             WindowEvent::CursorMoved { position, .. } => {
-                *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                self.cursor_pos = Vec2::from_array(position.into());
             }
             // Handle mouse button events.
             WindowEvent::MouseInput { state, button, .. } => {
-                let mut mouse_pressed = false;
-                if button == &MouseButton::Left && state == &ElementState::Pressed {
-                    mouse_pressed = true;
-                }
-                if button == &MouseButton::Left && state == &ElementState::Released {
-                    mouse_pressed = false;
-                }
-                if window_id == &app.windows.primary_window_id().unwrap() {
-                    *mouse_pressed_w1 = mouse_pressed;
-                } else {
-                    *mouse_pressed_w2 = mouse_pressed;
+                let rcx = self.rcxs.get_mut(&window_id).unwrap();
+
+                if button == MouseButton::Left {
+                    rcx.mouse_is_pressed = state.is_pressed();
                 }
             }
-            _ => (),
+            WindowEvent::RedrawRequested => {
+                let Some(window_renderer) = self.windows.get_renderer_mut(window_id) else {
+                    return;
+                };
+                let rcx = self.rcxs.get_mut(&window_id).unwrap();
+                let window_size = window_renderer.window().inner_size();
+
+                if window_size.width == 0 || window_size.height == 0 {
+                    return;
+                }
+
+                // Draw life on windows if mouse is down.
+                draw_life(window_renderer, rcx, self.cursor_pos);
+
+                // Compute life & render 60fps.
+                compute_then_render(window_renderer, rcx);
+                self.time = Instant::now();
+            }
+            _ => {}
         }
     }
-    false
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        for (_, renderer) in self.windows.iter() {
+            renderer.window().request_redraw();
+        }
+    }
 }
 
 fn draw_life(
-    app: &mut App,
-    cursor_pos: Vector2<f32>,
-    mouse_is_pressed_w1: bool,
-    mouse_is_pressed_w2: bool,
+    window_renderer: &mut VulkanoWindowRenderer,
+    rcx: &mut RenderContext,
+    cursor_pos: Vec2,
 ) {
-    let primary_window_id = app.windows.primary_window_id().unwrap();
-    for (id, window) in app.windows.iter_mut() {
-        if id == &primary_window_id && !mouse_is_pressed_w1 {
-            continue;
-        }
-        if id != &primary_window_id && !mouse_is_pressed_w2 {
-            continue;
-        }
-
-        let window_size = window.window_size();
-        let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
-        let mut normalized_pos = Vector2::new(
+    if rcx.mouse_is_pressed {
+        let window_size = window_renderer.window_size();
+        let mut normalized_pos = Vec2::new(
             (cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
             (cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
         );
 
         // Flip y.
         normalized_pos.y = 1.0 - normalized_pos.y;
-        let image_extent = compute_pipeline.color_image().image().extent();
-        compute_pipeline.draw_life(Vector2::new(
+        let image_extent = rcx.compute_pipeline.color_image().image().extent();
+        rcx.compute_pipeline.draw_life(IVec2::new(
             (image_extent[0] as f32 * normalized_pos.x) as i32,
             (image_extent[1] as f32 * normalized_pos.y) as i32,
-        ))
-    }
-}
-
-/// Compute and render per window.
-fn compute_then_render_per_window(app: &mut App) {
-    let primary_window_id = app.windows.primary_window_id().unwrap();
-    for (window_id, window_renderer) in app.windows.iter_mut() {
-        let pipeline = app.pipelines.get_mut(window_id).unwrap();
-        if *window_id == primary_window_id {
-            compute_then_render(window_renderer, pipeline, [1.0, 0.0, 0.0, 1.0], [0.0; 4]);
-        } else {
-            compute_then_render(window_renderer, pipeline, [0.0, 0.0, 0.0, 1.0], [1.0; 4]);
-        }
+        ));
     }
 }
 
 /// Compute game of life, then display result on target image.
-fn compute_then_render(
-    window_renderer: &mut VulkanoWindowRenderer,
-    pipeline: &mut RenderPipeline,
-    life_color: [f32; 4],
-    dead_color: [f32; 4],
-) {
-    // Skip this window when minimized.
-    match window_renderer.window_size() {
-        [w, h] => {
-            if w == 0.0 || h == 0.0 {
+fn compute_then_render(window_renderer: &mut VulkanoWindowRenderer, rcx: &mut RenderContext) {
+    // Start the frame.
+    let before_pipeline_future =
+        match window_renderer.acquire(Some(Duration::from_millis(1000)), |swapchain_image_views| {
+            rcx.place_over_frame
+                .recreate_framebuffers(swapchain_image_views)
+        }) {
+            Err(e) => {
+                println!("{e}");
                 return;
             }
-        }
-    }
-
-    // Start the frame.
-    let before_pipeline_future = match window_renderer.acquire() {
-        Err(e) => {
-            println!("{e}");
-            return;
-        }
-        Ok(future) => future,
-    };
+            Ok(future) => future,
+        };
 
     // Compute.
-    let after_compute = pipeline
-        .compute
-        .compute(before_pipeline_future, life_color, dead_color);
+    let after_compute =
+        rcx.compute_pipeline
+            .compute(before_pipeline_future, rcx.life_color, rcx.dead_color);
 
     // Render.
-    let color_image = pipeline.compute.color_image();
+    let color_image = rcx.compute_pipeline.color_image();
     let target_image = window_renderer.swapchain_image_view();
 
-    let after_render = pipeline
-        .place_over_frame
-        .render(after_compute, color_image, target_image);
+    let after_render = rcx.place_over_frame.render(
+        after_compute,
+        color_image,
+        target_image,
+        window_renderer.image_index(),
+    );
 
     // Finish the frame. Wait for the future so resources are not in use when we render.
     window_renderer.present(after_render, true);

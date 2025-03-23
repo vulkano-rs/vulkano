@@ -1,18 +1,10 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     structs::{self, TypeRegistry},
     MacroInput,
 };
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, TargetEnv};
 use std::{
@@ -41,6 +33,13 @@ fn include_callback(
     base_path: &Path,
     includes: &mut Vec<String>,
 ) -> Result<ResolvedInclude, String> {
+    if requested_source_path_raw == "vulkano.glsl" {
+        return Ok(ResolvedInclude {
+            resolved_name: "vulkano.glsl".to_owned(),
+            content: include_str!("../include/vulkano.glsl").to_owned(),
+        });
+    }
+
     let file_to_include = match directive_type {
         IncludeType::Relative => {
             let requested_source_path = Path::new(requested_source_path_raw);
@@ -257,7 +256,7 @@ pub(super) fn reflect(
             unsafe {
                 ::vulkano::shader::ShaderModule::new(
                     device,
-                    ::vulkano::shader::ShaderModuleCreateInfo::new(&WORDS),
+                    ::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
                 )
             }
         }
@@ -271,7 +270,17 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proc_macro2::Span;
+    use quote::ToTokens;
+    use shaderc::SpirvVersion;
+    use syn::{File, Item};
     use vulkano::shader::reflect;
+
+    fn spv_to_words(data: &[u8]) -> Vec<u32> {
+        data.chunks(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
         paths
@@ -282,15 +291,26 @@ mod tests {
 
     #[test]
     fn spirv_parse() {
-        let data = include_bytes!("../tests/frag.spv");
-        let insts: Vec<_> = data
-            .chunks(4)
-            .map(|c| {
-                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
-            })
-            .collect();
-
+        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
         Spirv::new(&insts).unwrap();
+    }
+
+    #[test]
+    fn spirv_reflect() {
+        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
+
+        let mut type_registry = TypeRegistry::default();
+        let (_shader_code, _structs) = reflect(
+            &MacroInput::empty(),
+            LitStr::new("../tests/frag.spv", Span::call_site()),
+            String::new(),
+            &insts,
+            Vec::new(),
+            &mut type_registry,
+        )
+        .expect("reflecting spv failed");
+
+        assert_eq!(_structs.to_string(), "", "No structs should be generated");
     }
 
     #[test]
@@ -544,14 +564,8 @@ mod tests {
     /// ```
     #[test]
     fn descriptor_calculation_with_multiple_entrypoints() {
-        let data = include_bytes!("../tests/multiple_entrypoints.spv");
-        let instructions: Vec<u32> = data
-            .chunks(4)
-            .map(|c| {
-                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
-            })
-            .collect();
-        let spirv = Spirv::new(&instructions).unwrap();
+        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+        let spirv = Spirv::new(&insts).unwrap();
 
         let mut descriptors = Vec::new();
         for (_, info) in reflect::entry_points(&spirv) {
@@ -559,7 +573,7 @@ mod tests {
         }
 
         // Check first entrypoint
-        let e1_descriptors = descriptors.get(0).expect("could not find entrypoint1");
+        let e1_descriptors = &descriptors[0];
         let mut e1_bindings = Vec::new();
         for loc in e1_descriptors.keys() {
             e1_bindings.push(*loc);
@@ -573,7 +587,7 @@ mod tests {
         assert!(e1_bindings.contains(&(0, 4)));
 
         // Check second entrypoint
-        let e2_descriptors = descriptors.get(1).expect("could not find entrypoint2");
+        let e2_descriptors = &descriptors[1];
         let mut e2_bindings = Vec::new();
         for loc in e2_descriptors.keys() {
             e2_bindings.push(*loc);
@@ -586,13 +600,61 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_calculation_with_multiple_functions() {
-        let (comp, _) = compile(
+    fn reflect_descriptor_calculation_with_multiple_entrypoints() {
+        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+
+        let mut type_registry = TypeRegistry::default();
+        let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
+            LitStr::new("../tests/multiple_entrypoints.spv", Span::call_site()),
+            String::new(),
+            &insts,
+            Vec::new(),
+            &mut type_registry,
+        )
+        .expect("reflecting spv failed");
+
+        let structs = _structs.to_string();
+        assert_ne!(structs, "", "Has some structs");
+
+        let file: File = syn::parse2(_structs).unwrap();
+        let structs: Vec<_> = file
+            .items
+            .iter()
+            .filter_map(|item| {
+                if let Item::Struct(s) = item {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let buffer = structs.iter().find(|s| s.ident == "Buffer").unwrap();
+        assert_eq!(
+            buffer.fields.to_token_stream().to_string(),
+            quote!({pub data: u32,}).to_string()
+        );
+
+        let uniform = structs.iter().find(|s| s.ident == "Uniform").unwrap();
+        assert_eq!(
+            uniform.fields.to_token_stream().to_string(),
+            quote!({pub data: u32,}).to_string()
+        );
+    }
+
+    fn descriptor_calculation_with_multiple_functions_shader() -> (CompilationArtifact, Vec<String>)
+    {
+        compile(
+            &MacroInput {
+                spirv_version: Some(SpirvVersion::V1_6),
+                vulkan_version: Some(EnvVersion::Vulkan1_3),
+                ..MacroInput::empty()
+            },
             None,
             Path::new(""),
             r#"
-                #version 450
+                #version 460
 
                 layout(set = 1, binding = 0) buffer Buffer {
                     vec3 data;
@@ -619,8 +681,13 @@ mod tests {
             "#,
             ShaderKind::Vertex,
         )
-        .unwrap();
-        let spirv = Spirv::new(comp.as_binary()).unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn descriptor_calculation_with_multiple_functions() {
+        let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
+        let spirv = Spirv::new(artifact.as_binary()).unwrap();
 
         if let Some((_, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
@@ -637,5 +704,52 @@ mod tests {
             return;
         }
         panic!("could not find entrypoint");
+    }
+
+    #[test]
+    fn reflect_descriptor_calculation_with_multiple_functions() {
+        let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
+
+        let mut type_registry = TypeRegistry::default();
+        let (_shader_code, _structs) = reflect(
+            &MacroInput::empty(),
+            LitStr::new(
+                "descriptor_calculation_with_multiple_functions_shader",
+                Span::call_site(),
+            ),
+            String::new(),
+            artifact.as_binary(),
+            Vec::new(),
+            &mut type_registry,
+        )
+        .expect("reflecting spv failed");
+
+        let structs = _structs.to_string();
+        assert_ne!(structs, "", "Has some structs");
+
+        let file: File = syn::parse2(_structs).unwrap();
+        let structs: Vec<_> = file
+            .items
+            .iter()
+            .filter_map(|item| {
+                if let Item::Struct(s) = item {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let buffer = structs.iter().find(|s| s.ident == "Buffer").unwrap();
+        assert_eq!(
+            buffer.fields.to_token_stream().to_string(),
+            quote!({pub data: [f32; 3usize],}).to_string()
+        );
+
+        let uniform = structs.iter().find(|s| s.ident == "Uniform").unwrap();
+        assert_eq!(
+            uniform.fields.to_token_stream().to_string(),
+            quote!({pub data: f32,}).to_string()
+        );
     }
 }

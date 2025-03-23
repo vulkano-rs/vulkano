@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to put derives onto Rust structs generated from the shader types
 // through the `custom_derives` option of the `shader!` macro.
 
@@ -84,7 +75,7 @@ fn main() {
 
     assert_eq!(
         Bar {
-            // `Padded<T, N>` implementes `From<T>`, so you can construct it this way as well.
+            // `Padded<T, N>` implements `From<T>`, so you can construct it this way as well.
             y: [5.1, 6.2].into(),
             ..Default::default()
         },

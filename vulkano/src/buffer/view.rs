@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! View of a buffer, in order to use it as a uniform texel buffer or storage texel buffer.
 //!
 //! In order to use a buffer as a uniform texel buffer or a storage texel buffer, you have to
@@ -55,15 +46,16 @@ use crate::{
     memory::{is_aligned, DeviceAlignment},
     DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
+use ash::vk;
+use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
 #[derive(Debug)]
 pub struct BufferView {
-    handle: ash::vk::BufferView,
+    handle: vk::BufferView,
     subbuffer: Subbuffer<[u8]>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     format: Format,
     format_features: FormatFeatures,
@@ -80,7 +72,7 @@ impl BufferView {
         let subbuffer = subbuffer.into_bytes();
         Self::validate_new(&subbuffer, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(subbuffer, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(subbuffer, create_info) }?)
     }
 
     fn validate_new(
@@ -98,12 +90,9 @@ impl BufferView {
         let buffer = subbuffer.buffer();
         let properties = device.physical_device().properties();
 
-        let format_features = unsafe {
-            device
-                .physical_device()
-                .format_properties_unchecked(format)
-                .buffer_features
-        };
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+        let format_features = format_properties.buffer_features;
 
         if !buffer
             .usage()
@@ -296,34 +285,26 @@ impl BufferView {
         subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
     ) -> Result<Arc<BufferView>, VulkanError> {
-        let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
-
         let device = subbuffer.device();
+        let create_info_vk = create_info.to_vk(subbuffer.as_bytes());
 
-        let create_info_vk = ash::vk::BufferViewCreateInfo {
-            flags: ash::vk::BufferViewCreateFlags::empty(),
-            buffer: subbuffer.buffer().handle(),
-            format: format.into(),
-            offset: subbuffer.offset(),
-            range: subbuffer.size(),
-            ..Default::default()
-        };
-
-        let handle = unsafe {
-            let fns = device.fns();
+        let fns = device.fns();
+        let handle = {
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_buffer_view)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_buffer_view)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(subbuffer, handle, create_info))
+        Ok(unsafe { Self::from_handle(subbuffer, handle, create_info) })
     }
 
     /// Creates a new `BufferView` from a raw object handle.
@@ -334,18 +315,18 @@ impl BufferView {
     /// - `subbuffer` and `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         subbuffer: Subbuffer<impl ?Sized>,
-        handle: ash::vk::BufferView,
+        handle: vk::BufferView,
         create_info: BufferViewCreateInfo,
     ) -> Arc<BufferView> {
         let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
         let size = subbuffer.size();
-        let format_features = unsafe {
+        let format_properties = unsafe {
             subbuffer
                 .device()
                 .physical_device()
                 .format_properties_unchecked(format)
-                .buffer_features
         };
+        let format_features = format_properties.buffer_features;
 
         Arc::new(BufferView {
             handle,
@@ -385,19 +366,19 @@ impl BufferView {
 impl Drop for BufferView {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.subbuffer.device().fns();
         unsafe {
-            let fns = self.subbuffer.device().fns();
             (fns.v1_0.destroy_buffer_view)(
                 self.subbuffer.device().handle(),
                 self.handle,
                 ptr::null(),
-            );
-        }
+            )
+        };
     }
 }
 
 unsafe impl VulkanObject for BufferView {
-    type Handle = ash::vk::BufferView;
+    type Handle = vk::BufferView;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -428,14 +409,20 @@ pub struct BufferViewCreateInfo {
 impl Default for BufferViewCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BufferViewCreateInfo {
+    /// Returns a default `BufferViewCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             format: Format::UNDEFINED,
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl BufferViewCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self { format, _ne: _ } = self;
 
@@ -445,6 +432,17 @@ impl BufferViewCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self, subbuffer: &Subbuffer<[u8]>) -> vk::BufferViewCreateInfo<'static> {
+        let &Self { format, _ne: _ } = self;
+
+        vk::BufferViewCreateInfo::default()
+            .flags(vk::BufferViewCreateFlags::empty())
+            .buffer(subbuffer.buffer().handle())
+            .format(format.into())
+            .offset(subbuffer.offset())
+            .range(subbuffer.size())
     }
 }
 

@@ -1,32 +1,16 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
-    command_buffer::{
-        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
-    },
+    command_buffer::{sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
-use std::ffi::CString;
 
 /// # Commands for debugging.
 ///
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
@@ -34,7 +18,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
-        unsafe { Ok(self.begin_debug_utils_label_unchecked(label_info)) }
+        Ok(unsafe { self.begin_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_begin_debug_utils_label(
@@ -54,8 +38,8 @@ where
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_debug_utils_label_unchecked(&label_info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.begin_debug_utils_label_unchecked(&label_info) };
             },
         );
 
@@ -72,7 +56,7 @@ where
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
-        Ok(self.end_debug_utils_label_unchecked())
+        Ok(unsafe { self.end_debug_utils_label_unchecked() })
     }
 
     fn validate_end_debug_utils_label(&self) -> Result<(), Box<ValidationError>> {
@@ -90,8 +74,8 @@ where
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_debug_utils_label_unchecked();
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.end_debug_utils_label_unchecked() };
             },
         );
 
@@ -105,7 +89,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
-        unsafe { Ok(self.insert_debug_utils_label_unchecked(label_info)) }
+        Ok(unsafe { self.insert_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_insert_debug_utils_label(
@@ -125,8 +109,8 @@ where
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.insert_debug_utils_label_unchecked(&label_info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.insert_debug_utils_label_unchecked(&label_info) };
             },
         );
 
@@ -134,17 +118,15 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_debug_utils_label(label_info)?;
 
-        Ok(self.begin_debug_utils_label_unchecked(label_info))
+        Ok(unsafe { self.begin_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_begin_debug_utils_label(
@@ -187,29 +169,22 @@ where
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> &mut Self {
-        let &DebugUtilsLabel {
-            ref label_name,
-            color,
-            _ne: _,
-        } = label_info;
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
+        let fns = self.device().fns();
+        unsafe {
+            (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info_vk)
         };
-
-        let fns = self.device().instance().fns();
-        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info);
 
         self
     }
 
+    #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
-        Ok(self.end_debug_utils_label_unchecked())
+        Ok(unsafe { self.end_debug_utils_label_unchecked() })
     }
 
     fn validate_end_debug_utils_label(&self) -> Result<(), Box<ValidationError>> {
@@ -246,19 +221,20 @@ where
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) -> &mut Self {
-        let fns = self.device().instance().fns();
-        (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle());
+        let fns = self.device().fns();
+        unsafe { (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle()) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn insert_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_insert_debug_utils_label(label_info)?;
 
-        Ok(self.insert_debug_utils_label_unchecked(label_info))
+        Ok(unsafe { self.insert_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_insert_debug_utils_label(
@@ -301,21 +277,13 @@ where
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> &mut Self {
-        let &DebugUtilsLabel {
-            ref label_name,
-            color,
-            _ne: _,
-        } = label_info;
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
+        let fns = self.device().fns();
+        unsafe {
+            (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info_vk)
         };
-
-        let fns = self.device().instance().fns();
-        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info);
 
         self
     }

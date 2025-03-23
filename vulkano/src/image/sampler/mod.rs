@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! How to retrieve data from a sampled image within a shader.
 //!
 //! When you retrieve data from a sampled image, you have to pass the coordinates of the pixel you
@@ -28,8 +19,8 @@
 //!
 //! It is possible to provide a *bias* to the base LOD value, which is simply added to it.
 //! An LOD bias can be provided both in the sampler object and as part of the sampling operation in
-//! the shader, and are combined by addition to produce the final bias value, which is then added to
-//! the base LOD.
+//! the shader, and are combined by addition to produce the final bias value, which is then added
+//! to the base LOD.
 //!
 //! Once LOD bias has been applied, the resulting value may be *clamped* to a minimum and maximum
 //! value to provide the final LOD. A maximum may be specified by the sampler, while a minimum
@@ -44,8 +35,6 @@
 //! - Positive: **minification**. The rendered object is further from the viewer, and each pixel in
 //!   the texture corresponds to less than one framebuffer pixel.
 
-pub mod ycbcr;
-
 use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -59,7 +48,10 @@ use crate::{
     pipeline::graphics::depth_stencil::CompareOp,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc};
+use ash::vk;
+use std::{mem::MaybeUninit, num::NonZero, ops::RangeInclusive, ptr, sync::Arc};
+
+pub mod ycbcr;
 
 /// Describes how to retrieve data from a sampled image within a shader.
 ///
@@ -71,7 +63,10 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear_no_mipmap());
+/// let _sampler = Sampler::new(
+///     device.clone(),
+///     SamplerCreateInfo::simple_repeat_linear_no_mipmap(),
+/// );
 /// ```
 ///
 /// More detailed sampler creation:
@@ -80,21 +75,24 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo {
-///     mag_filter: Filter::Linear,
-///     min_filter: Filter::Linear,
-///     address_mode: [SamplerAddressMode::Repeat; 3],
-///     mip_lod_bias: 1.0,
-///     lod: 0.0..=100.0,
-///     ..Default::default()
-/// })
+/// let _sampler = Sampler::new(
+///     device.clone(),
+///     SamplerCreateInfo {
+///         mag_filter: Filter::Linear,
+///         min_filter: Filter::Linear,
+///         address_mode: [SamplerAddressMode::Repeat; 3],
+///         mip_lod_bias: 1.0,
+///         lod: 0.0..=100.0,
+///         ..Default::default()
+///     },
+/// )
 /// .unwrap();
 /// ```
 #[derive(Debug)]
 pub struct Sampler {
-    handle: ash::vk::Sampler,
+    handle: vk::Sampler,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     address_mode: [SamplerAddressMode; 3],
     anisotropy: Option<f32>,
@@ -119,7 +117,7 @@ impl Sampler {
     ) -> Result<Arc<Sampler>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -138,94 +136,26 @@ impl Sampler {
         device: Arc<Device>,
         create_info: SamplerCreateInfo,
     ) -> Result<Arc<Sampler>, VulkanError> {
-        let &SamplerCreateInfo {
-            mag_filter,
-            min_filter,
-            mipmap_mode,
-            address_mode,
-            mip_lod_bias,
-            anisotropy,
-            compare,
-            ref lod,
-            border_color,
-            unnormalized_coordinates,
-            reduction_mode,
-            ref sampler_ycbcr_conversion,
-            _ne: _,
-        } = &create_info;
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
-        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
-            (ash::vk::TRUE, max_anisotropy)
-        } else {
-            (ash::vk::FALSE, 1.0)
-        };
-
-        let (compare_enable, compare_op) = if let Some(compare_op) = compare {
-            (ash::vk::TRUE, compare_op)
-        } else {
-            (ash::vk::FALSE, CompareOp::Never)
-        };
-
-        let mut create_info_vk = ash::vk::SamplerCreateInfo {
-            flags: ash::vk::SamplerCreateFlags::empty(),
-            mag_filter: mag_filter.into(),
-            min_filter: min_filter.into(),
-            mipmap_mode: mipmap_mode.into(),
-            address_mode_u: address_mode[0].into(),
-            address_mode_v: address_mode[1].into(),
-            address_mode_w: address_mode[2].into(),
-            mip_lod_bias,
-            anisotropy_enable,
-            max_anisotropy,
-            compare_enable,
-            compare_op: compare_op.into(),
-            min_lod: *lod.start(),
-            max_lod: *lod.end(),
-            border_color: border_color.into(),
-            unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
-            ..Default::default()
-        };
-        let mut sampler_reduction_mode_create_info_vk = None;
-        let mut sampler_ycbcr_conversion_info_vk = None;
-
-        if reduction_mode != SamplerReductionMode::WeightedAverage {
-            let next = sampler_reduction_mode_create_info_vk.insert(
-                ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if let Some(sampler_ycbcr_conversion) = sampler_ycbcr_conversion {
-            let next =
-                sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: sampler_ycbcr_conversion.handle(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_sampler)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_sampler)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `Sampler` from a raw object handle.
@@ -237,7 +167,7 @@ impl Sampler {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Sampler,
+        handle: vk::Sampler,
         create_info: SamplerCreateInfo,
     ) -> Arc<Sampler> {
         let SamplerCreateInfo {
@@ -580,15 +510,13 @@ impl Sampler {
 impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_sampler)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_sampler)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for Sampler {
-    type Handle = ash::vk::Sampler;
+    type Handle = vk::Sampler;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -635,12 +563,13 @@ pub struct SamplerCreateInfo {
     /// The bias value to be added to the base LOD before clamping.
     ///
     /// The absolute value of the provided value must not exceed the
-    /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
-    /// device.
+    /// [`max_sampler_lod_bias`](crate::device::DeviceProperties::max_sampler_lod_bias) limit of
+    /// the device.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `mip_lod_bias` is not `0.0`, the
-    /// [`sampler_mip_lod_bias`](crate::device::Features::sampler_mip_lod_bias)
+    /// [`sampler_mip_lod_bias`](crate::device::DeviceFeatures::sampler_mip_lod_bias)
     /// feature must be enabled on the device.
     ///
     /// The default value is `0.0`.
@@ -649,13 +578,14 @@ pub struct SamplerCreateInfo {
     /// Whether anisotropic texel filtering is enabled (`Some`), and the maximum anisotropy value
     /// to use if it is enabled.
     ///
-    /// Anisotropic filtering is a special filtering mode that takes into account the differences in
-    /// scaling between the horizontal and vertical framebuffer axes.
+    /// Anisotropic filtering is a special filtering mode that takes into account the differences
+    /// in scaling between the horizontal and vertical framebuffer axes.
     ///
-    /// If set to `Some`, the [`sampler_anisotropy`](crate::device::Features::sampler_anisotropy)
-    /// feature must be enabled on the device, the provided maximum value must not exceed the
-    /// [`max_sampler_anisotropy`](crate::device::Properties::max_sampler_anisotropy) limit, and
-    /// the [`Cubic`](Filter::Cubic) filter must not be used.
+    /// If set to `Some`, the
+    /// [`sampler_anisotropy`](crate::device::DeviceFeatures::sampler_anisotropy) feature must
+    /// be enabled on the device, the provided maximum value must not exceed the
+    /// [`max_sampler_anisotropy`](crate::device::DeviceProperties::max_sampler_anisotropy) limit,
+    /// and the [`Cubic`](Filter::Cubic) filter must not be used.
     ///
     /// The default value is `None`.
     pub anisotropy: Option<f32>,
@@ -666,16 +596,17 @@ pub struct SamplerCreateInfo {
     /// Depth comparison is an alternative mode for samplers that can be used in combination with
     /// image views specifying the depth aspect. Instead of returning a value that is sampled from
     /// the image directly, a comparison operation is applied between the sampled value and a
-    /// reference value that is specified as part of the operation. The result is binary: 1.0 if the
-    /// operation returns `true`, 0.0 if it returns `false`.
+    /// reference value that is specified as part of the operation. The result is binary: 1.0 if
+    /// the operation returns `true`, 0.0 if it returns `false`.
     ///
     /// If set to `Some`, the `reduction_mode` must be set to
     /// [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor sets
-    /// rather than being an immutable part of a descriptor set layout), the
-    /// [`mutable_comparison_samplers`](crate::device::Features::mutable_comparison_samplers)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor
+    /// sets rather than being an immutable part of a descriptor set layout), the
+    /// [`mutable_comparison_samplers`](crate::device::DeviceFeatures::mutable_comparison_samplers)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -708,8 +639,8 @@ pub struct SamplerCreateInfo {
     /// - Anisotropy and depth comparison must be disabled.
     ///
     /// Some restrictions also apply to the image view being sampled:
-    /// - The view type must be [`Dim1d`](crate::image::view::ImageViewType::Dim1d) or
-    ///   [`Dim2d`](crate::image::view::ImageViewType::Dim2d). Arrayed types are not allowed.
+    /// - The view type must be [`Dim1d`](ImageViewType::Dim1d) or [`Dim2d`](ImageViewType::Dim2d).
+    ///   Arrayed types are not allowed.
     /// - It must have a single mipmap level.
     ///
     /// Finally, restrictions apply to the sampling operations that can be used in a shader:
@@ -749,6 +680,14 @@ pub struct SamplerCreateInfo {
 impl Default for SamplerCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SamplerCreateInfo {
+    /// Returns a default `SamplerCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             mag_filter: Filter::Nearest,
             min_filter: Filter::Nearest,
@@ -765,9 +704,7 @@ impl Default for SamplerCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SamplerCreateInfo {
     /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
     /// mode for borders.
     #[inline]
@@ -860,7 +797,7 @@ impl SamplerCreateInfo {
                     context: "address_mode".into(),
                     problem: "contains `SamplerAddressMode::MirrorClampToEdge`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                        RequiresAllOf(&[Requires::DeviceFeature("sampler_mirror_clamp_to_edge")]),
                         RequiresAllOf(&[Requires::DeviceExtension(
                             "khr_sampler_mirror_clamp_to_edge",
                         )]),
@@ -897,7 +834,7 @@ impl SamplerCreateInfo {
                 problem: "this device is a portability subset device, and \
                     `mip_lod_bias` is not zero"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "sampler_mip_lod_bias",
                 )])]),
                 vuids: &["VUID-VkSamplerCreateInfo-samplerMipLodBias-04467"],
@@ -910,7 +847,7 @@ impl SamplerCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "anisotropy".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "sampler_anisotropy",
                     )])]),
                     vuids: &["VUID-VkSamplerCreateInfo-anisotropyEnable-01070"],
@@ -1036,7 +973,7 @@ impl SamplerCreateInfo {
                     context: "reduction_mode".into(),
                     problem: "is not `SamplerReductionMode::WeightedAverage`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_filter_minmax")]),
+                        RequiresAllOf(&[Requires::DeviceFeature("sampler_filter_minmax")]),
                         RequiresAllOf(&[Requires::DeviceExtension("ext_sampler_filter_minmax")]),
                     ]),
                     ..Default::default()
@@ -1050,12 +987,12 @@ impl SamplerCreateInfo {
             assert_eq!(device, sampler_ycbcr_conversion.device().as_ref());
 
             // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
-            let potential_format_features = unsafe {
+            let format_properties = unsafe {
                 device
                     .physical_device()
                     .format_properties_unchecked(sampler_ycbcr_conversion.format())
-                    .potential_format_features()
             };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(
                 FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER,
@@ -1122,10 +1059,107 @@ impl SamplerCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut SamplerCreateInfoExtensionsVk,
+    ) -> vk::SamplerCreateInfo<'a> {
+        let &Self {
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            ref lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode: _,
+            sampler_ycbcr_conversion: _,
+            _ne: _,
+        } = self;
+
+        let (anisotropy_enable_vk, max_anisotropy_vk) = if let Some(max_anisotropy) = anisotropy {
+            (true, max_anisotropy)
+        } else {
+            (false, 1.0)
+        };
+
+        let (compare_enable_vk, compare_op_vk) = if let Some(compare_op) = compare {
+            (true, compare_op)
+        } else {
+            (false, CompareOp::Never)
+        };
+
+        let mut val_vk = vk::SamplerCreateInfo::default()
+            .flags(vk::SamplerCreateFlags::empty())
+            .mag_filter(mag_filter.into())
+            .min_filter(min_filter.into())
+            .mipmap_mode(mipmap_mode.into())
+            .address_mode_u(address_mode[0].into())
+            .address_mode_v(address_mode[1].into())
+            .address_mode_w(address_mode[2].into())
+            .mip_lod_bias(mip_lod_bias)
+            .anisotropy_enable(anisotropy_enable_vk)
+            .max_anisotropy(max_anisotropy_vk)
+            .compare_enable(compare_enable_vk)
+            .compare_op(compare_op_vk.into())
+            .min_lod(*lod.start())
+            .max_lod(*lod.end())
+            .border_color(border_color.into())
+            .unnormalized_coordinates(unnormalized_coordinates);
+
+        let SamplerCreateInfoExtensionsVk {
+            reduction_mode_vk,
+            ycbcr_conversion_vk,
+        } = extensions_vk;
+
+        if let Some(next) = reduction_mode_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = ycbcr_conversion_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> SamplerCreateInfoExtensionsVk {
+        let &Self {
+            reduction_mode,
+            ref sampler_ycbcr_conversion,
+            ..
+        } = self;
+
+        let reduction_mode_vk =
+            (reduction_mode != SamplerReductionMode::WeightedAverage).then(|| {
+                vk::SamplerReductionModeCreateInfo::default().reduction_mode(reduction_mode.into())
+            });
+
+        let ycbcr_conversion_vk =
+            sampler_ycbcr_conversion
+                .as_ref()
+                .map(|sampler_ycbcr_conversion| {
+                    vk::SamplerYcbcrConversionInfo::default()
+                        .conversion(sampler_ycbcr_conversion.handle())
+                });
+
+        SamplerCreateInfoExtensionsVk {
+            reduction_mode_vk,
+            ycbcr_conversion_vk,
+        }
+    }
+}
+
+pub(crate) struct SamplerCreateInfoExtensionsVk {
+    pub(crate) reduction_mode_vk: Option<vk::SamplerReductionModeCreateInfo<'static>>,
+    pub(crate) ycbcr_conversion_vk: Option<vk::SamplerYcbcrConversionInfo<'static>>,
 }
 
 /// A special value to indicate that the maximum LOD should not be clamped.
-pub const LOD_CLAMP_NONE: f32 = ash::vk::LOD_CLAMP_NONE;
+pub const LOD_CLAMP_NONE: f32 = vk::LOD_CLAMP_NONE;
 
 /// A mapping between components of a source format and components read by a shader.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -1143,8 +1177,13 @@ pub struct ComponentMapping {
 impl ComponentMapping {
     /// Creates a `ComponentMapping` with all components identity swizzled.
     #[inline]
-    pub fn identity() -> Self {
-        Self::default()
+    pub const fn identity() -> Self {
+        Self {
+            r: ComponentSwizzle::Identity,
+            g: ComponentSwizzle::Identity,
+            b: ComponentSwizzle::Identity,
+            a: ComponentSwizzle::Identity,
+        }
     }
 
     /// Returns `true` if all components are identity swizzled,
@@ -1251,16 +1290,16 @@ impl ComponentMapping {
 
         Ok(())
     }
-}
 
-impl From<ComponentMapping> for ash::vk::ComponentMapping {
-    #[inline]
-    fn from(value: ComponentMapping) -> Self {
-        Self {
-            r: value.r.into(),
-            g: value.g.into(),
-            b: value.b.into(),
-            a: value.a.into(),
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> vk::ComponentMapping {
+        let &Self { r, g, b, a } = self;
+
+        vk::ComponentMapping {
+            r: r.into(),
+            g: g.into(),
+            b: b.into(),
+            a: a.into(),
         }
     }
 }
@@ -1323,7 +1362,7 @@ vulkan_enum! {
     ///
     /// The [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
-    /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
+    /// a type of [`Dim2d`](ImageViewType::Dim2d).
     Cubic = CUBIC_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_filter_cubic)]),
@@ -1377,7 +1416,7 @@ vulkan_enum! {
     /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
     /// `[-1.0, 1.0]`.
     ///
-    /// The [`sampler_mirror_clamp_to_edge`](crate::device::Features::sampler_mirror_clamp_to_edge)
+    /// The [`sampler_mirror_clamp_to_edge`](crate::device::DeviceFeatures::sampler_mirror_clamp_to_edge)
     /// feature or the
     /// [`khr_sampler_mirror_clamp_to_edge`](crate::device::DeviceExtensions::khr_sampler_mirror_clamp_to_edge)
     /// extension must be enabled on the device.
@@ -1445,7 +1484,7 @@ vulkan_enum! {
 
     /// Calculates the minimum of the selected pixels.
     ///
-    /// The [`sampler_filter_minmax`](crate::device::Features::sampler_filter_minmax)
+    /// The [`sampler_filter_minmax`](crate::device::DeviceFeatures::sampler_filter_minmax)
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
@@ -1453,7 +1492,7 @@ vulkan_enum! {
 
     /// Calculates the maximum of the selected pixels.
     ///
-    /// The [`sampler_filter_minmax`](crate::device::Features::sampler_filter_minmax)
+    /// The [`sampler_filter_minmax`](crate::device::DeviceFeatures::sampler_filter_minmax)
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
@@ -1674,7 +1713,9 @@ mod tests {
                     *err,
                     ValidationError {
                         requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                            RequiresAllOf([Requires::DeviceFeature(
+                                "sampler_mirror_clamp_to_edge"
+                            )]),
                             RequiresAllOf([Requires::DeviceExtension(
                                 "khr_sampler_mirror_clamp_to_edge"
                             )],)
@@ -1706,7 +1747,7 @@ mod tests {
                     *err,
                     ValidationError {
                         requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::Feature("sampler_filter_minmax")]),
+                            RequiresAllOf([Requires::DeviceFeature("sampler_filter_minmax")]),
                             RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")])
                         ],),
                         ..

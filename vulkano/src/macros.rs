@@ -1,12 +1,3 @@
-// Copyright (c) 2022 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 macro_rules! vulkan_bitflags {
     {
         $(#[doc = $ty_doc:literal])*
@@ -35,13 +26,6 @@ macro_rules! vulkan_bitflags {
                 Self(0)
             }
 
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
-            }
-
             #[doc = concat!("Returns a `", stringify!($ty), "` with all of the flags set.")]
             #[inline]
             pub const fn all() -> Self {
@@ -53,6 +37,12 @@ macro_rules! vulkan_bitflags {
                 $(
                     | ash::vk::$ty_ffi::$flag_name_ffi.as_raw()
                 )*
+            }
+
+            /// Returns the number of flags set in `self`.
+            #[inline]
+            pub const fn count(self) -> u32 {
+                self.0.count_ones()
             }
 
             /// Returns whether no flags are set in `self`.
@@ -239,7 +229,7 @@ macro_rules! vulkan_bitflags {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -261,13 +251,6 @@ macro_rules! vulkan_bitflags {
             #[inline]
             pub const fn empty() -> Self {
                 Self(0)
-            }
-
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
             }
 
             const fn all_raw() -> $repr {
@@ -357,7 +340,7 @@ macro_rules! vulkan_bitflags {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {
@@ -369,7 +352,7 @@ macro_rules! vulkan_bitflags {
                                     device_api_version >= crate::Version::$api_version,
                                 )?
                                 $($(
-                                    device_features.$feature,
+                                    device_features.$device_feature,
                                 )+)?
                                 $($(
                                     device_extensions.$device_extension,
@@ -387,7 +370,7 @@ macro_rules! vulkan_bitflags {
                                             crate::Requires::APIVersion(crate::Version::$api_version),
                                         )?
                                         $($(
-                                            crate::Requires::Feature(stringify!($feature)),
+                                            crate::Requires::DeviceFeature(stringify!($device_feature)),
                                         )+)?
                                         $($(
                                             crate::Requires::DeviceExtension(stringify!($device_extension)),
@@ -640,7 +623,7 @@ macro_rules! vulkan_enum {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -697,7 +680,7 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {
@@ -711,7 +694,7 @@ macro_rules! vulkan_enum {
                                             device_api_version >= crate::Version::$api_version,
                                         )?
                                         $($(
-                                            device_features.$feature,
+                                            device_features.$device_feature,
                                         )+)?
                                         $($(
                                             device_extensions.$device_extension,
@@ -729,7 +712,7 @@ macro_rules! vulkan_enum {
                                                     crate::Requires::APIVersion(crate::Version::$api_version),
                                                 )?
                                                 $($(
-                                                    crate::Requires::Feature(stringify!($feature)),
+                                                    crate::Requires::DeviceFeature(stringify!($device_feature)),
                                                 )+)?
                                                 $($(
                                                     crate::Requires::DeviceExtension(stringify!($device_extension)),
@@ -857,7 +840,7 @@ macro_rules! vulkan_bitflags_enum {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -887,7 +870,7 @@ macro_rules! vulkan_bitflags_enum {
                 $(RequiresOneOf([
                     $(RequiresAllOf([
                         $(APIVersion($api_version) ,)?
-                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceFeature($device_feature)),+ ,)?
                         $($(DeviceExtension($device_extension)),+ ,)?
                         $($(InstanceExtension($instance_extension)),+ ,)?
                     ])),+ ,
@@ -910,7 +893,7 @@ macro_rules! vulkan_bitflags_enum {
                 $(RequiresOneOf([
                     $(RequiresAllOf([
                         $(APIVersion($api_version) ,)?
-                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceFeature($device_feature)),+ ,)?
                         $($(DeviceExtension($device_extension)),+ ,)?
                         $($(InstanceExtension($instance_extension)),+ ,)?
                     ])),+ ,
@@ -968,22 +951,22 @@ macro_rules! impl_id_counter {
     };
     (@inner $type:ident $(< $($param:ident),+ >)?, $($bounds:tt)*) => {
         impl< $($bounds)* > $type $(< $($param),+ >)? {
-            fn next_id() -> std::num::NonZeroU64 {
+            fn next_id() -> std::num::NonZero<u64> {
                 use std::{
-                    num::NonZeroU64,
+                    num::NonZero,
                     sync::atomic::{AtomicU64, Ordering},
                 };
 
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
-                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
+                NonZero::<u64>::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
                     eprintln!("an ID counter has overflown ...somehow");
                     std::process::abort();
                 })
             }
 
             #[allow(dead_code)]
-            pub(crate) fn id(&self) -> std::num::NonZeroU64 {
+            pub(crate) fn id(&self) -> std::num::NonZero<u64> {
                 self.id
             }
         }
@@ -1016,4 +999,8 @@ macro_rules! try_opt {
     };
 }
 
-pub(crate) use {impl_id_counter, try_opt, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};
+pub(crate) use impl_id_counter;
+pub(crate) use try_opt;
+pub(crate) use vulkan_bitflags;
+pub(crate) use vulkan_bitflags_enum;
+pub(crate) use vulkan_enum;

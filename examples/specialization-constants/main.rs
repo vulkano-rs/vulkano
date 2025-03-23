@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // TODO: Give a paragraph about what specialization are and what problems they solve.
 
 use std::sync::Arc;
@@ -16,7 +7,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -86,6 +77,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     mod cs {
@@ -134,19 +126,24 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let data_buffer = Buffer::from_iter(
         memory_allocator,
@@ -163,9 +160,9 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+    let layout = &pipeline.layout().set_layouts()[0];
+    let descriptor_set = DescriptorSet::new(
+        descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         [],
@@ -173,11 +170,12 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
     builder
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
@@ -185,11 +183,11 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set,
+            descriptor_set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
+
     let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)

@@ -1,17 +1,8 @@
-// Copyright (c) 2022 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{write_file, VkRegistryData};
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     let version_output = version_output(vk_data.header_version);
     write_file(
         "version.rs",

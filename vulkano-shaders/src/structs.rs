@@ -1,17 +1,8 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
-use ahash::HashMap;
+use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, TokenStreamExt};
-use std::{cmp::Ordering, num::NonZeroUsize};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
 
@@ -99,11 +90,16 @@ pub(super) fn write_structs(
     shader: &Shader,
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
+    if !input.generate_structs {
+        return Ok(TokenStream::new());
+    }
+
     let mut structs = TokenStream::new();
 
     for (struct_id, member_type_ids) in shader
         .spirv
-        .iter_global()
+        .types()
+        .iter()
         .filter_map(|instruction| match *instruction {
             Instruction::TypeStruct {
                 result_id,
@@ -117,6 +113,10 @@ pub(super) fn write_structs(
 
         // Register the type if needed.
         if !type_registry.register_struct(shader, &struct_ty)? {
+            continue;
+        }
+
+        if struct_ty.is_bindless_id() {
             continue;
         }
 
@@ -139,10 +139,10 @@ pub(super) fn write_structs(
 }
 
 fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
-    for member_info in shader.spirv.id(struct_id).iter_members() {
+    for member_info in shader.spirv.id(struct_id).members() {
         let mut offset_found = false;
 
-        for instruction in member_info.iter_decoration() {
+        for instruction in member_info.decorations() {
             match instruction {
                 Instruction::MemberDecorate {
                     decoration: Decoration::BuiltIn { .. },
@@ -593,7 +593,7 @@ impl ComponentCount {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeArray {
     element_type: Box<Type>,
-    length: Option<NonZeroUsize>,
+    length: Option<NonZero<usize>>,
     stride: usize,
 }
 
@@ -612,7 +612,7 @@ impl TypeArray {
                     assert!(matches!(value.len(), 1 | 2));
                     let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
 
-                    NonZeroUsize::new(len.try_into().unwrap()).ok_or_else(|| {
+                    NonZero::new(len.try_into().unwrap()).ok_or_else(|| {
                         Error::new_spanned(&shader.source, "arrays must have a non-zero length")
                     })
                 }
@@ -625,7 +625,8 @@ impl TypeArray {
                 shader
                     .spirv
                     .id(array_id)
-                    .iter_decoration()
+                    .decorations()
+                    .iter()
                     .filter_map(|instruction| match *instruction {
                         Instruction::Decorate {
                             decoration: Decoration::ArrayStride { array_stride },
@@ -689,22 +690,34 @@ impl TypeStruct {
         let id_info = shader.spirv.id(struct_id);
 
         let ident = id_info
-            .iter_name()
+            .names()
+            .iter()
             .find_map(|instruction| match instruction {
-                Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
+                Instruction::Name { name, .. } => {
+                    // Replace chars that could potentially cause the ident to be invalid with "_".
+                    // For example, Rust-GPU names structs by their fully qualified rust name (e.g.
+                    // "foo::bar::MyStruct") in which the ":" is an invalid character for idents.
+                    let mut name =
+                        name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
+                    if name.starts_with(|c: char| !c.is_ascii_alphabetic()) {
+                        name.insert(0, '_');
+                    }
+
+                    // Worst case: invalid idents will get the UnnamedX name below
+                    syn::parse_str(&name).ok()
+                }
                 _ => None,
             })
             .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
 
         let mut members = Vec::<Member>::with_capacity(member_type_ids.len());
 
-        for (member_index, (&member_id, member_info)) in member_type_ids
-            .iter()
-            .zip(id_info.iter_members())
-            .enumerate()
+        for (member_index, (&member_id, member_info)) in
+            member_type_ids.iter().zip(id_info.members()).enumerate()
         {
             let ident = member_info
-                .iter_name()
+                .names()
+                .iter()
                 .find_map(|instruction| match instruction {
                     Instruction::MemberName { name, .. } => {
                         Some(Ident::new(name, Span::call_site()))
@@ -726,7 +739,7 @@ impl TypeStruct {
 
                 if let Type::Matrix(matrix) = ty {
                     let mut strides =
-                        member_info.iter_decoration().filter_map(
+                        member_info.decorations().iter().filter_map(
                             |instruction| match *instruction {
                                 Instruction::MemberDecorate {
                                     decoration: Decoration::MatrixStride { matrix_stride },
@@ -757,7 +770,7 @@ impl TypeStruct {
                         );
                     }
 
-                    let mut majornessess = member_info.iter_decoration().filter_map(
+                    let mut majornessess = member_info.decorations().iter().filter_map(
                         |instruction| match *instruction {
                             Instruction::MemberDecorate {
                                 decoration: Decoration::ColMajor,
@@ -794,7 +807,8 @@ impl TypeStruct {
             }
 
             let offset = member_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
@@ -834,11 +848,6 @@ impl TypeStruct {
                 if last.offset + last_size > offset {
                     bail!(shader.source, "struct members must not overlap");
                 }
-            } else if offset != 0 {
-                bail!(
-                    shader.source,
-                    "expected struct member at index 0 to have an `Offset` decoration of 0",
-                );
             }
 
             members.push(Member { ident, ty, offset });
@@ -865,6 +874,27 @@ impl TypeStruct {
             .map(|member| member.ty.scalar_alignment())
             .max()
             .unwrap_or(Alignment::A1)
+    }
+
+    fn is_bindless_id(&self) -> bool {
+        self.members.len() == 2
+            && self.members.iter().all(|member| {
+                matches!(
+                    member.ty,
+                    Type::Scalar(TypeScalar::Int(TypeInt {
+                        width: IntWidth::W32,
+                        signed: false,
+                    })),
+                )
+            })
+            && matches!(
+                self.ident.to_string().as_str(),
+                "SamplerId"
+                    | "SampledImageId"
+                    | "StorageImageId"
+                    | "StorageBufferId"
+                    | "AccelerationStructureId",
+            )
     }
 }
 
@@ -894,7 +924,13 @@ impl ToTokens for Serializer<'_, Type> {
             Type::Vector(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Matrix(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Array(ty) => Serializer(ty, self.1).to_tokens(tokens),
-            Type::Struct(ty) => tokens.append(ty.ident.clone()),
+            Type::Struct(ty) => {
+                if ty.is_bindless_id() {
+                    tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set:: });
+                }
+
+                tokens.append(ty.ident.clone());
+            }
         }
     }
 }
@@ -967,7 +1003,7 @@ impl ToTokens for Serializer<'_, TypeArray> {
 
         let element_type = Padded(Serializer(element_type, self.1), padding);
 
-        if let Some(length) = self.0.length.map(NonZeroUsize::get) {
+        if let Some(length) = self.0.length.map(NonZero::get) {
             tokens.extend(quote! { [#element_type; #length] });
         } else {
             tokens.extend(quote! { [#element_type] });

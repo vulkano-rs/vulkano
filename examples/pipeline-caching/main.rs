@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to use pipeline caching.
 //
 // Using a `PipelineCache` can improve performance significantly, by checking if the requested
@@ -102,7 +93,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
@@ -148,7 +139,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             Some(pipeline_cache.clone()),
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
@@ -201,8 +192,8 @@ fn main() {
                 ..Default::default()
             },
         )
-        .unwrap()
-    };
+    }
+    .unwrap();
 
     // As the `PipelineCache` of the Vulkan implementation saves an opaque blob of data, there is
     // no real way to know if the data is correct. There might be differences in the byte blob

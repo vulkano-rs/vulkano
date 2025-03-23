@@ -1,14 +1,5 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::buffer::Subbuffer;
-use std::mem;
+use std::mem::ManuallyDrop;
 
 /// A collection of vertex buffers.
 pub trait VertexBuffersCollection {
@@ -32,11 +23,16 @@ impl<T: ?Sized> VertexBuffersCollection for Subbuffer<T> {
 
 impl<T: ?Sized> VertexBuffersCollection for Vec<Subbuffer<T>> {
     fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
-        assert!(mem::size_of::<Subbuffer<T>>() == mem::size_of::<Subbuffer<[u8]>>());
-        assert!(mem::align_of::<Subbuffer<T>>() == mem::align_of::<Subbuffer<[u8]>>());
+        assert_eq!(size_of::<Subbuffer<T>>(), size_of::<Subbuffer<[u8]>>());
+        assert_eq!(align_of::<Subbuffer<T>>(), align_of::<Subbuffer<[u8]>>());
+
+        let mut this = ManuallyDrop::new(self);
+        let cap = this.capacity();
+        let len = this.len();
+        let ptr = this.as_mut_ptr();
 
         // SAFETY: All `Subbuffer`s share the same layout.
-        unsafe { mem::transmute::<Vec<Subbuffer<T>>, Vec<Subbuffer<[u8]>>>(self) }
+        unsafe { Vec::from_raw_parts(ptr.cast(), len, cap) }
     }
 }
 

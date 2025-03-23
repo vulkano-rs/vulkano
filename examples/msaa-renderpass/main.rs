@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // Multisampling anti-aliasing example, using a render pass resolve.
 //
 // # Introduction to multisampling
@@ -148,6 +139,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
@@ -322,9 +314,7 @@ fn main() {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs.info().input_interface)
-            .unwrap();
+        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(fs),
@@ -357,7 +347,7 @@ fn main() {
                 )),
                 dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                ..GraphicsPipelineCreateInfo::new(layout)
             },
         )
         .unwrap()
@@ -369,7 +359,10 @@ fn main() {
         depth_range: 0.0..=1.0,
     };
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device,
+        Default::default(),
+    ));
 
     let buf = Buffer::from_iter(
         memory_allocator,
@@ -387,11 +380,12 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
     builder
         .begin_render_pass(
             RenderPassBeginInfo {
@@ -406,15 +400,16 @@ fn main() {
         .bind_pipeline_graphics(pipeline)
         .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
-        .unwrap()
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
-        .unwrap()
+        .unwrap();
+    unsafe { builder.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
+
+    builder
         .end_render_pass(Default::default())
         .unwrap()
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
+        .copy_image_to_buffer(CopyImageToBufferInfo::new(image, buf.clone()))
         .unwrap();
-    let command_buffer = builder.build().unwrap();
 
+    let command_buffer = builder.build().unwrap();
     let finished = command_buffer.execute(queue).unwrap();
     finished
         .then_signal_fence_and_flush()

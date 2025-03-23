@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Cache the pipeline objects to disk for faster reloads.
 //!
 //! A pipeline cache is an opaque type that allow you to cache your graphics and compute
@@ -18,8 +9,9 @@
 //! doesn't exist.
 //!
 //! Once that is done, you can extract the data from the cache and store it. See the documentation
-//! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
-//! on the disk, and [`new`](crate::pipeline::cache::PipelineCache::new) for how to reload it.
+//! of [`get_data`](PipelineCache::get_data) for example of how to store
+//! the data on the disk, and [`new`](PipelineCache::new) for how to reload
+//! it.
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -27,8 +19,9 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -36,8 +29,8 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct PipelineCache {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    handle: ash::vk::PipelineCache,
-    id: NonZeroU64,
+    handle: vk::PipelineCache,
+    id: NonZero<u64>,
 
     flags: PipelineCacheCreateFlags,
 }
@@ -58,8 +51,7 @@ impl PipelineCache {
     /// ```
     /// # use std::sync::Arc;
     /// # use vulkano::device::Device;
-    /// use std::fs::File;
-    /// use std::io::Read;
+    /// use std::{fs::File, io::Read};
     /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo};
     /// # let device: Arc<Device> = return;
     ///
@@ -84,9 +76,10 @@ impl PipelineCache {
     ///         PipelineCacheCreateInfo {
     ///             initial_data,
     ///             ..Default::default()
-    ///         }
-    ///     ).unwrap()
-    /// };
+    ///         },
+    ///     )
+    /// }
+    /// .unwrap();
     /// ```
     #[inline]
     pub unsafe fn new(
@@ -95,7 +88,7 @@ impl PipelineCache {
     ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        Ok(Self::new_unchecked(device, create_info)?)
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -114,38 +107,25 @@ impl PipelineCache {
         device: Arc<Device>,
         create_info: PipelineCacheCreateInfo,
     ) -> Result<Arc<PipelineCache>, VulkanError> {
-        let &PipelineCacheCreateInfo {
-            flags,
-            ref initial_data,
-            _ne: _,
-        } = &create_info;
-
-        let infos = ash::vk::PipelineCacheCreateInfo {
-            flags: flags.into(),
-            initial_data_size: initial_data.len(),
-            p_initial_data: if initial_data.is_empty() {
-                ptr::null()
-            } else {
-                initial_data.as_ptr() as _
-            },
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_pipeline_cache)(
-                device.handle(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_pipeline_cache)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `PipelineCache` from a raw object handle.
@@ -156,7 +136,7 @@ impl PipelineCache {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::PipelineCache,
+        handle: vk::PipelineCache,
         create_info: PipelineCacheCreateInfo,
     ) -> Arc<PipelineCache> {
         let PipelineCacheCreateInfo {
@@ -186,9 +166,7 @@ impl PipelineCache {
     /// # Examples
     ///
     /// ```
-    /// use std::fs;
-    /// use std::fs::File;
-    /// use std::io::Write;
+    /// use std::{fs, fs::File, io::Write};
     /// # use std::sync::Arc;
     /// # use vulkano::pipeline::cache::PipelineCache;
     ///
@@ -208,34 +186,36 @@ impl PipelineCache {
     pub fn get_data(&self) -> Result<Vec<u8>, VulkanError> {
         let fns = self.device.fns();
 
-        let data = unsafe {
-            loop {
-                let mut count = 0;
+        let data = loop {
+            let mut count = 0;
+            unsafe {
                 (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
                     &mut count,
                     ptr::null_mut(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-                let mut data: Vec<u8> = Vec::with_capacity(count);
-                let result = (fns.v1_0.get_pipeline_cache_data)(
+            let mut data: Vec<u8> = Vec::with_capacity(count);
+            let result = unsafe {
+                (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
                     &mut count,
-                    data.as_mut_ptr() as *mut _,
-                );
+                    data.as_mut_ptr().cast(),
+                )
+            };
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        data.set_len(count);
-                        break data;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+            match result {
+                vk::Result::SUCCESS => {
+                    unsafe { data.set_len(count) };
+                    break data;
                 }
+                vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -245,7 +225,6 @@ impl PipelineCache {
     /// Merges other pipeline caches into this one.
     ///
     /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
-    ///
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
     // TODO: write example
     pub fn merge<'a>(
@@ -255,7 +234,7 @@ impl PipelineCache {
         let src_caches: SmallVec<[_; 8]> = src_caches.into_iter().collect();
         self.validate_merge(&src_caches)?;
 
-        unsafe { Ok(self.merge_unchecked(src_caches)?) }
+        Ok(unsafe { self.merge_unchecked(src_caches) }?)
     }
 
     fn validate_merge(&self, src_caches: &[&PipelineCache]) -> Result<(), Box<ValidationError>> {
@@ -282,12 +261,14 @@ impl PipelineCache {
             src_caches.into_iter().map(VulkanObject::handle).collect();
 
         let fns = self.device.fns();
-        (fns.v1_0.merge_pipeline_caches)(
-            self.device.handle(),
-            self.handle,
-            src_caches_vk.len() as u32,
-            src_caches_vk.as_ptr(),
-        )
+        unsafe {
+            (fns.v1_0.merge_pipeline_caches)(
+                self.device.handle(),
+                self.handle,
+                src_caches_vk.len() as u32,
+                src_caches_vk.as_ptr(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -298,15 +279,15 @@ impl PipelineCache {
 impl Drop for PipelineCache {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.handle, ptr::null());
-        }
+            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 
 unsafe impl VulkanObject for PipelineCache {
-    type Handle = ash::vk::PipelineCache;
+    type Handle = vk::PipelineCache;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -349,15 +330,21 @@ pub struct PipelineCacheCreateInfo {
 impl Default for PipelineCacheCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PipelineCacheCreateInfo {
+    /// Returns a default `PipelineCacheCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: PipelineCacheCreateFlags::empty(),
             initial_data: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PipelineCacheCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -371,6 +358,22 @@ impl PipelineCacheCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::PipelineCacheCreateInfo<'_> {
+        let &Self {
+            flags,
+            ref initial_data,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = vk::PipelineCacheCreateInfo::default().flags(flags.into());
+
+        if !initial_data.is_empty() {
+            val_vk = val_vk.initial_data(initial_data);
+        }
+
+        val_vk
     }
 }
 
@@ -403,7 +406,7 @@ mod tests {
     #[test]
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let pipeline = unsafe { PipelineCache::new(device, Default::default()).unwrap() };
+        let pipeline = unsafe { PipelineCache::new(device, Default::default()) }.unwrap();
         match pipeline.merge([pipeline.as_ref()]) {
             Err(_) => (),
             Ok(_) => panic!(),
@@ -414,9 +417,9 @@ mod tests {
     fn cache_returns_same_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
-        let cs = unsafe {
+        let cs = {
             /*
              * #version 450
              * void main() {
@@ -429,7 +432,8 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -445,7 +449,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -460,10 +464,10 @@ mod tests {
     fn cache_returns_different_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
         let _first_pipeline = {
-            let cs = unsafe {
+            let cs = {
                 /*
                  * #version 450
                  * void main() {
@@ -475,9 +479,10 @@ mod tests {
                     1, 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734,
                     2, 4, 0, 3, 131320, 5, 65789, 65592,
                 ];
-                let module =
+                let module = unsafe {
                     ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                        .unwrap();
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -492,7 +497,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -500,7 +505,7 @@ mod tests {
         let cache_data = cache.get_data().unwrap();
 
         let _second_pipeline = {
-            let cs = unsafe {
+            let cs = {
                 /*
                  * #version 450
                  *
@@ -518,9 +523,10 @@ mod tests {
                     327734, 2, 4, 0, 3, 131320, 5, 262203, 7, 8, 7, 327745, 13, 14, 11, 12, 262205,
                     6, 15, 14, 196670, 8, 15, 65789, 65592,
                 ];
-                let module =
+                let module = unsafe {
                     ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                        .unwrap();
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -535,7 +541,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -553,9 +559,9 @@ mod tests {
     fn cache_data_does_not_change() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
-        let cs = unsafe {
+        let cs = {
             /*
              * #version 450
              * void main() {
@@ -568,7 +574,8 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -584,7 +591,7 @@ mod tests {
             ComputePipeline::new(
                 device.clone(),
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -603,7 +610,7 @@ mod tests {
             ComputePipeline::new(
                 device,
                 Some(cache.clone()),
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };

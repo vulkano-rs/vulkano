@@ -1,19 +1,10 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Recording commands to execute on the device.
 //!
 //! With Vulkan, to get the device to perform work, even relatively simple tasks, you must create a
 //! command buffer. A command buffer is a list of commands that will executed by the device.
-//! You must first record commands to a command buffer builder, then build it into an actual
-//! command buffer, and then it can be used. Depending on how a command buffer is created, it can
-//! be used only once, or reused many times.
+//! You must first record commands to a recording command buffer, then end the recording to turn it
+//! into an actual command buffer, and then it can be used. Depending on how a command buffer is
+//! created, it can be used only once, or reused many times.
 //!
 //! # Command pools and allocators
 //!
@@ -31,10 +22,10 @@
 //!
 //! There are two levels of command buffers:
 //!
-//! - [`PrimaryCommandBufferAbstract`] can be executed on a queue, and is the main command buffer
-//!   type. It cannot be executed within another command buffer.
-//! - [`SecondaryCommandBufferAbstract`] can only be executed within a primary command buffer,
-//!   not directly on a queue.
+//! - A primary command buffer can be executed on a queue, and is the main command buffer level. It
+//!   cannot be executed within another command buffer.
+//! - A secondary command buffer can only be executed within a primary command buffer, not directly
+//!   on a queue.
 //!
 //! Using secondary command buffers, there is slightly more overhead than using primary command
 //! buffers alone, but there are also advantages. A single command buffer cannot be recorded
@@ -48,72 +39,67 @@
 //! # Recording a command buffer
 //!
 //! To record a new command buffer, the most direct way is to create a new
-//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands to
-//! the command buffer. When you are done recording, you call [`build`] to finalise the command
-//! buffer and turn it into either a [`PrimaryCommandBufferAbstract`] or a
-//! [`SecondaryCommandBufferAbstract`].
-//!
-// //! Using the standard `CommandBufferBuilder`, you must enter synchronization commands such as
-// //! [pipeline barriers], to ensure that there are no races and memory access hazards. This can be
-// //! difficult to do manually, so Vulkano also provides an alternative builder,
-// //! [`AutoCommandBufferBuilder`]. Using this builder, you do not have to worry about managing
-// //! synchronization, but the end result may not be quite as efficient.
+//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands
+//! to the command buffer. When you are done recording, you call [`build`] to finalise the command
+//! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
+//! [`SecondaryAutoCommandBuffer`].
 //!
 //! # Submitting a primary command buffer
 //!
-//! Once primary a command buffer is recorded and built, you can use the
-//! [`PrimaryCommandBufferAbstract`] trait to submit the command buffer to a queue. Submitting a
-//! command buffer returns an object that implements the [`GpuFuture`] trait and that represents
-//! the moment when the execution will end on the GPU.
+//! Once a primary command buffer is recorded and built, you can submit the
+//! [`PrimaryAutoCommandBuffer`] to a queue. Submitting a command buffer returns an object that
+//! implements the [`GpuFuture`] trait and that represents the moment when the execution will end
+//! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::AutoCommandBufferBuilder;
-//! use vulkano::command_buffer::CommandBufferUsage;
-//! use vulkano::command_buffer::PrimaryCommandBufferAbstract;
-//! use vulkano::command_buffer::SubpassContents;
+//! use vulkano::command_buffer::{
+//!     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+//!     SubpassContents,
+//! };
 //!
-//! # use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
-//!
-//! # #[derive(BufferContents, Vertex)]
-//! # #[repr(C)]
-//! # struct PosVertex {
-//! #     #[format(R32G32B32_SFLOAT)]
-//! #     position: [f32; 3]
-//! # };
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! # let vertex_buffer: vulkano::buffer::Subbuffer<[PosVertex]> = return;
+//! # let vertex_buffer: vulkano::buffer::Subbuffer<[u32]> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
-//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
-//! let cb = AutoCommandBufferBuilder::primary(
-//!     &command_buffer_allocator,
+//! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
+//! #
+//! let mut cb = AutoCommandBufferBuilder::primary(
+//!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
-//!     CommandBufferUsage::MultipleSubmit
-//! ).unwrap()
-//! .begin_render_pass(render_pass_begin_info, Default::default()).unwrap()
-//! .bind_pipeline_graphics(graphics_pipeline.clone()).unwrap()
-//! .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap()
-//! .draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap()
-//! .end_render_pass(Default::default()).unwrap()
-//! .build().unwrap();
+//!     CommandBufferUsage::OneTimeSubmit,
+//! )
+//! .unwrap();
 //!
-//! let _future = cb.execute(queue.clone());
+//! cb.begin_render_pass(render_pass_begin_info, Default::default())
+//!     .unwrap()
+//!     .bind_pipeline_graphics(graphics_pipeline.clone())
+//!     .unwrap()
+//!     .bind_vertex_buffers(0, vertex_buffer.clone())
+//!     .unwrap();
+//! unsafe { cb.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
+//!
+//! cb.end_render_pass(Default::default()).unwrap();
+//!
+//! let cb = cb.build().unwrap();
+//!
+//! let future = cb.execute(queue.clone());
 //! ```
 //!
-//! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator
-//! [`CommandBufferAllocator`]: self::allocator::CommandBufferAllocator
+//! [`StandardCommandBufferAllocator`]: allocator::StandardCommandBufferAllocator
+//! [`CommandBufferAllocator`]: allocator::CommandBufferAllocator
 //! [inherit]: CommandBufferInheritanceInfo
 //! [`build`]: AutoCommandBufferBuilder::build
-//! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
+#[allow(unused_imports)] // everything is exported for future-proofing
+pub use self::commands::{
+    acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
+    query::*, render_pass::*, secondary::*, sync::*,
+};
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
-    commands::{
-        acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
-        query::*, render_pass::*, secondary::*, sync::*,
-    },
+    sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
         SecondaryCommandBufferAbstract,
@@ -132,19 +118,56 @@ use crate::{
         semaphore::{Semaphore, SemaphoreType},
         PipelineStageAccessFlags, PipelineStages,
     },
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
-use ahash::HashMap;
+#[cfg(doc)]
+use crate::{
+    device::{DeviceFeatures, DeviceProperties},
+    pipeline::graphics::vertex_input::VertexInputRate,
+};
+use ash::vk;
 use bytemuck::{Pod, Zeroable};
+use foldhash::HashMap;
+use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
 pub mod allocator;
 pub mod auto;
 mod commands;
 pub mod pool;
-pub mod sys;
+mod sys;
 mod traits;
 
+/// Used as buffer contents to provide input for the
+/// [`AutoCommandBufferBuilder::dispatch_indirect`] command.
+///
+/// # Safety
+///
+/// - The `x`, `y` and `z` values must not be greater than the respective elements of the
+///   [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) device
+///   limit.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+pub struct DispatchIndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
+}
+
+/// Used as buffer contents to provide input for the
+/// [`AutoCommandBufferBuilder::draw_indirect`] command.
+///
+/// # Safety
+///
+/// - Every vertex number within the specified range must fall within the range of the bound
+///   vertex-rate vertex buffers.
+/// - Every instance number within the specified range must fall within the range of the bound
+///   instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](DeviceFeatures::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
+///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
@@ -154,6 +177,50 @@ pub struct DrawIndirectCommand {
     pub first_instance: u32,
 }
 
+/// Used as buffer contents to provide input for the
+/// [`AutoCommandBufferBuilder::draw_mesh_tasks_indirect`] command.
+///
+/// # Safety
+///
+/// - If the graphics pipeline **does not** include a task shader, then the `group_count_x`,
+///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
+///   of the [`max_mesh_work_group_count`](DeviceProperties::max_mesh_work_group_count) device
+///   limit, and the product of these three values must not be greater than the
+///   [`max_mesh_work_group_total_count`](DeviceProperties::max_mesh_work_group_total_count) device
+///   limit.
+/// - If the graphics pipeline **does** include a task shader, then the `group_count_x`,
+///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
+///   of the [`max_task_work_group_count`](DeviceProperties::max_task_work_group_count) device
+///   limit, and the product of these three values must not be greater than the
+///   [`max_task_work_group_total_count`](DeviceProperties::max_task_work_group_total_count) device
+///   limit.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+pub struct DrawMeshTasksIndirectCommand {
+    pub group_count_x: u32,
+    pub group_count_y: u32,
+    pub group_count_z: u32,
+}
+
+/// Used as buffer contents to provide input for the
+/// [`AutoCommandBufferBuilder::draw_indexed_indirect`] command.
+///
+/// # Safety
+///
+/// - Every index within the specified range must fall within the range of the bound index buffer.
+/// - Every vertex number that is retrieved from the index buffer must fall within the range of the
+///   bound vertex-rate vertex buffers.
+/// - Every vertex number that is retrieved from the index buffer, if it is not the special
+///   primitive restart value, must be no greater than the
+///   [`max_draw_indexed_index_value`](DeviceProperties::max_draw_indexed_index_value) device
+///   limit.
+/// - Every instance number within the specified range must fall within the range of the bound
+///   instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](DeviceFeatures::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
+///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
@@ -162,14 +229,6 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
-pub struct DispatchIndirectCommand {
-    pub x: u32,
-    pub y: u32,
-    pub z: u32,
 }
 
 vulkan_enum! {
@@ -185,7 +244,7 @@ vulkan_enum! {
     SecondaryCommandBuffers = SECONDARY_COMMAND_BUFFERS,
 }
 
-impl From<SubpassContents> for ash::vk::RenderingFlags {
+impl From<SubpassContents> for vk::RenderingFlags {
     #[inline]
     fn from(val: SubpassContents) -> Self {
         match val {
@@ -231,7 +290,7 @@ pub struct CommandBufferInheritanceInfo {
     /// The default value is `None`.
     pub occlusion_query: Option<QueryControlFlags>,
 
-    /// Which pipeline statistics queries are allowed to be active on the primary command buffer
+    /// Which `PipelineStatistics` queries are allowed to be active on the primary command buffer
     /// when this secondary command buffer is executed.
     ///
     /// If this value is not empty, the [`pipeline_statistics_query`] feature must be enabled on
@@ -239,8 +298,8 @@ pub struct CommandBufferInheritanceInfo {
     ///
     /// The default value is [`QueryPipelineStatisticFlags::empty()`].
     ///
-    /// [`pipeline_statistics_query`]: crate::device::Features::pipeline_statistics_query
-    pub query_statistics_flags: QueryPipelineStatisticFlags,
+    /// [`pipeline_statistics_query`]: crate::device::DeviceFeatures::pipeline_statistics_query
+    pub pipeline_statistics: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -248,21 +307,27 @@ pub struct CommandBufferInheritanceInfo {
 impl Default for CommandBufferInheritanceInfo {
     #[inline]
     fn default() -> Self {
-        Self {
-            render_pass: None,
-            occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::empty(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 
 impl CommandBufferInheritanceInfo {
+    /// Returns a default `CommandBufferInheritanceInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            render_pass: None,
+            occlusion_query: None,
+            pipeline_statistics: QueryPipelineStatisticFlags::empty(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref render_pass,
             occlusion_query,
-            query_statistics_flags,
+            pipeline_statistics,
             _ne: _,
         } = self;
 
@@ -295,7 +360,7 @@ impl CommandBufferInheritanceInfo {
                 return Err(Box::new(ValidationError {
                     context: "occlusion_query".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "inherited_queries",
                     )])]),
                     vuids: &["VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056"],
@@ -308,7 +373,7 @@ impl CommandBufferInheritanceInfo {
                 return Err(Box::new(ValidationError {
                     context: "occlusion_query".into(),
                     problem: "contains `QueryControlFlags::PRECISE`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "occlusion_query_precise",
                     )])]),
                     vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00052"],
@@ -316,20 +381,16 @@ impl CommandBufferInheritanceInfo {
             }
         }
 
-        query_statistics_flags
-            .validate_device(device)
-            .map_err(|err| {
-                err.add_context("query_statistics_flags")
-                    .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"])
-            })?;
+        pipeline_statistics.validate_device(device).map_err(|err| {
+            err.add_context("pipeline_statistics")
+                .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"])
+        })?;
 
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
+        if pipeline_statistics.count() > 0 && !device.enabled_features().pipeline_statistics_query {
             return Err(Box::new(ValidationError {
-                context: "query_statistics_flags".into(),
+                context: "pipeline_statistics".into(),
                 problem: "is not empty".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "pipeline_statistics_query",
                 )])]),
                 vuids: &["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058"],
@@ -338,6 +399,110 @@ impl CommandBufferInheritanceInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut CommandBufferInheritanceInfoExtensionsVk<'_>,
+    ) -> vk::CommandBufferInheritanceInfo<'a> {
+        let &Self {
+            ref render_pass,
+            occlusion_query,
+            pipeline_statistics,
+            _ne: _,
+        } = self;
+
+        let (render_pass_vk, subpass_vk, framebuffer_vk) = render_pass
+            .as_ref()
+            .and_then(|render_pass| match render_pass {
+                CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
+                    let &CommandBufferInheritanceRenderPassInfo {
+                        ref subpass,
+                        ref framebuffer,
+                    } = render_pass_info;
+
+                    Some((
+                        subpass.render_pass().handle(),
+                        subpass.index(),
+                        framebuffer
+                            .as_ref()
+                            .map(|fb| fb.handle())
+                            .unwrap_or_default(),
+                    ))
+                }
+                CommandBufferInheritanceRenderPassType::BeginRendering(_) => None,
+            })
+            .unwrap_or_default();
+
+        let (occlusion_query_enable, query_flags_vk) = occlusion_query
+            .map(|flags| (true, flags.into()))
+            .unwrap_or_default();
+
+        let mut val_vk = vk::CommandBufferInheritanceInfo::default()
+            .render_pass(render_pass_vk)
+            .subpass(subpass_vk)
+            .framebuffer(framebuffer_vk)
+            .occlusion_query_enable(occlusion_query_enable)
+            .query_flags(query_flags_vk)
+            .pipeline_statistics(pipeline_statistics.into());
+
+        let CommandBufferInheritanceInfoExtensionsVk {
+            rendering_info_vk: rendering_vk,
+        } = extensions_vk;
+
+        if let Some(next) = rendering_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a CommandBufferInheritanceInfoFields1Vk,
+    ) -> CommandBufferInheritanceInfoExtensionsVk<'a> {
+        let CommandBufferInheritanceInfoFields1Vk {
+            rendering_info_fields1_vk,
+        } = fields1_vk;
+
+        let rendering_info_vk = self
+            .render_pass
+            .as_ref()
+            .zip(rendering_info_fields1_vk.as_ref())
+            .and_then(
+                |(render_pass, rendering_info_fields1_vk)| match render_pass {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(_) => None,
+                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                        Some(rendering_info.to_vk(rendering_info_fields1_vk))
+                    }
+                },
+            );
+
+        CommandBufferInheritanceInfoExtensionsVk { rendering_info_vk }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> CommandBufferInheritanceInfoFields1Vk {
+        let rendering_info_fields1_vk =
+            self.render_pass
+                .as_ref()
+                .and_then(|render_pass| match render_pass {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(_) => None,
+                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                        Some(rendering_info.to_vk_fields1())
+                    }
+                });
+
+        CommandBufferInheritanceInfoFields1Vk {
+            rendering_info_fields1_vk,
+        }
+    }
+}
+
+pub(crate) struct CommandBufferInheritanceInfoExtensionsVk<'a> {
+    pub(crate) rendering_info_vk: Option<vk::CommandBufferInheritanceRenderingInfo<'a>>,
+}
+
+pub(crate) struct CommandBufferInheritanceInfoFields1Vk {
+    pub(crate) rendering_info_fields1_vk: Option<CommandBufferInheritanceRenderingInfoFields1Vk>,
 }
 
 /// Selects the type of render pass for command buffer inheritance.
@@ -389,13 +554,19 @@ pub struct CommandBufferInheritanceRenderPassInfo {
 }
 
 impl CommandBufferInheritanceRenderPassInfo {
-    /// Returns a `CommandBufferInheritanceRenderPassInfo` with the specified `subpass`.
+    /// Returns a default `CommandBufferInheritanceRenderPassInfo` with the provided `subpass`.
     #[inline]
-    pub fn subpass(subpass: Subpass) -> Self {
+    pub const fn new(subpass: Subpass) -> Self {
         Self {
             subpass,
             framebuffer: None,
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn subpass(subpass: Subpass) -> Self {
+        Self::new(subpass)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -451,7 +622,7 @@ pub struct CommandBufferInheritanceRenderingInfo {
     ///
     /// The default value is `0`.
     ///
-    /// [`multiview`]: crate::device::Features::multiview
+    /// [`multiview`]: crate::device::DeviceFeatures::multiview
     pub view_mask: u32,
 
     /// The formats of the color attachments that will be used during rendering.
@@ -484,6 +655,14 @@ pub struct CommandBufferInheritanceRenderingInfo {
 impl Default for CommandBufferInheritanceRenderingInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferInheritanceRenderingInfo {
+    /// Returns a default `CommandBufferInheritanceRenderingInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_mask: 0,
             color_attachment_formats: Vec::new(),
@@ -492,9 +671,7 @@ impl Default for CommandBufferInheritanceRenderingInfo {
             rasterization_samples: SampleCount::Sample1,
         }
     }
-}
 
-impl CommandBufferInheritanceRenderingInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             view_mask,
@@ -510,7 +687,9 @@ impl CommandBufferInheritanceRenderingInfo {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not zero".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008"],
             }));
         }
@@ -547,12 +726,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -591,12 +767,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -636,12 +809,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -683,6 +853,54 @@ impl CommandBufferInheritanceRenderingInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a CommandBufferInheritanceRenderingInfoFields1Vk,
+    ) -> vk::CommandBufferInheritanceRenderingInfo<'a> {
+        let &Self {
+            view_mask,
+            color_attachment_formats: _,
+            depth_attachment_format,
+            stencil_attachment_format,
+            rasterization_samples,
+        } = self;
+        let CommandBufferInheritanceRenderingInfoFields1Vk {
+            color_attachment_formats_vk,
+        } = fields1_vk;
+
+        vk::CommandBufferInheritanceRenderingInfo::default()
+            .flags(vk::RenderingFlags::empty())
+            .view_mask(view_mask)
+            .color_attachment_formats(color_attachment_formats_vk)
+            .depth_attachment_format(
+                depth_attachment_format.map_or(vk::Format::UNDEFINED, Into::into),
+            )
+            .stencil_attachment_format(
+                stencil_attachment_format.map_or(vk::Format::UNDEFINED, Into::into),
+            )
+            .rasterization_samples(rasterization_samples.into())
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> CommandBufferInheritanceRenderingInfoFields1Vk {
+        let Self {
+            color_attachment_formats,
+            ..
+        } = self;
+
+        let color_attachment_formats_vk = color_attachment_formats
+            .iter()
+            .map(|format| format.map_or(vk::Format::UNDEFINED, Into::into))
+            .collect();
+
+        CommandBufferInheritanceRenderingInfoFields1Vk {
+            color_attachment_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct CommandBufferInheritanceRenderingInfoFields1Vk {
+    pub(crate) color_attachment_formats_vk: SmallVec<[vk::Format; 4]>,
 }
 
 /// Usage flags to pass when creating a command buffer.
@@ -695,19 +913,20 @@ pub enum CommandBufferUsage {
     /// The command buffer can only be submitted once before being destroyed. Any further submit is
     /// forbidden. This makes it possible for the implementation to perform additional
     /// optimizations.
-    OneTimeSubmit = ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT.as_raw(),
+    OneTimeSubmit = vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT.as_raw(),
 
-    /// The command buffer can be used multiple times, but must not execute or record more than once
-    /// simultaneously. In other words, it is as if executing the command buffer borrows it mutably.
+    /// The command buffer can be used multiple times, but must not execute or record more than
+    /// once simultaneously. In other words, it is as if executing the command buffer borrows
+    /// it mutably.
     MultipleSubmit = 0,
 
     /// The command buffer can be executed multiple times in parallel on different queues.
     /// If it's a secondary command buffer, it can be recorded to multiple primary command buffers
     /// at once.
-    SimultaneousUse = ash::vk::CommandBufferUsageFlags::SIMULTANEOUS_USE.as_raw(),
+    SimultaneousUse = vk::CommandBufferUsageFlags::SIMULTANEOUS_USE.as_raw(),
 }
 
-impl From<CommandBufferUsage> for ash::vk::CommandBufferUsageFlags {
+impl From<CommandBufferUsage> for vk::CommandBufferUsageFlags {
     #[inline]
     fn from(val: CommandBufferUsage) -> Self {
         Self::from_raw(val as u32)
@@ -740,6 +959,14 @@ pub struct SubmitInfo {
 impl Default for SubmitInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubmitInfo {
+    /// Returns a default `SubmitInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             wait_semaphores: Vec::new(),
             command_buffers: Vec::new(),
@@ -747,9 +974,7 @@ impl Default for SubmitInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl SubmitInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,
@@ -787,7 +1012,7 @@ impl SubmitInfo {
                 return Err(Box::new(ValidationError {
                     context: format!("signal_semaphores[{}].stages", index).into(),
                     problem: "is not `PipelineStages::ALL_COMMANDS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     vuids: &["VUID-vkQueueSubmit2-synchronization2-03866"],
@@ -802,6 +1027,184 @@ impl SubmitInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(&self, fields1_vk: &'a SubmitInfo2Fields1Vk) -> vk::SubmitInfo2<'a> {
+        let SubmitInfo2Fields1Vk {
+            wait_semaphore_infos_vk,
+            command_buffer_infos_vk,
+            signal_semaphore_infos_vk,
+        } = fields1_vk;
+
+        vk::SubmitInfo2::default()
+            .flags(vk::SubmitFlags::empty()) // TODO:
+            .wait_semaphore_infos(wait_semaphore_infos_vk)
+            .command_buffer_infos(command_buffer_infos_vk)
+            .signal_semaphore_infos(signal_semaphore_infos_vk)
+    }
+
+    pub(crate) fn to_vk2_fields1(&self) -> SubmitInfo2Fields1Vk {
+        let &Self {
+            ref wait_semaphores,
+            ref command_buffers,
+            ref signal_semaphores,
+            _ne: _,
+        } = self;
+
+        SubmitInfo2Fields1Vk {
+            wait_semaphore_infos_vk: wait_semaphores
+                .iter()
+                .map(SemaphoreSubmitInfo::to_vk2)
+                .collect(),
+            command_buffer_infos_vk: command_buffers
+                .iter()
+                .map(CommandBufferSubmitInfo::to_vk2)
+                .collect(),
+            signal_semaphore_infos_vk: signal_semaphores
+                .iter()
+                .map(SemaphoreSubmitInfo::to_vk2)
+                .collect(),
+        }
+    }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a SubmitInfoFields1Vk,
+        extensions_vk: &'a mut SubmitInfoExtensionsVk<'_>,
+    ) -> vk::SubmitInfo<'a> {
+        let SubmitInfoFields1Vk {
+            wait_semaphores_vk,
+            wait_dst_stage_mask_vk,
+            wait_semaphore_values_vk: _,
+            command_buffers_vk,
+            signal_semaphores_vk,
+            signal_semaphore_values_vk: _,
+        } = fields1_vk;
+
+        let mut val_vk = vk::SubmitInfo::default()
+            .wait_semaphores(wait_semaphores_vk)
+            .wait_dst_stage_mask(wait_dst_stage_mask_vk)
+            .command_buffers(command_buffers_vk)
+            .signal_semaphores(signal_semaphores_vk);
+
+        let SubmitInfoExtensionsVk {
+            timeline_semaphore_vk,
+        } = extensions_vk;
+
+        if let Some(next) = timeline_semaphore_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a SubmitInfoFields1Vk,
+    ) -> SubmitInfoExtensionsVk<'a> {
+        let Self {
+            wait_semaphores,
+            command_buffers: _,
+            signal_semaphores,
+            _ne: _,
+        } = self;
+        let SubmitInfoFields1Vk {
+            wait_semaphores_vk: _,
+            wait_dst_stage_mask_vk: _,
+            command_buffers_vk: _,
+            signal_semaphores_vk: _,
+            wait_semaphore_values_vk,
+            signal_semaphore_values_vk,
+        } = fields1_vk;
+
+        let timeline_semaphore_vk = (wait_semaphores.iter())
+            .chain(signal_semaphores.iter())
+            .any(|semaphore_submit_info| {
+                semaphore_submit_info.semaphore.semaphore_type() == SemaphoreType::Timeline
+            })
+            .then(|| {
+                vk::TimelineSemaphoreSubmitInfo::default()
+                    .wait_semaphore_values(wait_semaphore_values_vk)
+                    .signal_semaphore_values(signal_semaphore_values_vk)
+            });
+
+        SubmitInfoExtensionsVk {
+            timeline_semaphore_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> SubmitInfoFields1Vk {
+        let Self {
+            wait_semaphores,
+            command_buffers,
+            signal_semaphores,
+            _ne: _,
+        } = self;
+
+        let mut wait_semaphores_vk = SmallVec::with_capacity(wait_semaphores.len());
+        let mut wait_dst_stage_mask_vk = SmallVec::with_capacity(wait_semaphores.len());
+        let mut wait_semaphore_values_vk = SmallVec::with_capacity(wait_semaphores.len());
+
+        for semaphore_submit_info in wait_semaphores {
+            let &SemaphoreSubmitInfo {
+                ref semaphore,
+                value,
+                stages,
+                _ne: _,
+            } = semaphore_submit_info;
+
+            wait_semaphores_vk.push(semaphore.handle());
+            wait_dst_stage_mask_vk.push(stages.into());
+            wait_semaphore_values_vk.push(value);
+        }
+
+        let command_buffers_vk = command_buffers
+            .iter()
+            .map(CommandBufferSubmitInfo::to_vk)
+            .collect();
+
+        let mut signal_semaphores_vk = SmallVec::with_capacity(signal_semaphores.len());
+        let mut signal_semaphore_values_vk = SmallVec::with_capacity(signal_semaphores.len());
+
+        for semaphore_submit_info in signal_semaphores {
+            let &SemaphoreSubmitInfo {
+                ref semaphore,
+                value,
+                stages: _,
+                _ne: _,
+            } = semaphore_submit_info;
+
+            signal_semaphores_vk.push(semaphore.handle());
+            signal_semaphore_values_vk.push(value);
+        }
+
+        SubmitInfoFields1Vk {
+            wait_semaphores_vk,
+            wait_dst_stage_mask_vk,
+            wait_semaphore_values_vk,
+            command_buffers_vk,
+            signal_semaphores_vk,
+            signal_semaphore_values_vk,
+        }
+    }
+}
+
+pub(crate) struct SubmitInfo2Fields1Vk {
+    pub(crate) wait_semaphore_infos_vk: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
+    pub(crate) command_buffer_infos_vk: SmallVec<[vk::CommandBufferSubmitInfo<'static>; 4]>,
+    pub(crate) signal_semaphore_infos_vk: SmallVec<[vk::SemaphoreSubmitInfo<'static>; 4]>,
+}
+
+pub(crate) struct SubmitInfoExtensionsVk<'a> {
+    pub(crate) timeline_semaphore_vk: Option<vk::TimelineSemaphoreSubmitInfo<'a>>,
+}
+
+pub(crate) struct SubmitInfoFields1Vk {
+    pub(crate) wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    pub(crate) wait_dst_stage_mask_vk: SmallVec<[vk::PipelineStageFlags; 4]>,
+    pub(crate) wait_semaphore_values_vk: SmallVec<[u64; 4]>,
+    pub(crate) command_buffers_vk: SmallVec<[vk::CommandBuffer; 4]>,
+    pub(crate) signal_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    pub(crate) signal_semaphore_values_vk: SmallVec<[u64; 4]>,
 }
 
 /// Parameters for a command buffer in a queue submit operation.
@@ -816,9 +1219,9 @@ pub struct CommandBufferSubmitInfo {
 }
 
 impl CommandBufferSubmitInfo {
-    /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
+    /// Returns a default `CommandBufferSubmitInfo` with the provided `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
+    pub const fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),
@@ -836,6 +1239,26 @@ impl CommandBufferSubmitInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2(&self) -> vk::CommandBufferSubmitInfo<'static> {
+        let &Self {
+            ref command_buffer,
+            _ne: _,
+        } = self;
+
+        vk::CommandBufferSubmitInfo::default()
+            .command_buffer(command_buffer.handle())
+            .device_mask(0) // TODO:
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::CommandBuffer {
+        let &Self {
+            ref command_buffer,
+            _ne: _,
+        } = self;
+
+        command_buffer.handle()
+    }
 }
 
 /// Parameters for a semaphore signal or wait operation in a queue submit operation.
@@ -848,10 +1271,10 @@ pub struct SemaphoreSubmitInfo {
 
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Timeline`], specifies the value that
     /// will be used for the semaphore operation:
-    /// - If it's a signal operation, then the semaphore's value will be set to this value
-    ///   when it is signaled.
-    /// - If it's a wait operation, then the semaphore will wait until its value is greater than
-    ///   or equal to this value.
+    /// - If it's a signal operation, then the semaphore's value will be set to this value when it
+    ///   is signaled.
+    /// - If it's a wait operation, then the semaphore will wait until its value is greater than or
+    ///   equal to this value.
     ///
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Binary`], then this must be `0`.
     ///
@@ -862,25 +1285,25 @@ pub struct SemaphoreSubmitInfo {
     /// scope: stages of queue operations following the wait operation that can start executing
     /// after the semaphore is signalled.
     ///
-    /// For a semaphore signal operation, specifies the pipeline stages in the first synchronization
-    /// scope: stages of queue operations preceding the signal operation that must complete before
-    /// the semaphore is signalled.
+    /// For a semaphore signal operation, specifies the pipeline stages in the first
+    /// synchronization scope: stages of queue operations preceding the signal operation that
+    /// must complete before the semaphore is signalled.
     /// If this value does not equal [`ALL_COMMANDS`], then the [`synchronization2`] feature must
     /// be enabled on the device.
     ///
     /// The default value is [`ALL_COMMANDS`].
     ///
     /// [`ALL_COMMANDS`]: PipelineStages::ALL_COMMANDS
-    /// [`synchronization2`]: crate::device::Features::synchronization2
+    /// [`synchronization2`]: crate::device::DeviceFeatures::synchronization2
     pub stages: PipelineStages,
 
     pub _ne: crate::NonExhaustive,
 }
 
 impl SemaphoreSubmitInfo {
-    /// Returns a `SemaphoreSubmitInfo` with the specified `semaphore`.
+    /// Returns a default `SemaphoreSubmitInfo` with the provided `semaphore`.
     #[inline]
-    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             value: 0,
@@ -923,7 +1346,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "synchronization2",
                 )])]),
                 ..Default::default()
@@ -936,7 +1359,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "geometry_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03929"],
@@ -954,7 +1377,7 @@ impl SemaphoreSubmitInfo {
                 problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                     `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "tessellation_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03930"],
@@ -967,7 +1390,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "conditional_rendering",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03931"],
@@ -980,7 +1403,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "fragment_density_map",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03932"],
@@ -993,7 +1416,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "transform_feedback",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03933"],
@@ -1005,7 +1428,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "mesh_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03934"],
@@ -1017,7 +1440,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "task_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03935"],
@@ -1032,20 +1455,20 @@ impl SemaphoreSubmitInfo {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                    RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("attachment_fragment_shading_rate")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                 ]),
                 vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
             }));
         }
 
         if !device.enabled_features().subpass_shading
-            && stages.intersects(PipelineStages::SUBPASS_SHADING)
+            && stages.intersects(PipelineStages::SUBPASS_SHADER)
         {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
-                problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "subpass_shading",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04957"],
@@ -1058,7 +1481,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "invocation_mask",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04995"],
@@ -1072,7 +1495,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "ray_tracing_pipeline",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-07946"],
@@ -1080,6 +1503,21 @@ impl SemaphoreSubmitInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> vk::SemaphoreSubmitInfo<'static> {
+        let &Self {
+            ref semaphore,
+            value,
+            stages,
+            _ne: _,
+        } = self;
+
+        vk::SemaphoreSubmitInfo::default()
+            .semaphore(semaphore.handle())
+            .value(value)
+            .stage_mask(stages.into())
+            .device_index(0) // TODO:
     }
 }
 
@@ -1201,6 +1639,7 @@ pub enum ResourceInCommand {
     SecondaryCommandBuffer { index: u32 },
     Source,
     VertexBuffer { binding: u32 },
+    ShaderBindingTableBuffer,
 }
 
 #[doc(hidden)]

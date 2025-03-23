@@ -1,12 +1,3 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Image views.
 //!
 //! This module contains types related to image views. An image view wraps around an image and
@@ -29,8 +20,9 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A wrapper around an image that makes it available to shaders or framebuffers.
 ///
@@ -39,9 +31,9 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 /// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct ImageView {
-    handle: ash::vk::ImageView,
+    handle: vk::ImageView,
     image: DeviceOwnedDebugWrapper<Arc<Image>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     view_type: ImageViewType,
     format: Format,
@@ -64,7 +56,7 @@ impl ImageView {
     ) -> Result<Arc<ImageView>, Validated<VulkanError>> {
         Self::validate_new(&image, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(image, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(image, create_info) }?)
     }
 
     fn validate_new(
@@ -136,6 +128,17 @@ impl ImageView {
         if matches!(view_type, ImageViewType::Dim2d | ImageViewType::Dim2dArray)
             && image_type == ImageType::Dim3d
         {
+            if image.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
+                        `ImageViewType::Dim2d`, and `image.image_type()` is `ImageType::Dim3d`, \
+                        but `image.flags()` contains `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageViewCreateInfo-image-04971"],
+                    ..Default::default()
+                }));
+            }
+
             match view_type {
                 ImageViewType::Dim2d => {
                     if !image
@@ -513,7 +516,7 @@ impl ImageView {
                         `create_info.format` does not have the same components and \
                         number of bits per component as `image.format()`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "image_view_format_reinterpretation",
                     )])]),
                     vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466"],
@@ -565,74 +568,29 @@ impl ImageView {
         image: Arc<Image>,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let &ImageViewCreateInfo {
-            view_type,
-            format,
-            component_mapping,
-            ref subresource_range,
-            mut usage,
-            ref sampler_ycbcr_conversion,
-            _ne: _,
-        } = &create_info;
-
-        let device = image.device();
-        let implicit_default_usage = get_implicit_default_usage(subresource_range.aspects, &image);
-
-        let has_non_default_usage = if usage.is_empty() {
-            usage = implicit_default_usage;
-            false
-        } else {
-            usage == implicit_default_usage
-        };
-
-        let mut info_vk = ash::vk::ImageViewCreateInfo {
-            flags: ash::vk::ImageViewCreateFlags::empty(),
-            image: image.handle(),
-            view_type: view_type.into(),
-            format: format.into(),
-            components: component_mapping.into(),
-            subresource_range: subresource_range.clone().into(),
-            ..Default::default()
-        };
-        let mut image_view_usage_info_vk = None;
-        let mut sampler_ycbcr_conversion_info_vk = None;
-
-        if has_non_default_usage {
-            let next = image_view_usage_info_vk.insert(ash::vk::ImageViewUsageCreateInfo {
-                usage: usage.into(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if let Some(conversion) = sampler_ycbcr_conversion {
-            let next =
-                sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: conversion.handle(),
-                    ..Default::default()
-                });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
-        }
+        let implicit_default_usage =
+            get_implicit_default_usage(create_info.subresource_range.aspects, &image);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(implicit_default_usage);
+        let create_info_vk = create_info.to_vk(image.handle(), &mut create_info_extensions_vk);
 
         let handle = {
+            let device = image.device();
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image_view)(
-                device.handle(),
-                &info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_image_view)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Self::from_handle(image, handle, create_info)
+        unsafe { Self::from_handle(image, handle, create_info) }
     }
 
     /// Creates a default `ImageView`. Equivalent to
@@ -651,7 +609,7 @@ impl ImageView {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         image: Arc<Image>,
-        handle: ash::vk::ImageView,
+        handle: vk::ImageView,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
         let ImageViewCreateInfo {
@@ -670,7 +628,7 @@ impl ImageView {
             usage = get_implicit_default_usage(subresource_range.aspects, &image);
         }
 
-        let format_features = get_format_features(format, &image);
+        let format_features = unsafe { get_format_features(format, &image) };
 
         let mut filter_cubic = false;
         let mut filter_cubic_minmax = false;
@@ -682,7 +640,7 @@ impl ImageView {
         {
             // Use unchecked, because all validation has been done above or is validated by the
             // image.
-            let properties =
+            let properties = unsafe {
                 device
                     .physical_device()
                     .image_format_properties_unchecked(ImageFormatInfo {
@@ -693,7 +651,8 @@ impl ImageView {
                         usage: image.usage(),
                         image_view_type: Some(view_type),
                         ..Default::default()
-                    })?;
+                    })
+            }?;
 
             if let Some(properties) = properties {
                 filter_cubic = properties.filter_cubic;
@@ -785,16 +744,14 @@ impl ImageView {
 impl Drop for ImageView {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let device = self.device();
-            let fns = device.fns();
-            (fns.v1_0.destroy_image_view)(device.handle(), self.handle, ptr::null());
-        }
+        let device = self.device();
+        let fns = device.fns();
+        unsafe { (fns.v1_0.destroy_image_view)(device.handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for ImageView {
-    type Handle = ash::vk::ImageView;
+    type Handle = vk::ImageView;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -827,10 +784,11 @@ pub struct ImageViewCreateInfo {
     /// If this is set to a format that is different from the image, the image must be created with
     /// the `mutable_format` flag.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `format` does not have the same number of components and bits per component as
     /// the parent image's format, the
-    /// [`image_view_format_reinterpretation`](crate::device::Features::image_view_format_reinterpretation)
+    /// [`image_view_format_reinterpretation`](crate::device::DeviceFeatures::image_view_format_reinterpretation)
     /// feature must be enabled on the device.
     ///
     /// The default value is `Format::UNDEFINED`.
@@ -838,9 +796,10 @@ pub struct ImageViewCreateInfo {
 
     /// How to map components of each pixel.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `component_mapping` is not the identity mapping, the
-    /// [`image_view_format_swizzle`](crate::device::Features::image_view_format_swizzle)
+    /// [`image_view_format_swizzle`](crate::device::DeviceFeatures::image_view_format_swizzle)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`ComponentMapping::identity()`].
@@ -885,6 +844,14 @@ pub struct ImageViewCreateInfo {
 impl Default for ImageViewCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageViewCreateInfo {
+    /// Returns a default `ImageViewCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_type: ImageViewType::Dim2d,
             format: Format::UNDEFINED,
@@ -899,9 +866,7 @@ impl Default for ImageViewCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
     /// array layers, and `subresource_range` determined from the image format and covering the
     /// whole image.
@@ -994,9 +959,9 @@ impl ImageViewCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "view_type".into(),
                         problem: "is `ImageViewType::CubeArray`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "image_cube_array",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("image_cube_array"),
+                        ])]),
                         vuids: &["VUID-VkImageViewCreateInfo-viewType-01004"],
                     }));
                 }
@@ -1039,7 +1004,7 @@ impl ImageViewCreateInfo {
                 problem: "this device is a portability subset device, and \
                     `component_mapping` is not the identity mapping"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "image_view_format_swizzle",
                 )])]),
                 vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatSwizzle-04465"],
@@ -1075,6 +1040,74 @@ impl ImageViewCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        image_vk: vk::Image,
+        extensions_vk: &'a mut ImageViewCreateInfoExtensionsVk,
+    ) -> vk::ImageViewCreateInfo<'a> {
+        let &Self {
+            view_type,
+            format,
+            component_mapping,
+            ref subresource_range,
+            usage: _,
+            sampler_ycbcr_conversion: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = vk::ImageViewCreateInfo::default()
+            .flags(vk::ImageViewCreateFlags::empty())
+            .image(image_vk)
+            .view_type(view_type.into())
+            .format(format.into())
+            .components(component_mapping.to_vk())
+            .subresource_range(subresource_range.to_vk());
+
+        let ImageViewCreateInfoExtensionsVk {
+            sampler_ycbcr_conversion_vk,
+            usage_vk,
+        } = extensions_vk;
+
+        if let Some(next) = sampler_ycbcr_conversion_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = usage_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(
+        &self,
+        implicit_default_usage: ImageUsage,
+    ) -> ImageViewCreateInfoExtensionsVk {
+        let &Self {
+            usage,
+            ref sampler_ycbcr_conversion,
+            ..
+        } = self;
+
+        let sampler_ycbcr_conversion_vk = sampler_ycbcr_conversion.as_ref().map(|conversion| {
+            vk::SamplerYcbcrConversionInfo::default().conversion(conversion.handle())
+        });
+
+        let has_non_default_usage = !(usage.is_empty() || usage == implicit_default_usage);
+        let usage_vk = has_non_default_usage
+            .then(|| vk::ImageViewUsageCreateInfo::default().usage(usage.into()));
+
+        ImageViewCreateInfoExtensionsVk {
+            sampler_ycbcr_conversion_vk,
+            usage_vk,
+        }
+    }
+}
+
+pub(crate) struct ImageViewCreateInfoExtensionsVk {
+    pub(crate) sampler_ycbcr_conversion_vk: Option<vk::SamplerYcbcrConversionInfo<'static>>,
+    pub(crate) usage_vk: Option<vk::ImageViewUsageCreateInfo<'static>>,
 }
 
 vulkan_enum! {
@@ -1159,9 +1192,11 @@ unsafe fn get_format_features(view_format: Format, image: &Image) -> FormatFeatu
 
     let mut format_features = {
         // Use unchecked, because all validation should have been done before calling.
-        let format_properties = device
-            .physical_device()
-            .format_properties_unchecked(view_format);
+        let format_properties = unsafe {
+            device
+                .physical_device()
+                .format_properties_unchecked(view_format)
+        };
         let drm_format_modifiers: SmallVec<[_; 1]> = image
             .drm_format_modifier()
             .map_or_else(Default::default, |(m, _)| smallvec![m]);

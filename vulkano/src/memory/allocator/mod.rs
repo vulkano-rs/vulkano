@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! In Vulkan, suballocation of [`DeviceMemory`] is left to the application, because every
 //! application has slightly different needs and one can not incorporate an allocator into the
 //! driver that would perform well in all cases. Vulkano stays true to this sentiment, but aims to
@@ -163,7 +154,7 @@
 //! Now if we free B and D, since these are done out of order, we will be left with holes between
 //! the other allocations, and we won't be able to fit allocation E anywhere:
 //!
-//!  ```plain
+//! ```plain
 //! +-----+-------------------+-------+-----------+-- - - --+       +-------------------------+
 //! |     |                   |       |           |         |   ?   |                         |
 //! |  A  |                   |   C   |           |   •••   |  <==  |            E            |
@@ -210,16 +201,12 @@
 //!
 //! [suballocators]: Suballocator
 //! [hierarchy]: Suballocator#memory-hierarchies
-//! [buffer-image granularity]: crate::device::Properties::buffer_image_granularity
+//! [buffer-image granularity]: crate::device::DeviceProperties::buffer_image_granularity
 //! [cyclic references]: Arc#breaking-cycles-with-weak
 //! [`Rc`]: std::rc::Rc
-//! [`mem::forget`]: std::mem::forget
 //! [region]: Suballocator#regions
 
-mod layout;
-pub mod suballocator;
-
-use self::{array_vec::ArrayVec, suballocator::Region};
+use self::{aliasable_box::AliasableBox, array_vec::ArrayVec, suballocator::Region};
 pub use self::{
     layout::DeviceLayout,
     suballocator::{
@@ -229,24 +216,29 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
-    MemoryRequirements, MemoryType,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
+    MemoryPropertyFlags, MemoryRequirements, MemoryType,
 };
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     DeviceSize, Validated, Version, VulkanError,
 };
-use ash::vk::MAX_MEMORY_TYPES;
-use parking_lot::Mutex;
+use ash::vk::{self, MAX_MEMORY_TYPES};
+use parking_lot::{Mutex, MutexGuard};
+use slabbin::SlabAllocator;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    iter::FusedIterator,
     mem,
     ops::BitOr,
-    ptr,
+    ptr, slice,
     sync::Arc,
 };
+
+mod layout;
+pub mod suballocator;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 ///
@@ -276,7 +268,7 @@ use std::{
 /// [buffer-image granularity]: self#buffer-image-granularity
 /// [host-visible]: MemoryPropertyFlags::HOST_VISIBLE
 /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
-/// [non-coherent atom size]: crate::device::Properties::non_coherent_atom_size
+/// [non-coherent atom size]: crate::device::DeviceProperties::non_coherent_atom_size
 pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
     /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
@@ -376,6 +368,8 @@ impl Debug for dyn MemoryAllocator {
 ///
 /// # Examples
 ///
+/// #### Direct device access only
+///
 /// For resources that the device frequently accesses, e.g. textures, render targets, or
 /// intermediary buffers, you want device-local memory without any host access:
 ///
@@ -405,8 +399,10 @@ impl Debug for dyn MemoryAllocator {
 /// .unwrap();
 /// ```
 ///
+/// #### Sequential writes from host, indirect device access
+///
 /// For staging, the resource is only ever written to sequentially. Also, since the device will
-/// only read the staging resourse once, it would yield no benefit to place it in device-local
+/// only read the staging resource once, it would yield no benefit to place it in device-local
 /// memory, in fact it would be wasteful. Therefore, it's best to put it in host-local memory:
 ///
 /// ```
@@ -433,6 +429,8 @@ impl Debug for dyn MemoryAllocator {
 /// #
 /// # let staging_buffer: vulkano::buffer::Subbuffer<u32> = staging_buffer;
 /// ```
+///
+/// #### Sequential writes from host, direct device access
 ///
 /// For resources that the device accesses directly, aka a buffer/image used for anything other
 /// than transfers, it's probably best to put it in device-local memory:
@@ -461,6 +459,8 @@ impl Debug for dyn MemoryAllocator {
 /// #
 /// # let uniform_buffer: vulkano::buffer::Subbuffer<u32> = uniform_buffer;
 /// ```
+///
+/// #### Readback to host
 ///
 /// For readback, e.g. getting the results of a compute shader back to the host:
 ///
@@ -496,7 +496,9 @@ pub struct MemoryTypeFilter {
 }
 
 impl MemoryTypeFilter {
-    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag.
+    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag. **It does not affect whether
+    /// the memory is host-visible**. You need to combine this with either the
+    /// [`HOST_SEQUENTIAL_WRITE`] or [`HOST_RANDOM_ACCESS`] filter for that.
     ///
     /// Memory being device-local means that it is fastest to access for the device. However,
     /// for dedicated GPUs, getting memory in and out of VRAM requires to go through the PCIe bus,
@@ -510,7 +512,7 @@ impl MemoryTypeFilter {
     /// because the memory is only written once before being consumed by the device and becoming
     /// outdated, it doesn't matter that the data is potentially transferred over the PCIe bus
     /// since it only happens once. Since this is only a preference, if you have some requirements
-    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precendence.
+    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precedence.
     ///
     /// For memory that the host doesn't access, and the device doesn't access directly, you may
     /// still prefer device-local memory if the memory is used regularly. For instance, an image
@@ -523,22 +525,22 @@ impl MemoryTypeFilter {
     /// memory types that are not `HOST_VISIBLE`, which makes sense since it's all system RAM. In
     /// that case you wouldn't need to do staging.
     ///
-    /// Don't use this together with [`PREFER_HOST`], that makes no sense. If you need host access,
-    /// make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
-    /// [`HOST_RANDOM_ACCESS`] filter.
+    /// Don't use this together with [`PREFER_HOST`], that makes no sense.
     ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     pub const PREFER_DEVICE: Self = Self {
         required_flags: MemoryPropertyFlags::empty(),
         preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
         not_preferred_flags: MemoryPropertyFlags::empty(),
     };
 
-    /// Prefers picking a memory type without the [`DEVICE_LOCAL`] flag.
+    /// Prefers picking a memory type without the [`DEVICE_LOCAL`] flag. **It does not affect
+    /// whether the memory is host-visible**. You need to combine this with either the
+    /// [`HOST_SEQUENTIAL_WRITE`] or [`HOST_RANDOM_ACCESS`] filter for that.
     ///
     /// This option is best suited for resources that the host does access, but device doesn't
     /// access directly, such as staging buffers and readback buffers.
@@ -553,28 +555,29 @@ impl MemoryTypeFilter {
     /// still prefer host-local memory if the memory is rarely used, such as for manually paging
     /// parts of device-local memory out in order to free up space on the device.
     ///
-    /// Don't use this together with [`PREFER_DEVICE`], that makes no sense. If you need host
-    /// access, make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
-    /// [`HOST_RANDOM_ACCESS`] filter.
+    /// Don't use this together with [`PREFER_DEVICE`], that makes no sense.
     ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
     pub const PREFER_HOST: Self = Self {
         required_flags: MemoryPropertyFlags::empty(),
         preferred_flags: MemoryPropertyFlags::empty(),
         not_preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
     };
 
-    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] flag. Using this filter
-    /// allows the allocator to pick a memory type that is uncached and write-combined, which is
-    /// ideal for sequential writes. However, this optimization might lead to poor performance for
-    /// anything else. What counts as a sequential write is any kind of loop that writes memory
-    /// locations in order, such as iterating over a slice while writing each element in order, or
-    /// equivalently using [`slice::copy_from_slice`]. Copying sized data also counts, as rustc
-    /// should write the memory locations in order. If you have a struct, make sure you write it
-    /// member-by-member.
+    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] flag. **It does not
+    /// affect whether the memory is device-local or host-local**. You need to combine this with
+    /// either the [`PREFER_DEVICE`] or [`PREFER_HOST`] filter for that.
+    ///
+    /// Using this filter allows the allocator to pick a memory type that is uncached and
+    /// write-combined, which is ideal for sequential writes. However, this optimization might lead
+    /// to poor performance for anything else. What counts as a sequential write is any kind of
+    /// loop that writes memory locations in order, such as iterating over a slice while writing
+    /// each element in order, or equivalently using [`slice::copy_from_slice`]. Copying sized data
+    /// also counts, as rustc should write the memory locations in order. If you have a struct,
+    /// make sure you write it member-by-member.
     ///
     /// Example use cases include staging buffers, as well as any other kind of buffer that you
     /// only write to from the host, like a uniform or vertex buffer.
@@ -585,7 +588,8 @@ impl MemoryTypeFilter {
     /// to get the most performance out, if that's possible.
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    /// [`HOST_COHERENT`]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
     pub const HOST_SEQUENTIAL_WRITE: Self = Self {
         required_flags: MemoryPropertyFlags::HOST_VISIBLE,
@@ -594,7 +598,9 @@ impl MemoryTypeFilter {
     };
 
     /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] and [`HOST_CACHED`]
-    /// flags, which is best suited for readback and/or random access.
+    /// flags, which is best suited for readback and/or random access. **It does not affect whether
+    /// the memory is device-local or host-local**. You need to combine this with either the
+    /// [`PREFER_DEVICE`] or [`PREFER_HOST`] filter for that.
     ///
     /// Example use cases include using the device for things other than rendering and getting the
     /// results back to the host. That might be compute shading, or image or video manipulation, or
@@ -606,6 +612,8 @@ impl MemoryTypeFilter {
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     pub const HOST_RANDOM_ACCESS: Self = Self {
         required_flags: MemoryPropertyFlags::HOST_VISIBLE.union(MemoryPropertyFlags::HOST_CACHED),
@@ -671,7 +679,15 @@ pub struct AllocationCreateInfo {
 impl Default for AllocationCreateInfo {
     #[inline]
     fn default() -> Self {
-        AllocationCreateInfo {
+        Self::new()
+    }
+}
+
+impl AllocationCreateInfo {
+    /// Returns a default `AllocationCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
             memory_type_bits: u32::MAX,
             allocate_preference: MemoryAllocatePreference::Unknown,
@@ -769,7 +785,7 @@ impl AllocationHandle {
     /// [`from_index`]: Self::from_index
     #[allow(clippy::transmutes_expressible_as_ptr_casts)]
     #[inline]
-    pub const fn as_index(self) -> usize {
+    pub fn as_index(self) -> usize {
         // SAFETY: `usize` and `*mut ()` have the same layout.
         unsafe { mem::transmute::<*mut (), usize>(self.0) }
     }
@@ -893,7 +909,7 @@ impl StandardMemoryAllocator {
 
 /// A generic implementation of a [memory allocator].
 ///
-/// The allocator keeps a pool of [`DeviceMemory`] blocks for each memory type and uses the type
+/// The allocator keeps [a pool of `DeviceMemory` blocks] for each memory type and uses the type
 /// parameter `S` to [suballocate] these blocks. You can also configure the sizes of these blocks.
 /// This means that you can have as many `GenericMemoryAllocator`s as you you want for different
 /// needs, or for performance reasons, as long as the block sizes are configured properly so that
@@ -923,6 +939,7 @@ impl StandardMemoryAllocator {
 /// only allocated once they are needed.
 ///
 /// [memory allocator]: MemoryAllocator
+/// [a pool of `DeviceMemory` blocks]: DeviceMemoryPool
 /// [suballocate]: Suballocator
 /// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
 #[derive(Debug)]
@@ -930,7 +947,7 @@ pub struct GenericMemoryAllocator<S> {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     buffer_image_granularity: DeviceAlignment,
     // Each memory type has a pool of `DeviceMemory` blocks.
-    pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
+    pools: ArrayVec<DeviceMemoryPool<S>, MAX_MEMORY_TYPES>,
     // Global mask of memory types.
     memory_type_bits: u32,
     dedicated_allocation: bool,
@@ -940,20 +957,11 @@ pub struct GenericMemoryAllocator<S> {
     max_allocations: u32,
 }
 
-#[derive(Debug)]
-struct Pool<S> {
-    blocks: Mutex<Vec<Box<Block<S>>>>,
-    // This is cached here for faster access, so we don't need to hop through 3 pointers.
-    property_flags: MemoryPropertyFlags,
-    atom_size: DeviceAlignment,
-    block_size: DeviceSize,
-}
-
 impl<S> GenericMemoryAllocator<S> {
     // This is a false-positive, we only use this const for static initialization.
     #[allow(clippy::declare_interior_mutable_const)]
-    const EMPTY_POOL: Pool<S> = Pool {
-        blocks: Mutex::new(Vec::new()),
+    const EMPTY_POOL: DeviceMemoryPool<S> = DeviceMemoryPool {
+        blocks: Mutex::new(DeviceMemoryBlockVec::new()),
         property_flags: MemoryPropertyFlags::empty(),
         atom_size: DeviceAlignment::MIN,
         block_size: 0,
@@ -1058,6 +1066,13 @@ impl<S> GenericMemoryAllocator<S> {
         }
     }
 
+    /// Returns the pools of [`DeviceMemory`] blocks that are currently allocated. Each memory type
+    /// index has a corresponding element in the slice.
+    #[inline]
+    pub fn pools(&self) -> &[DeviceMemoryPool<S>] {
+        &self.pools
+    }
+
     #[cold]
     fn allocate_device_memory(
         &self,
@@ -1088,11 +1103,12 @@ impl<S> GenericMemoryAllocator<S> {
             // - Mapping the whole range is always valid.
             unsafe {
                 memory.map_unchecked(MemoryMapInfo {
+                    flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
                     _ne: crate::NonExhaustive(()),
-                })?;
-            }
+                })
+            }?;
         }
 
         Ok(Arc::new(memory))
@@ -1111,7 +1127,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
         self.pools
             .iter()
-            .map(|pool| ash::vk::MemoryPropertyFlags::from(pool.property_flags))
+            .map(|pool| vk::MemoryPropertyFlags::from(pool.property_flags))
             .enumerate()
             // Filter out memory types which are supported by the memory type bits and have the
             // required flags set.
@@ -1172,13 +1188,14 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
         layout = layout.align_to(pool.atom_size).unwrap();
 
-        let mut blocks = pool.blocks.lock();
+        let blocks = &mut *pool.blocks.lock();
+        let vec = &mut blocks.vec;
 
         // TODO: Incremental sorting
-        blocks.sort_by_key(|block| block.free_size());
-        let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, |block| block.free_size());
+        vec.sort_by_key(|block| block.free_size());
+        let (Ok(idx) | Err(idx)) = vec.binary_search_by_key(&size, |block| block.free_size());
 
-        for block in &mut blocks[idx..] {
+        for block in &mut vec[idx..] {
             if let Ok(allocation) =
                 block.allocate(layout, allocation_type, self.buffer_image_granularity)
             {
@@ -1209,7 +1226,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
                     export_handle_types,
                 ) {
                     Ok(device_memory) => {
-                        break Block::new(device_memory);
+                        break DeviceMemoryBlock::new(device_memory, &blocks.block_allocator);
                     }
                     // Retry up to 3 times, halving the allocation size each time so long as the
                     // resulting size is still large enough.
@@ -1223,8 +1240,8 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             }
         };
 
-        blocks.push(block);
-        let block = blocks.last_mut().unwrap();
+        vec.push(block);
+        let block = vec.last_mut().unwrap();
 
         match block.allocate(layout, allocation_type, self.buffer_image_granularity) {
             Ok(allocation) => Ok(allocation),
@@ -1447,13 +1464,16 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
         if let Some(suballocation) = allocation.suballocation {
             let memory_type_index = allocation.device_memory.memory_type_index();
-            let pool = self.pools[memory_type_index as usize].blocks.lock();
-            let block_ptr = allocation.allocation_handle.0 as *mut Block<S>;
+            let blocks = self.pools[memory_type_index as usize].blocks.lock();
+            let vec = &blocks.vec;
+            let block_ptr = allocation
+                .allocation_handle
+                .as_ptr()
+                .cast::<DeviceMemoryBlock<S>>();
 
             // TODO: Maybe do a similar check for dedicated blocks.
             debug_assert!(
-                pool.iter()
-                    .any(|block| &**block as *const Block<S> == block_ptr),
+                vec.iter().any(|block| ptr::addr_of!(**block) == block_ptr),
                 "attempted to deallocate a memory block that does not belong to this allocator",
             );
 
@@ -1463,13 +1483,11 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             // memory and because a block isn't dropped until the allocator itself is dropped, at
             // which point it would be impossible to call this method. We also know that it must be
             // valid to create a reference to the block, because we locked the pool it belongs to.
-            let block = &mut *block_ptr;
+            let block = unsafe { &mut *block_ptr };
 
             // SAFETY: The caller must guarantee that `allocation` refers to a currently allocated
             // allocation of `self`.
-            block.deallocate(suballocation);
-
-            drop(pool);
+            unsafe { block.deallocate(suballocation) };
         }
     }
 }
@@ -1524,7 +1542,7 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
     }
 
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
-        (**self).deallocate(allocation)
+        unsafe { (**self).deallocate(allocation) }
     }
 }
 
@@ -1534,27 +1552,122 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
     }
 }
 
+/// A pool of [`DeviceMemory`] blocks within [`GenericMemoryAllocator`], specific to a memory type.
 #[derive(Debug)]
-struct Block<S> {
+pub struct DeviceMemoryPool<S> {
+    blocks: Mutex<DeviceMemoryBlockVec<S>>,
+    // This is cached here for faster access, so we don't need to hop through 3 pointers.
+    property_flags: MemoryPropertyFlags,
+    atom_size: DeviceAlignment,
+    block_size: DeviceSize,
+}
+
+impl<S> DeviceMemoryPool<S> {
+    /// Returns an iterator over the [`DeviceMemory`] blocks in the pool.
+    ///
+    /// # Locking behavior
+    ///
+    /// This locks the pool for the lifetime of the returned iterator. Creating other iterators, or
+    /// allocating/deallocating in the meantime, can therefore lead to a deadlock as long as this
+    /// iterator isn't dropped.
+    #[inline]
+    pub fn blocks(&self) -> DeviceMemoryBlocks<'_, S> {
+        DeviceMemoryBlocks {
+            inner: MutexGuard::leak(self.blocks.lock()).vec.iter(),
+            // SAFETY: We have just locked the pool above.
+            _guard: unsafe { DeviceMemoryPoolGuard::new(self) },
+        }
+    }
+}
+
+impl<S> Drop for DeviceMemoryPool<S> {
+    fn drop(&mut self) {
+        let blocks = self.blocks.get_mut();
+
+        for block in &mut blocks.vec {
+            unsafe { AliasableBox::drop(block, &blocks.block_allocator) };
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DeviceMemoryBlockVec<S> {
+    vec: Vec<AliasableBox<DeviceMemoryBlock<S>>>,
+    block_allocator: SlabAllocator<DeviceMemoryBlock<S>>,
+}
+
+impl<S> DeviceMemoryBlockVec<S> {
+    const fn new() -> Self {
+        DeviceMemoryBlockVec {
+            vec: Vec::new(),
+            block_allocator: SlabAllocator::new(32),
+        }
+    }
+}
+
+/// A [`DeviceMemory`] block within a [`DeviceMemoryPool`].
+#[derive(Debug)]
+pub struct DeviceMemoryBlock<S> {
     device_memory: Arc<DeviceMemory>,
     suballocator: S,
     allocation_count: usize,
 }
 
-impl<S: Suballocator> Block<S> {
-    fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
+impl<S: Suballocator> DeviceMemoryBlock<S> {
+    fn new(
+        device_memory: Arc<DeviceMemory>,
+        block_allocator: &SlabAllocator<Self>,
+    ) -> AliasableBox<Self> {
         let suballocator = S::new(
             Region::new(0, device_memory.allocation_size())
                 .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
         );
 
-        Box::new(Block {
-            device_memory,
-            suballocator,
-            allocation_count: 0,
-        })
+        AliasableBox::new(
+            DeviceMemoryBlock {
+                device_memory,
+                suballocator,
+                allocation_count: 0,
+            },
+            block_allocator,
+        )
     }
 
+    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
+        unsafe { self.suballocator.deallocate(suballocation) };
+
+        self.allocation_count -= 1;
+
+        // For bump allocators, reset the free-start once there are no remaining allocations.
+        if self.allocation_count == 0 {
+            self.suballocator.reset();
+        }
+    }
+
+    /// Returns the [`DeviceMemory`] backing this block.
+    #[inline]
+    pub fn device_memory(&self) -> &Arc<DeviceMemory> {
+        &self.device_memory
+    }
+
+    /// Returns the suballocator used to suballocate this block.
+    #[inline]
+    pub fn suballocator(&self) -> &S {
+        &self.suballocator
+    }
+
+    /// Returns the number of suballocations currently allocated from the block.
+    #[inline]
+    pub fn allocation_count(&self) -> usize {
+        self.allocation_count
+    }
+
+    fn free_size(&self) -> DeviceSize {
+        self.suballocator.free_size()
+    }
+}
+
+impl<S: Suballocator> AliasableBox<DeviceMemoryBlock<S>> {
     fn allocate(
         &mut self,
         layout: DeviceLayout,
@@ -1567,26 +1680,106 @@ impl<S: Suballocator> Block<S> {
 
         self.allocation_count += 1;
 
+        // It is paramount to soundness that the pointer we give out doesn't go through `DerefMut`,
+        // as such a pointer would become invalidated when another allocation is made.
+        let ptr = AliasableBox::as_mut_ptr(self);
+
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle::from_ptr(self as *mut Block<S> as _),
+            allocation_handle: AllocationHandle::from_ptr(<*mut _>::cast(ptr)),
         })
     }
+}
 
-    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
-        self.suballocator.deallocate(suballocation);
+/// An iterator over the [`DeviceMemoryBlock`]s within a [`DeviceMemoryPool`].
+pub struct DeviceMemoryBlocks<'a, S> {
+    inner: slice::Iter<'a, AliasableBox<DeviceMemoryBlock<S>>>,
+    _guard: DeviceMemoryPoolGuard<'a, S>,
+}
 
-        self.allocation_count -= 1;
+impl<'a, S> Iterator for DeviceMemoryBlocks<'a, S> {
+    type Item = &'a DeviceMemoryBlock<S>;
 
-        // For bump allocators, reset the free-start once there are no remaining allocations.
-        if self.allocation_count == 0 {
-            self.suballocator.cleanup();
-        }
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|block| &**block)
     }
 
-    fn free_size(&self) -> DeviceSize {
-        self.suballocator.free_size()
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+
+    #[inline]
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.inner.count()
+    }
+
+    #[inline]
+    fn last(mut self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.inner.next_back().map(|block| &**block)
+    }
+
+    #[inline]
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth(n).map(|block| &**block)
+    }
+
+    #[inline]
+    fn fold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        self.inner.fold(init, |acc, block| f(acc, &**block))
+    }
+}
+
+impl<S> DoubleEndedIterator for DeviceMemoryBlocks<'_, S> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back().map(|block| &**block)
+    }
+
+    #[inline]
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth_back(n).map(|block| &**block)
+    }
+}
+
+impl<S> ExactSizeIterator for DeviceMemoryBlocks<'_, S> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<S> FusedIterator for DeviceMemoryBlocks<'_, S> {}
+
+struct DeviceMemoryPoolGuard<'a, S> {
+    pool: &'a DeviceMemoryPool<S>,
+}
+
+impl<'a, S> DeviceMemoryPoolGuard<'a, S> {
+    /// # Safety
+    ///
+    /// - The `pool.blocks` mutex must be locked.
+    unsafe fn new(pool: &'a DeviceMemoryPool<S>) -> Self {
+        DeviceMemoryPoolGuard { pool }
+    }
+}
+
+impl<S> Drop for DeviceMemoryPoolGuard<'_, S> {
+    fn drop(&mut self) {
+        // SAFETY: Enforced by the caller of `DeviceMemoryPoolGuard::new`.
+        unsafe { self.pool.blocks.force_unlock() };
     }
 }
 
@@ -1669,7 +1862,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     ///
     /// [`DEVICE_ADDRESS`]: MemoryAllocateFlags::DEVICE_ADDRESS
     /// [`SHADER_DEVICE_ADDRESS`]: crate::buffer::BufferUsage::SHADER_DEVICE_ADDRESS
-    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    /// [`buffer_device_address`]: crate::device::DeviceFeatures::buffer_device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
     pub device_address: bool,
@@ -1680,7 +1873,15 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
 impl Default for GenericMemoryAllocatorCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
-        GenericMemoryAllocatorCreateInfo {
+        Self::new()
+    }
+}
+
+impl GenericMemoryAllocatorCreateInfo<'_> {
+    /// Returns a default `GenericMemoryAllocatorCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
             block_sizes: &[],
             memory_type_bits: u32::MAX,
             dedicated_allocation: true,
@@ -1691,14 +1892,17 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_> {
     }
 }
 
-/// > **Note**: Returns `0` on overflow.
+/// Returns the smallest value greater or equal to `val` that is a multiple of `alignment`.
+///
+/// > **Note**: Returns zero on overflow.
 #[inline(always)]
-pub(crate) const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+pub const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
     align_down(val.wrapping_add(alignment.as_devicesize() - 1), alignment)
 }
 
+/// Returns the largest value smaller or equal to `val` that is a multiple of `alignment`.
 #[inline(always)]
-pub(crate) const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+pub const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
     val & !(alignment.as_devicesize() - 1)
 }
 
@@ -1734,6 +1938,74 @@ mod array_vec {
         fn deref_mut(&mut self) -> &mut Self::Target {
             // SAFETY: `self.len <= N`.
             unsafe { self.data.get_unchecked_mut(0..self.len) }
+        }
+    }
+}
+
+mod aliasable_box {
+    use slabbin::SlabAllocator;
+    use std::{
+        fmt,
+        marker::PhantomData,
+        ops::{Deref, DerefMut},
+        panic::{RefUnwindSafe, UnwindSafe},
+        ptr::NonNull,
+    };
+
+    pub struct AliasableBox<T> {
+        ptr: NonNull<T>,
+        marker: PhantomData<T>,
+    }
+
+    unsafe impl<T: Send> Send for AliasableBox<T> {}
+    unsafe impl<T: Sync> Sync for AliasableBox<T> {}
+
+    impl<T: UnwindSafe> UnwindSafe for AliasableBox<T> {}
+    impl<T: RefUnwindSafe> RefUnwindSafe for AliasableBox<T> {}
+
+    impl<T> Unpin for AliasableBox<T> {}
+
+    impl<T> AliasableBox<T> {
+        pub fn new(value: T, allocator: &SlabAllocator<T>) -> Self {
+            let ptr = allocator.allocate();
+
+            unsafe { ptr.as_ptr().write(value) };
+
+            AliasableBox {
+                ptr,
+                marker: PhantomData,
+            }
+        }
+
+        pub fn as_mut_ptr(this: &mut Self) -> *mut T {
+            this.ptr.as_ptr()
+        }
+
+        pub unsafe fn drop(this: &mut Self, allocator: &SlabAllocator<T>) {
+            unsafe { this.ptr.as_ptr().drop_in_place() };
+            unsafe { allocator.deallocate(this.ptr) };
+        }
+    }
+
+    impl<T: fmt::Debug> fmt::Debug for AliasableBox<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Debug::fmt(&**self, f)
+        }
+    }
+
+    impl<T> Deref for AliasableBox<T> {
+        type Target = T;
+
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            unsafe { self.ptr.as_ref() }
+        }
+    }
+
+    impl<T> DerefMut for AliasableBox<T> {
+        #[inline]
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            unsafe { self.ptr.as_mut() }
         }
     }
 }

@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Location in memory that contains data.
 //!
 //! A Vulkan buffer is very similar to a buffer that you would use in programming languages in
@@ -17,7 +8,7 @@
 //! Vulkano does not perform any specific marshalling of buffer data. The representation of the
 //! buffer in memory is identical between the CPU and GPU. Because the Rust compiler is allowed to
 //! reorder struct fields at will by default when using `#[repr(Rust)]`, it is advised to mark each
-//! struct requiring imput assembly as `#[repr(C)]`. This forces Rust to follow the standard C
+//! struct requiring input assembly as `#[repr(C)]`. This forces Rust to follow the standard C
 //! procedure. Each element is laid out in memory in the order of declaration and aligned to a
 //! multiple of their alignment.
 //!
@@ -74,9 +65,8 @@
 //! See also [the `shader` module documentation] for information about how buffer contents need to
 //! be laid out in accordance with the shader interface.
 //!
-//! [`RawBuffer`]: self::sys::RawBuffer
-//! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
-//! [the `view` module]: self::view
+//! [`SubbufferAllocator`]: allocator::SubbufferAllocator
+//! [the `view` module]: view
 //! [the `shader` module documentation]: crate::shader
 
 pub use self::{subbuffer::*, sys::*, usage::*};
@@ -93,15 +83,18 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf,
-    Validated, ValidationError, Version, VulkanError, VulkanObject,
+    DeviceAddress, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
+    Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
+    marker::PhantomData,
+    num::NonZero,
     ops::Range,
     sync::Arc,
 };
@@ -142,7 +135,7 @@ pub mod view;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 /// #
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -184,16 +177,16 @@ pub mod view;
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     &command_buffer_allocator,
+///     command_buffer_allocator.clone(),
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
 /// cbb.copy_buffer(CopyBufferInfo::buffers(
-///         temporary_accessible_buffer,
-///         device_local_buffer.clone(),
-///     ))
-///     .unwrap();
+///     temporary_accessible_buffer,
+///     device_local_buffer.clone(),
+/// ))
+/// .unwrap();
 /// let cb = cbb.build().unwrap();
 ///
 /// // Execute the copy command and wait for completion before proceeding.
@@ -215,6 +208,7 @@ pub struct Buffer {
 
 /// The type of backing memory that a buffer can have.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BufferMemory {
     /// The buffer is backed by normal memory, bound with [`bind_memory`].
     ///
@@ -225,6 +219,9 @@ pub enum BufferMemory {
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
     Sparse,
+
+    /// The buffer is backed by memory not managed by vulkano.
+    External,
 }
 
 impl Buffer {
@@ -360,7 +357,6 @@ impl Buffer {
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
         let buffer = Subbuffer::new(Buffer::new(
             allocator,
@@ -377,16 +373,15 @@ impl Buffer {
     /// # Panics
     ///
     /// - Panics if `create_info.size` is not zero.
-    /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
         mut create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
-        assert!(layout.alignment().as_devicesize() <= 64);
-        // TODO: Enable once sparse binding materializes
-        // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
+        assert!(!create_info
+            .flags
+            .contains(BufferCreateFlags::SPARSE_BINDING));
 
         assert_eq!(
             create_info.size, 0,
@@ -476,10 +471,10 @@ impl Buffer {
 
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
         self.validate_device_address()?;
 
-        unsafe { Ok(self.device_address_unchecked()) }
+        Ok(unsafe { self.device_address_unchecked() })
     }
 
     fn validate_device_address(&self) -> Result<(), Box<ValidationError>> {
@@ -487,7 +482,7 @@ impl Buffer {
 
         if !device.enabled_features().buffer_device_address {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "buffer_device_address",
                 )])]),
                 vuids: &["VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324"],
@@ -508,27 +503,24 @@ impl Buffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
+    pub unsafe fn device_address_unchecked(&self) -> NonZero<DeviceAddress> {
         let device = self.device();
 
-        let info_vk = ash::vk::BufferDeviceAddressInfo {
-            buffer: self.handle(),
-            ..Default::default()
-        };
+        let info_vk = vk::BufferDeviceAddressInfo::default().buffer(self.handle());
 
         let ptr = {
             let fns = device.fns();
-            let f = if device.api_version() >= Version::V1_2 {
+            let func = if device.api_version() >= Version::V1_2 {
                 fns.v1_2.get_buffer_device_address
             } else if device.enabled_extensions().khr_buffer_device_address {
                 fns.khr_buffer_device_address.get_buffer_device_address_khr
             } else {
                 fns.ext_buffer_device_address.get_buffer_device_address_ext
             };
-            f(device.handle(), &info_vk)
+            unsafe { func(device.handle(), &info_vk) }
         };
 
-        NonNullDeviceAddress::new(ptr).unwrap()
+        NonZero::new(ptr).unwrap()
     }
 
     pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
@@ -537,7 +529,7 @@ impl Buffer {
 }
 
 unsafe impl VulkanObject for Buffer {
-    type Handle = ash::vk::Buffer;
+    type Handle = vk::Buffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -813,25 +805,24 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of a buffer.
     BufferCreateFlags = BufferCreateFlags(u32);
 
-    /* TODO: enable
-    /// The buffer will be backed by sparse memory binding (through queue commands) instead of
-    /// regular binding (through [`bind_memory`]).
+    /// The buffer will be backed by sparse memory binding (through the [`bind_sparse`] queue
+    /// command) instead of regular binding (through [`bind_memory`]).
     ///
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
+    /// [`bind_sparse`]: crate::device::queue::QueueGuard::bind_sparse
     /// [`bind_memory`]: sys::RawBuffer::bind_memory
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,*/
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
+    SPARSE_BINDING = SPARSE_BINDING,
 
-    /* TODO: enable
     /// The buffer can be used without being fully resident in memory at the time of use.
     ///
-    /// This requires the `sparse_binding` flag as well.
+    /// This requires the [`BufferCreateFlags::SPARSE_BINDING`] flag as well.
     ///
     /// The [`sparse_residency_buffer`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_buffer`]: crate::device::Features::sparse_residency_buffer
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
+    /// [`sparse_residency_buffer`]: crate::device::DeviceFeatures::sparse_residency_buffer
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /* TODO: enable
     /// The buffer's memory can alias with another buffer or a different part of the same buffer.
@@ -840,7 +831,7 @@ vulkan_bitflags! {
     ///
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    /// [`sparse_residency_aliased`]: crate::device::DeviceFeatures::sparse_residency_aliased
     SPARSE_ALIASED = SPARSE_ALIASED,*/
 
     /* TODO: enable
@@ -865,8 +856,6 @@ vulkan_bitflags! {
 }
 
 /// The buffer configuration to query in [`PhysicalDevice::external_buffer_properties`].
-///
-/// [`PhysicalDevice::external_buffer_properties`]: crate::device::physical::PhysicalDevice::external_buffer_properties
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The flags that will be used.
@@ -882,15 +871,21 @@ pub struct ExternalBufferInfo {
 }
 
 impl ExternalBufferInfo {
-    /// Returns an `ExternalBufferInfo` with the specified `handle_type`.
+    /// Returns a default `ExternalBufferInfo` with the provided `handle_type`.
     #[inline]
-    pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
+    pub const fn new(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
             flags: BufferCreateFlags::empty(),
             usage: BufferUsage::empty(),
             handle_type,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
+        Self::new(handle_type)
     }
 
     pub(crate) fn validate(
@@ -936,6 +931,20 @@ impl ExternalBufferInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceExternalBufferInfo<'static> {
+        let &Self {
+            flags,
+            usage,
+            handle_type,
+            _ne: _,
+        } = self;
+
+        vk::PhysicalDeviceExternalBufferInfo::default()
+            .flags(flags.into())
+            .usage(usage.into())
+            .handle_type(handle_type.into())
+    }
 }
 
 /// The external memory properties supported for buffers with a given configuration.
@@ -944,6 +953,25 @@ impl ExternalBufferInfo {
 pub struct ExternalBufferProperties {
     /// The properties for external memory.
     pub external_memory_properties: ExternalMemoryProperties,
+}
+
+impl ExternalBufferProperties {
+    pub(crate) fn to_mut_vk() -> vk::ExternalBufferProperties<'static> {
+        vk::ExternalBufferProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::ExternalBufferProperties<'_>) -> Self {
+        let &vk::ExternalBufferProperties {
+            ref external_memory_properties,
+            ..
+        } = val_vk;
+
+        Self {
+            external_memory_properties: ExternalMemoryProperties::from_vk(
+                external_memory_properties,
+            ),
+        }
+    }
 }
 
 vulkan_enum! {
@@ -984,7 +1012,7 @@ pub enum IndexBuffer {
     ///
     /// The [`index_type_uint8`] feature must be enabled on the device.
     ///
-    /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
+    /// [`index_type_uint8`]: crate::device::DeviceFeatures::index_type_uint8
     U8(Subbuffer<[u8]>),
 
     /// An index buffer containing unsigned 16-bit indices.
@@ -1046,3 +1074,7 @@ impl From<Subbuffer<[u32]>> for IndexBuffer {
         Self::U32(value)
     }
 }
+
+/// This is intended for use by the `BufferContents` derive macro only.
+#[doc(hidden)]
+pub struct AssertParamIsBufferContents<T: BufferContents + ?Sized>(PhantomData<T>);

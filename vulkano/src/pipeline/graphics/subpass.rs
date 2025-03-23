@@ -1,12 +1,3 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     command_buffer::{CommandBufferInheritanceRenderingInfo, RenderingInfo},
     device::Device,
@@ -15,12 +6,35 @@ use crate::{
     render_pass::Subpass,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use ash::vk;
+use smallvec::SmallVec;
 
 /// Selects the type of subpass that a graphics pipeline is created for.
 #[derive(Clone, Debug)]
 pub enum PipelineSubpassType {
     BeginRenderPass(Subpass),
     BeginRendering(PipelineRenderingCreateInfo),
+}
+
+impl PipelineSubpassType {
+    pub(crate) fn to_vk_rendering<'a>(
+        &self,
+        fields1_vk: &'a PipelineRenderingCreateInfoFields1Vk,
+    ) -> vk::PipelineRenderingCreateInfo<'a> {
+        match self {
+            PipelineSubpassType::BeginRenderPass(_) => unreachable!(),
+            PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.to_vk(fields1_vk),
+        }
+    }
+
+    pub(crate) fn to_vk_rendering_fields1(&self) -> Option<PipelineRenderingCreateInfoFields1Vk> {
+        match self {
+            PipelineSubpassType::BeginRenderPass(_) => None,
+            PipelineSubpassType::BeginRendering(rendering_info) => {
+                Some(rendering_info.to_vk_fields1())
+            }
+        }
+    }
 }
 
 impl From<Subpass> for PipelineSubpassType {
@@ -44,8 +58,8 @@ pub struct PipelineRenderingCreateInfo {
     /// indices that are rendered to. The value is a bitmask, so that that for example `0b11` will
     /// draw to the first two views and `0b101` will draw to the first and third view.
     ///
-    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
-    /// must be enabled on the device.
+    /// If set to a nonzero value, the [`multiview`](crate::device::DeviceFeatures::multiview)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `0`.
     pub view_mask: u32,
@@ -77,6 +91,14 @@ pub struct PipelineRenderingCreateInfo {
 impl Default for PipelineRenderingCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PipelineRenderingCreateInfo {
+    /// Returns a default `PipelineRenderingCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             view_mask: 0,
             color_attachment_formats: Vec::new(),
@@ -85,28 +107,32 @@ impl Default for PipelineRenderingCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl PipelineRenderingCreateInfo {
     pub(crate) fn from_subpass(subpass: &Subpass) -> Self {
         let subpass_desc = subpass.subpass_desc();
         let rp_attachments = subpass.render_pass().attachments();
 
         Self {
             view_mask: subpass_desc.view_mask,
-            color_attachment_formats: (subpass_desc.color_attachments.iter())
+            color_attachment_formats: subpass_desc
+                .color_attachments
+                .iter()
                 .map(|color_attachment| {
                     color_attachment.as_ref().map(|color_attachment| {
                         rp_attachments[color_attachment.attachment as usize].format
                     })
                 })
                 .collect(),
-            depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+            depth_attachment_format: subpass_desc
+                .depth_stencil_attachment
+                .as_ref()
                 .map(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
                 .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
-            stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+            stencil_attachment_format: subpass_desc
+                .depth_stencil_attachment
+                .as_ref()
                 .map(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
@@ -118,16 +144,22 @@ impl PipelineRenderingCreateInfo {
     pub(crate) fn from_rendering_info(info: &RenderingInfo) -> Self {
         Self {
             view_mask: info.view_mask,
-            color_attachment_formats: (info.color_attachments.iter())
+            color_attachment_formats: info
+                .color_attachments
+                .iter()
                 .map(|atch_info| {
                     atch_info
                         .as_ref()
                         .map(|atch_info| atch_info.image_view.format())
                 })
                 .collect(),
-            depth_attachment_format: (info.depth_attachment.as_ref())
+            depth_attachment_format: info
+                .depth_attachment
+                .as_ref()
                 .map(|atch_info| atch_info.image_view.format()),
-            stencil_attachment_format: (info.stencil_attachment.as_ref())
+            stencil_attachment_format: info
+                .stencil_attachment
+                .as_ref()
                 .map(|atch_info| atch_info.image_view.format()),
             _ne: crate::NonExhaustive(()),
         }
@@ -160,7 +192,9 @@ impl PipelineRenderingCreateInfo {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not zero".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-multiview-06577"],
             }));
         }
@@ -198,7 +232,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::COLOR_ATTACHMENT)
             {
@@ -227,7 +264,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
             {
@@ -265,7 +305,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
             {
@@ -305,4 +348,46 @@ impl PipelineRenderingCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a PipelineRenderingCreateInfoFields1Vk,
+    ) -> vk::PipelineRenderingCreateInfo<'a> {
+        let &Self {
+            view_mask,
+            color_attachment_formats: _,
+            depth_attachment_format,
+            stencil_attachment_format,
+            _ne: _,
+        } = self;
+        let PipelineRenderingCreateInfoFields1Vk {
+            color_attachment_formats_vk,
+        } = fields1_vk;
+
+        vk::PipelineRenderingCreateInfo::default()
+            .view_mask(view_mask)
+            .color_attachment_formats(color_attachment_formats_vk)
+            .depth_attachment_format(
+                depth_attachment_format.map_or(vk::Format::UNDEFINED, Into::into),
+            )
+            .stencil_attachment_format(
+                stencil_attachment_format.map_or(vk::Format::UNDEFINED, Into::into),
+            )
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> PipelineRenderingCreateInfoFields1Vk {
+        let color_attachment_formats_vk = self
+            .color_attachment_formats
+            .iter()
+            .map(|format| format.map_or(vk::Format::UNDEFINED, Into::into))
+            .collect();
+
+        PipelineRenderingCreateInfoFields1Vk {
+            color_attachment_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct PipelineRenderingCreateInfoFields1Vk {
+    pub(crate) color_attachment_formats_vk: SmallVec<[vk::Format; 4]>,
 }

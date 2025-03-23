@@ -1,14 +1,5 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-use crate::app::App;
-use cgmath::Vector2;
+use crate::App;
+use glam::IVec2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
@@ -18,7 +9,7 @@ use vulkano::{
         PrimaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     format::Format,
@@ -87,7 +78,7 @@ impl GameOfLifeComputePipeline {
             ComputePipeline::new(
                 device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -123,7 +114,7 @@ impl GameOfLifeComputePipeline {
         self.image.clone()
     }
 
-    pub fn draw_life(&self, pos: Vector2<i32>) {
+    pub fn draw_life(&self, pos: IVec2) {
         let mut life_in = self.life_in.write().unwrap();
         let extent = self.image.image().extent();
         if pos.y < 0 || pos.y >= extent[1] as i32 || pos.x < 0 || pos.x >= extent[0] as i32 {
@@ -140,7 +131,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.as_ref(),
+            self.command_buffer_allocator.clone(),
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -180,11 +171,10 @@ impl GameOfLifeComputePipeline {
     ) {
         // Resize image if needed.
         let image_extent = self.image.image().extent();
-        let pipeline_layout = self.compute_life_pipeline.layout();
-        let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            desc_layout.clone(),
+        let layout = &self.compute_life_pipeline.layout().set_layouts()[0];
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.image.clone()),
                 WriteDescriptorSet::buffer(1, self.life_in.clone()),
@@ -202,12 +192,20 @@ impl GameOfLifeComputePipeline {
         builder
             .bind_pipeline_compute(self.compute_life_pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.compute_life_pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
             .unwrap()
-            .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .unwrap()
-            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
+            .push_constants(
+                self.compute_life_pipeline.layout().clone(),
+                0,
+                push_constants,
+            )
             .unwrap();
+        unsafe { builder.dispatch([image_extent[0] / 8, image_extent[1] / 8, 1]) }.unwrap();
     }
 }
 

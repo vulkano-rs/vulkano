@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates using the `VK_KHR_multiview` extension to render to multiple layers of
 // the framebuffer in one render pass. This can significantly improve performance in cases where
 // multiple perspectives or cameras are very similar like in virtual reality or other types of
@@ -20,7 +11,7 @@ use vulkano::{
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     format::Format,
@@ -71,11 +62,11 @@ fn main() {
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::empty()
     };
-    let features = Features {
+    let features = DeviceFeatures {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on Vulkan 1.0
         // and the device feature on Vulkan 1.1+.
         multiview: true,
-        ..Features::empty()
+        ..DeviceFeatures::empty()
     };
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
@@ -268,9 +259,7 @@ fn main() {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs.info().input_interface)
-            .unwrap();
+        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(fs),
@@ -308,14 +297,16 @@ fn main() {
                     ColorBlendAttachmentState::default(),
                 )),
                 subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                ..GraphicsPipelineCreateInfo::new(layout)
             },
         )
         .unwrap()
     };
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let create_buffer = || {
         Buffer::from_iter(
@@ -338,14 +329,12 @@ fn main() {
     let buffer2 = create_buffer();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
-    // Drawing commands are broadcast to each view in the view mask of the active renderpass which
-    // means only a single draw call is needed to draw to multiple layers of the framebuffer.
     builder
         .begin_render_pass(
             RenderPassBeginInfo {
@@ -358,11 +347,14 @@ fn main() {
         .bind_pipeline_graphics(pipeline)
         .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
-        .unwrap()
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
-        .unwrap()
-        .end_render_pass(Default::default())
         .unwrap();
+
+    // Drawing commands are broadcast to each view in the view mask of the active renderpass
+    // which means only a single draw call is needed to draw to multiple layers of the
+    // framebuffer.
+    unsafe { builder.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
+
+    builder.end_render_pass(Default::default()).unwrap();
 
     // Copy the image layers to different buffers to save them as individual images to disk.
     builder
@@ -376,7 +368,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer1.clone())
+            ..CopyImageToBufferInfo::new(image.clone(), buffer1.clone())
         })
         .unwrap()
         .copy_image_to_buffer(CopyImageToBufferInfo {
@@ -389,7 +381,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer2.clone())
+            ..CopyImageToBufferInfo::new(image.clone(), buffer2.clone())
         })
         .unwrap();
 

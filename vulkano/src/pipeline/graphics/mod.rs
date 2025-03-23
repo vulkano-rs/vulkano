@@ -1,20 +1,26 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! A pipeline that performs graphics processing operations.
 //!
 //! Unlike a compute pipeline, which performs general-purpose work, a graphics pipeline is geared
 //! specifically towards doing graphical processing. To that end, it consists of several shaders,
-//! with additional state and glue logic in between.
+//! with additional state and glue logic in between, known as the pipeline's *state*.
+//! The state often directly corresponds to one or more steps in the graphics pipeline. Each
+//! state collection has a dedicated submodule.
+//!
+//! # Processing steps
 //!
 //! A graphics pipeline performs many separate steps, that execute more or less in sequence.
 //! Due to the parallel nature of a GPU, no strict ordering guarantees may exist.
+//!
+//! Graphics pipelines come in two different forms:
+//! - *Primitive shading* graphics pipelines, which contain a vertex shader, vertex input and input
+//!   assembly state, and optionally tessellation shaders and/or a geometry shader.
+//! - *Mesh shading* graphics pipelines, which contain a mesh shader, and optionally a task shader.
+//!
+//! These types differ in the operations that are performed in the first half of the pipeline,
+//! but share a common second half. The type of a graphics pipeline is determined by whether
+//! it contains a vertex or a mesh shader (it cannot contain both).
+//!
+//! ## Primitive shading
 //!
 //! 1. Vertex input and assembly: vertex input data is read from data buffers and then assembled
 //!    into primitives (points, lines, triangles etc.).
@@ -26,14 +32,31 @@
 //!    newly created vertices.
 //! 4. (Optional) Geometry shading: whole primitives are fed as input and processed into a new set
 //!    of output primitives.
-//! 5. Vertex post-processing, including:
+//!
+//! ## Mesh shading
+//!
+//! 1. (Optional) Task shader invocations: the task shader is run once for each workgroup in the
+//!    draw command. The task shader then spawns one or more mesh shader invocations.
+//! 2. Mesh shader invocations: the mesh shader is run, either once each time it is spawned by a
+//!    task shader, or if there is no task shader, once for each workgroup in the draw command. The
+//!    mesh shader outputs a list of primitives (triangles etc).
+//!
+//! Mesh shading pipelines do not receive any vertex input; their input data is supplied entirely
+//! from resources bound via descriptor sets, in combination with the x, y and z coordinates of
+//! the current workgroup.
+//!
+//! ## Rasterization, fragment processing and output
+//!
+//! These steps are shared by all graphics pipeline types.
+//!
+//! 1. Vertex post-processing, including:
 //!    - Clipping primitives to the view frustum and user-defined clipping planes.
 //!    - Perspective division.
 //!    - Viewport mapping.
-//! 6. Rasterization: converting primitives into a two-dimensional representation. Primitives may be
-//!    discarded depending on their orientation, and are then converted into a collection of
+//! 2. Rasterization: converting primitives into a two-dimensional representation. Primitives may
+//!    be discarded depending on their orientation, and are then converted into a collection of
 //!    fragments that are processed further.
-//! 7. Fragment operations. These include invocations of the fragment shader, which generates the
+//! 3. Fragment operations. These include invocations of the fragment shader, which generates the
 //!    values to be written to the color attachment. Various testing and discarding operations can
 //!    be performed both before and after the fragment shader ("early" and "late" fragment tests),
 //!    including:
@@ -43,34 +66,39 @@
 //!    - Depth bounds test
 //!    - Stencil test
 //!    - Depth test
-//! 8. Color attachment output: the final pixel data is written to a framebuffer. Blending and
+//! 4. Color attachment output: the final pixel data is written to a framebuffer. Blending and
 //!    logical operations can be applied to combine incoming pixel data with data already present
 //!    in the framebuffer.
 //!
-//! A graphics pipeline contains many configuration options, which are grouped into collections of
-//! "state". Often, these directly correspond to one or more steps in the graphics pipeline. Each
-//! state collection has a dedicated submodule.
+//! # Using a graphics pipeline
 //!
-//! Once a graphics pipeline has been created, you can execute it by first *binding* it in a command
-//! buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
+//! Once a graphics pipeline has been created, you can execute it by first *binding* it in a
+//! command buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
 //! constants, and setting any dynamic state that the pipeline may need. Then you issue a `draw`
 //! command.
 
 use self::{
-    color_blend::ColorBlendState,
-    depth_stencil::{DepthState, DepthStencilState},
-    discard_rectangle::DiscardRectangleState,
+    color_blend::{ColorBlendState, ColorBlendStateExtensionsVk, ColorBlendStateFields1Vk},
+    depth_stencil::DepthStencilState,
+    discard_rectangle::{DiscardRectangleState, DiscardRectangleStateFields1Vk},
     input_assembly::{InputAssemblyState, PrimitiveTopology},
     multisample::MultisampleState,
-    rasterization::RasterizationState,
-    subpass::PipelineSubpassType,
-    tessellation::TessellationState,
-    vertex_input::VertexInputState,
-    viewport::ViewportState,
+    rasterization::{RasterizationState, RasterizationStateExtensionsVk},
+    subpass::{PipelineRenderingCreateInfoFields1Vk, PipelineSubpassType},
+    tessellation::{TessellationState, TessellationStateExtensionsVk},
+    vertex_input::{
+        RequiredVertexInputsVUIDs, VertexInputState, VertexInputStateExtensionsVk,
+        VertexInputStateFields1Vk,
+    },
+    viewport::{ViewportState, ViewportStateFields1Vk},
 };
 use super::{
-    cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo,
+    cache::PipelineCache,
+    inout_interface::{shader_interface_location_info, ShaderInterfaceLocationInfo},
+    shader::inout_interface::validate_interfaces_compatible,
+    DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags, PipelineLayout,
+    PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
+    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -78,30 +106,25 @@ use crate::{
     image::{ImageAspect, ImageAspects},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    pipeline::graphics::{
-        color_blend::ColorBlendAttachmentState,
-        depth_stencil::{StencilOpState, StencilState},
-        rasterization::{CullMode, DepthBiasState},
-        subpass::PipelineRenderingCreateInfo,
-        tessellation::TessellationDomainOrigin,
-        vertex_input::VertexInputRate,
-    },
+    pipeline::graphics::rasterization::{ConservativeRasterizationMode, CullMode, DepthBiasState},
     shader::{
-        spirv::{ExecutionMode, ExecutionModel, Instruction},
+        spirv::{ExecutionMode, ExecutionModel, Instruction, StorageClass},
         DescriptorBindingRequirements, ShaderStage, ShaderStages,
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::{HashMap, HashSet};
+use ash::vk;
+use foldhash::{HashMap, HashSet};
+use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
-    collections::hash_map::Entry, ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr,
-    sync::Arc,
+    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZero, ptr, sync::Arc,
 };
 
 pub mod color_blend;
 pub mod depth_stencil;
 pub mod discard_rectangle;
+pub mod fragment_shading_rate;
 pub mod input_assembly;
 pub mod multisample;
 pub mod rasterization;
@@ -118,19 +141,14 @@ pub mod viewport;
 /// implementation should perform the various operations needed by a draw command.
 #[derive(Debug)]
 pub struct GraphicsPipeline {
-    handle: ash::vk::Pipeline,
+    handle: vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: PipelineCreateFlags,
-    // TODO: replace () with an object that describes the shaders in some way.
-    shaders: HashMap<ShaderStage, ()>,
-    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
-    num_used_descriptor_sets: u32,
-    fragment_tests_stages: Option<FragmentTestsStages>,
-
-    vertex_input_state: VertexInputState,
-    input_assembly_state: InputAssemblyState,
+    shader_stages: ShaderStages,
+    vertex_input_state: Option<VertexInputState>,
+    input_assembly_state: Option<InputAssemblyState>,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
     rasterization_state: RasterizationState,
@@ -142,8 +160,15 @@ pub struct GraphicsPipeline {
     subpass: PipelineSubpassType,
 
     discard_rectangle_state: Option<DiscardRectangleState>,
+    fragment_shading_rate_state: Option<FragmentShadingRateState>,
 
+    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
+    num_used_descriptor_sets: u32,
     fixed_state: HashSet<DynamicState>,
+    fragment_tests_stages: Option<FragmentTestsStages>,
+    mesh_is_nv: bool,
+    // Note: this is only `Some` if `vertex_input_state` is `None`.
+    required_vertex_inputs: Option<HashMap<u32, ShaderInterfaceLocationInfo>>,
 }
 
 impl GraphicsPipeline {
@@ -154,9 +179,9 @@ impl GraphicsPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }
 
     fn validate_new(
@@ -176,698 +201,49 @@ impl GraphicsPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let &GraphicsPipelineCreateInfo {
-            flags,
-            ref stages,
-
-            ref vertex_input_state,
-            ref input_assembly_state,
-            ref tessellation_state,
-            ref viewport_state,
-            ref rasterization_state,
-            ref multisample_state,
-            ref depth_stencil_state,
-            ref color_blend_state,
-            ref dynamic_state,
-
-            ref layout,
-            ref subpass,
-            ref base_pipeline,
-
-            ref discard_rectangle_state,
-            _ne: _,
-        } = &create_info;
-
-        struct PerPipelineShaderStageCreateInfo {
-            name_vk: CString,
-            specialization_info_vk: ash::vk::SpecializationInfo,
-            specialization_map_entries_vk: Vec<ash::vk::SpecializationMapEntry>,
-            specialization_data_vk: Vec<u8>,
-            required_subgroup_size_create_info:
-                Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo>,
-        }
-
-        let (mut stages_vk, mut per_stage_vk): (SmallVec<[_; 5]>, SmallVec<[_; 5]>) = stages
-            .iter()
-            .map(|stage| {
-                let &PipelineShaderStageCreateInfo {
-                    flags,
-                    ref entry_point,
-                    ref required_subgroup_size,
-                    _ne: _,
-                } = stage;
-
-                let entry_point_info = entry_point.info();
-                let stage = ShaderStage::from(entry_point_info.execution_model);
-
-                let mut specialization_data_vk: Vec<u8> = Vec::new();
-                let specialization_map_entries_vk: Vec<_> = entry_point
-                    .module()
-                    .specialization_info()
-                    .iter()
-                    .map(|(&constant_id, value)| {
-                        let data = value.as_bytes();
-                        let offset = specialization_data_vk.len() as u32;
-                        let size = data.len();
-                        specialization_data_vk.extend(data);
-
-                        ash::vk::SpecializationMapEntry {
-                            constant_id,
-                            offset,
-                            size,
-                        }
-                    })
-                    .collect();
-                let required_subgroup_size_create_info =
-                    required_subgroup_size.map(|required_subgroup_size| {
-                        ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
-                            required_subgroup_size,
-                            ..Default::default()
-                        }
-                    });
-                (
-                    ash::vk::PipelineShaderStageCreateInfo {
-                        flags: flags.into(),
-                        stage: stage.into(),
-                        module: entry_point.module().handle(),
-                        p_name: ptr::null(),
-                        p_specialization_info: ptr::null(),
-                        ..Default::default()
-                    },
-                    PerPipelineShaderStageCreateInfo {
-                        name_vk: CString::new(entry_point_info.name.as_str()).unwrap(),
-                        specialization_info_vk: ash::vk::SpecializationInfo {
-                            map_entry_count: specialization_map_entries_vk.len() as u32,
-                            p_map_entries: ptr::null(),
-                            data_size: specialization_data_vk.len(),
-                            p_data: ptr::null(),
-                        },
-                        specialization_map_entries_vk,
-                        specialization_data_vk,
-                        required_subgroup_size_create_info,
-                    },
-                )
-            })
-            .unzip();
-
-        for (
-            stage_vk,
-            PerPipelineShaderStageCreateInfo {
-                name_vk,
-                specialization_info_vk,
-                specialization_map_entries_vk,
-                specialization_data_vk,
-                required_subgroup_size_create_info,
-            },
-        ) in (stages_vk.iter_mut()).zip(per_stage_vk.iter_mut())
-        {
-            *stage_vk = ash::vk::PipelineShaderStageCreateInfo {
-                p_next: required_subgroup_size_create_info.as_ref().map_or(
-                    ptr::null(),
-                    |required_subgroup_size_create_info| {
-                        required_subgroup_size_create_info as *const _ as _
-                    },
-                ),
-                p_name: name_vk.as_ptr(),
-                p_specialization_info: specialization_info_vk,
-                ..*stage_vk
-            };
-
-            *specialization_info_vk = ash::vk::SpecializationInfo {
-                p_map_entries: specialization_map_entries_vk.as_ptr(),
-                p_data: specialization_data_vk.as_ptr() as _,
-                ..*specialization_info_vk
-            };
-        }
-
-        let mut vertex_input_state_vk = None;
-        let mut vertex_binding_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
-        let mut vertex_attribute_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
-        let mut vertex_binding_divisor_state_vk = None;
-        let mut vertex_binding_divisor_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
-
-        if let Some(vertex_input_state) = vertex_input_state {
-            let VertexInputState {
-                bindings,
-                attributes,
-                _ne: _,
-            } = vertex_input_state;
-
-            vertex_binding_descriptions_vk.extend(bindings.iter().map(
-                |(&binding, binding_desc)| ash::vk::VertexInputBindingDescription {
-                    binding,
-                    stride: binding_desc.stride,
-                    input_rate: binding_desc.input_rate.into(),
-                },
-            ));
-
-            vertex_attribute_descriptions_vk.extend(attributes.iter().map(
-                |(&location, attribute_desc)| ash::vk::VertexInputAttributeDescription {
-                    location,
-                    binding: attribute_desc.binding,
-                    format: attribute_desc.format.into(),
-                    offset: attribute_desc.offset,
-                },
-            ));
-
-            let vertex_input_state =
-                vertex_input_state_vk.insert(ash::vk::PipelineVertexInputStateCreateInfo {
-                    flags: ash::vk::PipelineVertexInputStateCreateFlags::empty(),
-                    vertex_binding_description_count: vertex_binding_descriptions_vk.len() as u32,
-                    p_vertex_binding_descriptions: vertex_binding_descriptions_vk.as_ptr(),
-                    vertex_attribute_description_count: vertex_attribute_descriptions_vk.len()
-                        as u32,
-                    p_vertex_attribute_descriptions: vertex_attribute_descriptions_vk.as_ptr(),
-                    ..Default::default()
-                });
-
-            {
-                vertex_binding_divisor_descriptions_vk.extend(
-                    bindings
-                        .iter()
-                        .filter_map(|(&binding, binding_desc)| match binding_desc.input_rate {
-                            VertexInputRate::Instance { divisor } if divisor != 1 => {
-                                Some((binding, divisor))
-                            }
-                            _ => None,
-                        })
-                        .map(|(binding, divisor)| {
-                            ash::vk::VertexInputBindingDivisorDescriptionEXT { binding, divisor }
-                        }),
-                );
-
-                // VUID-VkPipelineVertexInputDivisorStateCreateInfoEXT-vertexBindingDivisorCount-arraylength
-                if !vertex_binding_divisor_descriptions_vk.is_empty() {
-                    vertex_input_state.p_next = vertex_binding_divisor_state_vk.insert(
-                        ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT {
-                            vertex_binding_divisor_count: vertex_binding_divisor_descriptions_vk
-                                .len()
-                                as u32,
-                            p_vertex_binding_divisors: vertex_binding_divisor_descriptions_vk
-                                .as_ptr(),
-                            ..Default::default()
-                        },
-                    ) as *const _ as *const _;
-                }
-            }
-        }
-
-        let mut input_assembly_state_vk = None;
-
-        if let Some(input_assembly_state) = input_assembly_state {
-            let &InputAssemblyState {
-                topology,
-                primitive_restart_enable,
-                _ne: _,
-            } = input_assembly_state;
-
-            let _ = input_assembly_state_vk.insert(ash::vk::PipelineInputAssemblyStateCreateInfo {
-                flags: ash::vk::PipelineInputAssemblyStateCreateFlags::empty(),
-                topology: topology.into(),
-                primitive_restart_enable: primitive_restart_enable as ash::vk::Bool32,
-                ..Default::default()
-            });
-        }
-
-        let mut tessellation_state_vk = None;
-        let mut tessellation_domain_origin_state_vk = None;
-
-        if let Some(tessellation_state) = tessellation_state {
-            let &TessellationState {
-                patch_control_points,
-                domain_origin,
-                _ne: _,
-            } = tessellation_state;
-
-            let tessellation_state_vk =
-                tessellation_state_vk.insert(ash::vk::PipelineTessellationStateCreateInfo {
-                    flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
-                    patch_control_points,
-                    ..Default::default()
-                });
-
-            if domain_origin != TessellationDomainOrigin::default() {
-                let tessellation_domain_origin_state_vk = tessellation_domain_origin_state_vk
-                    .insert(ash::vk::PipelineTessellationDomainOriginStateCreateInfo {
-                        domain_origin: domain_origin.into(),
-                        ..Default::default()
-                    });
-
-                tessellation_domain_origin_state_vk.p_next = tessellation_state_vk.p_next;
-                tessellation_state_vk.p_next =
-                    tessellation_domain_origin_state_vk as *const _ as *const _;
-            }
-        }
-
-        let mut viewport_state_vk = None;
-        let mut viewports_vk: SmallVec<[_; 2]> = SmallVec::new();
-        let mut scissors_vk: SmallVec<[_; 2]> = SmallVec::new();
-
-        if let Some(viewport_state) = viewport_state {
-            let ViewportState {
-                viewports,
-                scissors,
-                _ne: _,
-            } = viewport_state;
-
-            viewports_vk.extend(viewports.iter().map(Into::into));
-            scissors_vk.extend(scissors.iter().map(Into::into));
-
-            let _ = viewport_state_vk.insert(ash::vk::PipelineViewportStateCreateInfo {
-                flags: ash::vk::PipelineViewportStateCreateFlags::empty(),
-                viewport_count: viewports_vk.len() as u32,
-                p_viewports: if viewports_vk.is_empty() {
-                    ptr::null()
-                } else {
-                    viewports_vk.as_ptr()
-                },
-                scissor_count: scissors_vk.len() as u32,
-                p_scissors: if scissors_vk.is_empty() {
-                    ptr::null()
-                } else {
-                    scissors_vk.as_ptr()
-                },
-                ..Default::default()
-            });
-        }
-
-        let mut rasterization_state_vk = None;
-        let mut rasterization_line_state_vk = None;
-
-        if let Some(rasterization_state) = rasterization_state {
-            let &RasterizationState {
-                depth_clamp_enable,
-                rasterizer_discard_enable,
-                polygon_mode,
-                cull_mode,
-                front_face,
-                ref depth_bias,
-                line_width,
-                line_rasterization_mode,
-                line_stipple,
-                _ne: _,
-            } = rasterization_state;
-
-            let (
-                depth_bias_enable,
-                depth_bias_constant_factor,
-                depth_bias_clamp,
-                depth_bias_slope_factor,
-            ) = if let Some(depth_bias_state) = depth_bias {
-                let &DepthBiasState {
-                    constant_factor,
-                    clamp,
-                    slope_factor,
-                } = depth_bias_state;
-
-                (ash::vk::TRUE, constant_factor, clamp, slope_factor)
-            } else {
-                (ash::vk::FALSE, 0.0, 0.0, 0.0)
-            };
-
-            let rasterization_state =
-                rasterization_state_vk.insert(ash::vk::PipelineRasterizationStateCreateInfo {
-                    flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
-                    depth_clamp_enable: depth_clamp_enable as ash::vk::Bool32,
-                    rasterizer_discard_enable: rasterizer_discard_enable as ash::vk::Bool32,
-                    polygon_mode: polygon_mode.into(),
-                    cull_mode: cull_mode.into(),
-                    front_face: front_face.into(),
-                    depth_bias_enable,
-                    depth_bias_constant_factor,
-                    depth_bias_clamp,
-                    depth_bias_slope_factor,
-                    line_width,
-                    ..Default::default()
-                });
-
-            if device.enabled_extensions().ext_line_rasterization {
-                let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) =
-                    if let Some(line_stipple) = line_stipple {
-                        (ash::vk::TRUE, line_stipple.factor, line_stipple.pattern)
-                    } else {
-                        (ash::vk::FALSE, 1, 0)
-                    };
-
-                rasterization_state.p_next = rasterization_line_state_vk.insert(
-                    ash::vk::PipelineRasterizationLineStateCreateInfoEXT {
-                        line_rasterization_mode: line_rasterization_mode.into(),
-                        stippled_line_enable,
-                        line_stipple_factor,
-                        line_stipple_pattern,
-                        ..Default::default()
-                    },
-                ) as *const _ as *const _;
-            }
-        }
-
-        let mut multisample_state_vk = None;
-
-        if let Some(multisample_state) = multisample_state {
-            let &MultisampleState {
-                rasterization_samples,
-                sample_shading,
-                ref sample_mask,
-                alpha_to_coverage_enable,
-                alpha_to_one_enable,
-                _ne: _,
-            } = multisample_state;
-
-            let (sample_shading_enable, min_sample_shading) =
-                if let Some(min_sample_shading) = sample_shading {
-                    (ash::vk::TRUE, min_sample_shading)
-                } else {
-                    (ash::vk::FALSE, 0.0)
-                };
-
-            let _ = multisample_state_vk.insert(ash::vk::PipelineMultisampleStateCreateInfo {
-                flags: ash::vk::PipelineMultisampleStateCreateFlags::empty(),
-                rasterization_samples: rasterization_samples.into(),
-                sample_shading_enable,
-                min_sample_shading,
-                p_sample_mask: sample_mask as _,
-                alpha_to_coverage_enable: alpha_to_coverage_enable as ash::vk::Bool32,
-                alpha_to_one_enable: alpha_to_one_enable as ash::vk::Bool32,
-                ..Default::default()
-            });
-        }
-
-        let mut depth_stencil_state_vk = None;
-
-        if let Some(depth_stencil_state) = depth_stencil_state {
-            let &DepthStencilState {
-                flags,
-                ref depth,
-                ref depth_bounds,
-                ref stencil,
-                _ne: _,
-            } = depth_stencil_state;
-
-            let (depth_test_enable, depth_write_enable, depth_compare_op) =
-                if let Some(depth_state) = depth {
-                    let &DepthState {
-                        write_enable,
-                        compare_op,
-                    } = depth_state;
-
-                    (
-                        ash::vk::TRUE,
-                        write_enable as ash::vk::Bool32,
-                        compare_op.into(),
-                    )
-                } else {
-                    (ash::vk::FALSE, ash::vk::FALSE, ash::vk::CompareOp::ALWAYS)
-                };
-
-            let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) =
-                if let Some(depth_bounds) = depth_bounds {
-                    (ash::vk::TRUE, *depth_bounds.start(), *depth_bounds.end())
-                } else {
-                    (ash::vk::FALSE, 0.0, 1.0)
-                };
-
-            let (stencil_test_enable, front, back) = if let Some(stencil_state) = stencil {
-                let StencilState { front, back } = stencil_state;
-
-                let [front, back] = [front, back].map(|stencil_op_state| {
-                    let &StencilOpState {
-                        ops,
-                        compare_mask,
-                        write_mask,
-                        reference,
-                    } = stencil_op_state;
-
-                    ash::vk::StencilOpState {
-                        fail_op: ops.fail_op.into(),
-                        pass_op: ops.pass_op.into(),
-                        depth_fail_op: ops.depth_fail_op.into(),
-                        compare_op: ops.compare_op.into(),
-                        compare_mask,
-                        write_mask,
-                        reference,
-                    }
-                });
-
-                (ash::vk::TRUE, front, back)
-            } else {
-                (ash::vk::FALSE, Default::default(), Default::default())
-            };
-
-            let _ = depth_stencil_state_vk.insert(ash::vk::PipelineDepthStencilStateCreateInfo {
-                flags: flags.into(),
-                depth_test_enable,
-                depth_write_enable,
-                depth_compare_op,
-                depth_bounds_test_enable,
-                stencil_test_enable,
-                front,
-                back,
-                min_depth_bounds,
-                max_depth_bounds,
-                ..Default::default()
-            });
-        }
-
-        let mut color_blend_state_vk = None;
-        let mut color_blend_attachments_vk: SmallVec<[_; 4]> = SmallVec::new();
-        let mut color_write_vk = None;
-        let mut color_write_enables_vk: SmallVec<[_; 4]> = SmallVec::new();
-
-        if let Some(color_blend_state) = color_blend_state {
-            let &ColorBlendState {
-                flags,
-                logic_op,
-                ref attachments,
-                blend_constants,
-                _ne: _,
-            } = color_blend_state;
-
-            color_blend_attachments_vk.extend(attachments.iter().map(
-                |color_blend_attachment_state| {
-                    let &ColorBlendAttachmentState {
-                        blend,
-                        color_write_mask,
-                        color_write_enable: _,
-                    } = color_blend_attachment_state;
-
-                    let blend = if let Some(blend) = blend {
-                        blend.into()
-                    } else {
-                        Default::default()
-                    };
-
-                    ash::vk::PipelineColorBlendAttachmentState {
-                        color_write_mask: color_write_mask.into(),
-                        ..blend
-                    }
-                },
-            ));
-
-            let (logic_op_enable, logic_op) = if let Some(logic_op) = logic_op {
-                (ash::vk::TRUE, logic_op.into())
-            } else {
-                (ash::vk::FALSE, Default::default())
-            };
-
-            let color_blend_state_vk =
-                color_blend_state_vk.insert(ash::vk::PipelineColorBlendStateCreateInfo {
-                    flags: flags.into(),
-                    logic_op_enable,
-                    logic_op,
-                    attachment_count: color_blend_attachments_vk.len() as u32,
-                    p_attachments: color_blend_attachments_vk.as_ptr(),
-                    blend_constants,
-                    ..Default::default()
-                });
-
-            if device.enabled_extensions().ext_color_write_enable {
-                color_write_enables_vk.extend(attachments.iter().map(
-                    |color_blend_attachment_state| {
-                        let &ColorBlendAttachmentState {
-                            blend: _,
-                            color_write_mask: _,
-                            color_write_enable,
-                        } = color_blend_attachment_state;
-
-                        color_write_enable as ash::vk::Bool32
-                    },
-                ));
-
-                color_blend_state_vk.p_next =
-                    color_write_vk.insert(ash::vk::PipelineColorWriteCreateInfoEXT {
-                        attachment_count: color_write_enables_vk.len() as u32,
-                        p_color_write_enables: color_write_enables_vk.as_ptr(),
-                        ..Default::default()
-                    }) as *const _ as *const _;
-            }
-        }
-
-        let dynamic_state_list_vk: SmallVec<[_; 4]> =
-            dynamic_state.iter().copied().map(Into::into).collect();
-        let dynamic_state_vk =
-            (!dynamic_state_list_vk.is_empty()).then(|| ash::vk::PipelineDynamicStateCreateInfo {
-                flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
-                dynamic_state_count: dynamic_state_list_vk.len() as u32,
-                p_dynamic_states: dynamic_state_list_vk.as_ptr(),
-                ..Default::default()
-            });
-
-        let render_pass = subpass.as_ref().unwrap();
-        let mut render_pass_vk = ash::vk::RenderPass::null();
-        let mut subpass_vk = 0;
-        let mut color_attachment_formats_vk: SmallVec<[_; 4]> = SmallVec::new();
-        let mut rendering_create_info_vk = None;
-
-        match render_pass {
-            PipelineSubpassType::BeginRenderPass(subpass) => {
-                render_pass_vk = subpass.render_pass().handle();
-                subpass_vk = subpass.index();
-            }
-            PipelineSubpassType::BeginRendering(rendering_info) => {
-                let &PipelineRenderingCreateInfo {
-                    view_mask,
-                    ref color_attachment_formats,
-                    depth_attachment_format,
-                    stencil_attachment_format,
-                    _ne: _,
-                } = rendering_info;
-
-                color_attachment_formats_vk.extend(
-                    color_attachment_formats
-                        .iter()
-                        .map(|format| format.map_or(ash::vk::Format::UNDEFINED, Into::into)),
-                );
-
-                let _ = rendering_create_info_vk.insert(ash::vk::PipelineRenderingCreateInfo {
-                    view_mask,
-                    color_attachment_count: color_attachment_formats_vk.len() as u32,
-                    p_color_attachment_formats: color_attachment_formats_vk.as_ptr(),
-                    depth_attachment_format: depth_attachment_format
-                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
-                    stencil_attachment_format: stencil_attachment_format
-                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
-                    ..Default::default()
-                });
-            }
-        }
-
-        let mut discard_rectangle_state_vk = None;
-        let mut discard_rectangles_vk: SmallVec<[_; 2]> = SmallVec::new();
-
-        if let Some(discard_rectangle_state) = discard_rectangle_state {
-            let DiscardRectangleState {
-                mode,
-                rectangles,
-                _ne: _,
-            } = discard_rectangle_state;
-
-            discard_rectangles_vk.extend(rectangles.iter().map(|rect| rect.into()));
-
-            let _ = discard_rectangle_state_vk.insert(
-                ash::vk::PipelineDiscardRectangleStateCreateInfoEXT {
-                    flags: ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty(),
-                    discard_rectangle_mode: (*mode).into(),
-                    discard_rectangle_count: discard_rectangles_vk.len() as u32,
-                    p_discard_rectangles: discard_rectangles_vk.as_ptr(),
-                    ..Default::default()
-                },
-            );
-        }
-
-        /*
-            Create
-        */
-
-        let mut create_info_vk = ash::vk::GraphicsPipelineCreateInfo {
-            flags: flags.into(),
-            stage_count: stages_vk.len() as u32,
-            p_stages: stages_vk.as_ptr(),
-            p_vertex_input_state: vertex_input_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_input_assembly_state: input_assembly_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_tessellation_state: tessellation_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_viewport_state: viewport_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_rasterization_state: rasterization_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_multisample_state: multisample_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_depth_stencil_state: depth_stencil_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_color_blend_state: color_blend_state_vk
-                .as_ref()
-                .map(|p| p as *const _)
-                .unwrap_or(ptr::null()),
-            p_dynamic_state: dynamic_state_vk
-                .as_ref()
-                .map(|s| s as *const _)
-                .unwrap_or(ptr::null()),
-            layout: layout.handle(),
-            render_pass: render_pass_vk,
-            subpass: subpass_vk,
-            base_pipeline_handle: base_pipeline
-                .as_ref()
-                .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
-            base_pipeline_index: -1,
-            ..Default::default()
-        };
-
-        if let Some(info) = discard_rectangle_state_vk.as_mut() {
-            info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = info as *const _ as *const _;
-        }
-
-        if let Some(info) = rendering_create_info_vk.as_mut() {
-            info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = info as *const _ as *const _;
-        }
-
-        let cache_handle = match cache.as_ref() {
-            Some(cache) => cache.handle(),
-            None => ash::vk::PipelineCache::null(),
-        };
-
         let handle = {
+            let create_info_fields3_vk = create_info.to_vk_fields3();
+            let create_info_fields2_vk = create_info.to_vk_fields2(&create_info_fields3_vk);
+            let mut create_info_fields1_extensions =
+                create_info.to_vk_fields1_extensions(&create_info_fields2_vk);
+            let create_info_fields1_vk = create_info
+                .to_vk_fields1(&create_info_fields2_vk, &mut create_info_fields1_extensions);
+            let mut create_info_extensions_vk =
+                create_info.to_vk_extensions(&create_info_fields2_vk);
+            let create_info_vk =
+                create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
+
+            let cache_handle = match cache.as_ref() {
+                Some(cache) => cache.handle(),
+                None => vk::PipelineCache::null(),
+            };
+
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_graphics_pipelines)(
-                device.handle(),
-                cache_handle,
-                1,
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_graphics_pipelines)(
+                    device.handle(),
+                    cache_handle,
+                    1,
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         // Some drivers return `VK_SUCCESS` but provide a null handle if they
         // fail to create the pipeline (due to invalid shaders, etc)
         // This check ensures that we don't create an invalid `GraphicsPipeline` instance
-        if handle == ash::vk::Pipeline::null() {
+        if handle == vk::Pipeline::null() {
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `GraphicsPipeline` from a raw object handle.
@@ -879,7 +255,7 @@ impl GraphicsPipeline {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Pipeline,
+        handle: vk::Pipeline,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Arc<Self> {
         let GraphicsPipelineCreateInfo {
@@ -902,15 +278,19 @@ impl GraphicsPipeline {
 
             discard_rectangle_state,
 
+            fragment_shading_rate_state,
+
             _ne: _,
         } = create_info;
 
-        let mut shaders = HashMap::default();
+        let mut shader_stages = ShaderStages::empty();
+        let mut mesh_is_nv = false;
         let mut descriptor_binding_requirements: HashMap<
             (u32, u32),
             DescriptorBindingRequirements,
         > = HashMap::default();
         let mut fragment_tests_stages = None;
+        let mut required_vertex_inputs = None;
 
         for stage in &stages {
             let &PipelineShaderStageCreateInfo {
@@ -919,27 +299,40 @@ impl GraphicsPipeline {
 
             let entry_point_info = entry_point.info();
             let stage = ShaderStage::from(entry_point_info.execution_model);
-            shaders.insert(stage, ());
+            shader_stages |= stage.into();
 
             let spirv = entry_point.module().spirv();
             let entry_point_function = spirv.function(entry_point.id());
 
-            if matches!(entry_point_info.execution_model, ExecutionModel::Fragment) {
-                fragment_tests_stages = Some(FragmentTestsStages::Late);
+            match entry_point_info.execution_model {
+                ExecutionModel::Vertex => {
+                    if vertex_input_state.is_none() {
+                        required_vertex_inputs = Some(shader_interface_location_info(
+                            entry_point.module().spirv(),
+                            entry_point.id(),
+                            StorageClass::Input,
+                        ));
+                    }
+                }
+                ExecutionModel::MeshNV | ExecutionModel::TaskNV => mesh_is_nv = true,
+                ExecutionModel::Fragment => {
+                    fragment_tests_stages = Some(FragmentTestsStages::Late);
 
-                for instruction in entry_point_function.iter_execution_mode() {
-                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
-                        match mode {
-                            ExecutionMode::EarlyFragmentTests => {
-                                fragment_tests_stages = Some(FragmentTestsStages::Early);
+                    for instruction in entry_point_function.execution_modes() {
+                        if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                            match mode {
+                                ExecutionMode::EarlyFragmentTests => {
+                                    fragment_tests_stages = Some(FragmentTestsStages::Early);
+                                }
+                                ExecutionMode::EarlyAndLateFragmentTestsAMD => {
+                                    fragment_tests_stages = Some(FragmentTestsStages::EarlyAndLate);
+                                }
+                                _ => (),
                             }
-                            ExecutionMode::EarlyAndLateFragmentTestsAMD => {
-                                fragment_tests_stages = Some(FragmentTestsStages::EarlyAndLate);
-                            }
-                            _ => (),
                         }
                     }
                 }
+                _ => (),
             }
 
             for (&loc, reqs) in &entry_point_info.descriptor_binding_requirements {
@@ -992,6 +385,8 @@ impl GraphicsPipeline {
                 DynamicState::DepthBias,
                 DynamicState::LineWidth,
                 DynamicState::LineStipple,
+                DynamicState::ConservativeRasterizationMode,
+                DynamicState::ExtraPrimitiveOverestimationSize,
             ]);
         }
 
@@ -1022,6 +417,10 @@ impl GraphicsPipeline {
             fixed_state.extend([DynamicState::DiscardRectangle]);
         }
 
+        if fragment_shading_rate_state.is_some() {
+            fixed_state.extend([DynamicState::FragmentShadingRate]);
+        }
+
         fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
@@ -1030,16 +429,13 @@ impl GraphicsPipeline {
             id: Self::next_id(),
 
             flags,
-            shaders,
-            descriptor_binding_requirements,
-            num_used_descriptor_sets,
-            fragment_tests_stages,
-
-            vertex_input_state: vertex_input_state.unwrap(), // Can be None if there's a mesh shader, but we don't support that yet
-            input_assembly_state: input_assembly_state.unwrap(), // Can be None if there's a mesh shader, but we don't support that yet
+            shader_stages,
+            vertex_input_state,
+            input_assembly_state,
             tessellation_state,
             viewport_state,
-            rasterization_state: rasterization_state.unwrap(), // Can be None for pipeline libraries, but we don't support that yet
+            // Can be None for pipeline libraries, but we don't support that yet
+            rasterization_state: rasterization_state.unwrap(),
             multisample_state,
             depth_stencil_state,
             color_blend_state,
@@ -1048,8 +444,14 @@ impl GraphicsPipeline {
             subpass: subpass.unwrap(),
 
             discard_rectangle_state,
+            fragment_shading_rate_state,
 
+            descriptor_binding_requirements,
+            num_used_descriptor_sets,
             fixed_state,
+            fragment_tests_stages,
+            mesh_is_nv,
+            required_vertex_inputs,
         })
     }
 
@@ -1065,28 +467,27 @@ impl GraphicsPipeline {
         self.flags
     }
 
-    /// Returns information about a particular shader.
-    ///
-    /// `None` is returned if the pipeline does not contain this shader.
-    ///
-    /// Compatibility note: `()` is temporary, it will be replaced with something else in the
-    /// future.
-    // TODO: ^ implement and make this public
+    /// Returns the shader stages that this pipeline contains.
     #[inline]
-    pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
-        self.shaders.get(&stage).copied()
+    pub fn shader_stages(&self) -> ShaderStages {
+        self.shader_stages
+    }
+
+    #[inline]
+    pub(crate) fn mesh_is_nv(&self) -> bool {
+        self.mesh_is_nv
     }
 
     /// Returns the vertex input state used to create this pipeline.
     #[inline]
-    pub fn vertex_input_state(&self) -> &VertexInputState {
-        &self.vertex_input_state
+    pub fn vertex_input_state(&self) -> Option<&VertexInputState> {
+        self.vertex_input_state.as_ref()
     }
 
     /// Returns the input assembly state used to create this pipeline.
     #[inline]
-    pub fn input_assembly_state(&self) -> &InputAssemblyState {
-        &self.input_assembly_state
+    pub fn input_assembly_state(&self) -> Option<&InputAssemblyState> {
+        self.input_assembly_state.as_ref()
     }
 
     /// Returns the tessellation state used to create this pipeline.
@@ -1143,6 +544,12 @@ impl GraphicsPipeline {
         self.discard_rectangle_state.as_ref()
     }
 
+    /// Returns the fragment shading rate state used to create this pipeline.
+    #[inline]
+    pub fn fragment_shading_rate_state(&self) -> Option<&FragmentShadingRateState> {
+        self.fragment_shading_rate_state.as_ref()
+    }
+
     /// If the pipeline has a fragment shader, returns the fragment tests stages used.
     #[inline]
     pub fn fragment_tests_stages(&self) -> Option<FragmentTestsStages> {
@@ -1153,6 +560,14 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn fixed_state(&self) -> &HashSet<DynamicState> {
         &self.fixed_state
+    }
+
+    /// Returns the required vertex inputs.
+    #[inline]
+    pub(crate) fn required_vertex_inputs(
+        &self,
+    ) -> Option<&HashMap<u32, ShaderInterfaceLocationInfo>> {
+        self.required_vertex_inputs.as_ref()
     }
 }
 
@@ -1188,7 +603,7 @@ unsafe impl DeviceOwned for GraphicsPipeline {
 }
 
 unsafe impl VulkanObject for GraphicsPipeline {
-    type Handle = ash::vk::Pipeline;
+    type Handle = vk::Pipeline;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1199,10 +614,8 @@ unsafe impl VulkanObject for GraphicsPipeline {
 impl Drop for GraphicsPipeline {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -1218,35 +631,39 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The shader stages to use.
     ///
-    /// A vertex shader must always be included. Other stages are optional.
+    /// Either a vertex shader or mesh shader must always be included. Other stages are optional.
     ///
     /// The default value is empty.
     pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
 
     /// The vertex input state.
     ///
-    /// This state is always used, and must be provided.
+    /// This must be `Some` if `stages` contains a vertex shader.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub vertex_input_state: Option<VertexInputState>,
 
     /// The input assembly state.
     ///
-    /// This state is always used, and must be provided.
+    /// This must be `Some` if `stages` contains a vertex shader.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub input_assembly_state: Option<InputAssemblyState>,
 
     /// The tessellation state.
     ///
-    /// This state is used if `stages` contains tessellation shaders.
+    /// This must be `Some` if `stages` contains tessellation shaders.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub tessellation_state: Option<TessellationState>,
 
     /// The viewport state.
     ///
-    /// This state is used if [rasterizer discarding] is not enabled.
+    /// This must be `Some` if [rasterizer discarding] is not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1255,14 +672,15 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The rasterization state.
     ///
-    /// This state is always used, and must be provided.
+    /// This must always be `Some`.
     ///
     /// The default value is `None`.
     pub rasterization_state: Option<RasterizationState>,
 
     /// The multisample state.
     ///
-    /// This state is used if [rasterizer discarding] is not enabled.
+    /// This must be `Some` if [rasterizer discarding] is not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1271,8 +689,9 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The depth/stencil state.
     ///
-    /// This state is used if `render_pass` has depth/stencil attachments, or if
+    /// This must be `Some` if `render_pass` has depth/stencil attachments, or if
     /// [rasterizer discarding] is enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1281,8 +700,9 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The color blend state.
     ///
-    /// This state is used if `render_pass` has color attachments, and [rasterizer discarding] is
+    /// This must be `Some` if `render_pass` has color attachments, and [rasterizer discarding] is
     /// not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1317,18 +737,22 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The discard rectangle state.
     ///
-    /// This state is always used if it is provided.
-    ///
     /// The default value is `None`.
     pub discard_rectangle_state: Option<DiscardRectangleState>,
+
+    /// The fragment shading rate state.
+    ///
+    /// The default value is `None`.
+    pub fragment_shading_rate_state: Option<FragmentShadingRateState>,
 
     pub _ne: crate::NonExhaustive,
 }
 
 impl GraphicsPipelineCreateInfo {
-    /// Returns a `GraphicsPipelineCreateInfo` with the specified `layout`.
+    /// Returns a default `GraphicsPipelineCreateInfo` with the provided `layout`.
+    // TODO: make const
     #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+    pub fn new(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
@@ -1348,11 +772,21 @@ impl GraphicsPipelineCreateInfo {
             base_pipeline: None,
 
             discard_rectangle_state: None,
+            fragment_shading_rate_state: None,
+
             _ne: crate::NonExhaustive(()),
         }
     }
 
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
+        Self::new(layout)
+    }
+
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let properties = device.physical_device().properties();
+
         let &Self {
             flags,
             ref stages,
@@ -1372,6 +806,8 @@ impl GraphicsPipelineCreateInfo {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref fragment_shading_rate_state,
+
             _ne: _,
         } = self;
 
@@ -1415,17 +851,17 @@ impl GraphicsPipelineCreateInfo {
             Gather shader stages
         */
 
-        let mut stages_present = ShaderStages::empty();
-        let mut vertex_stage = None;
-        let mut tessellation_control_stage = None;
-        let mut tessellation_evaluation_stage = None;
-        let mut geometry_stage = None;
-        let mut fragment_stage = None;
+        const PRIMITIVE_SHADING_STAGES: ShaderStages = ShaderStages::VERTEX
+            .union(ShaderStages::TESSELLATION_CONTROL)
+            .union(ShaderStages::TESSELLATION_CONTROL)
+            .union(ShaderStages::GEOMETRY);
+        const MESH_SHADING_STAGES: ShaderStages = ShaderStages::MESH.union(ShaderStages::TASK);
 
-        for (stage_index, stage) in stages.iter().enumerate() {
-            let entry_point_info = stage.entry_point.info();
-            let stage_enum = ShaderStage::from(entry_point_info.execution_model);
-            let stage_flag = ShaderStages::from(stage_enum);
+        let mut stages_present = ShaderStages::empty();
+
+        for stage in stages {
+            let stage_flag =
+                ShaderStages::from(ShaderStage::from(stage.entry_point.info().execution_model));
 
             if stages_present.intersects(stage_flag) {
                 return Err(Box::new(ValidationError {
@@ -1441,43 +877,6 @@ impl GraphicsPipelineCreateInfo {
                 }));
             }
 
-            const PRIMITIVE_SHADING_STAGES: ShaderStages = ShaderStages::VERTEX
-                .union(ShaderStages::TESSELLATION_CONTROL)
-                .union(ShaderStages::TESSELLATION_CONTROL)
-                .union(ShaderStages::GEOMETRY);
-            const MESH_SHADING_STAGES: ShaderStages = ShaderStages::MESH.union(ShaderStages::TASK);
-
-            if stage_flag.intersects(PRIMITIVE_SHADING_STAGES)
-                && stages_present.intersects(MESH_SHADING_STAGES)
-                || stage_flag.intersects(MESH_SHADING_STAGES)
-                    && stages_present.intersects(PRIMITIVE_SHADING_STAGES)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "stages".into(),
-                    problem: "contains both primitive shading stages and mesh shading stages"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02095"],
-                    ..Default::default()
-                }));
-            }
-
-            let stage_slot = match stage_enum {
-                ShaderStage::Vertex => &mut vertex_stage,
-                ShaderStage::TessellationControl => &mut tessellation_control_stage,
-                ShaderStage::TessellationEvaluation => &mut tessellation_evaluation_stage,
-                ShaderStage::Geometry => &mut geometry_stage,
-                ShaderStage::Fragment => &mut fragment_stage,
-                _ => {
-                    return Err(Box::new(ValidationError {
-                        context: format!("stages[{}]", stage_index).into(),
-                        problem: "is not a pre-rasterization or fragment shader stage".into(),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06896"],
-                        ..Default::default()
-                    }));
-                }
-            };
-
-            *stage_slot = Some(stage);
             stages_present |= stage_flag;
         }
 
@@ -1515,13 +914,8 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
-        let need_vertex_input_state = need_pre_rasterization_shader_state
-            && stages.iter().any(|stage| {
-                matches!(
-                    stage.entry_point.info().execution_model,
-                    ExecutionModel::Vertex
-                )
-            });
+        let need_vertex_input_state =
+            need_pre_rasterization_shader_state && stages_present.intersects(ShaderStages::VERTEX);
         let need_fragment_shader_state = need_pre_rasterization_shader_state
             && (!rasterization_state
                 .as_ref()
@@ -1535,109 +929,34 @@ impl GraphicsPipelineCreateInfo {
                 .rasterizer_discard_enable
                 || dynamic_state.contains(&DynamicState::RasterizerDiscardEnable));
 
-        match (vertex_stage.is_some(), need_pre_rasterization_shader_state) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::Vertex` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => {
+        if need_pre_rasterization_shader_state {
+            if !stages_present.intersects(ShaderStages::VERTEX | ShaderStages::MESH) {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization shader state, but `stages` does not contain a \
-                        `ShaderStage::Vertex` stage"
+                        `ShaderStage::Vertex` or `ShaderStage::Mesh` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-stage-02096"],
                     ..Default::default()
                 }));
             }
-            _ => (),
-        }
-
-        match (
-            tessellation_control_stage.is_some(),
-            need_pre_rasterization_shader_state,
-        ) {
-            (true, false) => {
+        } else {
+            if stages_present.intersects(PRIMITIVE_SHADING_STAGES | MESH_SHADING_STAGES) {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::TessellationControl` stage"
+                        pre-rasterization shader stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
                 }));
             }
-            (false, true) => (),
-            _ => (),
         }
 
         match (
-            tessellation_evaluation_stage.is_some(),
-            need_pre_rasterization_shader_state,
+            stages_present.intersects(ShaderStages::FRAGMENT),
+            need_fragment_shader_state,
         ) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::TessellationEvaluation` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => (),
-            _ => (),
-        }
-
-        if stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
-            && !stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
-        {
-            return Err(Box::new(ValidationError {
-                context: "stages".into(),
-                problem: "contains a `ShaderStage::TessellationControl` stage, but not a \
-                    `ShaderStage::TessellationEvaluation` stage"
-                    .into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00729"],
-                ..Default::default()
-            }));
-        } else if stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
-            && !stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
-        {
-            return Err(Box::new(ValidationError {
-                context: "stages".into(),
-                problem: "contains a `ShaderStage::TessellationEvaluation` stage, but not a \
-                    `ShaderStage::TessellationControl` stage"
-                    .into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00730"],
-                ..Default::default()
-            }));
-        }
-
-        match (
-            geometry_stage.is_some(),
-            need_pre_rasterization_shader_state,
-        ) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::Geometry` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => (),
-            _ => (),
-        }
-
-        match (fragment_stage.is_some(), need_fragment_shader_state) {
             (true, false) => {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
@@ -1652,11 +971,14 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
-        match (vertex_input_state.is_some(), need_vertex_input_state) {
+        match (
+            vertex_input_state.is_some(),
+            need_vertex_input_state && !dynamic_state.contains(&DynamicState::VertexInput),
+        ) {
             (true, false) => {
                 return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        vertex input state, but \
+                    problem: "the pipeline is not being created with vertex input state, or \
+                        `dynamic_state` includes `DynamicState::VertexInput`, but \
                         `vertex_input_state` is `Some`"
                         .into(),
                     ..Default::default()
@@ -1664,8 +986,8 @@ impl GraphicsPipelineCreateInfo {
             }
             (false, true) => {
                 return Err(Box::new(ValidationError {
-                    problem: "the pipeline is being created with \
-                        vertex input state, but \
+                    problem: "the pipeline is being created with vertex input state, and \
+                        `dynamic_state` does not include `DynamicState::VertexInput`, but \
                         `vertex_input_state` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02097"],
@@ -1916,9 +1238,50 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
+        match (
+            fragment_shading_rate_state.is_some(),
+            need_pre_rasterization_shader_state,
+        ) {
+            (true, false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "the pipeline is not being created with \
+                        pre-rasterization state, but \
+                        `fragment_shading_rate_state` is `Some`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04500",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06567",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06568",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502",
+                        "VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04506",
+                    ],
+                    ..Default::default()
+                }));
+            }
+            (false, true) => (),
+            _ => (),
+        }
+
         /*
             Validate shader stages individually
         */
+
+        let mut has_mesh_ext = false;
+        let mut has_mesh_nv = false;
+        let mut vertex_stage = None;
+        let mut tessellation_control_stage = None;
+        let mut tessellation_evaluation_stage = None;
+        let mut geometry_stage = None;
+        let mut task_stage = None;
+        let mut mesh_stage = None;
+        let mut fragment_stage = None;
 
         for (stage_index, stage) in stages.iter().enumerate() {
             stage
@@ -1933,6 +1296,37 @@ impl GraphicsPipelineCreateInfo {
             } = stage;
 
             let entry_point_info = entry_point.info();
+            let execution_model = entry_point_info.execution_model;
+
+            match execution_model {
+                ExecutionModel::TaskEXT | ExecutionModel::MeshEXT => {
+                    has_mesh_ext = true;
+                }
+                ExecutionModel::TaskNV | ExecutionModel::MeshNV => {
+                    has_mesh_nv = true;
+                }
+                _ => (),
+            }
+
+            let stage_enum = ShaderStage::from(execution_model);
+            let stage_slot = match stage_enum {
+                ShaderStage::Vertex => &mut vertex_stage,
+                ShaderStage::TessellationControl => &mut tessellation_control_stage,
+                ShaderStage::TessellationEvaluation => &mut tessellation_evaluation_stage,
+                ShaderStage::Geometry => &mut geometry_stage,
+                ShaderStage::Task => &mut task_stage,
+                ShaderStage::Mesh => &mut mesh_stage,
+                ShaderStage::Fragment => &mut fragment_stage,
+                _ => {
+                    return Err(Box::new(ValidationError {
+                        context: format!("stages[{}]", stage_index).into(),
+                        problem: "is not a pre-rasterization or fragment shader stage".into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06896"],
+                        ..Default::default()
+                    }));
+                }
+            };
+            *stage_slot = Some(stage);
 
             layout
                 .ensure_compatible_with_shader(
@@ -1951,44 +1345,115 @@ impl GraphicsPipelineCreateInfo {
                 })?;
         }
 
-        let ordered_stages: SmallVec<[_; 5]> = [
+        if stages_present.intersects(PRIMITIVE_SHADING_STAGES)
+            && stages_present.intersects(MESH_SHADING_STAGES)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains both primitive shading stages and mesh shading stages".into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02095"],
+                ..Default::default()
+            }));
+        }
+
+        if stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
+            && !stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains a `ShaderStage::TessellationControl` stage, but not a \
+                    `ShaderStage::TessellationEvaluation` stage"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00729"],
+                ..Default::default()
+            }));
+        } else if stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
+            && !stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains a `ShaderStage::TessellationEvaluation` stage, but not a \
+                    `ShaderStage::TessellationControl` stage"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00730"],
+                ..Default::default()
+            }));
+        }
+
+        if has_mesh_ext && has_mesh_nv {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains mesh shader stages from both the EXT and the NV version".into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-TaskNV-07063"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkGraphicsPipelineCreateInfo-layout-01688
+        // Checked at pipeline layout creation time.
+
+        /*
+            Check compatibility between shader interfaces
+        */
+
+        let ordered_stages: SmallVec<[_; 7]> = [
             vertex_stage,
             tessellation_control_stage,
             tessellation_evaluation_stage,
             geometry_stage,
+            task_stage,
+            mesh_stage,
             fragment_stage,
         ]
         .into_iter()
         .flatten()
         .collect();
 
-        // TODO: this check is too strict; the output only has to be a superset, any variables
-        // not used in the input of the next shader are just ignored.
         for (output, input) in ordered_stages.iter().zip(ordered_stages.iter().skip(1)) {
-            if let Err(err) = (input.entry_point.info().input_interface)
-                .matches(&output.entry_point.info().output_interface)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "stages".into(),
-                    problem: format!(
-                        "the output interface of the `ShaderStage::{:?}` stage does not \
-                        match the input interface of the `ShaderStage::{:?}` stage: {}",
-                        ShaderStage::from(output.entry_point.info().execution_model),
-                        ShaderStage::from(input.entry_point.info().execution_model),
-                        err
-                    )
-                    .into(),
-                    vuids: &[
-                        "VUID-VkGraphicsPipelineCreateInfo-pStages-00742",
-                        "VUID-VkGraphicsPipelineCreateInfo-None-04889",
-                    ],
-                    ..Default::default()
-                }));
-            }
-        }
+            let out_spirv = output.entry_point.module().spirv();
+            let (out_execution_model, out_interface) =
+                match out_spirv.function(output.entry_point.id()).entry_point() {
+                    Some(&Instruction::EntryPoint {
+                        execution_model,
+                        ref interface,
+                        ..
+                    }) => (execution_model, interface),
+                    _ => unreachable!(),
+                };
 
-        // VUID-VkGraphicsPipelineCreateInfo-layout-01688
-        // Checked at pipeline layout creation time.
+            let in_spirv = input.entry_point.module().spirv();
+            let (in_execution_model, in_interface) =
+                match in_spirv.function(input.entry_point.id()).entry_point() {
+                    Some(&Instruction::EntryPoint {
+                        execution_model,
+                        ref interface,
+                        ..
+                    }) => (execution_model, interface),
+                    _ => unreachable!(),
+                };
+
+            validate_interfaces_compatible(
+                out_spirv,
+                out_execution_model,
+                out_interface,
+                in_spirv,
+                in_execution_model,
+                in_interface,
+                device.enabled_features().maintenance4,
+            )
+            .map_err(|mut err| {
+                err.context = "stages".into();
+                err.problem = format!(
+                    "the output interface of the `{:?}` stage is not compatible with \
+                    the input interface of the `{:?}` stage: {}",
+                    ShaderStage::from(out_execution_model),
+                    ShaderStage::from(in_execution_model),
+                    err.problem
+                )
+                .into();
+                err
+            })?;
+        }
 
         /*
             Validate states individually
@@ -2004,9 +1469,6 @@ impl GraphicsPipelineCreateInfo {
             input_assembly_state
                 .validate(device)
                 .map_err(|err| err.add_context("input_assembly_state"))?;
-
-            // TODO:
-            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
         }
 
         if let Some(tessellation_state) = tessellation_state {
@@ -2019,10 +1481,153 @@ impl GraphicsPipelineCreateInfo {
             viewport_state
                 .validate(device)
                 .map_err(|err| err.add_context("viewport_state"))?;
+        }
 
+        if let Some(rasterization_state) = rasterization_state {
+            rasterization_state
+                .validate(device)
+                .map_err(|err| err.add_context("rasterization_state"))?;
+        }
+
+        if let Some(multisample_state) = multisample_state {
+            multisample_state
+                .validate(device)
+                .map_err(|err| err.add_context("multisample_state"))?;
+        }
+
+        if let Some(depth_stencil_state) = depth_stencil_state {
+            depth_stencil_state
+                .validate(device)
+                .map_err(|err| err.add_context("depth_stencil_state"))?;
+        }
+
+        if let Some(color_blend_state) = color_blend_state {
+            color_blend_state
+                .validate(device)
+                .map_err(|err| err.add_context("color_blend_state"))?;
+        }
+
+        if let Some(subpass) = subpass {
+            match subpass {
+                PipelineSubpassType::BeginRenderPass(subpass) => {
+                    // VUID-VkGraphicsPipelineCreateInfo-commonparent
+                    assert_eq!(device, subpass.render_pass().device().as_ref());
+                }
+                PipelineSubpassType::BeginRendering(rendering_info) => {
+                    if !device.enabled_features().dynamic_rendering {
+                        return Err(Box::new(ValidationError {
+                            context: "subpass".into(),
+                            problem: "is `PipelineRenderPassType::BeginRendering`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("dynamic_rendering"),
+                            ])]),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
+                        }));
+                    }
+
+                    rendering_info
+                        .validate(device)
+                        .map_err(|err| err.add_context("subpass"))?;
+                }
+            }
+        }
+
+        if let Some(discard_rectangle_state) = discard_rectangle_state {
+            if !device.enabled_extensions().ext_discard_rectangles {
+                return Err(Box::new(ValidationError {
+                    context: "discard_rectangle_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_discard_rectangles",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            discard_rectangle_state
+                .validate(device)
+                .map_err(|err| err.add_context("discard_rectangle_state"))?;
+        }
+
+        if let Some(fragment_shading_rate_state) = fragment_shading_rate_state {
+            if !device.enabled_extensions().khr_fragment_shading_rate {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_shading_rate_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "khr_fragment_shading_rate",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            fragment_shading_rate_state
+                .validate(device)
+                .map_err(|err| err.add_context("fragment_shading_rate_state"))?;
+        }
+
+        for dynamic_state in dynamic_state.iter().copied() {
+            dynamic_state.validate_device(device).map_err(|err| {
+                err.add_context("dynamic_state")
+                    .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
+            })?;
+        }
+
+        /*
+            Check dynamic states against other things
+        */
+
+        if stages_present.intersects(ShaderStages::MESH) {
+            if dynamic_state.contains(&DynamicState::PrimitiveTopology) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PrimitiveTopology`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07065"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::PrimitiveRestartEnable) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PrimitiveRestartEnable`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07066"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::PatchControlPoints) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PatchControlPoints`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07066"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::VertexInput) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::VertexInput`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07067"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let Some(_input_assembly_state) = input_assembly_state {
+            // TODO:
+            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
+        }
+
+        if let Some(viewport_state) = viewport_state {
             let ViewportState {
-                ref viewports,
-                ref scissors,
+                viewports,
+                scissors,
                 _ne: _,
             } = viewport_state;
 
@@ -2095,10 +1700,6 @@ impl GraphicsPipelineCreateInfo {
         }
 
         if let Some(rasterization_state) = rasterization_state {
-            rasterization_state
-                .validate(device)
-                .map_err(|err| err.add_context("rasterization_state"))?;
-
             let &RasterizationState {
                 depth_clamp_enable: _,
                 rasterizer_discard_enable: _,
@@ -2109,6 +1710,7 @@ impl GraphicsPipelineCreateInfo {
                 line_width,
                 line_rasterization_mode: _,
                 line_stipple,
+                ref conservative,
                 _ne: _,
             } = rasterization_state;
 
@@ -2119,7 +1721,7 @@ impl GraphicsPipelineCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "rasterization_state.line_width".into(),
                     problem: "is not 1.0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "wide_lines",
                     )])]),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749"],
@@ -2140,9 +1742,9 @@ impl GraphicsPipelineCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "rasterization_state.depth_bias.clamp".into(),
                         problem: "is not 0.0".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "depth_bias_clamp",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("depth_bias_clamp"),
+                        ])]),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754"],
                     }));
                 }
@@ -2168,6 +1770,106 @@ impl GraphicsPipelineCreateInfo {
                 }
             }
 
+            if let Some(conservative) = conservative {
+                if matches!(conservative.mode, ConservativeRasterizationMode::Disabled)
+                    && !properties
+                        .conservative_point_and_line_rasterization
+                        .unwrap_or(false)
+                {
+                    if let (None, Some(input_assembly_state)) =
+                        (geometry_stage, input_assembly_state)
+                    {
+                        if matches!(
+                            input_assembly_state.topology,
+                            PrimitiveTopology::PointList
+                                | PrimitiveTopology::LineList
+                                | PrimitiveTopology::LineStrip
+                        ) && (!dynamic_state.contains(&DynamicState::PrimitiveTopology)
+                            || match device
+                                .physical_device()
+                                .properties()
+                                .dynamic_primitive_topology_unrestricted
+                            {
+                                Some(b) => !b,
+                                None => false,
+                            })
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: "`input_assembly_state.topology` is not compatible with the \
+                                    conservative rasterization mode"
+                                    .into(),
+                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-08892"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+
+                    if let (Some(geometry_stage), Some(_)) = (geometry_stage, input_assembly_state)
+                    {
+                        let spirv = geometry_stage.entry_point.module().spirv();
+                        let entry_point_function = spirv.function(geometry_stage.entry_point.id());
+
+                        let invalid_output =
+                            entry_point_function
+                                .execution_modes()
+                                .iter()
+                                .any(|instruction| {
+                                    matches!(
+                                        instruction,
+                                        Instruction::ExecutionMode {
+                                            mode: ExecutionMode::OutputPoints
+                                                | ExecutionMode::OutputLineStrip,
+                                            ..
+                                        },
+                                    )
+                                });
+
+                        if invalid_output {
+                            return Err(Box::new(ValidationError {
+                                problem: "the output topology of the geometry shader is not compatible with the \
+                                    conservative rasterization mode"
+                                    .into(),
+                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06760"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+
+                    if let Some(mesh_stage) = mesh_stage {
+                        let spirv = mesh_stage.entry_point.module().spirv();
+                        let entry_point_function = spirv.function(mesh_stage.entry_point.id());
+
+                        let mut invalid_output = false;
+
+                        for instruction in entry_point_function.execution_modes() {
+                            if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                                match mode {
+                                    ExecutionMode::OutputPoints => {
+                                        invalid_output = true;
+                                        break;
+                                    }
+                                    ExecutionMode::OutputLineStrip => {
+                                        invalid_output = true;
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        if invalid_output {
+                            return Err(Box::new(ValidationError {
+                                problem: "the output topology of the mesh shader is not compatible with the \
+                                    conservative rasterization mode"
+                                    .into(),
+                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06761"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                }
+            }
+
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-pStages-00740
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06049
@@ -2175,20 +1877,12 @@ impl GraphicsPipelineCreateInfo {
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06059
         }
 
-        if let Some(multisample_state) = multisample_state {
-            multisample_state
-                .validate(device)
-                .map_err(|err| err.add_context("multisample_state"))?;
-
+        if let Some(_multisample_state) = multisample_state {
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-lineRasterizationMode-02766
         }
 
         if let Some(depth_stencil_state) = depth_stencil_state {
-            depth_stencil_state
-                .validate(device)
-                .map_err(|err| err.add_context("depth_stencil_state"))?;
-
             let &DepthStencilState {
                 flags: _,
                 ref depth,
@@ -2230,190 +1924,40 @@ impl GraphicsPipelineCreateInfo {
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06040
         }
 
-        if let Some(color_blend_state) = color_blend_state {
-            color_blend_state
-                .validate(device)
-                .map_err(|err| err.add_context("color_blend_state"))?;
-        }
-
-        if let Some(subpass) = subpass {
-            match subpass {
-                PipelineSubpassType::BeginRenderPass(subpass) => {
-                    // VUID-VkGraphicsPipelineCreateInfo-commonparent
-                    assert_eq!(device, subpass.render_pass().device().as_ref());
-
-                    if subpass.subpass_desc().view_mask != 0 {
-                        if stages_present.intersects(
-                            ShaderStages::TESSELLATION_CONTROL
-                                | ShaderStages::TESSELLATION_EVALUATION,
-                        ) && !device.enabled_features().multiview_tessellation_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains tessellation shaders, and \
-                                    `subpass` has a non-zero `view_mask`"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_tessellation_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06047"],
-                                ..Default::default()
-                            }));
-                        }
-
-                        if stages_present.intersects(ShaderStages::GEOMETRY)
-                            && !device.enabled_features().multiview_geometry_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains a geometry shader, and \
-                                    `subpass` has a non-zero `view_mask`"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_geometry_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06048"],
-                                ..Default::default()
-                            }));
-                        }
-                    }
-                }
-                PipelineSubpassType::BeginRendering(rendering_info) => {
-                    if !device.enabled_features().dynamic_rendering {
-                        return Err(Box::new(ValidationError {
-                            context: "subpass".into(),
-                            problem: "is `PipelineRenderPassType::BeginRendering`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "dynamic_rendering",
-                            )])]),
-                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
-                        }));
-                    }
-
-                    rendering_info
-                        .validate(device)
-                        .map_err(|err| err.add_context("subpass"))?;
-
-                    let &PipelineRenderingCreateInfo {
-                        view_mask,
-                        color_attachment_formats: _,
-                        depth_attachment_format: _,
-                        stencil_attachment_format: _,
-                        _ne: _,
-                    } = rendering_info;
-
-                    if view_mask != 0 {
-                        if stages_present.intersects(
-                            ShaderStages::TESSELLATION_CONTROL
-                                | ShaderStages::TESSELLATION_EVALUATION,
-                        ) && !device.enabled_features().multiview_tessellation_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains tessellation shaders, and \
-                                    `subpass.view_mask` is not 0"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_tessellation_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06057"],
-                                ..Default::default()
-                            }));
-                        }
-
-                        if stages_present.intersects(ShaderStages::GEOMETRY)
-                            && !device.enabled_features().multiview_geometry_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains a geometry shader, and \
-                                    `subpass.view_mask` is not 0"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_geometry_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06058"],
-                                ..Default::default()
-                            }));
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(discard_rectangle_state) = discard_rectangle_state {
-            if !device.enabled_extensions().ext_discard_rectangles {
-                return Err(Box::new(ValidationError {
-                    context: "discard_rectangle_state".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_discard_rectangles",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-
-            discard_rectangle_state
-                .validate(device)
-                .map_err(|err| err.add_context("discard_rectangle_state"))?;
-        }
-
-        for dynamic_state in dynamic_state.iter().copied() {
-            dynamic_state.validate_device(device).map_err(|err| {
-                err.add_context("dynamic_state")
-                    .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
-            })?;
-        }
-
         /*
             Checks that rely on multiple pieces of state
         */
 
         if let (Some(vertex_stage), Some(vertex_input_state)) = (vertex_stage, vertex_input_state) {
-            for element in vertex_stage.entry_point.info().input_interface.elements() {
-                assert!(!element.ty.is_64bit); // TODO: implement
-                let location_range =
-                    element.location..element.location + element.ty.num_locations();
+            let required_vertex_inputs = shader_interface_location_info(
+                vertex_stage.entry_point.module().spirv(),
+                vertex_stage.entry_point.id(),
+                StorageClass::Input,
+            );
 
-                for location in location_range {
-                    let attribute_desc = match vertex_input_state.attributes.get(&location) {
-                        Some(attribute_desc) => attribute_desc,
-                        None => {
-                            return Err(Box::new(ValidationError {
-                                problem: format!(
-                                    "the vertex shader has an input variable with location {0}, but \
-                                    `vertex_input_state.attributes` does not contain {0}",
-                                    location,
-                                )
-                                .into(),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
-                                ..Default::default()
-                            }));
-                        }
-                    };
-
-                    // TODO: Check component assignments too. Multiple variables can occupy the
-                    // same location but in different components.
-
-                    let shader_type = element.ty.base_type;
-                    let attribute_type = attribute_desc
-                        .format
-                        .numeric_format_color()
-                        .unwrap()
-                        .numeric_type();
-
-                    // VUID?
-                    if shader_type != attribute_type {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`vertex_input_state.attributes[{}].format` has a different \
-                                numeric type than the vertex shader input variable with \
-                                location {0}",
-                                location,
-                            )
-                            .into(),
-                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
+            vertex_input_state
+                .validate_required_vertex_inputs(
+                    &required_vertex_inputs,
+                    RequiredVertexInputsVUIDs {
+                        not_present: &["VUID-VkGraphicsPipelineCreateInfo-Input-07904"],
+                        numeric_type: &["VUID-VkGraphicsPipelineCreateInfo-Input-08733"],
+                        requires32: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08929"],
+                        requires64: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08930"],
+                        requires_second_half: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-09198",
+                        ],
+                    },
+                )
+                .map_err(|mut err| {
+                    err.problem = format!(
+                        "{}: {}",
+                        "`vertex_input_state` does not meet the requirements \
+                        of the vertex shader in `stages`",
+                        err.problem,
+                    )
+                    .into();
+                    err
+                })?;
         }
 
         if let (Some(_), Some(_)) = (tessellation_control_stage, tessellation_evaluation_stage) {
@@ -2440,7 +1984,8 @@ impl GraphicsPipelineCreateInfo {
             let entry_point_function = spirv.function(geometry_stage.entry_point.id());
 
             let input = entry_point_function
-                .iter_execution_mode()
+                .execution_modes()
+                .iter()
                 .find_map(|instruction| {
                     if let Instruction::ExecutionMode { mode, .. } = *instruction {
                         match mode {
@@ -2472,25 +2017,27 @@ impl GraphicsPipelineCreateInfo {
             }
         }
 
-        if let (Some(fragment_stage), Some(subpass)) = (fragment_stage, subpass) {
-            let entry_point_info = fragment_stage.entry_point.info();
+        if let (Some(fragment_stage), Some(color_blend_state), Some(subpass)) =
+            (fragment_stage, color_blend_state, subpass)
+        {
+            let fragment_shader_outputs = shader_interface_location_info(
+                fragment_stage.entry_point.module().spirv(),
+                fragment_stage.entry_point.id(),
+                StorageClass::Output,
+            );
 
-            // Check that the subpass can accept the output of the fragment shader.
-            match subpass {
-                PipelineSubpassType::BeginRenderPass(subpass) => {
-                    if !subpass.is_compatible_with(&entry_point_info.output_interface) {
-                        return Err(Box::new(ValidationError {
-                            problem: "`subpass` is not compatible with the \
-                                output interface of the fragment shader"
-                                .into(),
-                            ..Default::default()
-                        }));
-                    }
-                }
-                PipelineSubpassType::BeginRendering(_) => {
-                    // TODO:
-                }
-            }
+            color_blend_state
+                .validate_required_fragment_outputs(subpass, &fragment_shader_outputs)
+                .map_err(|mut err| {
+                    err.problem = format!(
+                        "{}: {}",
+                        "the fragment shader in `stages` does not meet the requirements of \
+                        `color_blend_state` and `subpass`",
+                        err.problem,
+                    )
+                    .into();
+                    err
+                })?;
 
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-pStages-01565
@@ -2526,7 +2073,7 @@ impl GraphicsPipelineCreateInfo {
                                 `rasterization_state.cull_mode` is `CullMode::None`, and \
                                 `depth_stencil_state.stencil.front.reference` does not equal \
                                 `depth_stencil_state.stencil.back.reference`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "separate_stencil_mask_ref",
                             )])]),
                             vuids: &["VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453"],
@@ -2572,7 +2119,7 @@ impl GraphicsPipelineCreateInfo {
                         .subpass_desc()
                         .depth_stencil_attachment
                         .as_ref()
-                        .map_or(false, |depth_stencil_attachment| {
+                        .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
@@ -2608,7 +2155,7 @@ impl GraphicsPipelineCreateInfo {
                                         .layout
                                         .is_writable(ImageAspect::Depth)
                                 })
-                                .map_or(false, |depth_stencil_attachment| {
+                                .is_some_and(|depth_stencil_attachment| {
                                     subpass.render_pass().attachments()
                                         [depth_stencil_attachment.attachment as usize]
                                         .format
@@ -2639,7 +2186,7 @@ impl GraphicsPipelineCreateInfo {
                         .subpass_desc()
                         .depth_stencil_attachment
                         .as_ref()
-                        .map_or(false, |depth_stencil_attachment| {
+                        .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
@@ -2657,6 +2204,70 @@ impl GraphicsPipelineCreateInfo {
                             have a stencil attachment"
                             .into(),
                         // vuids?
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if let Some(subpass) = subpass {
+            let view_mask = match subpass {
+                PipelineSubpassType::BeginRenderPass(subpass) => subpass.subpass_desc().view_mask,
+                PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+            };
+
+            if view_mask != 0 {
+                if stages_present.intersects(
+                    ShaderStages::TESSELLATION_CONTROL | ShaderStages::TESSELLATION_EVALUATION,
+                ) && !device.enabled_features().multiview_tessellation_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains tessellation shaders, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_tessellation_shader"),
+                        ])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06047",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06057",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+
+                if stages_present.intersects(ShaderStages::GEOMETRY)
+                    && !device.enabled_features().multiview_geometry_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains a geometry shader, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_geometry_shader"),
+                        ])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06048",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06058",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+
+                if stages_present.intersects(ShaderStages::MESH)
+                    && !device.enabled_features().multiview_mesh_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains a mesh shader, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_mesh_shader"),
+                        ])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-07064",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-07720",
+                        ],
                         ..Default::default()
                     }));
                 }
@@ -2704,10 +2315,10 @@ impl GraphicsPipelineCreateInfo {
                         }
                     };
 
-                    if !attachment_format.map_or(false, |format| unsafe {
-                        device
-                            .physical_device()
-                            .format_properties_unchecked(format)
+                    if !attachment_format.is_some_and(|format| {
+                        let format_properties =
+                            unsafe { device.physical_device().format_properties_unchecked(format) };
+                        format_properties
                             .potential_format_features()
                             .intersects(FormatFeatures::COLOR_ATTACHMENT_BLEND)
                     }) {
@@ -2732,6 +2343,401 @@ impl GraphicsPipelineCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a GraphicsPipelineCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut GraphicsPipelineCreateInfoExtensionsVk<'_>,
+    ) -> vk::GraphicsPipelineCreateInfo<'a> {
+        let &Self {
+            flags,
+            stages: _,
+
+            vertex_input_state: _,
+            input_assembly_state: _,
+            tessellation_state: _,
+            viewport_state: _,
+            rasterization_state: _,
+            multisample_state: _,
+            depth_stencil_state: _,
+            color_blend_state: _,
+            dynamic_state: _,
+
+            ref layout,
+            ref subpass,
+            ref base_pipeline,
+
+            discard_rectangle_state: _,
+            fragment_shading_rate_state: _,
+
+            _ne: _,
+        } = self;
+        let (render_pass_vk, subpass_vk) = match subpass {
+            Some(PipelineSubpassType::BeginRenderPass(subpass)) => {
+                (subpass.render_pass().handle(), subpass.index())
+            }
+            _ => (vk::RenderPass::null(), 0),
+        };
+        let GraphicsPipelineCreateInfoFields1Vk {
+            stages_vk,
+            vertex_input_state_vk,
+            input_assembly_state_vk,
+            tessellation_state_vk,
+            viewport_state_vk,
+            rasterization_state_vk,
+            multisample_state_vk,
+            depth_stencil_state_vk,
+            color_blend_state_vk,
+            dynamic_state_vk,
+        } = fields1_vk;
+
+        let mut val_vk = vk::GraphicsPipelineCreateInfo::default()
+            .flags(flags.into())
+            .stages(stages_vk)
+            .layout(layout.handle())
+            .render_pass(render_pass_vk)
+            .subpass(subpass_vk)
+            .base_pipeline_handle(
+                base_pipeline
+                    .as_ref()
+                    .map_or(vk::Pipeline::null(), VulkanObject::handle),
+            )
+            .base_pipeline_index(-1);
+
+        if let Some(vertex_input_state_vk) = vertex_input_state_vk {
+            val_vk = val_vk.vertex_input_state(vertex_input_state_vk);
+        }
+
+        if let Some(input_assembly_state_vk) = input_assembly_state_vk {
+            val_vk = val_vk.input_assembly_state(input_assembly_state_vk);
+        }
+
+        if let Some(tessellation_state_vk) = tessellation_state_vk {
+            val_vk = val_vk.tessellation_state(tessellation_state_vk);
+        }
+
+        if let Some(viewport_state_vk) = viewport_state_vk {
+            val_vk = val_vk.viewport_state(viewport_state_vk);
+        }
+
+        if let Some(rasterization_state_vk) = rasterization_state_vk {
+            val_vk = val_vk.rasterization_state(rasterization_state_vk);
+        }
+
+        if let Some(multisample_state_vk) = multisample_state_vk {
+            val_vk = val_vk.multisample_state(multisample_state_vk);
+        }
+
+        if let Some(depth_stencil_state_vk) = depth_stencil_state_vk {
+            val_vk = val_vk.depth_stencil_state(depth_stencil_state_vk);
+        }
+
+        if let Some(color_blend_state_vk) = color_blend_state_vk {
+            val_vk = val_vk.color_blend_state(color_blend_state_vk);
+        }
+
+        if let Some(dynamic_state_vk) = dynamic_state_vk {
+            val_vk = val_vk.dynamic_state(dynamic_state_vk);
+        }
+
+        let GraphicsPipelineCreateInfoExtensionsVk {
+            discard_rectangle_state_vk,
+            rendering_vk,
+            fragment_shading_rate_vk,
+        } = extensions_vk;
+
+        if let Some(next) = discard_rectangle_state_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = fragment_shading_rate_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = rendering_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
+    ) -> GraphicsPipelineCreateInfoExtensionsVk<'a> {
+        let GraphicsPipelineCreateInfoFields2Vk {
+            discard_rectangle_state_fields1_vk,
+            rendering_fields1_vk,
+            ..
+        } = fields2_vk;
+        let discard_rectangle_state_vk = self
+            .discard_rectangle_state
+            .as_ref()
+            .zip(discard_rectangle_state_fields1_vk.as_ref())
+            .map(|(discard_rectangle_state, fields1_vk)| discard_rectangle_state.to_vk(fields1_vk));
+        let rendering_vk = self
+            .subpass
+            .as_ref()
+            .zip(rendering_fields1_vk.as_ref())
+            .map(|(subpass, fields1_vk)| subpass.to_vk_rendering(fields1_vk));
+        let fragment_shading_rate_vk = self
+            .fragment_shading_rate_state
+            .as_ref()
+            .map(|fragment_shading_rate_state| fragment_shading_rate_state.to_vk());
+
+        GraphicsPipelineCreateInfoExtensionsVk {
+            discard_rectangle_state_vk,
+            rendering_vk,
+            fragment_shading_rate_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &'a self,
+        fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
+        extensions_vk: &'a mut GraphicsPipelineCreateInfoFields1ExtensionsVk<'_>,
+    ) -> GraphicsPipelineCreateInfoFields1Vk<'a> {
+        let Self {
+            stages,
+
+            vertex_input_state,
+            input_assembly_state,
+            tessellation_state,
+            viewport_state,
+            rasterization_state,
+            multisample_state,
+            depth_stencil_state,
+            color_blend_state,
+            ..
+        } = self;
+        let GraphicsPipelineCreateInfoFields2Vk {
+            stages_fields1_vk,
+            vertex_input_state_fields1_vk,
+            viewport_state_fields1_vk,
+            color_blend_state_fields1_vk,
+            dynamic_states_vk,
+            discard_rectangle_state_fields1_vk: _,
+            rendering_fields1_vk: _,
+        } = fields2_vk;
+        let GraphicsPipelineCreateInfoFields1ExtensionsVk {
+            stages_extensions_vk,
+            vertex_input_state_extensions_vk,
+            tessellation_state_extensions_vk,
+            rasterization_state_extensions_vk,
+            color_blend_state_extensions_vk,
+        } = extensions_vk;
+
+        let stages_vk = stages
+            .iter()
+            .zip(stages_fields1_vk)
+            .zip(stages_extensions_vk)
+            .map(|((stage, fields1_vk), extensions_vk)| stage.to_vk(fields1_vk, extensions_vk))
+            .collect();
+        let vertex_input_state_vk = vertex_input_state
+            .as_ref()
+            .zip(vertex_input_state_fields1_vk.as_ref())
+            .zip(vertex_input_state_extensions_vk.as_mut())
+            .map(|((vertex_input_state, fields1_vk), extensions_vk)| {
+                vertex_input_state.to_vk(fields1_vk, extensions_vk)
+            });
+        let input_assembly_state_vk = input_assembly_state.as_ref().map(InputAssemblyState::to_vk);
+        let tessellation_state_vk = tessellation_state
+            .as_ref()
+            .zip(tessellation_state_extensions_vk.as_mut())
+            .map(|(tessellation_state, extensions_vk)| tessellation_state.to_vk(extensions_vk));
+        let viewport_state_vk = viewport_state
+            .as_ref()
+            .zip(viewport_state_fields1_vk.as_ref())
+            .map(|(viewport_state, fields1_vk)| viewport_state.to_vk(fields1_vk));
+        let rasterization_state_vk = rasterization_state
+            .as_ref()
+            .zip(rasterization_state_extensions_vk.as_mut())
+            .map(|(rasterization_state, extensions_vk)| rasterization_state.to_vk(extensions_vk));
+        let multisample_state_vk = multisample_state.as_ref().map(MultisampleState::to_vk);
+        let depth_stencil_state_vk = depth_stencil_state.as_ref().map(DepthStencilState::to_vk);
+        let color_blend_state_vk = color_blend_state
+            .as_ref()
+            .zip(color_blend_state_fields1_vk.as_ref())
+            .zip(color_blend_state_extensions_vk.as_mut())
+            .map(|((color_blend_state, fields1_vk), extensions_vk)| {
+                color_blend_state.to_vk(fields1_vk, extensions_vk)
+            });
+        let dynamic_state_vk = (!dynamic_states_vk.is_empty()).then(|| {
+            vk::PipelineDynamicStateCreateInfo::default()
+                .flags(vk::PipelineDynamicStateCreateFlags::empty())
+                .dynamic_states(dynamic_states_vk)
+        });
+
+        GraphicsPipelineCreateInfoFields1Vk {
+            stages_vk,
+            vertex_input_state_vk,
+            input_assembly_state_vk,
+            tessellation_state_vk,
+            viewport_state_vk,
+            rasterization_state_vk,
+            multisample_state_vk,
+            depth_stencil_state_vk,
+            color_blend_state_vk,
+            dynamic_state_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1_extensions<'a>(
+        &self,
+        fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
+    ) -> GraphicsPipelineCreateInfoFields1ExtensionsVk<'a> {
+        let Self {
+            stages,
+
+            vertex_input_state,
+            tessellation_state,
+            rasterization_state,
+            color_blend_state,
+            ..
+        } = self;
+
+        let GraphicsPipelineCreateInfoFields2Vk {
+            stages_fields1_vk: _,
+            vertex_input_state_fields1_vk,
+            viewport_state_fields1_vk: _,
+            color_blend_state_fields1_vk,
+            dynamic_states_vk: _,
+            discard_rectangle_state_fields1_vk: _,
+            rendering_fields1_vk: _,
+        } = fields2_vk;
+
+        let stages_extensions_vk = stages
+            .iter()
+            .map(|stage| stage.to_vk_extensions())
+            .collect();
+        let vertex_input_state_extensions_vk = vertex_input_state
+            .as_ref()
+            .zip(vertex_input_state_fields1_vk.as_ref())
+            .map(|(vertex_input_state, fields1_vk)| {
+                vertex_input_state.to_vk_extensions(fields1_vk)
+            });
+        let tessellation_state_extensions_vk = tessellation_state
+            .as_ref()
+            .map(TessellationState::to_vk_extensions);
+        let rasterization_state_extensions_vk = rasterization_state
+            .as_ref()
+            .map(RasterizationState::to_vk_extensions);
+        let color_blend_state_extensions_vk = color_blend_state
+            .as_ref()
+            .zip(color_blend_state_fields1_vk.as_ref())
+            .map(|(color_blend_state, fields1_vk)| color_blend_state.to_vk_extensions(fields1_vk));
+
+        GraphicsPipelineCreateInfoFields1ExtensionsVk {
+            stages_extensions_vk,
+            vertex_input_state_extensions_vk,
+            tessellation_state_extensions_vk,
+            rasterization_state_extensions_vk,
+            color_blend_state_extensions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2<'a>(
+        &self,
+        fields3_vk: &'a GraphicsPipelineCreateInfoFields3Vk,
+    ) -> GraphicsPipelineCreateInfoFields2Vk<'a> {
+        let Self {
+            stages,
+
+            vertex_input_state,
+            viewport_state,
+            color_blend_state,
+            dynamic_state,
+
+            subpass,
+
+            discard_rectangle_state,
+            ..
+        } = self;
+        let GraphicsPipelineCreateInfoFields3Vk { stages_fields2_vk } = fields3_vk;
+
+        let stages_fields1_vk = stages
+            .iter()
+            .zip(stages_fields2_vk)
+            .map(|(stage, fields2_vk)| stage.to_vk_fields1(fields2_vk))
+            .collect();
+        let vertex_input_state_fields1_vk = vertex_input_state
+            .as_ref()
+            .map(VertexInputState::to_vk_fields1);
+        let viewport_state_fields1_vk = viewport_state.as_ref().map(ViewportState::to_vk_fields1);
+        let color_blend_state_fields1_vk = color_blend_state
+            .as_ref()
+            .map(ColorBlendState::to_vk_fields1);
+        let dynamic_states_vk = dynamic_state.iter().copied().map(Into::into).collect();
+        let discard_rectangle_state_fields1_vk = discard_rectangle_state
+            .as_ref()
+            .map(DiscardRectangleState::to_vk_fields1);
+        let rendering_fields1_vk = subpass
+            .as_ref()
+            .and_then(PipelineSubpassType::to_vk_rendering_fields1);
+
+        GraphicsPipelineCreateInfoFields2Vk {
+            stages_fields1_vk,
+            vertex_input_state_fields1_vk,
+            viewport_state_fields1_vk,
+            color_blend_state_fields1_vk,
+            dynamic_states_vk,
+            discard_rectangle_state_fields1_vk,
+            rendering_fields1_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields3(&self) -> GraphicsPipelineCreateInfoFields3Vk {
+        let stages_fields2_vk = self
+            .stages
+            .iter()
+            .map(|stage| stage.to_vk_fields2())
+            .collect();
+
+        GraphicsPipelineCreateInfoFields3Vk { stages_fields2_vk }
+    }
+}
+
+pub(crate) struct GraphicsPipelineCreateInfoExtensionsVk<'a> {
+    pub(crate) discard_rectangle_state_vk:
+        Option<vk::PipelineDiscardRectangleStateCreateInfoEXT<'a>>,
+    pub(crate) rendering_vk: Option<vk::PipelineRenderingCreateInfo<'a>>,
+    pub(crate) fragment_shading_rate_vk:
+        Option<vk::PipelineFragmentShadingRateStateCreateInfoKHR<'a>>,
+}
+
+pub(crate) struct GraphicsPipelineCreateInfoFields1Vk<'a> {
+    pub(crate) stages_vk: SmallVec<[vk::PipelineShaderStageCreateInfo<'a>; 5]>,
+    pub(crate) vertex_input_state_vk: Option<vk::PipelineVertexInputStateCreateInfo<'a>>,
+    pub(crate) input_assembly_state_vk: Option<vk::PipelineInputAssemblyStateCreateInfo<'static>>,
+    pub(crate) tessellation_state_vk: Option<vk::PipelineTessellationStateCreateInfo<'a>>,
+    pub(crate) viewport_state_vk: Option<vk::PipelineViewportStateCreateInfo<'a>>,
+    pub(crate) rasterization_state_vk: Option<vk::PipelineRasterizationStateCreateInfo<'a>>,
+    pub(crate) multisample_state_vk: Option<vk::PipelineMultisampleStateCreateInfo<'a>>,
+    pub(crate) depth_stencil_state_vk: Option<vk::PipelineDepthStencilStateCreateInfo<'static>>,
+    pub(crate) color_blend_state_vk: Option<vk::PipelineColorBlendStateCreateInfo<'a>>,
+    pub(crate) dynamic_state_vk: Option<vk::PipelineDynamicStateCreateInfo<'a>>,
+}
+
+pub(crate) struct GraphicsPipelineCreateInfoFields1ExtensionsVk<'a> {
+    pub(crate) stages_extensions_vk: SmallVec<[PipelineShaderStageCreateInfoExtensionsVk; 5]>,
+    pub(crate) vertex_input_state_extensions_vk: Option<VertexInputStateExtensionsVk<'a>>,
+    pub(crate) tessellation_state_extensions_vk: Option<TessellationStateExtensionsVk>,
+    pub(crate) rasterization_state_extensions_vk: Option<RasterizationStateExtensionsVk>,
+    pub(crate) color_blend_state_extensions_vk: Option<ColorBlendStateExtensionsVk<'a>>,
+}
+
+pub(crate) struct GraphicsPipelineCreateInfoFields2Vk<'a> {
+    pub(crate) stages_fields1_vk: SmallVec<[PipelineShaderStageCreateInfoFields1Vk<'a>; 5]>,
+    pub(crate) vertex_input_state_fields1_vk: Option<VertexInputStateFields1Vk>,
+    pub(crate) viewport_state_fields1_vk: Option<ViewportStateFields1Vk>,
+    pub(crate) color_blend_state_fields1_vk: Option<ColorBlendStateFields1Vk>,
+    pub(crate) dynamic_states_vk: SmallVec<[vk::DynamicState; 4]>,
+    pub(crate) discard_rectangle_state_fields1_vk: Option<DiscardRectangleStateFields1Vk>,
+    pub(crate) rendering_fields1_vk: Option<PipelineRenderingCreateInfoFields1Vk>,
+}
+
+pub(crate) struct GraphicsPipelineCreateInfoFields3Vk {
+    pub(crate) stages_fields2_vk: SmallVec<[PipelineShaderStageCreateInfoFields2Vk; 5]>,
 }
 
 /// The input primitive type that is expected by a geometry shader.

@@ -1,14 +1,5 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-use cgmath::Vector2;
-use rand::Rng;
+use glam::f32::Vec2;
+use rand::random;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -17,7 +8,7 @@ use vulkano::{
         PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     image::view::ImageView,
@@ -91,7 +82,7 @@ impl FractalComputePipeline {
             ComputePipeline::new(
                 device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
+                ComputePipelineCreateInfo::new(stage, layout),
             )
             .unwrap()
         };
@@ -112,10 +103,10 @@ impl FractalComputePipeline {
     pub fn randomize_palette(&mut self) {
         let mut colors = vec![];
         for _ in 0..self.palette_size {
-            let r = rand::thread_rng().gen::<f32>();
-            let g = rand::thread_rng().gen::<f32>();
-            let b = rand::thread_rng().gen::<f32>();
-            let a = rand::thread_rng().gen::<f32>();
+            let r = random::<f32>();
+            let g = random::<f32>();
+            let b = random::<f32>();
+            let a = random::<f32>();
             colors.push([r, g, b, a]);
         }
         self.palette = Buffer::from_iter(
@@ -137,19 +128,18 @@ impl FractalComputePipeline {
     pub fn compute(
         &self,
         image_view: Arc<ImageView>,
-        c: Vector2<f32>,
-        scale: Vector2<f32>,
-        translation: Vector2<f32>,
+        c: Vec2,
+        scale: Vec2,
+        translation: Vec2,
         max_iters: u32,
         is_julia: bool,
     ) -> Box<dyn GpuFuture> {
         // Resize image if needed.
         let image_extent = image_view.image().extent();
-        let pipeline_layout = self.pipeline.layout();
-        let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            desc_layout.clone(),
+        let layout = &self.pipeline.layout().set_layouts()[0];
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image_view),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
@@ -158,7 +148,7 @@ impl FractalComputePipeline {
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.as_ref(),
+            self.command_buffer_allocator.clone(),
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -173,15 +163,21 @@ impl FractalComputePipeline {
             max_iters: max_iters as i32,
             is_julia: is_julia as u32,
         };
+
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
             .unwrap()
-            .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .unwrap()
-            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
+        unsafe { builder.dispatch([image_extent[0] / 8, image_extent[1] / 8, 1]) }.unwrap();
+
         let command_buffer = builder.build().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()

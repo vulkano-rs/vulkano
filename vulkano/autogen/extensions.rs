@@ -1,18 +1,12 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
+use crate::autogen::conjunctive_normal_form::ConjunctiveNormalForm;
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
+use nom::{
+    branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
+    multi::separated_list0, sequence::delimited, IResult, Parser,
+};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::fmt::Write as _;
 use vk_parse::Extension;
 
@@ -33,7 +27,7 @@ fn conflicts_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     write_device_extensions(vk_data);
     write_instance_extensions(vk_data);
 }
@@ -62,7 +56,7 @@ pub enum Requires {
     InstanceExtension(String),
 }
 
-fn write_device_extensions(vk_data: &VkRegistryData) {
+fn write_device_extensions(vk_data: &VkRegistryData<'_>) {
     write_file(
         "device_extensions.rs",
         format!(
@@ -73,7 +67,7 @@ fn write_device_extensions(vk_data: &VkRegistryData) {
     );
 }
 
-fn write_instance_extensions(vk_data: &VkRegistryData) {
+fn write_instance_extensions(vk_data: &VkRegistryData<'_>) {
     write_file(
         "instance_extensions.rs",
         format!(
@@ -102,7 +96,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions,
                          instance_extensions,
-                         features: _,
+                         device_features: _,
                      }| {
                         device_extensions.is_empty()
                             && (api_version.is_some() || !instance_extensions.is_empty())
@@ -113,31 +107,35 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions: _,
                          instance_extensions,
-                         features: _,
+                         device_features: _,
                      }| {
-                        let condition_items = (api_version.iter().map(|version| {
-                            let version = format_ident!("V{}_{}", version.0, version.1);
-                            quote! { api_version >= crate::Version::#version }
-                        }))
-                        .chain(instance_extensions.iter().map(|ext_name| {
-                            let ident = format_ident!("{}", ext_name);
-                            quote! { instance_extensions.#ident }
-                        }));
-                        let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
-                            let version = format_ident!("V{}_{}", major, minor);
-                            quote! {
-                                crate::RequiresAllOf(&[
-                                    crate::Requires::APIVersion(crate::Version::#version),
-                                ]),
-                            }
-                        }))
-                        .chain(instance_extensions.iter().map(|ext_name| {
-                            quote! {
-                                crate::RequiresAllOf(&[
-                                    crate::Requires::InstanceExtension(#ext_name),
-                                ]),
-                            }
-                        }));
+                        let condition_items = api_version
+                            .iter()
+                            .map(|version| {
+                                let version = format_ident!("V{}_{}", version.0, version.1);
+                                quote! { api_version >= crate::Version::#version }
+                            })
+                            .chain(instance_extensions.iter().map(|ext_name| {
+                                let ident = format_ident!("{}", ext_name);
+                                quote! { instance_extensions.#ident }
+                            }));
+                        let requires_one_of_items = api_version
+                            .iter()
+                            .map(|(major, minor)| {
+                                let version = format_ident!("V{}_{}", major, minor);
+                                quote! {
+                                    crate::RequiresAllOf(&[
+                                        crate::Requires::APIVersion(crate::Version::#version),
+                                    ]),
+                                }
+                            })
+                            .chain(instance_extensions.iter().map(|ext_name| {
+                                quote! {
+                                    crate::RequiresAllOf(&[
+                                        crate::Requires::InstanceExtension(#ext_name),
+                                    ]),
+                                }
+                            }));
                         let problem = format!("contains `{}`", name_string);
 
                         quote! {
@@ -180,7 +178,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  name: _,
                  requires_all_of,
                  ..
-             }| (!requires_all_of.is_empty()),
+             }| !requires_all_of.is_empty(),
         )
         .map(
             |ExtensionsMember {
@@ -188,6 +186,8 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  requires_all_of,
                  ..
              }| {
+                let name_string = name.to_string();
+
                 let requires_all_of_items = requires_all_of
                     .iter()
                     .filter(
@@ -195,15 +195,15 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version: _,
                              device_extensions,
                              instance_extensions: _,
-                             features: _,
-                         }| (!device_extensions.is_empty()),
+                             device_features: _,
+                         }| !device_extensions.is_empty(),
                     )
                     .map(
                         |RequiresOneOf {
                              api_version,
                              device_extensions,
                              instance_extensions: _,
-                             features: _,
+                             device_features: _,
                          }| {
                             let condition_items = api_version
                                 .iter()
@@ -222,6 +222,14 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                             let base_requirement_item = {
                                 let ident = format_ident!("{}", base_requirement);
                                 quote! {
+                                    assert!(
+                                        supported.#ident,
+                                        "The device extension `{}` is enabled, and it requires \
+                                        the `{}` extension to be also enabled, but the device \
+                                        does not support the required extension. \
+                                        This is a bug in the Vulkan driver for this device.",
+                                        #name_string, #base_requirement,
+                                    );
                                     self.#ident = true;
                                 }
                             };
@@ -253,11 +261,16 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                 }
                             }
                         },
-                    );
+                    )
+                    .collect::<Vec<_>>();
 
-                quote! {
-                    if self.#name {
-                        #(#requires_all_of_items)*
+                if requires_all_of_items.is_empty() {
+                    quote! {}
+                } else {
+                    quote! {
+                        if self.#name {
+                            #(#requires_all_of_items)*
+                        }
                     }
                 }
             },
@@ -307,7 +320,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                      api_version,
                      device_extensions: _,
                      instance_extensions,
-                     features: _,
+                     device_features: _,
                  }| {
                     api_version.filter(|_| instance_extensions.is_empty()).map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
@@ -356,7 +369,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  name: _,
                  requires_all_of,
                  ..
-             }| (!requires_all_of.is_empty()),
+             }| !requires_all_of.is_empty(),
         )
         .map(
             |ExtensionsMember {
@@ -364,6 +377,8 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  requires_all_of,
                  ..
              }| {
+                let name_string = name.to_string();
+
                 let requires_all_of_items = requires_all_of
                     .iter()
                     .filter(
@@ -371,15 +386,15 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version: _,
                              device_extensions: _,
                              instance_extensions,
-                             features: _,
-                         }| (!instance_extensions.is_empty()),
+                             device_features: _,
+                         }| !instance_extensions.is_empty(),
                     )
                     .map(
                         |RequiresOneOf {
                              api_version,
                              device_extensions: _,
                              instance_extensions,
-                             features: _,
+                             device_features: _,
                          }| {
                             let condition_items = api_version
                                 .iter()
@@ -398,6 +413,14 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                             let base_requirement_item = {
                                 let ident = format_ident!("{}", base_requirement);
                                 quote! {
+                                    assert!(
+                                        supported.#ident,
+                                        "The instance extension `{}` is enabled, and it requires \
+                                        the `{}` extension to be also enabled, but the device \
+                                        does not support the required extension. \
+                                        This is a bug in the Vulkan driver.",
+                                        #name_string, #base_requirement,
+                                    );
                                     self.#ident = true;
                                 }
                             };
@@ -477,6 +500,18 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: false,
+        }
+    });
+
+    let count_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            self.#name as u64
+        }
+    });
+
+    let is_empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            self.#name
         }
     });
 
@@ -574,11 +609,16 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns an `Extensions` object with none of the members set.
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
+            /// Returns the number of members set in self.
             #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
+            pub const fn count(self) -> u64 {
+                #(#count_items)+*
+            }
+
+            /// Returns whether no members are set in `self`.
+            #[inline]
+            pub const fn is_empty(self) -> bool {
+                !(#(#is_empty_items)||*)
             }
 
             /// Returns whether any members are set in both `self` and `other`.
@@ -591,13 +631,6 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             #[inline]
             pub const fn contains(&self, other: &Self) -> bool {
                 #(#contains_items)&&*
-            }
-
-            /// Returns whether all members in `other` are set in `self`.
-            #[deprecated(since = "0.31.0", note = "use `contains` instead")]
-            #[inline]
-            pub const fn is_superset_of(&self, other: &Self) -> bool {
-                self.contains(other)
             }
 
             /// Returns the union of `self` and `other`.
@@ -748,6 +781,44 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     }
 }
 
+fn convert_depends_expression(
+    depends_expression: DependsExpression<'_>,
+    extensions: &IndexMap<&str, &Extension>,
+) -> ConjunctiveNormalForm<RequiresOneOf> {
+    match depends_expression {
+        DependsExpression::Name(vk_name) => {
+            let new = dependency_chain(vk_name, extensions);
+
+            let mut result = ConjunctiveNormalForm::empty();
+            result.add_conjunction(new);
+
+            result
+        }
+        DependsExpression::AllOf(all_of) => {
+            let mut result = ConjunctiveNormalForm::empty();
+
+            for expr in all_of {
+                let cnf = convert_depends_expression(expr, extensions);
+                for it in cnf.take() {
+                    result.add_conjunction(it);
+                }
+            }
+
+            result
+        }
+        DependsExpression::OneOf(one_of) => {
+            let mut result = ConjunctiveNormalForm::empty();
+
+            for expr in one_of {
+                let cnf = convert_depends_expression(expr, extensions);
+                result.add_bijection(cnf);
+            }
+
+            result
+        }
+    }
+}
+
 fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<ExtensionsMember> {
     extensions
         .values()
@@ -757,35 +828,14 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
             let name = raw.strip_prefix("VK_").unwrap().to_snake_case();
 
             let requires_all_of = extension.depends.as_ref().map_or_else(Vec::new, |depends| {
-                let depends_panic = |err| -> ! {
+                let depends_expression = parse_depends(depends).unwrap_or_else(|err| {
                     panic!(
-                        "couldn't parse `depends=` attribute for extension `{}`: {}",
-                        extension.name, err
+                        "couldn't parse `depends={:?}` attribute for extension `{}`: {}",
+                        extension.name, depends, err
                     )
-                };
+                });
 
-                match parse_depends(depends).unwrap_or_else(|err| depends_panic(err)) {
-                    expr @ DependsExpression::Name(_) => {
-                        from_one_of(vec![expr], extensions).unwrap_or_else(|err| depends_panic(err))
-                    }
-                    DependsExpression::OneOf(one_of) => {
-                        from_one_of(one_of, extensions).unwrap_or_else(|err| depends_panic(err))
-                    }
-                    DependsExpression::AllOf(all_of) => all_of
-                        .into_iter()
-                        .flat_map(|expr| match expr {
-                            expr @ DependsExpression::Name(_) => {
-                                from_one_of(vec![expr], extensions)
-                                    .unwrap_or_else(|err| depends_panic(err))
-                            }
-                            DependsExpression::AllOf(_) => {
-                                depends_panic("AllOf inside another AllOf".into())
-                            }
-                            DependsExpression::OneOf(one_of) => from_one_of(one_of, extensions)
-                                .unwrap_or_else(|err| depends_panic(err)),
-                        })
-                        .collect(),
-                }
+                convert_depends_expression(depends_expression, extensions).take()
             });
 
             let conflicts_extensions = conflicts_extensions(&extension.name);
@@ -857,49 +907,6 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
         .collect()
 }
 
-fn from_one_of(
-    one_of: Vec<DependsExpression>,
-    extensions: &IndexMap<&str, &Extension>,
-) -> Result<Vec<RequiresOneOf>, String> {
-    let mut requires_all_of = vec![RequiresOneOf::default()];
-
-    for expr in one_of {
-        match expr {
-            DependsExpression::Name(vk_name) => {
-                let new = dependency_chain(vk_name, extensions);
-
-                for requires_one_of in &mut requires_all_of {
-                    *requires_one_of |= &new;
-                }
-            }
-            DependsExpression::OneOf(_) => return Err("OneOf inside another OneOf".into()),
-            DependsExpression::AllOf(all_of) => {
-                let mut new_requires_all_of = Vec::new();
-
-                for expr in all_of {
-                    match expr {
-                        DependsExpression::Name(vk_name) => {
-                            let new = dependency_chain(vk_name, extensions);
-                            let mut requires_all_of = requires_all_of.clone();
-
-                            for requires_one_of in &mut requires_all_of {
-                                *requires_one_of |= &new;
-                            }
-
-                            new_requires_all_of.extend(requires_all_of);
-                        }
-                        _ => return Err("More than three levels of nesting".into()),
-                    }
-                }
-
-                requires_all_of = new_requires_all_of;
-            }
-        }
-    }
-
-    Ok(requires_all_of)
-}
-
 fn dependency_chain<'a>(
     mut vk_name: &'a str,
     extensions: &IndexMap<&str, &'a Extension>,
@@ -942,109 +949,46 @@ enum DependsExpression<'a> {
     AllOf(Vec<Self>),
 }
 
-fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
-    #[derive(Debug, PartialEq)]
-    enum Token<'a> {
-        Name(&'a str),
-        Plus,
-        Comma,
-        POpen,
-        PClose,
+fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
+    fn name(input: &str) -> IResult<&str, &str> {
+        take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(input)
     }
 
-    static NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9_]+").unwrap());
-
-    let mut next_token = move || {
-        if let Some(m) = NAME.find(depends) {
-            depends = &depends[m.len()..];
-            Ok(Some(Token::Name(m.as_str())))
-        } else {
-            depends
-                .chars()
-                .next()
-                .map(|c| {
-                    let token = match c {
-                        '+' => Token::Plus,
-                        ',' => Token::Comma,
-                        '(' => Token::POpen,
-                        ')' => Token::PClose,
-                        _ => return Err(format!("unexpected character: {}", c)),
-                    };
-                    depends = &depends[1..];
-                    Ok(token)
-                })
-                .transpose()
-        }
-    };
-
-    fn parse_expression<'a>(
-        next_token: &mut impl FnMut() -> Result<Option<Token<'a>>, String>,
-        expect_pclose: bool,
-    ) -> Result<DependsExpression<'a>, String> {
-        let first = match next_token()? {
-            Some(Token::Name(name)) => DependsExpression::Name(name),
-            Some(Token::POpen) => parse_expression(next_token, true)?,
-            Some(token) => return Err(format!("unexpected token: {:?}", token)),
-            None => return Err("unexpected end of string".into()),
-        };
-
-        match next_token()? {
-            Some(separator @ (Token::Plus | Token::Comma)) => {
-                let mut subexpr = vec![first];
-
-                loop {
-                    match next_token()? {
-                        Some(Token::Name(name)) => subexpr.push(DependsExpression::Name(name)),
-                        Some(Token::POpen) => subexpr.push(parse_expression(next_token, true)?),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => return Err("unexpected end of string".into()),
-                    }
-
-                    match next_token()? {
-                        Some(Token::PClose) => {
-                            if expect_pclose {
-                                break;
-                            } else {
-                                return Err(format!("unexpected token: {:?}", Token::PClose));
-                            }
-                        }
-                        Some(token) if token == separator => (),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => {
-                            if expect_pclose {
-                                return Err("unexpected end of string".into());
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                Ok(match separator {
-                    Token::Plus => DependsExpression::AllOf(subexpr),
-                    Token::Comma => DependsExpression::OneOf(subexpr),
-                    _ => unreachable!(),
-                })
-            }
-            Some(Token::PClose) => {
-                if expect_pclose {
-                    Ok(first)
-                } else {
-                    Err(format!("unexpected token: {:?}", Token::PClose))
-                }
-            }
-            Some(token) => Err(format!("unexpected token: {:?}", token)),
-            None => {
-                if expect_pclose {
-                    Err("unexpected end of string".into())
-                } else {
-                    Ok(first)
-                }
-            }
-        }
+    fn term(input: &str) -> IResult<&str, DependsExpression<'_>> {
+        alt((
+            name.map(DependsExpression::Name),
+            delimited(complete::char('('), one_of_expression, complete::char(')')),
+        ))(input)
     }
 
-    parse_expression(&mut next_token, false)
+    fn all_of_expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
+        let (input, mut all_of) = separated_list0(complete::char('+'), term)(input)?;
+
+        Ok((input, {
+            if all_of.len() == 1 {
+                all_of.remove(0)
+            } else {
+                DependsExpression::AllOf(all_of)
+            }
+        }))
+    }
+
+    fn one_of_expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
+        let (input, mut one_of) = separated_list0(complete::char(','), all_of_expression)(input)?;
+
+        Ok((input, {
+            if one_of.len() == 1 {
+                one_of.remove(0)
+            } else {
+                DependsExpression::OneOf(one_of)
+            }
+        }))
+    }
+
+    match all_consuming(one_of_expression)(depends) {
+        Ok((_, expr)) => Ok(expr),
+        Err(err) => Err(format!("{:?}", err)),
+    }
 }
 
 fn make_doc(ext: &mut ExtensionsMember) {

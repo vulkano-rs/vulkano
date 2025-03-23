@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::bail;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -70,7 +61,7 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
 
                     let field_size = ::std::mem::size_of::<#field_ty>();
                     let format = #format;
-                    let format_size = format.block_size() as usize;
+                    let format_size = usize::try_from(format.block_size()).unwrap();
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
                     ::std::assert!(
@@ -85,6 +76,7 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
                             offset: offset.try_into().unwrap(),
                             format,
                             num_elements: num_elements.try_into().unwrap(),
+                            stride: format_size.try_into().unwrap(),
                         },
                     );
 

@@ -14,6 +14,6 @@ doc = false
 [dependencies]
 ron = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-vulkano = { workspace = true, features = ["serde"] }
+vulkano = { workspace = true, default-features = true, features = ["serde"] }
 vulkano-shaders = { workspace = true }
-winit = { workspace = true }
+winit = { workspace = true, default-features = true }

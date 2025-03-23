@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! A newtype wrapper for enforcing correct alignment for external types.
 
 use crate::buffer::{BufferContents, BufferContentsLayout};
@@ -17,7 +8,7 @@ use std::{
     cmp::Ordering,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
-    mem::{size_of, MaybeUninit},
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
@@ -167,7 +158,7 @@ use std::{
 /// You may also want to consider using [the `uniform_buffer_standard_layout` feature].
 ///
 /// [the `shader` module documentation]: crate::shader
-/// [the `uniform_buffer_standard_layout` feature]: crate::device::Features::uniform_buffer_standard_layout
+/// [the `uniform_buffer_standard_layout` feature]: crate::device::DeviceFeatures::uniform_buffer_standard_layout
 #[repr(C)]
 pub struct Padded<T, const N: usize> {
     value: T,
@@ -296,16 +287,9 @@ unsafe impl<T, const N: usize> BufferContents for Padded<T, N>
 where
     T: BufferContents,
 {
-    const LAYOUT: BufferContentsLayout =
-        if let Some(layout) = BufferContentsLayout::from_sized(Layout::new::<Self>()) {
-            layout
-        } else {
-            panic!("zero-sized types are not valid buffer contents");
-        };
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_sized(Layout::new::<Self>());
 
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<Padded<T, N>>());
-
         <*mut [u8]>::cast::<Padded<T, N>>(slice.as_ptr())
     }
 }

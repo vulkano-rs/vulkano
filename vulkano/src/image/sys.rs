@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Low-level implementation of images.
 //!
 //! This module contains low-level wrappers around the Vulkan image types. All
@@ -22,27 +13,29 @@ use super::{
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
     SparseImageMemoryRequirements, SubresourceLayout,
 };
+#[cfg(doc)]
+use crate::format::DrmFormatModifierProperties;
 use crate::{
     cache::OnceCache,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{
         max_mip_levels, ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties,
-        ImageType, SparseImageFormatProperties,
+        ImageType,
     },
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout},
-        is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryPropertyFlags,
-        MemoryRequirements, ResourceMemory,
+        allocator::AllocationType, is_aligned, DedicatedTo, ExternalMemoryHandleTypes,
+        MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
     sync::Sharing,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A raw image, with no memory backing it.
 ///
@@ -55,9 +48,9 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct RawImage {
-    handle: ash::vk::Image,
+    handle: vk::Image,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
-    id: NonZeroU64,
+    id: NonZero<u64>,
 
     flags: ImageCreateFlags,
     image_type: ImageType,
@@ -77,6 +70,7 @@ pub struct RawImage {
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
     memory_requirements: SmallVec<[MemoryRequirements; 4]>,
+    sparse_memory_requirements: Vec<SparseImageMemoryRequirements>,
     needs_destruction: bool, // `vkDestroyImage` is called only if true.
     subresource_layout: OnceCache<(ImageAspect, u32, u32), SubresourceLayout>,
 }
@@ -90,7 +84,7 @@ impl RawImage {
     ) -> Result<RawImage, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(RawImage::new_unchecked(device, create_info)?) }
+        Ok(unsafe { RawImage::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -101,6 +95,11 @@ impl RawImage {
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
 
+        // TODO: sparse_address_space_size and extended_sparse_address_space_size limits
+        // VUID-vkCreateImage-flags-00939
+        // VUID-vkCreateImage-flags-09385
+        // VUID-vkCreateImage-flags-09386
+
         Ok(())
     }
 
@@ -110,163 +109,27 @@ impl RawImage {
         device: Arc<Device>,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let &ImageCreateInfo {
-            flags,
-            image_type,
-            format,
-            ref view_formats,
-            extent,
-            array_layers,
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-            stencil_usage,
-            ref sharing,
-            initial_layout,
-            ref drm_format_modifiers,
-            ref drm_format_modifier_plane_layouts,
-            external_memory_handle_types,
-            _ne: _,
-        } = &create_info;
-
-        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.len() as u32,
-                queue_family_indices.as_ptr(),
-            ),
-        };
-
-        let mut create_info_vk = ash::vk::ImageCreateInfo {
-            flags: flags.into(),
-            image_type: image_type.into(),
-            format: format.into(),
-            extent: ash::vk::Extent3D {
-                width: extent[0],
-                height: extent[1],
-                depth: extent[2],
-            },
-            mip_levels,
-            array_layers,
-            samples: samples.into(),
-            tiling: tiling.into(),
-            usage: usage.into(),
-            sharing_mode,
-            queue_family_index_count,
-            p_queue_family_indices,
-            initial_layout: initial_layout.into(),
-            ..Default::default()
-        };
-        let mut drm_format_modifier_explicit_info_vk = None;
-        let drm_format_modifier_plane_layouts_vk: SmallVec<[_; 4]>;
-        let mut drm_format_modifier_list_info_vk = None;
-        let mut external_memory_info_vk = None;
-        let mut format_list_info_vk = None;
-        let format_list_view_formats_vk: Vec<_>;
-        let mut stencil_usage_info_vk = None;
-
-        #[allow(clippy::comparison_chain)]
-        if drm_format_modifiers.len() == 1 {
-            drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
-                .iter()
-                .map(|subresource_layout| {
-                    let &SubresourceLayout {
-                        offset,
-                        size,
-                        row_pitch,
-                        array_pitch,
-                        depth_pitch,
-                    } = subresource_layout;
-
-                    ash::vk::SubresourceLayout {
-                        offset,
-                        size,
-                        row_pitch,
-                        array_pitch: array_pitch.unwrap_or(0),
-                        depth_pitch: depth_pitch.unwrap_or(0),
-                    }
-                })
-                .collect();
-
-            let next = drm_format_modifier_explicit_info_vk.insert(
-                ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
-                    drm_format_modifier: drm_format_modifiers[0],
-                    drm_format_modifier_plane_count: drm_format_modifier_plane_layouts_vk.len()
-                        as u32,
-                    p_plane_layouts: drm_format_modifier_plane_layouts_vk.as_ptr(),
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        } else if drm_format_modifiers.len() > 1 {
-            let next = drm_format_modifier_list_info_vk.insert(
-                ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
-                    drm_format_modifier_count: drm_format_modifiers.len() as u32,
-                    p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if !external_memory_handle_types.is_empty() {
-            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryImageCreateInfo {
-                handle_types: external_memory_handle_types.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if !view_formats.is_empty() {
-            format_list_view_formats_vk = view_formats
-                .iter()
-                .copied()
-                .map(ash::vk::Format::from)
-                .collect();
-
-            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
-                view_format_count: format_list_view_formats_vk.len() as u32,
-                p_view_formats: format_list_view_formats_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if let Some(stencil_usage) = stencil_usage {
-            let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
-                stencil_usage: stencil_usage.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields1_vk);
+        let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_image)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Self::from_handle(device, handle, create_info)
+        unsafe { Self::from_handle(device, handle, create_info) }
     }
 
     /// Creates a new `RawImage` from a raw object handle.
@@ -274,20 +137,41 @@ impl RawImage {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
-    /// - `handle` must refer to an image that has not yet had memory bound to it.
     /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
-        Self::from_handle_with_destruction(device, handle, create_info, true)
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
+    }
+
+    /// Creates a new `RawImage` from a raw object handle. Unlike `from_handle`, the created
+    /// `RawImage` will not destroy the inner image when dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
+    /// - Caller must ensure the handle will not be destroyed for the lifetime of returned
+    ///   `RawImage`.
+    #[inline]
+    pub unsafe fn from_handle_borrowed(
+        device: Arc<Device>,
+        handle: vk::Image,
+        create_info: ImageCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
     }
 
     pub(super) unsafe fn from_handle_with_destruction(
         device: Arc<Device>,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         create_info: ImageCreateInfo,
         needs_destruction: bool,
     ) -> Result<Self, VulkanError> {
@@ -315,7 +199,8 @@ impl RawImage {
             unsafe { device.physical_device().format_properties_unchecked(format) };
 
         let drm_format_modifier = if tiling == ImageTiling::DrmFormatModifier {
-            let drm_format_modifier = Self::get_drm_format_modifier_properties(&device, handle)?;
+            let drm_format_modifier =
+                unsafe { Self::get_drm_format_modifier_properties(&device, handle) }?;
             let drm_format_modifier_plane_count = format_properties
                 .drm_format_modifier_properties
                 .iter()
@@ -343,16 +228,24 @@ impl RawImage {
                 );
 
                 (0..plane_count)
-                    .map(|plane| {
+                    .map(|plane| unsafe {
                         Self::get_memory_requirements(&device, handle, Some((plane, tiling)))
                     })
                     .collect()
             } else {
                 // VUID-VkImageMemoryRequirementsInfo2-image-01590
-                smallvec![Self::get_memory_requirements(&device, handle, None)]
+                smallvec![unsafe { Self::get_memory_requirements(&device, handle, None) }]
             }
         } else {
             smallvec![]
+        };
+
+        let sparse_memory_requirements = if flags
+            .contains(ImageCreateFlags::SPARSE_BINDING | ImageCreateFlags::SPARSE_RESIDENCY)
+        {
+            unsafe { Self::get_sparse_memory_requirements(&device, handle) }
+        } else {
+            Vec::new()
         };
 
         Ok(RawImage {
@@ -378,6 +271,7 @@ impl RawImage {
             external_memory_handle_types,
 
             memory_requirements,
+            sparse_memory_requirements,
             needs_destruction,
             subresource_layout: OnceCache::new(),
         })
@@ -385,13 +279,10 @@ impl RawImage {
 
     unsafe fn get_memory_requirements(
         device: &Device,
-        handle: ash::vk::Image,
+        handle: vk::Image,
         plane_tiling: Option<(usize, ImageTiling)>,
     ) -> MemoryRequirements {
-        let mut info_vk = ash::vk::ImageMemoryRequirementsInfo2 {
-            image: handle,
-            ..Default::default()
-        };
+        let mut info_vk = vk::ImageMemoryRequirementsInfo2::default().image(handle);
         let mut plane_info_vk = None;
 
         if let Some((plane, tiling)) = plane_tiling {
@@ -408,9 +299,9 @@ impl RawImage {
                             || device.enabled_extensions().khr_sampler_ycbcr_conversion
                     );
                     match plane {
-                        0 => ash::vk::ImageAspectFlags::PLANE_0,
-                        1 => ash::vk::ImageAspectFlags::PLANE_1,
-                        2 => ash::vk::ImageAspectFlags::PLANE_2,
+                        0 => vk::ImageAspectFlags::PLANE_0,
+                        1 => vk::ImageAspectFlags::PLANE_1,
+                        2 => vk::ImageAspectFlags::PLANE_2,
                         _ => unreachable!(),
                     }
                 }
@@ -418,277 +309,180 @@ impl RawImage {
                 ImageTiling::DrmFormatModifier => {
                     debug_assert!(device.enabled_extensions().ext_image_drm_format_modifier);
                     match plane {
-                        0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                        1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                        2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                        3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                        0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                        1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                        2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                        3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
                         _ => unreachable!(),
                     }
                 }
             };
 
-            let next = plane_info_vk.insert(ash::vk::ImagePlaneMemoryRequirementsInfo {
-                plane_aspect,
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *mut _ as *mut _;
+            let next = plane_info_vk
+                .insert(vk::ImagePlaneMemoryRequirementsInfo::default().plane_aspect(plane_aspect));
+            info_vk = info_vk.push_next(next);
         }
 
-        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
-        let mut memory_dedicated_requirements_vk = None;
+        let mut memory_requirements2_extensions_vk =
+            MemoryRequirements::to_mut_vk2_extensions(device);
+        let mut memory_requirements2_vk =
+            MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
+
+        let fns = device.fns();
 
         if device.api_version() >= Version::V1_1
-            || device.enabled_extensions().khr_dedicated_allocation
+            || device.enabled_extensions().khr_get_memory_requirements2
         {
-            debug_assert!(
-                device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_get_memory_requirements2
-            );
-
-            let next = memory_dedicated_requirements_vk
-                .insert(ash::vk::MemoryDedicatedRequirements::default());
-
-            next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
-        }
-
-        unsafe {
-            let fns = device.fns();
-
-            if device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_get_memory_requirements2
-            {
-                if device.api_version() >= Version::V1_1 {
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
                     (fns.v1_1.get_image_memory_requirements2)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                } else {
+                    )
+                };
+            } else {
+                unsafe {
                     (fns.khr_get_memory_requirements2
                         .get_image_memory_requirements2_khr)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                }
-            } else {
+                    )
+                };
+            }
+        } else {
+            unsafe {
                 (fns.v1_0.get_image_memory_requirements)(
                     device.handle(),
                     handle,
                     &mut memory_requirements2_vk.memory_requirements,
-                );
-            }
+                )
+            };
         }
 
-        MemoryRequirements {
-            layout: DeviceLayout::from_size_alignment(
-                memory_requirements2_vk.memory_requirements.size,
-                memory_requirements2_vk.memory_requirements.alignment,
-            )
-            .unwrap(),
-            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
-            prefers_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            requires_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
-        }
+        // Unborrow
+        let memory_requirements2_vk = vk::MemoryRequirements2 {
+            _marker: PhantomData,
+            ..memory_requirements2_vk
+        };
+
+        MemoryRequirements::from_vk2(
+            &memory_requirements2_vk,
+            &memory_requirements2_extensions_vk,
+        )
     }
 
-    #[allow(dead_code)] // Remove when sparse memory is implemented
-    fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
-        let device = &self.device;
+    unsafe fn get_sparse_memory_requirements(
+        device: &Device,
+        handle: vk::Image,
+    ) -> Vec<SparseImageMemoryRequirements> {
+        let fns = device.fns();
 
-        unsafe {
-            let fns = self.device.fns();
+        if device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_get_memory_requirements2
+        {
+            let info2_vk = vk::ImageSparseMemoryRequirementsInfo2::default().image(handle);
 
-            if device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_get_memory_requirements2
-            {
-                let info2 = ash::vk::ImageSparseMemoryRequirementsInfo2 {
-                    image: self.handle,
-                    ..Default::default()
-                };
+            let mut count = 0;
 
-                let mut count = 0;
-
-                if device.api_version() >= Version::V1_1 {
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
                         device.handle(),
-                        &info2,
+                        &info2_vk,
                         &mut count,
                         ptr::null_mut(),
-                    );
-                } else {
-                    (fns.khr_get_memory_requirements2
-                        .get_image_sparse_memory_requirements2_khr)(
-                        device.handle(),
-                        &info2,
-                        &mut count,
-                        ptr::null_mut(),
-                    );
-                }
-
-                let mut sparse_image_memory_requirements2 =
-                    vec![ash::vk::SparseImageMemoryRequirements2::default(); count as usize];
-
-                if device.api_version() >= Version::V1_1 {
-                    (fns.v1_1.get_image_sparse_memory_requirements2)(
-                        self.device.handle(),
-                        &info2,
-                        &mut count,
-                        sparse_image_memory_requirements2.as_mut_ptr(),
-                    );
-                } else {
-                    (fns.khr_get_memory_requirements2
-                        .get_image_sparse_memory_requirements2_khr)(
-                        self.device.handle(),
-                        &info2,
-                        &mut count,
-                        sparse_image_memory_requirements2.as_mut_ptr(),
-                    );
-                }
-
-                sparse_image_memory_requirements2.set_len(count as usize);
-
-                sparse_image_memory_requirements2
-                    .into_iter()
-                    .map(
-                        |sparse_image_memory_requirements2| SparseImageMemoryRequirements {
-                            format_properties: SparseImageFormatProperties {
-                                aspects: sparse_image_memory_requirements2
-                                    .memory_requirements
-                                    .format_properties
-                                    .aspect_mask
-                                    .into(),
-                                image_granularity: [
-                                    sparse_image_memory_requirements2
-                                        .memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .width,
-                                    sparse_image_memory_requirements2
-                                        .memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .height,
-                                    sparse_image_memory_requirements2
-                                        .memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .depth,
-                                ],
-                                flags: sparse_image_memory_requirements2
-                                    .memory_requirements
-                                    .format_properties
-                                    .flags
-                                    .into(),
-                            },
-                            image_mip_tail_first_lod: sparse_image_memory_requirements2
-                                .memory_requirements
-                                .image_mip_tail_first_lod,
-                            image_mip_tail_size: sparse_image_memory_requirements2
-                                .memory_requirements
-                                .image_mip_tail_size,
-                            image_mip_tail_offset: sparse_image_memory_requirements2
-                                .memory_requirements
-                                .image_mip_tail_offset,
-                            image_mip_tail_stride: (!sparse_image_memory_requirements2
-                                .memory_requirements
-                                .format_properties
-                                .flags
-                                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
-                            .then_some(
-                                sparse_image_memory_requirements2
-                                    .memory_requirements
-                                    .image_mip_tail_stride,
-                            ),
-                        },
                     )
-                    .collect()
+                };
             } else {
-                let mut count = 0;
+                unsafe {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                };
+            }
 
+            let mut requirements2_vk =
+                vec![SparseImageMemoryRequirements::to_mut_vk2(); count as usize];
+
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.get_image_sparse_memory_requirements2)(
+                        device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        requirements2_vk.as_mut_ptr(),
+                    )
+                };
+            } else {
+                unsafe {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        requirements2_vk.as_mut_ptr(),
+                    )
+                };
+            }
+
+            unsafe { requirements2_vk.set_len(count as usize) };
+            requirements2_vk
+                .iter()
+                .map(SparseImageMemoryRequirements::from_vk2)
+                .collect()
+        } else {
+            let mut count = 0;
+
+            unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
-                    self.handle,
+                    handle,
                     &mut count,
                     ptr::null_mut(),
-                );
+                )
+            };
 
-                let mut sparse_image_memory_requirements =
-                    vec![ash::vk::SparseImageMemoryRequirements::default(); count as usize];
+            let mut requirements_vk =
+                vec![SparseImageMemoryRequirements::to_mut_vk(); count as usize];
 
+            unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
-                    self.handle,
+                    handle,
                     &mut count,
-                    sparse_image_memory_requirements.as_mut_ptr(),
-                );
+                    requirements_vk.as_mut_ptr(),
+                )
+            };
 
-                sparse_image_memory_requirements.set_len(count as usize);
-
-                sparse_image_memory_requirements
-                    .into_iter()
-                    .map(
-                        |sparse_image_memory_requirements| SparseImageMemoryRequirements {
-                            format_properties: SparseImageFormatProperties {
-                                aspects: sparse_image_memory_requirements
-                                    .format_properties
-                                    .aspect_mask
-                                    .into(),
-                                image_granularity: [
-                                    sparse_image_memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .width,
-                                    sparse_image_memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .height,
-                                    sparse_image_memory_requirements
-                                        .format_properties
-                                        .image_granularity
-                                        .depth,
-                                ],
-                                flags: sparse_image_memory_requirements
-                                    .format_properties
-                                    .flags
-                                    .into(),
-                            },
-                            image_mip_tail_first_lod: sparse_image_memory_requirements
-                                .image_mip_tail_first_lod,
-                            image_mip_tail_size: sparse_image_memory_requirements
-                                .image_mip_tail_size,
-                            image_mip_tail_offset: sparse_image_memory_requirements
-                                .image_mip_tail_offset,
-                            image_mip_tail_stride: (!sparse_image_memory_requirements
-                                .format_properties
-                                .flags
-                                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
-                            .then_some(sparse_image_memory_requirements.image_mip_tail_stride),
-                        },
-                    )
-                    .collect()
-            }
+            unsafe { requirements_vk.set_len(count as usize) };
+            requirements_vk
+                .iter()
+                .map(SparseImageMemoryRequirements::from_vk)
+                .collect()
         }
     }
 
     unsafe fn get_drm_format_modifier_properties(
         device: &Device,
-        handle: ash::vk::Image,
+        handle: vk::Image,
     ) -> Result<u64, VulkanError> {
-        let mut properties_vk = ash::vk::ImageDrmFormatModifierPropertiesEXT::default();
+        let mut properties_vk = vk::ImageDrmFormatModifierPropertiesEXT::default();
 
         let fns = device.fns();
-        (fns.ext_image_drm_format_modifier
-            .get_image_drm_format_modifier_properties_ext)(
-            device.handle(),
-            handle,
-            &mut properties_vk,
-        )
+        unsafe {
+            (fns.ext_image_drm_format_modifier
+                .get_image_drm_format_modifier_properties_ext)(
+                device.handle(),
+                handle,
+                &mut properties_vk,
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -697,14 +491,14 @@ impl RawImage {
 
     /// Binds device memory to this image.
     ///
-    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
-    ///   then `allocations` must contain exactly one element.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
-    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
-    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
+    ///   contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::Linear` or `ImageTiling::Optimal`, then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
+    ///   `self.drm_format_modifier().unwrap().1` elements.
     pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
@@ -738,6 +532,15 @@ impl RawImage {
         &self,
         allocations: &[ResourceMemory],
     ) -> Result<(), Box<ValidationError>> {
+        if self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+            return Err(Box::new(ValidationError {
+                context: "self.flags()".into(),
+                problem: "contains `ImageCreateFlags::SPARSE_BINDING`".into(),
+                vuids: &["VUID-VkBindImageMemoryInfo-image-01045"],
+                ..Default::default()
+            }));
+        }
+
         let physical_device = self.device().physical_device();
 
         if self.flags.intersects(ImageCreateFlags::DISJOINT) {
@@ -826,10 +629,6 @@ impl RawImage {
 
             // VUID-VkBindImageMemoryInfo-image-07460
             // Ensured by taking ownership of `RawImage`.
-
-            // VUID-VkBindImageMemoryInfo-image-01045
-            // Currently ensured by not having sparse binding flags, but this needs to be checked
-            // once those are enabled.
 
             // VUID-VkBindImageMemoryInfo-memoryOffset-01046
             // Assume that `allocation` was created correctly.
@@ -1061,14 +860,14 @@ impl RawImage {
 
     /// # Safety
     ///
-    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
-    ///   then `allocations` must contain exactly one element.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
-    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
-    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
+    ///   contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::Linear` or `ImageTiling::Optimal`, then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
+    ///   `self.drm_format_modifier().unwrap().1` elements.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
         self,
@@ -1082,102 +881,96 @@ impl RawImage {
         ),
     > {
         let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
+
+        const PLANE_ASPECTS_VK_NORMAL: &[vk::ImageAspectFlags] = &[
+            vk::ImageAspectFlags::PLANE_0,
+            vk::ImageAspectFlags::PLANE_1,
+            vk::ImageAspectFlags::PLANE_2,
+        ];
+        const PLANE_ASPECTS_VK_DRM_FORMAT_MODIFIER: &[vk::ImageAspectFlags] = &[
+            vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+            vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+        ];
+        let needs_plane = (self.device.api_version() >= Version::V1_1
+            || self.device.enabled_extensions().khr_bind_memory2)
+            && self.flags.intersects(ImageCreateFlags::DISJOINT);
+
+        let plane_aspects_vk = if needs_plane {
+            Some(match self.tiling {
+                // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02283
+                ImageTiling::Optimal | ImageTiling::Linear => {
+                    let plane_count = self.format.planes().len();
+                    &PLANE_ASPECTS_VK_NORMAL[..plane_count]
+                }
+                // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02284
+                ImageTiling::DrmFormatModifier => {
+                    let plane_count = self.drm_format_modifier.unwrap().1 as usize;
+                    &PLANE_ASPECTS_VK_DRM_FORMAT_MODIFIER[..plane_count]
+                }
+            })
+        } else {
+            debug_assert_eq!(allocations.len(), 1);
+            None
+        };
+
+        let mut plane_infos_vk: SmallVec<[_; 4]> = (0..allocations.len())
+            .map(|plane_num| {
+                plane_aspects_vk.map(|plane_aspects_vk| {
+                    let plane_aspect_vk = plane_aspects_vk[plane_num];
+                    vk::BindImagePlaneMemoryInfo::default().plane_aspect(plane_aspect_vk)
+                })
+            })
+            .collect();
+
+        let infos_vk: SmallVec<[_; 4]> = allocations
+            .iter()
+            .zip(&mut plane_infos_vk)
+            .map(|(allocation, plane_info_vk)| {
+                let mut info_vk = allocation.to_vk_bind_image_memory_info(self.handle);
+
+                if let Some(next) = plane_info_vk {
+                    info_vk = info_vk.push_next(next);
+                }
+
+                info_vk
+            })
+            .collect();
+
         let fns = self.device.fns();
 
         let result = if self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_bind_memory2
         {
-            let mut infos_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(3);
-            let mut plane_infos_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(3);
-
-            if self.flags.intersects(ImageCreateFlags::DISJOINT) {
-                for (plane, allocation) in allocations.iter().enumerate() {
-                    let memory = allocation.device_memory();
-                    let memory_offset = allocation.offset();
-                    let plane_aspect = match self.tiling {
-                        // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02283
-                        ImageTiling::Optimal | ImageTiling::Linear => {
-                            debug_assert_eq!(allocations.len(), self.format.planes().len());
-                            match plane {
-                                0 => ash::vk::ImageAspectFlags::PLANE_0,
-                                1 => ash::vk::ImageAspectFlags::PLANE_1,
-                                2 => ash::vk::ImageAspectFlags::PLANE_2,
-                                _ => unreachable!(),
-                            }
-                        }
-                        // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02284
-                        ImageTiling::DrmFormatModifier => {
-                            debug_assert_eq!(
-                                allocations.len(),
-                                self.drm_format_modifier.unwrap().1 as usize
-                            );
-                            match plane {
-                                0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                                1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                                2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                                3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
-                                _ => unreachable!(),
-                            }
-                        }
-                    };
-
-                    infos_vk.push(ash::vk::BindImageMemoryInfo {
-                        image: self.handle,
-                        memory: memory.handle(),
-                        memory_offset,
-                        ..Default::default()
-                    });
-                    // VUID-VkBindImageMemoryInfo-pNext-01618
-                    plane_infos_vk.push(ash::vk::BindImagePlaneMemoryInfo {
-                        plane_aspect,
-                        ..Default::default()
-                    });
+            if self.device.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.bind_image_memory2)(
+                        self.device.handle(),
+                        infos_vk.len() as u32,
+                        infos_vk.as_ptr(),
+                    )
                 }
             } else {
-                debug_assert_eq!(allocations.len(), 1);
-
-                let allocation = &allocations[0];
-                let memory = allocation.device_memory();
-                let memory_offset = allocation.offset();
-
-                infos_vk.push(ash::vk::BindImageMemoryInfo {
-                    image: self.handle,
-                    memory: memory.handle(),
-                    memory_offset,
-                    ..Default::default()
-                });
-            };
-
-            for (info_vk, plane_info_vk) in (infos_vk.iter_mut()).zip(plane_infos_vk.iter_mut()) {
-                info_vk.p_next = plane_info_vk as *mut _ as *mut _;
-            }
-
-            if self.device.api_version() >= Version::V1_1 {
-                (fns.v1_1.bind_image_memory2)(
-                    self.device.handle(),
-                    infos_vk.len() as u32,
-                    infos_vk.as_ptr(),
-                )
-            } else {
-                (fns.khr_bind_memory2.bind_image_memory2_khr)(
-                    self.device.handle(),
-                    infos_vk.len() as u32,
-                    infos_vk.as_ptr(),
-                )
+                unsafe {
+                    (fns.khr_bind_memory2.bind_image_memory2_khr)(
+                        self.device.handle(),
+                        infos_vk.len() as u32,
+                        infos_vk.as_ptr(),
+                    )
+                }
             }
         } else {
-            debug_assert_eq!(allocations.len(), 1);
+            let info_vk = &infos_vk[0];
 
-            let allocation = &allocations[0];
-            let memory = allocation.device_memory();
-            let memory_offset = allocation.offset();
-
-            (fns.v1_0.bind_image_memory)(
-                self.device.handle(),
-                self.handle,
-                memory.handle(),
-                memory_offset,
-            )
+            unsafe {
+                (fns.v1_0.bind_image_memory)(
+                    self.device.handle(),
+                    info_vk.image,
+                    info_vk.memory,
+                    info_vk.memory_offset,
+                )
+            }
         }
         .result();
 
@@ -1185,11 +978,48 @@ impl RawImage {
             return Err((VulkanError::from(err), self, allocations.into_iter()));
         }
 
+        let layout = self.default_layout();
+
+        Ok(unsafe { Image::from_raw(self, ImageMemory::Normal(allocations), layout) })
+    }
+
+    /// Converts a raw image into a full image without binding any memory.
+    ///
+    /// # Safety
+    ///
+    /// If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_BINDING`]:
+    ///
+    /// - The image must already have a suitable memory allocation bound to it.
+    ///
+    /// If `self.flags()` does contain [`ImageCreateFlags::SPARSE_BINDING`]:
+    ///
+    /// - If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_RESIDENCY`], then the image
+    ///   must be fully bound with memory before any memory is accessed by the device.
+    /// - If `self.flags()` contains [`ImageCreateFlags::SPARSE_RESIDENCY`], then if the sparse
+    ///   memory requirements include [`ImageAspects::METADATA`], then the metadata mip tail must
+    ///   be fully bound with memory before any memory is accessed by the device.
+    /// - If `self.flags()` contains [`ImageCreateFlags::SPARSE_RESIDENCY`], then you must ensure
+    ///   that any reads from the image are prepared to handle unexpected or inconsistent values,
+    ///   as determined by the [`residency_non_resident_strict`] device property.
+    ///
+    /// [`residency_non_resident_strict`]: crate::device::DeviceProperties::residency_non_resident_strict
+    pub unsafe fn assume_bound(self) -> Image {
+        let memory = if self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+            ImageMemory::Sparse
+        } else {
+            ImageMemory::External
+        };
+        let layout = self.default_layout();
+
+        unsafe { Image::from_raw(self, memory, layout) }
+    }
+
+    fn default_layout(&self) -> ImageLayout {
         let usage = self
             .usage
             .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
 
-        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+        if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
             && usage
                 .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
                 .is_empty()
@@ -1207,24 +1037,28 @@ impl RawImage {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {
             ImageLayout::General
-        };
-
-        Ok(Image::from_raw(
-            self,
-            ImageMemory::Normal(allocations),
-            layout,
-        ))
+        }
     }
 
     /// Returns the memory requirements for this image.
     ///
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
-    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
-    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().unwrap().planes().len()`.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, this returns a slice
+    ///   with a length of 1.
+    /// - If `self.flags()` does contain `ImageCreateFlags::DISJOINT`, this returns a slice with a
+    ///   length equal to `self.format().unwrap().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         &self.memory_requirements
+    }
+
+    /// Returns the sparse memory requirements for this image.
+    ///
+    /// If `self.flags()` does not contain both `ImageCreateFlags::SPARSE_BINDING` and
+    /// `ImageCreateFlags::SPARSE_RESIDENCY`, this returns an empty slice.
+    #[inline]
+    pub fn sparse_memory_requirements(&self) -> &[SparseImageMemoryRequirements] {
+        &self.sparse_memory_requirements
     }
 
     /// Returns the flags the image was created with.
@@ -1375,7 +1209,7 @@ impl RawImage {
     ) -> Result<SubresourceLayout, Box<ValidationError>> {
         self.validate_subresource_layout(aspect, mip_level, array_layer)?;
 
-        unsafe { Ok(self.subresource_layout_unchecked(aspect, mip_level, array_layer)) }
+        Ok(unsafe { self.subresource_layout_unchecked(aspect, mip_level, array_layer) })
     }
 
     fn validate_subresource_layout(
@@ -1596,30 +1430,38 @@ impl RawImage {
         self.subresource_layout.get_or_insert(
             (aspect, mip_level, array_layer),
             |&(aspect, mip_level, array_layer)| {
-                let fns = self.device.fns();
-
-                let subresource = ash::vk::ImageSubresource {
+                let subresource_vk = vk::ImageSubresource {
                     aspect_mask: aspect.into(),
                     mip_level,
                     array_layer,
                 };
 
-                let mut output = MaybeUninit::uninit();
-                (fns.v1_0.get_image_subresource_layout)(
-                    self.device.handle(),
-                    self.handle,
-                    &subresource,
-                    output.as_mut_ptr(),
-                );
-                let output = output.assume_init();
+                let vk::SubresourceLayout {
+                    offset,
+                    size,
+                    row_pitch,
+                    array_pitch,
+                    depth_pitch,
+                } = {
+                    let fns = self.device.fns();
+                    let mut output = MaybeUninit::uninit();
+                    unsafe {
+                        (fns.v1_0.get_image_subresource_layout)(
+                            self.device.handle(),
+                            self.handle,
+                            &subresource_vk,
+                            output.as_mut_ptr(),
+                        )
+                    };
+                    unsafe { output.assume_init() }
+                };
 
                 SubresourceLayout {
-                    offset: output.offset,
-                    size: output.size,
-                    row_pitch: output.row_pitch,
-                    array_pitch: (self.array_layers > 1).then_some(output.array_pitch),
-                    depth_pitch: matches!(self.image_type, ImageType::Dim3d)
-                        .then_some(output.depth_pitch),
+                    offset,
+                    size,
+                    row_pitch,
+                    array_pitch: (self.array_layers > 1).then_some(array_pitch),
+                    depth_pitch: matches!(self.image_type, ImageType::Dim3d).then_some(depth_pitch),
                 }
             },
         )
@@ -1633,15 +1475,13 @@ impl Drop for RawImage {
             return;
         }
 
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_image)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_image)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
 unsafe impl VulkanObject for RawImage {
-    type Handle = ash::vk::Image;
+    type Handle = vk::Image;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1678,11 +1518,12 @@ pub struct ImageCreateInfo {
 
     /// The formats that an image view can have when it is created from this image.
     ///
-    /// If the list is not empty, and `flags` does not contain [`ImageCreateFlags::MUTABLE_FORMAT`],
-    /// then the list must contain at most one element, otherwise any number of elements are
-    /// allowed. The view formats must be compatible with `format`. If `flags` also contains
-    /// [`ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`], then the view formats can also be
-    /// uncompressed formats that are merely size-compatible with `format`.
+    /// If the list is not empty, and `flags` does not contain
+    /// [`ImageCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
+    /// otherwise any number of elements are allowed. The view formats must be compatible with
+    /// `format`. If `flags` also contains [`ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`],
+    /// then the view formats can also be uncompressed formats that are merely size-compatible
+    /// with `format`.
     ///
     /// If the list is empty, then depending on `flags`, a view must have the same format as
     /// `format`, can have any compatible format, or additionally any uncompressed size-compatible
@@ -1707,9 +1548,10 @@ pub struct ImageCreateInfo {
 
     /// The number of array layers to create the image with.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
-    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// the [`multisample_array_image`](crate::device::DeviceFeatures::multisample_array_image)
     /// feature must be enabled on the device.
     ///
     /// The default value is `1`.
@@ -1722,9 +1564,10 @@ pub struct ImageCreateInfo {
 
     /// The number of samples per texel that the image should use.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
-    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// the [`multisample_array_image`](crate::device::DeviceFeatures::multisample_array_image)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`SampleCount::Sample1`].
@@ -1760,29 +1603,36 @@ pub struct ImageCreateInfo {
     /// The default value is [`ImageLayout::Undefined`].
     pub initial_layout: ImageLayout,
 
-    /// The Linux DRM format modifiers that the image should be created with.
+    /// A list of possible Linux DRM format modifiers that the image may be created with. If
+    /// `tiling` is [`ImageTiling::DrmFormatModifier`], then at least one DRM format modifier must
+    /// be provided. Otherwise, this must be empty.
     ///
-    /// If this is not empty, then the
-    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
-    /// extension must be enabled on the device.
+    /// If more than one DRM format modifier is provided, then the Vulkan driver will choose the
+    /// modifier in an implementation-defined manner. You can query the modifier that has been
+    /// chosen, after creating the image, by calling [`Image::drm_format_modifier`].
+    ///
+    /// If exactly one DRM format modifier is provided, the image will always be created with that
+    /// modifier. You can then optionally specify the subresource layout of each memory plane with
+    /// the `drm_format_modifier_plane_layouts` field.
     ///
     /// The default value is empty.
     pub drm_format_modifiers: Vec<u64>,
 
-    /// If `drm_format_modifiers` contains one element, provides the subresource layouts of each
-    /// memory plane of the image. The number of elements must equal
-    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`], and the following
-    /// additional requirements apply to each element:
+    /// If `drm_format_modifiers` contains exactly one element, optionally specifies an explicit
+    /// subresource layout for each memory plane of the image.
+    ///
+    /// If not empty, the number of provided subresource layouts must equal the number of memory
+    /// planes for `drm_format_modifiers[0]`, as reported by
+    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]. The following additional
+    /// requirements apply to each element:
     /// - [`SubresourceLayout::size`] must always be 0.
     /// - If `array_layers` is 1, then [`SubresourceLayout::array_pitch`] must be `None`.
     /// - If `image_type` is not [`ImageType::Dim3d`] or `extent[2]` is 1, then
     ///   [`SubresourceLayout::depth_pitch`] must be `None`.
     ///
-    /// If `drm_format_modifiers` does not contain one element, then this must be empty.
+    /// If `drm_format_modifiers` does not contain exactly one element, then this must be empty.
     ///
     /// The default value is empty.
-    ///
-    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]: crate::format::DrmFormatModifierProperties::drm_format_modifier_plane_count
     pub drm_format_modifier_plane_layouts: Vec<SubresourceLayout>,
 
     /// The external memory handle types that are going to be used with the image.
@@ -1801,6 +1651,14 @@ pub struct ImageCreateInfo {
 impl Default for ImageCreateInfo {
     #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ImageCreateInfo {
+    /// Returns a default `ImageCreateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
@@ -1821,9 +1679,7 @@ impl Default for ImageCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-impl ImageCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -2023,6 +1879,16 @@ impl ImageCreateInfo {
                         ..Default::default()
                     }));
                 }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim1d`, but `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00970"],
+                        ..Default::default()
+                    }));
+                }
             }
             ImageType::Dim2d => {
                 if extent[2] != 1 {
@@ -2033,6 +1899,21 @@ impl ImageCreateInfo {
                         ..Default::default()
                     }));
                 }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY)
+                    && !device.enabled_features().sparse_residency_image2_d
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim2d`, and `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("sparse_residency_image2_d"),
+                        ])]),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00971"],
+                        ..Default::default()
+                    }));
+                }
             }
             ImageType::Dim3d => {
                 if array_layers != 1 {
@@ -2040,6 +1921,21 @@ impl ImageCreateInfo {
                         problem: "`image_type` is `ImageType::Dim3d`, but `array_layers` is not 1"
                             .into(),
                         vuids: &["VUID-VkImageCreateInfo-imageType-00961"],
+                        ..Default::default()
+                    }));
+                }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY)
+                    && !device.enabled_features().sparse_residency_image3_d
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim3d`, and `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("sparse_residency_image3_d"),
+                        ])]),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00972"],
                         ..Default::default()
                     }));
                 }
@@ -2154,7 +2050,7 @@ impl ImageCreateInfo {
                         `samples` is not `SampleCount::Sample1`, and \
                         `array_layers` is greater than 1"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multisample_array_image",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-multisampleArrayImage-04460"],
@@ -2200,7 +2096,7 @@ impl ImageCreateInfo {
                     problem: "`format` is is a YCbCr format, and \
                         `array_layers` is greater than 1"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ycbcr_image_arrays",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-format-06413"],
@@ -2252,7 +2148,7 @@ impl ImageCreateInfo {
                 problem: "`usage` contains `ImageUsage::STORAGE`, but \
                     `samples` is not `SampleCount::Sample1`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "shader_storage_image_multisample",
                 )])]),
                 vuids: &["VUID-VkImageCreateInfo-usage-00968"],
@@ -2472,9 +2368,9 @@ impl ImageCreateInfo {
                         problem: "`stencil_usage` contains `ImageUsage::STORAGE`, but \
                             `samples` is not `SampleCount::Sample1`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "shader_storage_image_multisample",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("shader_storage_image_multisample"),
+                        ])]),
                         vuids: &["VUID-VkImageCreateInfo-format-02538"],
                         ..Default::default()
                     }));
@@ -2483,6 +2379,113 @@ impl ImageCreateInfo {
         }
 
         /* Check flags requirements */
+
+        if flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+            if !device.enabled_features().sparse_binding {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_BINDING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "sparse_binding",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00969"],
+                }));
+            }
+
+            if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::SPARSE_BINDING`, but \
+                        `usage` contains `ImageUsage::TRANSIENT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-None-01925"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
+            if !flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_RESIDENCY`, but does not also \
+                        contain `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00987"],
+                    ..Default::default()
+                }));
+            }
+
+            if tiling == ImageTiling::Linear {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_RESIDENCY`, but `tiling` is \
+                        `ImageTiling::Linear`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-tiling-04121"],
+                    ..Default::default()
+                }));
+            }
+
+            match samples {
+                SampleCount::Sample2 => {
+                    if !device.enabled_features().sparse_residency2_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample2`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency2_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00973"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample4 => {
+                    if !device.enabled_features().sparse_residency4_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample4`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency4_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00974"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample8 => {
+                    if !device.enabled_features().sparse_residency8_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample8`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency8_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00975"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample16 => {
+                    if !device.enabled_features().sparse_residency16_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample16`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency16_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00976"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample1 | SampleCount::Sample32 | SampleCount::Sample64 => (),
+            }
+        }
 
         if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
             if image_type != ImageType::Dim2d {
@@ -2517,6 +2520,17 @@ impl ImageCreateInfo {
         }
 
         if flags.intersects(ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE) {
+            if flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`, but \
+                        also contains `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-09403"],
+                    ..Default::default()
+                }));
+            }
+
             if image_type != ImageType::Dim3d {
                 return Err(Box::new(ValidationError {
                     problem: "`flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`, but \
@@ -2534,7 +2548,7 @@ impl ImageCreateInfo {
                     problem: "this device is a portability subset device, and \
                         `flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "image_view2_d_on3_d_image",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-imageView2DOn3DImage-04459"],
@@ -2571,7 +2585,7 @@ impl ImageCreateInfo {
             if format.planes().len() < 2 {
                 return Err(Box::new(ValidationError {
                     problem: "`flags` contains `ImageCreateFlags::DISJOINT`, but `format` \
-                        is not a multi-planat format"
+                        is not a multi-planar format"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-format-01577"],
                     ..Default::default()
@@ -2635,137 +2649,133 @@ impl ImageCreateInfo {
             }
         }
 
-        if !drm_format_modifiers.is_empty() {
-            // This implicitly checks for the enabled extension too,
-            // so no need to check that separately.
-            if tiling != ImageTiling::DrmFormatModifier {
-                return Err(Box::new(ValidationError {
-                    problem: "`drm_format_modifiers` is not empty, but \
-                        `tiling` is not `ImageTiling::DrmFormatModifier`"
-                        .into(),
-                    vuids: &["VUID-VkImageCreateInfo-pNext-02262"],
-                    ..Default::default()
-                }));
-            }
+        if !(drm_format_modifier_plane_layouts.is_empty() || drm_format_modifiers.len() == 1) {
+            return Err(Box::new(ValidationError {
+                problem: "`drm_format_modifier_plane_layouts` is not empty, but \
+                    `drm_format_modifiers` does not contain exactly one element"
+                    .into(),
+                ..Default::default()
+            }));
+        }
 
-            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
-                return Err(Box::new(ValidationError {
-                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
-                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
-                        `view_formats` is empty"
-                        .into(),
-                    vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
-                    ..Default::default()
-                }));
-            }
-
-            if drm_format_modifiers.len() == 1 {
-                let drm_format_modifier = drm_format_modifiers[0];
-                let drm_format_modifier_properties = format_properties
-                    .drm_format_modifier_properties
-                    .iter()
-                    .find(|properties| properties.drm_format_modifier == drm_format_modifier)
-                    .ok_or_else(|| Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` has a length of 1, but \
-                            `drm_format_modifiers[0]` is not one of the modifiers in \
-                            `FormatProperties::drm_format_properties`, as returned by \
-                            `PhysicalDevice::format_properties` for `format`".into(),
-                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
-                        ..Default::default()
-                    }))?;
-
-                if drm_format_modifier_plane_layouts.len()
-                    != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
-                {
+        match (tiling, !drm_format_modifiers.is_empty()) {
+            (ImageTiling::DrmFormatModifier, true) => {
+                if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
                     return Err(Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` has a length of 1, but the length of \
-                            `drm_format_modifiers_plane_layouts` does not \
-                            equal `DrmFormatModifierProperties::drm_format_modifier_plane_count` \
-                            for `drm_format_modifiers[0]`, as returned by \
-                            `PhysicalDevice::format_properties` for `format`".into(),
-                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                        problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
+                            `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
+                            `view_formats` is empty"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
                         ..Default::default()
                     }));
                 }
 
-                for (index, subresource_layout) in
-                    drm_format_modifier_plane_layouts.iter().enumerate()
-                {
-                    let &SubresourceLayout {
-                        offset: _,
-                        size,
-                        row_pitch: _,
-                        array_pitch,
-                        depth_pitch,
-                    } = subresource_layout;
-
-                    if size != 0 {
-                        return Err(Box::new(ValidationError {
-                            context: format!("drm_format_modifier_plane_layouts[{}].size", index)
-                                .into(),
-                            problem: "is not zero".into(),
-                            vuids: &[
-                                "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267",
-                            ],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if array_layers == 1 && array_pitch.is_some() {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`array_layers` is 1, but \
-                                `drm_format_modifier_plane_layouts[{}].array_pitch` is `Some`",
-                                index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if extent[2] == 1 && depth_pitch.is_some() {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`extent[2]` is 1, but \
-                                `drm_format_modifier_plane_layouts[{}].depth_pitch` is `Some`",
-                                index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            } else {
                 if !drm_format_modifier_plane_layouts.is_empty() {
-                    return Err(Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` does not contain one element, but \
-                            `drm_format_modifier_plane_layouts` is not empty"
-                            .into(),
-                        ..Default::default()
-                    }));
+                    let drm_format_modifier = drm_format_modifiers[0];
+                    let drm_format_modifier_properties = format_properties
+                        .drm_format_modifier_properties
+                        .iter()
+                        .find(|properties| properties.drm_format_modifier == drm_format_modifier)
+                        .ok_or_else(|| Box::new(ValidationError {
+                            problem: "`drm_format_modifier_plane_layouts` is not empty, but \
+                                `drm_format_modifiers[0]` is not one of the modifiers in \
+                                `FormatProperties::drm_format_properties`, as returned by \
+                                `PhysicalDevice::format_properties` for `format`".into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                            ..Default::default()
+                        }))?;
+
+                    if drm_format_modifier_plane_layouts.len()
+                        != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`drm_format_modifier_plane_layouts` is not empty, but the \
+                                number of provided subresource layouts does not equal the number \
+                                of memory planes for `drm_format_modifiers[0]`, specified in \
+                                `DrmFormatModifierProperties::drm_format_modifier_plane_count`, \
+                                as returned by `PhysicalDevice::format_properties` for `format`"
+                                .into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    for (index, subresource_layout) in
+                        drm_format_modifier_plane_layouts.iter().enumerate()
+                    {
+                        let &SubresourceLayout {
+                            offset: _,
+                            size,
+                            row_pitch: _,
+                            array_pitch,
+                            depth_pitch,
+                        } = subresource_layout;
+
+                        if size != 0 {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "drm_format_modifier_plane_layouts[{}].size",
+                                    index
+                                )
+                                .into(),
+                                problem: "is not zero".into(),
+                                vuids: &[
+                                    "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267",
+                                ],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if array_layers == 1 && array_pitch.is_some() {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`array_layers` is 1, but \
+                                    `drm_format_modifier_plane_layouts[{}].array_pitch` is `Some`",
+                                    index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if extent[2] == 1 && depth_pitch.is_some() {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`extent[2]` is 1, but \
+                                    `drm_format_modifier_plane_layouts[{}].depth_pitch` is `Some`",
+                                    index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
                 }
             }
-        } else {
-            if tiling == ImageTiling::DrmFormatModifier {
+            (ImageTiling::DrmFormatModifier, false) => {
                 return Err(Box::new(ValidationError {
                     problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
-                        `drm_format_modifiers` is `None`"
+                        `drm_format_modifiers` is empty"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-tiling-02261"],
                     ..Default::default()
                 }));
             }
-
-            if !drm_format_modifier_plane_layouts.is_empty() {
-                return Err(Box::new(ValidationError {
-                    problem: "`drm_format_modifiers` does not contain one element, but \
-                        `drm_format_modifier_plane_layouts` is not empty"
-                        .into(),
-                    ..Default::default()
-                }));
+            (_, true) => {
+                if tiling != ImageTiling::DrmFormatModifier {
+                    return Err(Box::new(ValidationError {
+                        problem: "`drm_format_modifiers` is not empty, but \
+                            `tiling` is not `ImageTiling::DrmFormatModifier`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-pNext-02262"],
+                        ..Default::default()
+                    }));
+                }
             }
+            (_, false) => (),
         }
 
         if !external_memory_handle_types.is_empty() {
@@ -2816,33 +2826,32 @@ impl ImageCreateInfo {
         for drm_format_modifier in iter_or_none(drm_format_modifiers.iter().copied()) {
             for external_memory_handle_type in iter_or_none(external_memory_handle_types) {
                 let image_format_properties = unsafe {
-                    physical_device
-                        .image_format_properties_unchecked(ImageFormatInfo {
-                            flags,
-                            format,
-                            image_type,
-                            tiling,
-                            usage,
-                            stencil_usage,
-                            external_memory_handle_type,
-                            drm_format_modifier_info: drm_format_modifier.map(
-                                |drm_format_modifier| ImageDrmFormatModifierInfo {
-                                    drm_format_modifier,
-                                    sharing: sharing.clone(),
-                                    ..Default::default()
-                                },
-                            ),
-                            ..Default::default()
-                        })
-                        .map_err(|_err| {
-                            Box::new(ValidationError {
-                                problem: "`PhysicalDevice::image_format_properties` \
-                                    returned an error"
-                                    .into(),
+                    physical_device.image_format_properties_unchecked(ImageFormatInfo {
+                        flags,
+                        format,
+                        image_type,
+                        tiling,
+                        usage,
+                        stencil_usage,
+                        external_memory_handle_type,
+                        drm_format_modifier_info: drm_format_modifier.map(|drm_format_modifier| {
+                            ImageDrmFormatModifierInfo {
+                                drm_format_modifier,
+                                sharing: sharing.clone(),
                                 ..Default::default()
-                            })
-                        })?
-                };
+                            }
+                        }),
+                        ..Default::default()
+                    })
+                }
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::image_format_properties` \
+                                    returned an error"
+                            .into(),
+                        ..Default::default()
+                    })
+                })?;
 
                 let image_format_properties = image_format_properties.ok_or_else(|| Box::new(ValidationError {
                     problem: "the combination of parameters of this image is not \
@@ -2952,6 +2961,162 @@ impl ImageCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &'a self,
+        extensions_vk: &'a mut ImageCreateInfoExtensionsVk<'_>,
+    ) -> vk::ImageCreateInfo<'a> {
+        let &Self {
+            flags,
+            image_type,
+            format,
+            view_formats: _,
+            extent,
+            array_layers,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            stencil_usage: _,
+            ref sharing,
+            initial_layout,
+            drm_format_modifiers: _,
+            drm_format_modifier_plane_layouts: _,
+            external_memory_handle_types: _,
+            _ne: _,
+        } = self;
+
+        let (sharing_mode, queue_family_indices_vk) = match sharing {
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
+        };
+
+        let mut val_vk = vk::ImageCreateInfo::default()
+            .flags(flags.into())
+            .image_type(image_type.into())
+            .format(format.into())
+            .extent(vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            })
+            .mip_levels(mip_levels)
+            .array_layers(array_layers)
+            .samples(samples.into())
+            .tiling(tiling.into())
+            .usage(usage.into())
+            .sharing_mode(sharing_mode)
+            .queue_family_indices(queue_family_indices_vk)
+            .initial_layout(initial_layout.into());
+
+        let ImageCreateInfoExtensionsVk {
+            drm_format_modifier_explicit_vk,
+            drm_format_modifier_list_vk,
+            external_memory_vk,
+            format_list_vk,
+            stencil_usage_vk,
+        } = extensions_vk;
+
+        if let Some(next) = drm_format_modifier_explicit_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = drm_format_modifier_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = external_memory_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = format_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = stencil_usage_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &'a self,
+        fields1_vk: &'a ImageCreateInfoFields1Vk,
+    ) -> ImageCreateInfoExtensionsVk<'a> {
+        let ImageCreateInfoFields1Vk {
+            plane_layouts_vk,
+            view_formats_vk,
+        } = fields1_vk;
+
+        let drm_format_modifier_explicit_vk = (!plane_layouts_vk.is_empty()).then(|| {
+            vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
+                .drm_format_modifier(self.drm_format_modifiers[0])
+                .plane_layouts(plane_layouts_vk)
+        });
+
+        let drm_format_modifier_list_vk = (!self.drm_format_modifier_plane_layouts.is_empty())
+            .then(|| {
+                vk::ImageDrmFormatModifierListCreateInfoEXT::default()
+                    .drm_format_modifiers(&self.drm_format_modifiers)
+            });
+
+        let external_memory_vk = (!self.external_memory_handle_types.is_empty()).then(|| {
+            vk::ExternalMemoryImageCreateInfo::default()
+                .handle_types(self.external_memory_handle_types.into())
+        });
+
+        let format_list_vk = (!view_formats_vk.is_empty())
+            .then(|| vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+
+        let stencil_usage_vk = self.stencil_usage.map(|stencil_usage| {
+            vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
+        });
+
+        ImageCreateInfoExtensionsVk {
+            drm_format_modifier_explicit_vk,
+            drm_format_modifier_list_vk,
+            external_memory_vk,
+            format_list_vk,
+            stencil_usage_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> ImageCreateInfoFields1Vk {
+        let plane_layouts_vk = self
+            .drm_format_modifier_plane_layouts
+            .iter()
+            .map(SubresourceLayout::to_vk)
+            .collect();
+
+        let view_formats_vk = self
+            .view_formats
+            .iter()
+            .copied()
+            .map(vk::Format::from)
+            .collect();
+
+        ImageCreateInfoFields1Vk {
+            plane_layouts_vk,
+            view_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct ImageCreateInfoExtensionsVk<'a> {
+    pub(crate) drm_format_modifier_explicit_vk:
+        Option<vk::ImageDrmFormatModifierExplicitCreateInfoEXT<'a>>,
+    pub(crate) drm_format_modifier_list_vk: Option<vk::ImageDrmFormatModifierListCreateInfoEXT<'a>>,
+    pub(crate) external_memory_vk: Option<vk::ExternalMemoryImageCreateInfo<'static>>,
+    pub(crate) format_list_vk: Option<vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) stencil_usage_vk: Option<vk::ImageStencilUsageCreateInfo<'static>>,
+}
+
+pub(crate) struct ImageCreateInfoFields1Vk {
+    plane_layouts_vk: SmallVec<[vk::SubresourceLayout; 4]>,
+    view_formats_vk: Vec<vk::Format>,
 }
 
 #[cfg(test)]
@@ -3064,7 +3229,7 @@ mod tests {
                 if matches!(
                     *err,
                     ValidationError {
-                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::Feature(
+                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
                             "shader_storage_image_multisample"
                         )])],),
                         ..

@@ -1,18 +1,8 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{QueryState, Resource},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RecordingCommandBuffer,
         AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
@@ -20,13 +10,11 @@ use crate::{
     sync::{PipelineStage, PipelineStageAccessFlags, PipelineStages},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
@@ -43,7 +31,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_query(&query_pool, query, flags)?;
 
-        Ok(self.begin_query_unchecked(query_pool, query, flags))
+        Ok(unsafe { self.begin_query_unchecked(query_pool, query, flags) })
     }
 
     fn validate_begin_query(
@@ -57,7 +45,7 @@ where
         if self
             .builder_state
             .queries
-            .contains_key(&query_pool.query_type().into())
+            .contains_key(&query_pool.query_type())
         {
             return Err(Box::new(ValidationError {
                 problem: "a query with the same type as `query_pool.query_type()` is \
@@ -98,7 +86,7 @@ where
         flags: QueryControlFlags,
     ) -> &mut Self {
         self.builder_state.queries.insert(
-            query_pool.query_type().into(),
+            query_pool.query_type(),
             QueryState {
                 query_pool: query_pool.clone(),
                 query,
@@ -110,8 +98,8 @@ where
         self.add_command(
             "begin_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_query_unchecked(&query_pool, query, flags);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.begin_query_unchecked(&query_pool, query, flags) };
             },
         );
 
@@ -126,7 +114,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_query(&query_pool, query)?;
 
-        unsafe { Ok(self.end_query_unchecked(query_pool, query)) }
+        Ok(unsafe { self.end_query_unchecked(query_pool, query) })
     }
 
     fn validate_end_query(
@@ -139,10 +127,8 @@ where
         if !self
             .builder_state
             .queries
-            .get(&query_pool.query_type().into())
-            .map_or(false, |state| {
-                *state.query_pool == *query_pool && state.query == query
-            })
+            .get(&query_pool.query_type())
+            .is_some_and(|state| *state.query_pool == *query_pool && state.query == query)
         {
             return Err(Box::new(ValidationError {
                 problem: "no query with the same type as `query_pool.query_type()` is active"
@@ -176,14 +162,13 @@ where
         query_pool: Arc<QueryPool>,
         query: u32,
     ) -> &mut Self {
-        let raw_ty = query_pool.query_type().into();
-        self.builder_state.queries.remove(&raw_ty);
+        self.builder_state.queries.remove(&query_pool.query_type());
 
         self.add_command(
             "end_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_query_unchecked(&query_pool, query);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.end_query_unchecked(&query_pool, query) };
             },
         );
 
@@ -204,7 +189,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_write_timestamp(&query_pool, query, stage)?;
 
-        Ok(self.write_timestamp_unchecked(query_pool, query, stage))
+        Ok(unsafe { self.write_timestamp_unchecked(query_pool, query, stage) })
     }
 
     fn validate_write_timestamp(
@@ -249,8 +234,8 @@ where
         self.add_command(
             "write_timestamp",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.write_timestamp_unchecked(&query_pool, query, stage);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.write_timestamp_unchecked(&query_pool, query, stage) };
             },
         );
 
@@ -265,9 +250,8 @@ where
     ///
     /// See also [`get_results`].
     ///
-    /// [`query_pool.ty().result_len()`]: crate::query::QueryType::result_len
-    /// [`QueryResultFlags::WITH_AVAILABILITY`]: crate::query::QueryResultFlags::WITH_AVAILABILITY
-    /// [`get_results`]: crate::query::QueryPool::get_results
+    /// [`query_pool.ty().result_len()`]: QueryPool::result_len
+    /// [`get_results`]: QueryPool::get_results
     pub fn copy_query_pool_results<T>(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -280,9 +264,9 @@ where
     {
         self.validate_copy_query_pool_results(&query_pool, queries.clone(), &destination, flags)?;
 
-        unsafe {
-            Ok(self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags))
-        }
+        Ok(unsafe {
+            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags)
+        })
     }
 
     fn validate_copy_query_pool_results<T>(
@@ -332,13 +316,15 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_query_pool_results_unchecked(
-                    &query_pool,
-                    queries.clone(),
-                    &destination,
-                    flags,
-                );
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe {
+                    out.copy_query_pool_results_unchecked(
+                        &query_pool,
+                        queries.clone(),
+                        &destination,
+                        flags,
+                    )
+                };
             },
         );
 
@@ -360,7 +346,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_reset_query_pool(&query_pool, queries.clone())?;
 
-        Ok(self.reset_query_pool_unchecked(query_pool, queries))
+        Ok(unsafe { self.reset_query_pool_unchecked(query_pool, queries) })
     }
 
     fn validate_reset_query_pool(
@@ -404,8 +390,8 @@ where
         self.add_command(
             "reset_query_pool",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.reset_query_pool_unchecked(&query_pool, queries.clone());
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.reset_query_pool_unchecked(&query_pool, queries.clone()) };
             },
         );
 
@@ -413,10 +399,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn begin_query(
         &mut self,
         query_pool: &QueryPool,
@@ -425,7 +409,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_query(query_pool, query, flags)?;
 
-        Ok(self.begin_query_unchecked(query_pool, query, flags))
+        Ok(unsafe { self.begin_query_unchecked(query_pool, query, flags) })
     }
 
     fn validate_begin_query(
@@ -485,16 +469,15 @@ where
                     }));
                 }
             }
-            QueryType::PipelineStatistics(statistic_flags) => {
-                if statistic_flags.is_graphics()
+            QueryType::PipelineStatistics => {
+                if query_pool.pipeline_statistics().is_graphics()
                     && !queue_family_properties
                         .queue_flags
                         .intersects(QueueFlags::GRAPHICS)
                 {
                     return Err(Box::new(ValidationError {
-                        context: "query_pool.query_type()".into(),
-                        problem: "is `QueryType::PipelineStatistics`, and the \
-                            pipeline statistics flags include a graphics flag, but \
+                        problem: "`query_pool.query_type()` is `QueryType::PipelineStatistics`, \
+                            and `query_pool.pipeline_statistics()` includes a graphics flag, but \
                             the queue family of the command buffer does not support \
                             graphics operations"
                             .into(),
@@ -503,19 +486,34 @@ where
                     }));
                 }
 
-                if statistic_flags.is_compute()
+                if query_pool.pipeline_statistics().is_compute()
                     && !queue_family_properties
                         .queue_flags
                         .intersects(QueueFlags::COMPUTE)
                 {
                     return Err(Box::new(ValidationError {
-                        context: "query_pool.query_type()".into(),
-                        problem: "is `QueryType::PipelineStatistics`, and the \
-                            pipeline statistics flags include a compute flag, but \
+                        problem: "`query_pool.query_type()` is `QueryType::PipelineStatistics`, \
+                            and `query_pool.pipeline_statistics()` includes a compute flag, but \
                             the queue family of the command buffer does not support \
                             compute operations"
                             .into(),
                         vuids: &["VUID-vkCmdBeginQuery-queryType-00805"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            QueryType::MeshPrimitivesGenerated => {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`query_pool.query_type()` is \
+                            `QueryType::MeshPrimitivesGenerated`, but \
+                            the queue family of the command buffer does not support \
+                            graphics operations"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-07070"],
                         ..Default::default()
                     }));
                 }
@@ -543,7 +541,7 @@ where
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
                     problem: "contains `QueryControlFlags::PRECISE`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "occlusion_query_precise",
                     )])]),
                     vuids: &["VUID-vkCmdBeginQuery-queryType-00800"],
@@ -572,11 +570,14 @@ where
         flags: QueryControlFlags,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_begin_query)(self.handle(), query_pool.handle(), query, flags.into());
+        unsafe {
+            (fns.v1_0.cmd_begin_query)(self.handle(), query_pool.handle(), query, flags.into())
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn end_query(
         &mut self,
         query_pool: &QueryPool,
@@ -584,7 +585,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_query(query_pool, query)?;
 
-        Ok(self.end_query_unchecked(query_pool, query))
+        Ok(unsafe { self.end_query_unchecked(query_pool, query) })
     }
 
     fn validate_end_query(
@@ -628,11 +629,12 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn end_query_unchecked(&mut self, query_pool: &QueryPool, query: u32) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query);
+        unsafe { (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query) };
 
         self
     }
 
+    #[inline]
     pub unsafe fn write_timestamp(
         &mut self,
         query_pool: &QueryPool,
@@ -641,7 +643,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_write_timestamp(query_pool, query, stage)?;
 
-        Ok(self.write_timestamp_unchecked(query_pool, query, stage))
+        Ok(unsafe { self.write_timestamp_unchecked(query_pool, query, stage) })
     }
 
     fn validate_write_timestamp(
@@ -681,7 +683,7 @@ where
             return Err(Box::new(ValidationError {
                 context: "stage".into(),
                 problem: "is a stage flag from `VkPipelineStageFlagBits2`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "synchronization2",
                 )])]),
                 ..Default::default()
@@ -706,9 +708,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::GeometryShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shadere",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shadere"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03929"],
                     }));
                 }
@@ -721,9 +723,9 @@ where
                         problem: "is `PipelineStage::TessellationControlShader` or \
                             `PipelineStage::TessellationEvaluationShader`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03930"],
                     }));
                 }
@@ -733,9 +735,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::ConditionalRendering`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "conditional_rendering",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("conditional_rendering"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03931"],
                     }));
                 }
@@ -745,9 +747,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::FragmentDensityProcess`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "fragment_density_map",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("fragment_density_map"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03932"],
                     }));
                 }
@@ -757,9 +759,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::TransformFeedback`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "transform_feedback",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("transform_feedback"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03933"],
                     }));
                 }
@@ -769,9 +771,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::MeshShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "mesh_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("mesh_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03934"],
                     }));
                 }
@@ -781,9 +783,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::TaskShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "task_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("task_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03935"],
                     }));
                 }
@@ -796,21 +798,23 @@ where
                         context: "stage".into(),
                         problem: "is `PipelineStage::FragmentShadingRateAttachment`".into(),
                         requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                            RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                            RequiresAllOf(&[Requires::DeviceFeature(
+                                "attachment_fragment_shading_rate",
+                            )]),
+                            RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                         ]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-shadingRateImage-07316"],
                     }));
                 }
             }
-            PipelineStage::SubpassShading => {
+            PipelineStage::SubpassShader => {
                 if !device.enabled_features().subpass_shading {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
-                        problem: "is `PipelineStage::SubpassShading`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "subpass_shading",
-                        )])]),
+                        problem: "is `PipelineStage::SubpassShader`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("subpass_shading"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-04957"],
                     }));
                 }
@@ -820,9 +824,9 @@ where
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::InvocationMask`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "invocation_mask",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("invocation_mask"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-04995"],
                     }));
                 }
@@ -871,27 +875,39 @@ where
 
         if self.device().enabled_features().synchronization2 {
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_write_timestamp2)(
-                    self.handle(),
-                    stage.into(),
-                    query_pool.handle(),
-                    query,
-                );
+                unsafe {
+                    (fns.v1_3.cmd_write_timestamp2)(
+                        self.handle(),
+                        stage.into(),
+                        query_pool.handle(),
+                        query,
+                    )
+                };
             } else {
-                (fns.khr_synchronization2.cmd_write_timestamp2_khr)(
-                    self.handle(),
-                    stage.into(),
-                    query_pool.handle(),
-                    query,
-                );
+                unsafe {
+                    (fns.khr_synchronization2.cmd_write_timestamp2_khr)(
+                        self.handle(),
+                        stage.into(),
+                        query_pool.handle(),
+                        query,
+                    )
+                };
             }
         } else {
-            (fns.v1_0.cmd_write_timestamp)(self.handle(), stage.into(), query_pool.handle(), query);
+            unsafe {
+                (fns.v1_0.cmd_write_timestamp)(
+                    self.handle(),
+                    stage.into(),
+                    query_pool.handle(),
+                    query,
+                )
+            };
         }
 
         self
     }
 
+    #[inline]
     pub unsafe fn copy_query_pool_results<T>(
         &mut self,
         query_pool: &QueryPool,
@@ -904,7 +920,9 @@ where
     {
         self.validate_copy_query_pool_results(query_pool, queries.clone(), destination, flags)?;
 
-        Ok(self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags))
+        Ok(unsafe {
+            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags)
+        })
     }
 
     fn validate_copy_query_pool_results<T>(
@@ -939,7 +957,7 @@ where
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination.offset() % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
 
         if queries.end < queries.start {
             return Err(Box::new(ValidationError {
@@ -961,8 +979,7 @@ where
         }
 
         let count = queries.end - queries.start;
-        let per_query_len = query_pool.query_type().result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let per_query_len = query_pool.result_len(flags);
         let required_len = per_query_len * count as DeviceSize;
 
         if destination.len() < required_len {
@@ -1013,25 +1030,27 @@ where
     where
         T: QueryResultElement,
     {
-        let per_query_len = query_pool.query_type().result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
-        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
+        let per_query_len = query_pool.result_len(flags);
+        let stride = per_query_len * size_of::<T>() as DeviceSize;
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_copy_query_pool_results)(
-            self.handle(),
-            query_pool.handle(),
-            queries.start,
-            queries.end - queries.start,
-            destination.buffer().handle(),
-            destination.offset(),
-            stride,
-            ash::vk::QueryResultFlags::from(flags) | T::FLAG,
-        );
+        unsafe {
+            (fns.v1_0.cmd_copy_query_pool_results)(
+                self.handle(),
+                query_pool.handle(),
+                queries.start,
+                queries.end - queries.start,
+                destination.buffer().handle(),
+                destination.offset(),
+                stride,
+                vk::QueryResultFlags::from(flags) | T::FLAG,
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn reset_query_pool(
         &mut self,
         query_pool: &QueryPool,
@@ -1039,7 +1058,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_reset_query_pool(query_pool, queries.clone())?;
 
-        Ok(self.reset_query_pool_unchecked(query_pool, queries))
+        Ok(unsafe { self.reset_query_pool_unchecked(query_pool, queries) })
     }
 
     fn validate_reset_query_pool(
@@ -1099,12 +1118,14 @@ where
         queries: Range<u32>,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_reset_query_pool)(
-            self.handle(),
-            query_pool.handle(),
-            queries.start,
-            queries.end - queries.start,
-        );
+        unsafe {
+            (fns.v1_0.cmd_reset_query_pool)(
+                self.handle(),
+                query_pool.handle(),
+                queries.start,
+                queries.end - queries.start,
+            )
+        };
 
         self
     }

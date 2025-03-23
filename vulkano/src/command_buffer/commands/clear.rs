@@ -1,17 +1,7 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand,
+        auto::Resource, sys::RecordingCommandBuffer, AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
@@ -20,14 +10,12 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, SafeDeref, ValidationError, Version,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{mem::size_of_val, sync::Arc};
+use std::sync::Arc;
 
 /// # Commands to fill resources with new data.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,
@@ -35,7 +23,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_color_image(&clear_info)?;
 
-        unsafe { Ok(self.clear_color_image_unchecked(clear_info)) }
+        Ok(unsafe { self.clear_color_image_unchecked(clear_info) })
     }
 
     fn validate_clear_color_image(
@@ -86,8 +74,8 @@ where
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_color_image_unchecked(&clear_info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.clear_color_image_unchecked(&clear_info) };
             },
         );
 
@@ -101,7 +89,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_depth_stencil_image(&clear_info)?;
 
-        unsafe { Ok(self.clear_depth_stencil_image_unchecked(clear_info)) }
+        Ok(unsafe { self.clear_depth_stencil_image_unchecked(clear_info) })
     }
 
     fn validate_clear_depth_stencil_image(
@@ -152,8 +140,8 @@ where
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_depth_stencil_image_unchecked(&clear_info);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.clear_depth_stencil_image_unchecked(&clear_info) };
             },
         );
 
@@ -171,7 +159,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_fill_buffer(&dst_buffer, data)?;
 
-        unsafe { Ok(self.fill_buffer_unchecked(dst_buffer, data)) }
+        Ok(unsafe { self.fill_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_fill_buffer(
@@ -210,8 +198,8 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.fill_buffer_unchecked(&dst_buffer, data);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.fill_buffer_unchecked(&dst_buffer, data) };
             },
         );
 
@@ -233,7 +221,7 @@ where
             size_of_val(data.deref()) as DeviceSize,
         )?;
 
-        unsafe { Ok(self.update_buffer_unchecked(dst_buffer, data)) }
+        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_update_buffer(
@@ -276,8 +264,8 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.update_buffer_unchecked(&dst_buffer, &data);
+            move |out: &mut RecordingCommandBuffer| {
+                unsafe { out.update_buffer_unchecked(&dst_buffer, &data) };
             },
         );
 
@@ -285,17 +273,15 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl RecordingCommandBuffer {
+    #[inline]
     pub unsafe fn clear_color_image(
         &mut self,
         clear_info: &ClearColorImageInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_color_image(clear_info)?;
 
-        Ok(self.clear_color_image_unchecked(clear_info))
+        Ok(unsafe { self.clear_color_image_unchecked(clear_info) })
     }
 
     fn validate_clear_color_image(
@@ -328,45 +314,36 @@ where
         &mut self,
         clear_info: &ClearColorImageInfo,
     ) -> &mut Self {
-        let &ClearColorImageInfo {
-            ref image,
-            image_layout,
-            clear_value,
-            ref regions,
-            _ne: _,
-        } = clear_info;
-
-        if regions.is_empty() {
+        if clear_info.regions.is_empty() {
             return self;
         }
 
-        let clear_value_vk = clear_value.into();
-        let ranges_vk: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .map(ash::vk::ImageSubresourceRange::from)
-            .collect();
+        let clear_info_vk = clear_info.to_vk();
+        let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_clear_color_image)(
-            self.handle(),
-            image.handle(),
-            image_layout.into(),
-            &clear_value_vk,
-            ranges_vk.len() as u32,
-            ranges_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_clear_color_image)(
+                self.handle(),
+                clear_info_vk.image,
+                clear_info_vk.image_layout,
+                &clear_info_vk.color,
+                ranges_vk.len() as u32,
+                ranges_vk.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
         clear_info: &ClearDepthStencilImageInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_depth_stencil_image(clear_info)?;
 
-        Ok(self.clear_depth_stencil_image_unchecked(clear_info))
+        Ok(unsafe { self.clear_depth_stencil_image_unchecked(clear_info) })
     }
 
     fn validate_clear_depth_stencil_image(
@@ -399,38 +376,29 @@ where
         &mut self,
         clear_info: &ClearDepthStencilImageInfo,
     ) -> &mut Self {
-        let &ClearDepthStencilImageInfo {
-            ref image,
-            image_layout,
-            clear_value,
-            ref regions,
-            _ne: _,
-        } = clear_info;
-
-        if regions.is_empty() {
+        if clear_info.regions.is_empty() {
             return self;
         }
 
-        let clear_value_vk = clear_value.into();
-        let ranges_vk: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .map(ash::vk::ImageSubresourceRange::from)
-            .collect();
+        let clear_info_vk = clear_info.to_vk();
+        let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_clear_depth_stencil_image)(
-            self.handle(),
-            image.handle(),
-            image_layout.into(),
-            &clear_value_vk,
-            ranges_vk.len() as u32,
-            ranges_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_clear_depth_stencil_image)(
+                self.handle(),
+                clear_info_vk.image,
+                clear_info_vk.image_layout,
+                &clear_info_vk.depth_stencil,
+                ranges_vk.len() as u32,
+                ranges_vk.as_ptr(),
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn fill_buffer(
         &mut self,
         dst_buffer: &Subbuffer<[u32]>,
@@ -438,7 +406,7 @@ where
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_fill_buffer(dst_buffer, data)?;
 
-        Ok(self.fill_buffer_unchecked(dst_buffer, data))
+        Ok(unsafe { self.fill_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_fill_buffer(
@@ -514,17 +482,20 @@ where
         data: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_fill_buffer)(
-            self.handle(),
-            dst_buffer.buffer().handle(),
-            dst_buffer.offset(),
-            dst_buffer.size(),
-            data,
-        );
+        unsafe {
+            (fns.v1_0.cmd_fill_buffer)(
+                self.handle(),
+                dst_buffer.buffer().handle(),
+                dst_buffer.offset(),
+                dst_buffer.size(),
+                data,
+            )
+        };
 
         self
     }
 
+    #[inline]
     pub unsafe fn update_buffer<D>(
         &mut self,
         dst_buffer: &Subbuffer<D>,
@@ -539,7 +510,7 @@ where
 
         self.validate_update_buffer(dst_buffer.as_bytes(), size_of_val(data) as DeviceSize)?;
 
-        Ok(self.update_buffer_unchecked(dst_buffer, data))
+        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_update_buffer(
@@ -637,13 +608,15 @@ where
         }
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_update_buffer)(
-            self.handle(),
-            dst_buffer.buffer().handle(),
-            dst_buffer.offset(),
-            size_of_val(data) as DeviceSize,
-            data as *const _ as *const _,
-        );
+        unsafe {
+            (fns.v1_0.cmd_update_buffer)(
+                self.handle(),
+                dst_buffer.buffer().handle(),
+                dst_buffer.offset(),
+                size_of_val(data) as DeviceSize,
+                <*const _>::cast(data),
+            )
+        };
 
         self
     }
@@ -680,9 +653,10 @@ pub struct ClearColorImageInfo {
 }
 
 impl ClearColorImageInfo {
-    /// Returns a `ClearColorImageInfo` with the specified `image`.
+    /// Returns a default `ClearColorImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {
@@ -692,6 +666,12 @@ impl ClearColorImageInfo {
             regions: smallvec![range],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -826,6 +806,35 @@ impl ClearColorImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ClearColorImageInfoVk {
+        let &Self {
+            ref image,
+            image_layout,
+            clear_value,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ClearColorImageInfoVk {
+            image: image.handle(),
+            image_layout: image_layout.into(),
+            color: clear_value.to_vk(),
+        }
+    }
+
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
+        self.regions
+            .iter()
+            .map(ImageSubresourceRange::to_vk)
+            .collect()
+    }
+}
+
+pub(crate) struct ClearColorImageInfoVk {
+    pub(crate) image: vk::Image,
+    pub(crate) image_layout: vk::ImageLayout,
+    pub(crate) color: vk::ClearColorValue,
 }
 
 /// Parameters to clear a depth/stencil image.
@@ -859,9 +868,10 @@ pub struct ClearDepthStencilImageInfo {
 }
 
 impl ClearDepthStencilImageInfo {
-    /// Returns a `ClearDepthStencilImageInfo` with the specified `image`.
+    /// Returns a default `ClearDepthStencilImageInfo` with the provided `image`.
+    // TODO: make const
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub fn new(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {
@@ -871,6 +881,12 @@ impl ClearDepthStencilImageInfo {
             regions: smallvec![range],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -1032,4 +1048,33 @@ impl ClearDepthStencilImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ClearDepthStencilImageInfoVk {
+        let &Self {
+            ref image,
+            image_layout,
+            clear_value,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ClearDepthStencilImageInfoVk {
+            image: image.handle(),
+            image_layout: image_layout.into(),
+            depth_stencil: clear_value.to_vk(),
+        }
+    }
+
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
+        self.regions
+            .iter()
+            .map(ImageSubresourceRange::to_vk)
+            .collect()
+    }
+}
+
+pub(crate) struct ClearDepthStencilImageInfoVk {
+    pub(crate) image: vk::Image,
+    pub(crate) image_layout: vk::ImageLayout,
+    pub(crate) depth_stencil: vk::ClearDepthStencilValue,
 }

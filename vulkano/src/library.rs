@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Vulkan library loading system.
 //!
 //! Before Vulkano can do anything, it first needs to find a library containing an implementation
@@ -23,10 +14,11 @@ use crate::{
     instance::{InstanceExtensions, LayerProperties},
     ExtensionProperties, SafeDeref, Version, VulkanError,
 };
+use ash::vk;
 use libloading::{Error as LibloadingError, Library};
 use std::{
     error::Error,
-    ffi::{CStr, CString},
+    ffi::CString,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::transmute,
     os::raw::c_char,
@@ -49,7 +41,7 @@ pub struct VulkanLibrary {
 impl VulkanLibrary {
     /// Loads the default Vulkan library for this system.
     pub fn new() -> Result<Arc<Self>, LoadingError> {
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "tvos"))]
         #[allow(non_snake_case)]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             let loader = crate::statically_linked_vulkan_loader!();
@@ -57,34 +49,30 @@ impl VulkanLibrary {
             Ok(Box::new(loader))
         }
 
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "tvos")))]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             #[cfg(windows)]
-            fn get_paths() -> [&'static Path; 1] {
-                [Path::new("vulkan-1.dll")]
-            }
+            const PATHS: [&str; 1] = ["vulkan-1.dll"];
             #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-            fn get_paths() -> [&'static Path; 1] {
-                [Path::new("libvulkan.so.1")]
-            }
+            const PATHS: [&str; 1] = ["libvulkan.so.1"];
             #[cfg(target_os = "macos")]
-            fn get_paths() -> [&'static Path; 3] {
-                [
-                    Path::new("libvulkan.dylib"),
-                    Path::new("libvulkan.1.dylib"),
-                    Path::new("libMoltenVK.dylib"),
-                ]
-            }
+            const PATHS: [&str; 6] = [
+                "libvulkan.dylib",
+                "libvulkan.1.dylib",
+                "libMoltenVK.dylib",
+                "vulkan.framework/vulkan",
+                "MoltenVK.framework/MoltenVK",
+                // Stock macOS no longer has `/usr/local/lib` in `LD_LIBRARY_PATH` like it used to,
+                // but libraries (including MoltenVK installed through the Vulkan SDK) are still
+                // installed here. Try the absolute path as a last resort.
+                "/usr/local/lib/libvulkan.dylib",
+            ];
             #[cfg(target_os = "android")]
-            fn get_paths() -> [&'static Path; 2] {
-                [Path::new("libvulkan.so.1"), Path::new("libvulkan.so")]
-            }
-
-            let paths = get_paths();
+            const PATHS: [&str; 2] = ["libvulkan.so.1", "libvulkan.so"];
 
             let mut err: Option<LoadingError> = None;
 
-            for path in paths {
+            for path in PATHS {
                 match unsafe { DynamicLibraryLoader::new(path) } {
                     Ok(library) => return Ok(Box::new(library)),
                     Err(e) => err = Some(e),
@@ -99,14 +87,13 @@ impl VulkanLibrary {
 
     /// Loads a custom Vulkan library.
     pub fn with_loader(loader: impl Loader + 'static) -> Result<Arc<Self>, LoadingError> {
-        let fns = EntryFunctions::load(|name| unsafe {
-            loader
-                .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
+        let fns = EntryFunctions::load(|name| {
+            unsafe { loader.get_instance_proc_addr(vk::Instance::null(), name.as_ptr()) }
                 .map_or(ptr::null(), |func| func as _)
         });
 
-        let api_version = unsafe { Self::get_api_version(&loader)? };
-        let extension_properties = unsafe { Self::get_extension_properties(&fns, None)? };
+        let api_version = unsafe { Self::get_api_version(&loader) }?;
+        let extension_properties = unsafe { Self::get_extension_properties(&fns, None) }?;
         let supported_extensions = extension_properties
             .iter()
             .map(|property| property.extension_name.as_str())
@@ -127,13 +114,19 @@ impl VulkanLibrary {
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
         // to determine the version of Vulkan.
 
-        let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
-        let func = loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
+        let func = unsafe {
+            loader.get_instance_proc_addr(
+                vk::Instance::null(),
+                c"vkEnumerateInstanceVersion".as_ptr(),
+            )
+        };
 
         let version = if let Some(func) = func {
-            let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
+            let func: vk::PFN_vkEnumerateInstanceVersion = unsafe { transmute(func) };
             let mut api_version = 0;
-            func(&mut api_version).result().map_err(VulkanError::from)?;
+            unsafe { func(&mut api_version) }
+                .result()
+                .map_err(VulkanError::from)?;
             Version::from(api_version)
         } else {
             Version {
@@ -154,31 +147,35 @@ impl VulkanLibrary {
 
         loop {
             let mut count = 0;
-            (fns.v1_0.enumerate_instance_extension_properties)(
-                layer_vk
-                    .as_ref()
-                    .map_or(ptr::null(), |layer| layer.as_ptr()),
-                &mut count,
-                ptr::null_mut(),
-            )
+            unsafe {
+                (fns.v1_0.enumerate_instance_extension_properties)(
+                    layer_vk
+                        .as_ref()
+                        .map_or(ptr::null(), |layer| layer.as_ptr()),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
-            let result = (fns.v1_0.enumerate_instance_extension_properties)(
-                layer_vk
-                    .as_ref()
-                    .map_or(ptr::null(), |layer| layer.as_ptr()),
-                &mut count,
-                output.as_mut_ptr(),
-            );
+            let result = unsafe {
+                (fns.v1_0.enumerate_instance_extension_properties)(
+                    layer_vk
+                        .as_ref()
+                        .map_or(ptr::null(), |layer| layer.as_ptr()),
+                    &mut count,
+                    output.as_mut_ptr(),
+                )
+            };
 
             match result {
-                ash::vk::Result::SUCCESS => {
-                    output.set_len(count as usize);
+                vk::Result::SUCCESS => {
+                    unsafe { output.set_len(count as usize) };
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
-                ash::vk::Result::INCOMPLETE => (),
+                vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         }
@@ -236,27 +233,24 @@ impl VulkanLibrary {
     ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, VulkanError> {
         let fns = self.fns();
 
-        let layer_properties = unsafe {
-            loop {
-                let mut count = 0;
-                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut())
-                    .result()
-                    .map_err(VulkanError::from)?;
+        let layer_properties = loop {
+            let mut count = 0;
+            unsafe { (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut()) }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                let mut properties = Vec::with_capacity(count as usize);
-                let result = (fns.v1_0.enumerate_instance_layer_properties)(
-                    &mut count,
-                    properties.as_mut_ptr(),
-                );
+            let mut properties = Vec::with_capacity(count as usize);
+            let result = unsafe {
+                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, properties.as_mut_ptr())
+            };
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        properties.set_len(count as usize);
-                        break properties;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+            match result {
+                vk::Result::SUCCESS => {
+                    unsafe { properties.set_len(count as usize) };
+                    break properties;
                 }
+                vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -306,10 +300,10 @@ impl VulkanLibrary {
     #[inline]
     pub unsafe fn get_instance_proc_addr(
         &self,
-        instance: ash::vk::Instance,
+        instance: vk::Instance,
         name: *const c_char,
-    ) -> ash::vk::PFN_vkVoidFunction {
-        self.loader.get_instance_proc_addr(instance, name)
+    ) -> vk::PFN_vkVoidFunction {
+        unsafe { self.loader.get_instance_proc_addr(instance, name) }
     }
 }
 
@@ -320,9 +314,9 @@ pub unsafe trait Loader: Send + Sync {
     /// The returned function must stay valid for as long as `self` is alive.
     unsafe fn get_instance_proc_addr(
         &self,
-        instance: ash::vk::Instance,
+        instance: vk::Instance,
         name: *const c_char,
-    ) -> ash::vk::PFN_vkVoidFunction;
+    ) -> vk::PFN_vkVoidFunction;
 }
 
 unsafe impl<T> Loader for T
@@ -332,10 +326,10 @@ where
 {
     unsafe fn get_instance_proc_addr(
         &self,
-        instance: ash::vk::Instance,
+        instance: vk::Instance,
         name: *const c_char,
-    ) -> ash::vk::PFN_vkVoidFunction {
-        (**self).get_instance_proc_addr(instance, name)
+    ) -> vk::PFN_vkVoidFunction {
+        unsafe { (**self).get_instance_proc_addr(instance, name) }
     }
 }
 
@@ -348,7 +342,7 @@ impl Debug for dyn Loader {
 /// Implementation of `Loader` that loads Vulkan from a dynamic library.
 pub struct DynamicLibraryLoader {
     _vk_lib: Library,
-    get_instance_proc_addr: ash::vk::PFN_vkGetInstanceProcAddr,
+    get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
 }
 
 impl DynamicLibraryLoader {
@@ -358,12 +352,11 @@ impl DynamicLibraryLoader {
     /// # Safety
     ///
     /// - The dynamic library must be a valid Vulkan implementation.
-    ///
     pub unsafe fn new(path: impl AsRef<Path>) -> Result<DynamicLibraryLoader, LoadingError> {
-        let vk_lib = Library::new(path.as_ref()).map_err(LoadingError::LibraryLoadFailure)?;
+        let vk_lib =
+            unsafe { Library::new(path.as_ref()) }.map_err(LoadingError::LibraryLoadFailure)?;
 
-        let get_instance_proc_addr = *vk_lib
-            .get(b"vkGetInstanceProcAddr")
+        let get_instance_proc_addr = *unsafe { vk_lib.get(b"vkGetInstanceProcAddr") }
             .map_err(LoadingError::LibraryLoadFailure)?;
 
         Ok(DynamicLibraryLoader {
@@ -377,10 +370,10 @@ unsafe impl Loader for DynamicLibraryLoader {
     #[inline]
     unsafe fn get_instance_proc_addr(
         &self,
-        instance: ash::vk::Instance,
+        instance: vk::Instance,
         name: *const c_char,
-    ) -> ash::vk::PFN_vkVoidFunction {
-        (self.get_instance_proc_addr)(instance, name)
+    ) -> vk::PFN_vkVoidFunction {
+        unsafe { (self.get_instance_proc_addr)(instance, name) }
     }
 }
 
@@ -398,18 +391,18 @@ macro_rules! statically_linked_vulkan_loader {
     () => {{
         extern "C" {
             fn vkGetInstanceProcAddr(
-                instance: ash::vk::Instance,
+                instance: vk::Instance,
                 pName: *const c_char,
-            ) -> ash::vk::PFN_vkVoidFunction;
+            ) -> vk::PFN_vkVoidFunction;
         }
 
         struct StaticallyLinkedVulkanLoader;
         unsafe impl Loader for StaticallyLinkedVulkanLoader {
             unsafe fn get_instance_proc_addr(
                 &self,
-                instance: ash::vk::Instance,
+                instance: vk::Instance,
                 name: *const c_char,
-            ) -> ash::vk::PFN_vkVoidFunction {
+            ) -> vk::PFN_vkVoidFunction {
                 vkGetInstanceProcAddr(instance, name)
             }
         }
@@ -459,11 +452,9 @@ mod tests {
 
     #[test]
     fn dl_open_error() {
-        unsafe {
-            match DynamicLibraryLoader::new("_non_existing_library.void") {
-                Err(LoadingError::LibraryLoadFailure(_)) => (),
-                _ => panic!(),
-            }
+        match unsafe { DynamicLibraryLoader::new("_non_existing_library.void") } {
+            Err(LoadingError::LibraryLoadFailure(_)) => (),
+            _ => panic!(),
         }
     }
 }

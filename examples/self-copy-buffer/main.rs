@@ -1,13 +1,4 @@
-// Copyright (c) 2021 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-// This example is a copy of `basic-compute-shaders.rs`, but initalizes half of the input buffer
+// This example is a copy of `basic-compute-shaders.rs`, but initializes half of the input buffer
 // and then we use `copy_buffer_dimensions` to copy the first half of the input buffer to the
 // second half.
 
@@ -19,7 +10,7 @@ use vulkano::{
         CommandBufferUsage, CopyBufferInfoTyped,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -128,16 +119,20 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let data_buffer = Buffer::from_iter(
         memory_allocator,
@@ -152,15 +147,15 @@ fn main() {
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
-        // We intitialize half of the array and leave the other half at 0, we will use the copy
+        // We initialize half of the array and leave the other half at 0, we will use the copy
         // command later to fill it.
         (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 }),
     )
     .unwrap();
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+    let layout = &pipeline.layout().set_layouts()[0];
+    let set = DescriptorSet::new(
+        descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         [],
@@ -168,11 +163,12 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
     builder
         // Copy from the first half to the second half (inside the same buffer) before we run the
         // computation.
@@ -184,7 +180,7 @@ fn main() {
                 ..Default::default()
             }]
             .into(),
-            ..CopyBufferInfoTyped::buffers(data_buffer.clone(), data_buffer.clone())
+            ..CopyBufferInfoTyped::new(data_buffer.clone(), data_buffer.clone())
         })
         .unwrap()
         .bind_pipeline_compute(pipeline.clone())
@@ -195,9 +191,9 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
+
     let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)
@@ -210,9 +206,9 @@ fn main() {
 
     let data_buffer_content = data_buffer.read().unwrap();
 
-    // Here we have the same data in the two halfs of the buffer.
+    // Here we have the same data in the two halves of the buffer.
     for n in 0..65536 / 2 {
-        // The two halfs should have the same data.
+        // The two halves should have the same data.
         assert_eq!(data_buffer_content[n as usize], n * 12);
         assert_eq!(data_buffer_content[n as usize + 65536 / 2], n * 12);
     }

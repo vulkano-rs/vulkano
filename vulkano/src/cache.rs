@@ -1,13 +1,4 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
-use ahash::HashMap;
+use foldhash::HashMap;
 use parking_lot::RwLock;
 use std::{
     collections::hash_map::Entry,
@@ -26,16 +17,17 @@ pub(crate) struct OnceCache<K, V> {
 
 impl<K, V> Default for OnceCache<K, V> {
     fn default() -> Self {
-        Self {
-            inner: RwLock::new(HashMap::default()),
-        }
+        Self::new()
     }
 }
 
 impl<K, V> OnceCache<K, V> {
     /// Creates a new `OnceCache`.
+    // TODO: make const
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: RwLock::new(HashMap::default()),
+        }
     }
 }
 
@@ -107,16 +99,17 @@ pub(crate) struct WeakArcOnceCache<K, V> {
 
 impl<K, V> Default for WeakArcOnceCache<K, V> {
     fn default() -> Self {
-        Self {
-            inner: RwLock::new(HashMap::default()),
-        }
+        Self::new()
     }
 }
 
 impl<K, V> WeakArcOnceCache<K, V> {
     /// Creates a new `OnceCache`.
+    // TODO: make const
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            inner: RwLock::new(HashMap::default()),
+        }
     }
 }
 

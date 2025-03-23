@@ -1,19 +1,11 @@
-// Copyright (c) 2022 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 use std::sync::Arc;
 #[cfg(target_os = "macos")]
 use vulkano::instance::InstanceCreateFlags;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags,
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo,
+        QueueFlags,
     },
     instance::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -42,7 +34,7 @@ pub struct VulkanoConfig {
 
     pub device_extensions: DeviceExtensions,
 
-    pub device_features: Features,
+    pub device_features: DeviceFeatures,
 
     /// Print your selected device name at start.
     pub print_device_name: bool,
@@ -57,15 +49,9 @@ impl Default for VulkanoConfig {
         };
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
-                #[cfg(target_os = "macos")]
+                #[cfg(target_vendor = "apple")]
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 application_version: Version::V1_3,
-                enabled_extensions: InstanceExtensions {
-                    #[cfg(target_os = "macos")]
-                    khr_portability_enumeration: true,
-                    ..InstanceExtensions::empty()
-                },
-
                 ..Default::default()
             },
             debug_create_info: None,
@@ -82,7 +68,7 @@ impl Default for VulkanoConfig {
             }),
             print_device_name: false,
             device_extensions,
-            device_features: Features::empty(),
+            device_features: DeviceFeatures::empty(),
         }
     }
 }
@@ -107,8 +93,7 @@ pub struct VulkanoContext {
     instance: Arc<Instance>,
     _debug_utils_messenger: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
-    graphics_queue: Arc<Queue>,
-    compute_queue: Arc<Queue>,
+    queues: Queues,
     memory_allocator: Arc<StandardMemoryAllocator>,
 }
 
@@ -128,7 +113,7 @@ impl VulkanoContext {
     pub fn new(mut config: VulkanoConfig) -> Self {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
-            #[cfg(target_os = "macos")]
+            #[cfg(target_vendor = "apple")]
             Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => panic!(
                 "failed to load Vulkan library: {err}; did you install VulkanSDK from \
                 https://vulkan.lunarg.com/sdk/home?",
@@ -148,8 +133,7 @@ impl VulkanoContext {
                 khr_wayland_surface: true,
                 khr_android_surface: true,
                 khr_win32_surface: true,
-                mvk_ios_surface: true,
-                mvk_macos_surface: true,
+                ext_metal_surface: true,
                 ..InstanceExtensions::empty()
             })
             .union(&config.instance_create_info.enabled_extensions);
@@ -181,20 +165,18 @@ impl VulkanoContext {
         }
 
         // Create device
-        let (device, graphics_queue, compute_queue) = Self::create_device(
+        let (device, queues) = Self::create_device(
             physical_device,
             config.device_extensions,
             config.device_features,
         );
-
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
         Self {
             instance,
             _debug_utils_messenger,
             device,
-            graphics_queue,
-            compute_queue,
+            queues,
             memory_allocator,
         }
     }
@@ -204,8 +186,8 @@ impl VulkanoContext {
     fn create_device(
         physical_device: Arc<PhysicalDevice>,
         device_extensions: DeviceExtensions,
-        features: Features,
-    ) -> (Arc<Device>, Arc<Queue>, Arc<Queue>) {
+        device_features: DeviceFeatures,
+    ) -> (Arc<Device>, Queues) {
         let queue_family_graphics = physical_device
             .queue_family_properties()
             .iter()
@@ -224,25 +206,37 @@ impl VulkanoContext {
                 q.queue_flags.intersects(QueueFlags::COMPUTE) && *i != queue_family_graphics
             })
             .map(|(i, _)| i);
-        let is_separate_compute_queue = queue_family_compute.is_some();
+        // Try finding a separate queue for transfer
+        let queue_family_transfer = physical_device
+            .queue_family_properties()
+            .iter()
+            .enumerate()
+            .map(|(i, q)| (i as u32, q))
+            .find(|(_i, q)| {
+                q.queue_flags.intersects(QueueFlags::TRANSFER)
+                    && !q
+                        .queue_flags
+                        .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+            })
+            .map(|(i, _)| i);
 
-        let queue_create_infos = if let Some(queue_family_compute) = queue_family_compute {
-            vec![
-                QueueCreateInfo {
-                    queue_family_index: queue_family_graphics,
-                    ..Default::default()
-                },
-                QueueCreateInfo {
-                    queue_family_index: queue_family_compute,
-                    ..Default::default()
-                },
-            ]
-        } else {
-            vec![QueueCreateInfo {
+        let queue_create_infos: Vec<_> = [
+            Some(QueueCreateInfo {
                 queue_family_index: queue_family_graphics,
                 ..Default::default()
-            }]
-        };
+            }),
+            queue_family_compute.map(|queue_family_index| QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }),
+            queue_family_transfer.map(|queue_family_index| QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         let (device, mut queues) = {
             Device::new(
@@ -250,19 +244,30 @@ impl VulkanoContext {
                 DeviceCreateInfo {
                     queue_create_infos,
                     enabled_extensions: device_extensions,
-                    enabled_features: features,
+                    enabled_features: device_features,
                     ..Default::default()
                 },
             )
             .expect("failed to create device")
         };
-        let gfx_queue = queues.next().unwrap();
-        let compute_queue = if is_separate_compute_queue {
-            queues.next().unwrap()
-        } else {
-            gfx_queue.clone()
-        };
-        (device, gfx_queue, compute_queue)
+
+        let graphics_queue = queues.next().unwrap();
+        let compute_queue = queue_family_compute
+            .is_some()
+            .then(|| queues.next().unwrap())
+            .unwrap_or(graphics_queue.clone());
+        let transfer_queue = queue_family_transfer
+            .is_some()
+            .then(|| queues.next().unwrap());
+
+        (
+            device,
+            Queues {
+                graphics_queue,
+                compute_queue,
+                transfer_queue,
+            },
+        )
     }
 
     /// Returns the name of the device.
@@ -301,15 +306,22 @@ impl VulkanoContext {
     /// Returns the graphics queue.
     #[inline]
     pub fn graphics_queue(&self) -> &Arc<Queue> {
-        &self.graphics_queue
+        &self.queues.graphics_queue
     }
 
     /// Returns the compute queue.
     ///
-    /// Depending on your device, this might be the same as graphics queue.
+    /// Depending on your device, this might be the same as the graphics queue.
     #[inline]
     pub fn compute_queue(&self) -> &Arc<Queue> {
-        &self.compute_queue
+        &self.queues.compute_queue
+    }
+
+    /// Returns the transfer queue, if the device has a queue family that is dedicated for
+    /// transfers (does not support graphics or compute).
+    #[inline]
+    pub fn transfer_queue(&self) -> Option<&Arc<Queue>> {
+        self.queues.transfer_queue.as_ref()
     }
 
     /// Returns the memory allocator.
@@ -317,4 +329,10 @@ impl VulkanoContext {
     pub fn memory_allocator(&self) -> &Arc<StandardMemoryAllocator> {
         &self.memory_allocator
     }
+}
+
+struct Queues {
+    graphics_queue: Arc<Queue>,
+    compute_queue: Arc<Queue>,
+    transfer_queue: Option<Arc<Queue>>,
 }

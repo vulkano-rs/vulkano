@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // This example demonstrates how to compile several shaders together using the `shader!` macro,
 // such that the macro doesn't generate unique shader types for each compiled shader, but generates
 // a common shareable set of Rust structs for the corresponding structs in the shaders.
@@ -32,7 +23,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -189,11 +180,11 @@ fn main() {
         queue: Arc<Queue>,
         data_buffer: Subbuffer<[u32]>,
         parameters: shaders::Parameters,
-        command_buffer_allocator: &StandardCommandBufferAllocator,
-        descriptor_set_allocator: &StandardDescriptorSetAllocator,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) {
-        let layout = pipeline.layout().set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::new(
+        let layout = &pipeline.layout().set_layouts()[0];
+        let set = DescriptorSet::new(
             descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::buffer(0, data_buffer)],
@@ -207,6 +198,7 @@ fn main() {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+
         builder
             .bind_pipeline_compute(pipeline.clone())
             .unwrap()
@@ -218,11 +210,10 @@ fn main() {
             )
             .unwrap()
             .push_constants(pipeline.layout().clone(), 0, parameters)
-            .unwrap()
-            .dispatch([1024, 1, 1])
             .unwrap();
-        let command_buffer = builder.build().unwrap();
+        unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
 
+        let command_buffer = builder.build().unwrap();
         let future = sync::now(queue.device().clone())
             .then_execute(queue.clone(), command_buffer)
             .unwrap()
@@ -233,10 +224,14 @@ fn main() {
     }
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // Prepare test array `[0, 1, 2, 3....]`.
     let data_buffer = Buffer::from_iter(
@@ -273,7 +268,7 @@ fn main() {
         ComputePipeline::new(
             device.clone(),
             None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            ComputePipelineCreateInfo::new(stage, layout),
         )
         .unwrap()
     };
@@ -294,12 +289,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
-        ComputePipeline::new(
-            device,
-            None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
-        )
-        .unwrap()
+        ComputePipeline::new(device, None, ComputePipelineCreateInfo::new(stage, layout)).unwrap()
     };
 
     // Multiply each value by 2.
@@ -308,8 +298,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 2 },
-        &command_buffer_allocator,
-        &descriptor_set_allocator,
+        descriptor_set_allocator.clone(),
+        command_buffer_allocator.clone(),
     );
 
     // Then add 1 to each value.
@@ -318,8 +308,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 1 },
-        &command_buffer_allocator,
-        &descriptor_set_allocator,
+        descriptor_set_allocator.clone(),
+        command_buffer_allocator.clone(),
     );
 
     // Then multiply each value by 3.
@@ -328,8 +318,8 @@ fn main() {
         queue,
         data_buffer.clone(),
         shaders::Parameters { value: 3 },
-        &command_buffer_allocator,
-        &descriptor_set_allocator,
+        descriptor_set_allocator,
+        command_buffer_allocator,
     );
 
     let data_buffer_content = data_buffer.read().unwrap();
