@@ -1574,7 +1574,7 @@ impl PhysicalDevice {
             .map_err(|_err| {
                 Box::new(ValidationError {
                     problem: "`PhysicalDevice::surface_present_modes` \
-                                returned an error"
+                        returned an error"
                         .into(),
                     ..Default::default()
                 })
@@ -1589,33 +1589,27 @@ impl PhysicalDevice {
             }
         }
 
-        match (
-            full_screen_exclusive != FullScreenExclusive::Default,
-            win32_monitor.is_some(),
-        ) {
-            (true, false) => {
+        if surface.api() == SurfaceApi::Win32 {
+            if full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                && win32_monitor.is_none()
+            {
                 return Err(Box::new(ValidationError {
-                    problem: "`surface_info.full_screen_exclusive` is not \
-                        `FullScreenExclusive::Default`, but \
+                    problem: "`surface` is a Win32 surface, and \
+                        `surface_info.full_screen_exclusive` is \
+                        `FullScreenExclusive::ApplicationControlled`, but \
                         `surface_info.win32_monitor` is `None`"
                         .into(),
-                    vuids: &[
-                        "VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672",
-                        "VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-02671",
-                    ],
+                    vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
                     ..Default::default()
                 }));
             }
-            (false, true) => {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface_info.full_screen_exclusive` is \
-                        `FullScreenExclusive::Default`, but \
-                        `surface_info.win32_monitor` is `Some`"
-                        .into(),
-                    ..Default::default()
-                }));
-            }
-            (true, true) | (false, false) => (),
+        } else if win32_monitor.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`surface` is not a Win32 surface, but `surface_info.win32_monitor` is \
+                    `Some`"
+                    .into(),
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -1762,7 +1756,7 @@ impl PhysicalDevice {
             .map_err(|_err| {
                 Box::new(ValidationError {
                     problem: "`PhysicalDevice::surface_present_modes` \
-                                returned an error"
+                        returned an error"
                         .into(),
                     ..Default::default()
                 })
@@ -1777,61 +1771,27 @@ impl PhysicalDevice {
             }
         }
 
-        if !self
-            .instance
-            .enabled_extensions()
-            .khr_get_surface_capabilities2
+        if win32_monitor.is_some() {
+            if surface.api() != SurfaceApi::Win32 {
+                return Err(Box::new(ValidationError {
+                    problem: "`surface_info.win32_monitor` is `Some`, but \
+                        `surface` is not a Win32 surface"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+        } else if surface.api() == SurfaceApi::Win32
+            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
         {
-            if full_screen_exclusive != FullScreenExclusive::Default {
-                return Err(Box::new(ValidationError {
-                    context: "surface_info.full_screen_exclusive".into(),
-                    problem: "is not `FullScreenExclusive::Default`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                        Requires::InstanceExtension("khr_get_surface_capabilities2"),
-                    ])]),
-                    ..Default::default()
-                }));
-            }
-
-            if win32_monitor.is_some() {
-                return Err(Box::new(ValidationError {
-                    context: "surface_info.win32_monitor".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                        Requires::InstanceExtension("khr_get_surface_capabilities2"),
-                    ])]),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        match (
-            surface.api() == SurfaceApi::Win32
-                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled,
-            win32_monitor.is_some(),
-        ) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is a Win32 surface, and \
-                        `surface_info.full_screen_exclusive` is \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `surface_info.win32_monitor` is `None`"
-                        .into(),
-                    vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is not a Win32 surface, or \
-                        `surface_info.full_screen_exclusive` is not \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `surface_info.win32_monitor` is `Some`"
-                        .into(),
-                    ..Default::default()
-                }));
-            }
-            (true, true) | (false, false) => (),
+            return Err(Box::new(ValidationError {
+                problem: "`surface` is a Win32 surface, and \
+                    `surface_info.full_screen_exclusive` is \
+                    `FullScreenExclusive::ApplicationControlled`, but \
+                    `surface_info.win32_monitor` is `None`"
+                    .into(),
+                vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -2024,36 +1984,10 @@ impl PhysicalDevice {
             }));
         }
 
-        if !self.supported_extensions().ext_full_screen_exclusive {
-            if full_screen_exclusive != FullScreenExclusive::Default {
-                return Err(Box::new(ValidationError {
-                    context: "surface_info.full_screen_exclusive".into(),
-                    problem: "is not `FullScreenExclusive::Default`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_full_screen_exclusive",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-
-            if win32_monitor.is_some() {
-                return Err(Box::new(ValidationError {
-                    context: "surface_info.win32_monitor".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_full_screen_exclusive",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-        }
-
-        match (
-            surface.api() == SurfaceApi::Win32
-                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled,
-            win32_monitor.is_some(),
-        ) {
-            (true, false) => {
+        if surface.api() == SurfaceApi::Win32 {
+            if full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                && win32_monitor.is_none()
+            {
                 return Err(Box::new(ValidationError {
                     problem: "`surface` is a Win32 surface, and \
                         `surface_info.full_screen_exclusive` is \
@@ -2064,17 +1998,13 @@ impl PhysicalDevice {
                     ..Default::default()
                 }));
             }
-            (false, true) => {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is not a Win32 surface, or \
-                        `surface_info.full_screen_exclusive` is not \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `surface_info.win32_monitor` is `Some`"
-                        .into(),
-                    ..Default::default()
-                }));
-            }
-            (true, true) | (false, false) => (),
+        } else if win32_monitor.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`surface` is not a Win32 surface, but `surface_info.win32_monitor` is \
+                    `Some`"
+                    .into(),
+                ..Default::default()
+            }));
         }
 
         Ok(())
