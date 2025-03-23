@@ -1827,7 +1827,7 @@ pub struct SwapchainCreateInfo {
     /// [`ext_full_screen_exclusive`](crate::device::DeviceExtensions::ext_full_screen_exclusive)
     /// extension must be enabled on the device.
     ///
-    /// If the queried surface is a Win32 surface, and this is
+    /// If the surface is a Win32 surface, and this is
     /// [`FullScreenExclusive::ApplicationControlled`], then `win32_monitor` must be `Some`.
     ///
     /// The default value is [`FullScreenExclusive::Default`].
@@ -1836,9 +1836,8 @@ pub struct SwapchainCreateInfo {
     /// For Win32 surfaces, this specifies the monitor on which full-screen exclusivity should be
     /// used.
     ///
-    /// If this is `Some`, then the queried surface must be a Win32 surface, and the
-    /// [`ext_full_screen_exclusive`](crate::device::DeviceExtensions::ext_full_screen_exclusive)
-    /// extension must be supported by the physical device.
+    /// If this is `Some`, then `full_screen_exclusive` must not be
+    /// [`FullScreenExclusive::Default`], and the surface must be a Win32 surface.
     ///
     /// The default value is `None`.
     pub win32_monitor: Option<Win32Monitor>,
@@ -2209,17 +2208,6 @@ impl SwapchainCreateInfo {
                 problem: "`full_screen_exclusive` is `FullScreenExclusive::Default`, but \
                     `win32_monitor` is `Some`"
                     .into(),
-                ..Default::default()
-            }));
-        }
-
-        if win32_monitor.is_some() && !device.enabled_extensions().ext_full_screen_exclusive {
-            return Err(Box::new(ValidationError {
-                context: "win32_monitor".into(),
-                problem: "is `Some`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                    "ext_full_screen_exclusive",
-                )])]),
                 ..Default::default()
             }));
         }
