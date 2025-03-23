@@ -14,6 +14,7 @@ foreach ($arg in $args) {
     }
 }
 
+cd "$PSScriptRoot"
 cargo build --bins
 
 foreach ($example in Get-ChildItem -Directory -Name) {

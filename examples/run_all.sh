@@ -23,6 +23,7 @@ else
   sh_cmd='sh'
 fi
 
+cd "$(dirname $0)"
 cargo build --bins
 ls -F | grep '/$' | sed 's|/$||' | xargs -E '' -I {} $sh_cmd -c '
   # Continue without printing anything if the example is excluded in the manifest.
