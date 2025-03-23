@@ -40,3 +40,5 @@ foreach ($example in Get-ChildItem -Directory -Name) {
         Exit $proc.ExitCode
     }
 }
+
+rm pipeline-caching\pipeline_cache.bin
