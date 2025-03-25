@@ -203,7 +203,9 @@ impl ApplicationHandler for App {
                     self.flight_id,
                     surface,
                     SwapchainCreateInfo {
-                        min_image_count: surface_capabilities.min_image_count.max(3),
+                        min_image_count: surface_capabilities
+                            .min_image_count
+                            .max(MAX_FRAMES_IN_FLIGHT + 1),
                         image_format,
                         image_extent: window_size.into(),
                         // To simplify the example, we will directly write to the swapchain images
