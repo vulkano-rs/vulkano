@@ -41,6 +41,7 @@ mod scene;
 mod tonemap;
 
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+const MIN_SWAPCHAIN_IMAGES: u32 = MAX_FRAMES_IN_FLIGHT + 1;
 const MAX_BLOOM_MIP_LEVELS: u32 = 6;
 
 fn main() -> Result<(), impl Error> {
@@ -213,7 +214,9 @@ impl ApplicationHandler for App {
                     self.flight_id,
                     surface,
                     SwapchainCreateInfo {
-                        min_image_count: surface_capabilities.min_image_count.max(3),
+                        min_image_count: surface_capabilities
+                            .min_image_count
+                            .max(MIN_SWAPCHAIN_IMAGES),
                         image_format: swapchain_format,
                         image_extent: window.inner_size().into(),
                         image_usage: ImageUsage::COLOR_ATTACHMENT,
