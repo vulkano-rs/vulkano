@@ -30,6 +30,7 @@ use winit::{
 mod scene;
 
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+const MIN_SWAPCHAIN_IMAGES: u32 = MAX_FRAMES_IN_FLIGHT + 1;
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
@@ -205,7 +206,7 @@ impl ApplicationHandler for App {
                     SwapchainCreateInfo {
                         min_image_count: surface_capabilities
                             .min_image_count
-                            .max(MAX_FRAMES_IN_FLIGHT + 1),
+                            .max(MIN_SWAPCHAIN_IMAGES),
                         image_format,
                         image_extent: window_size.into(),
                         // To simplify the example, we will directly write to the swapchain images
