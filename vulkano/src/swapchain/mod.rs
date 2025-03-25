@@ -572,6 +572,29 @@ impl Swapchain {
             }));
         }
 
+        if win32_monitor.is_some() {
+            if surface.api() != SurfaceApi::Win32 {
+                return Err(Box::new(ValidationError {
+                    problem: "`surface` is not a Win32 surface, but \
+                        `create_info.win32_monitor` is `Some`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+        } else if surface.api() == SurfaceApi::Win32
+            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`surface` is a Win32 surface, and \
+                    `create_info.full_screen_exclusive` is \
+                    `FullScreenExclusive::ApplicationControlled`, but \
+                    `create_info.win32_monitor` is `None`"
+                    .into(),
+                vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
+                ..Default::default()
+            }));
+        }
+
         let surface_capabilities = unsafe {
             device.physical_device().surface_capabilities_unchecked(
                 surface,
@@ -581,8 +604,7 @@ impl Swapchain {
                         .ext_swapchain_maintenance1
                         .then_some(present_mode),
                     full_screen_exclusive,
-                    win32_monitor: win32_monitor
-                        .filter(|_| full_screen_exclusive != FullScreenExclusive::Default),
+                    win32_monitor,
                     ..Default::default()
                 },
             )
@@ -590,7 +612,7 @@ impl Swapchain {
         .map_err(|_err| {
             Box::new(ValidationError {
                 problem: "`PhysicalDevice::surface_capabilities` \
-                            returned an error"
+                    returned an error"
                     .into(),
                 ..Default::default()
             })
@@ -604,10 +626,7 @@ impl Swapchain {
                         .ext_swapchain_maintenance1
                         .then_some(present_mode),
                     full_screen_exclusive,
-                    win32_monitor: win32_monitor.filter(|_| {
-                        surface.api() == SurfaceApi::Win32
-                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-                    }),
+                    win32_monitor,
                     ..Default::default()
                 },
             )
@@ -615,7 +634,7 @@ impl Swapchain {
         .map_err(|_err| {
             Box::new(ValidationError {
                 problem: "`PhysicalDevice::surface_formats` \
-                            returned an error"
+                    returned an error"
                     .into(),
                 ..Default::default()
             })
@@ -625,10 +644,7 @@ impl Swapchain {
                 surface,
                 SurfaceInfo {
                     full_screen_exclusive,
-                    win32_monitor: win32_monitor.filter(|_| {
-                        surface.api() == SurfaceApi::Win32
-                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-                    }),
+                    win32_monitor,
                     ..Default::default()
                 },
             )
@@ -636,7 +652,7 @@ impl Swapchain {
         .map_err(|_err| {
             Box::new(ValidationError {
                 problem: "`PhysicalDevice::surface_present_modes` \
-                            returned an error"
+                    returned an error"
                     .into(),
                 ..Default::default()
             })
@@ -1807,17 +1823,21 @@ pub struct SwapchainCreateInfo {
 
     /// How full-screen exclusivity is to be handled.
     ///
-    /// If set to anything other than [`FullScreenExclusive::Default`], then the
+    /// If this is not [`FullScreenExclusive::Default`], then the
     /// [`ext_full_screen_exclusive`](crate::device::DeviceExtensions::ext_full_screen_exclusive)
     /// extension must be enabled on the device.
+    ///
+    /// If the surface is a Win32 surface, and this is
+    /// [`FullScreenExclusive::ApplicationControlled`], then `win32_monitor` must be `Some`.
     ///
     /// The default value is [`FullScreenExclusive::Default`].
     pub full_screen_exclusive: FullScreenExclusive,
 
-    /// If `full_screen_exclusive` is not [`FullScreenExclusive::Default`], this specifies the
-    /// monitor on which full-screen exclusivity should be used.
+    /// For Win32 surfaces, this specifies the monitor on which full-screen exclusivity should be
+    /// used.
     ///
-    /// For this case, the value must be `Some`, and for all others it must be `None`.
+    /// If this is `Some`, then `full_screen_exclusive` must not be
+    /// [`FullScreenExclusive::Default`], and the surface must be a Win32 surface.
     ///
     /// The default value is `None`.
     pub win32_monitor: Option<Win32Monitor>,
@@ -2183,16 +2203,6 @@ impl SwapchainCreateInfo {
                         "VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter",
                     ])
                 })?;
-
-            if win32_monitor.is_none() {
-                return Err(Box::new(ValidationError {
-                    problem: "`full_screen_exclusive` is not `FullScreenExclusive::Default`, but \
-                        `win32_monitor` is `None`"
-                        .into(),
-                    vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
-                    ..Default::default()
-                }));
-            }
         } else if win32_monitor.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "`full_screen_exclusive` is `FullScreenExclusive::Default`, but \
