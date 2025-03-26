@@ -4,9 +4,9 @@
 // pipeline exists in the cache and if so, return that pipeline directly or insert that new
 // pipeline into the cache.
 //
-// You can retrieve the data in the cache as a `Vec<u8>` and save that to a binary file. Later you
-// can load that file and build a PipelineCache with the given data. Be aware that the Vulkan
-// implementation does not check if the data is valid and vulkano currently does not either.
+// You can retrieve the data in the cache as `Vec<u8>` and save that to a binary file.
+// Later you can load that file and build a `PipelineCache` with the given data. Be aware that the
+// Vulkan implementation does not check if the data is valid and vulkano currently does not either.
 // Invalid data can lead to driver crashes or worse. Using the same cache data with a different GPU
 // probably won't work, a simple driver update can lead to invalid data as well. To check if your
 // data is valid you can find inspiration here:
@@ -27,7 +27,7 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     pipeline::{
-        cache::{PipelineCache, PipelineCacheCreateInfo},
+        cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData},
         compute::ComputePipelineCreateInfo,
         layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, PipelineLayout, PipelineShaderStageCreateInfo,
@@ -93,7 +93,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
+    let pipeline_cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
@@ -167,32 +167,32 @@ fn main() {
     // started. This way, the pipelines do not have to be rebuild and pipelines that might exist in
     // the cache can be build far quicker.
     //
-    // To load the cache from the file, we just need to load the data into a Vec<u8> and build the
-    // `PipelineCache` from that. Note that this function is currently unsafe as there are no
-    // checks, as it was mentioned at the start of this example.
+    // To load the cache from the file, we just need to load the data into `PipelineCacheData` and
+    // build the `PipelineCache` from that. Note that the creation of `PipelineCacheData` is
+    // currently unsafe as there are no checks, as it was mentioned at the start of this
+    // example.
     let initial_data = {
         if let Ok(mut file) = File::open(relpath("pipeline_cache.bin")) {
             let mut data = Vec::new();
             if file.read_to_end(&mut data).is_ok() {
-                data
+                // This is unsafe because there is no way to be sure that the file contains valid
+                // data.
+                Some(unsafe { PipelineCacheData::new(data) })
             } else {
-                Vec::new()
+                None
             }
         } else {
-            Vec::new()
+            None
         }
     };
 
-    // This is unsafe because there is no way to be sure that the file contains valid data.
-    let second_cache = unsafe {
-        PipelineCache::new(
-            device,
-            PipelineCacheCreateInfo {
-                initial_data,
-                ..Default::default()
-            },
-        )
-    }
+    let second_cache = PipelineCache::new(
+        device,
+        PipelineCacheCreateInfo {
+            initial_data,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     // As the `PipelineCache` of the Vulkan implementation saves an opaque blob of data, there is
