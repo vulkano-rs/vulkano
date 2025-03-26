@@ -246,8 +246,53 @@ impl PipelineCache {
     /// Merges other pipeline caches into this one.
     ///
     /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
+    ///
+    /// # Examples
+    ///
+    /// This example loads a pipeline cache from the disk and merges it with the current pipeline
+    /// cache.
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::device::Device;
+    /// use std::{fs::File, io::Read};
+    /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo};
+    /// # let device: Arc<Device> = return;
+    ///
+    /// // Imagine this is an existing cache that got modified at runtime.
+    /// let current_cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
+    ///
+    /// // Load a new pipeline cache from the disk
+    /// let new_data = {
+    ///     let file = File::open("pipeline_cache.bin");
+    ///     if let Ok(mut file) = file {
+    ///         let mut data = Vec::new();
+    ///         if let Ok(_) = file.read_to_end(&mut data) {
+    ///             data
+    ///         } else {
+    ///             Vec::new()
+    ///         }
+    ///     } else {
+    ///         Vec::new()
+    ///     }
+    /// };
+    ///
+    /// // This is unsafe because there is no way to be sure that the file contains valid data.
+    /// let new_cache = unsafe {
+    ///     PipelineCache::new(
+    ///         device.clone(),
+    ///         PipelineCacheCreateInfo {
+    ///             initial_data: new_data,
+    ///             ..Default::default()
+    ///         },
+    ///     )
+    /// }
+    /// .unwrap();
+    ///
+    /// // Now merge the new pipeline cache into the existing one
+    /// current_cache.merge([new_cache.as_ref()]).unwrap();
+    /// ```
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
-    // TODO: write example
     pub fn merge<'a>(
         &self,
         src_caches: impl IntoIterator<Item = &'a PipelineCache>,
