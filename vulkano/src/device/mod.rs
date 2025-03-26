@@ -167,6 +167,8 @@ pub struct Device {
     fence_pool: Mutex<Vec<vk::Fence>>,
     semaphore_pool: Mutex<Vec<vk::Semaphore>>,
     event_pool: Mutex<Vec<vk::Event>>,
+
+    borrowed: bool,
 }
 
 impl Device {
@@ -388,10 +390,37 @@ impl Device {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
     /// - `create_info` must match the info used to create the object.
+    /// - `handle` must not be freed, as it will be owned by the returned `Device`.
     pub unsafe fn from_handle(
         physical_device: Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: DeviceCreateInfo,
+    ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+        unsafe { Self::from_handle_inner(physical_device, handle, create_info, false) }
+    }
+
+    /// Creates a new `Device` from a raw object handle, without owning the handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - `handle` must not be freed while the returned `Device` object is still alive. This means
+    ///   all copies of the returned `Arc` must be dropped first. Note `DeviceOwned` objects all
+    ///   hold a reference to the device internally.
+    pub unsafe fn from_handle_borrowed(
+        physical_device: Arc<PhysicalDevice>,
+        handle: vk::Device,
+        create_info: DeviceCreateInfo,
+    ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+        unsafe { Self::from_handle_inner(physical_device, handle, create_info, true) }
+    }
+
+    unsafe fn from_handle_inner(
+        physical_device: Arc<PhysicalDevice>,
+        handle: vk::Device,
+        create_info: DeviceCreateInfo,
+        borrowed: bool,
     ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
         let DeviceCreateInfo {
             queue_create_infos,
@@ -462,6 +491,7 @@ impl Device {
             fence_pool: Mutex::new(Vec::new()),
             semaphore_pool: Mutex::new(Vec::new()),
             event_pool: Mutex::new(Vec::new()),
+            borrowed,
         });
 
         let queues_iter = {
@@ -1333,6 +1363,7 @@ impl Debug for Device {
             fence_pool: _,
             semaphore_pool: _,
             event_pool: _,
+            borrowed: _,
         } = self;
 
         f.debug_struct("Device")
@@ -1367,7 +1398,9 @@ impl Drop for Device {
             unsafe { (fns.v1_0.destroy_event)(self.handle, raw_event, ptr::null()) };
         }
 
-        unsafe { (fns.v1_0.destroy_device)(self.handle, ptr::null()) };
+        if !self.borrowed {
+            unsafe { (fns.v1_0.destroy_device)(self.handle, ptr::null()) };
+        }
     }
 }
 
