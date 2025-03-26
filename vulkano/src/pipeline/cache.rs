@@ -91,6 +91,27 @@ impl PipelineCache {
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
+    /// Builds a new pipeline cache, but ignores the initial data in the create info.
+    ///
+    /// # Safety
+    ///
+    /// - Because the data in `create_info.initial_data` is ignored, usage of this method is safe.
+    #[inline]
+    pub fn new_empty(
+        device: Arc<Device>,
+        create_info: PipelineCacheCreateInfo,
+    ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
+        unsafe {
+            Self::new(
+                device,
+                PipelineCacheCreateInfo {
+                    initial_data: Vec::new(),
+                    ..create_info
+                },
+            )
+        }
+    }
+
     fn validate_new(
         device: &Device,
         create_info: &PipelineCacheCreateInfo,
@@ -406,7 +427,7 @@ mod tests {
     #[test]
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let pipeline = unsafe { PipelineCache::new(device, Default::default()) }.unwrap();
+        let pipeline = PipelineCache::new_empty(device, Default::default()).unwrap();
         match pipeline.merge([pipeline.as_ref()]) {
             Err(_) => (),
             Ok(_) => panic!(),
@@ -417,7 +438,7 @@ mod tests {
     fn cache_returns_same_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
 
         let cs = {
             /*
@@ -464,7 +485,7 @@ mod tests {
     fn cache_returns_different_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
 
         let _first_pipeline = {
             let cs = {
@@ -559,7 +580,7 @@ mod tests {
     fn cache_data_does_not_change() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
 
         let cs = {
             /*

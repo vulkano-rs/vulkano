@@ -93,7 +93,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+    let pipeline_cache = PipelineCache::new_empty(device.clone(), Default::default()).unwrap();
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
