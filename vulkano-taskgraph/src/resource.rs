@@ -346,7 +346,7 @@ impl Resources {
             resources: Arc::downgrade(self),
             frame_count,
             current_frame: AtomicU64::new(0),
-            biased_complete_frame: AtomicU64::new(0),
+            biased_complete_frame: AtomicU64::new(u64::from(frame_count.get())),
             fences,
             garbage_queue: self.garbage_queue().register_local(),
             state: Mutex::new(()),
@@ -1186,8 +1186,9 @@ impl Flight {
     }
 
     /// Returns the latest complete frame stored at a bias of `frame_count + 1`. That means that if
-    /// this value reaches `n + frame_count + 1`, then frame `n` has been waited on. If the value
-    /// is `frame_count` and below, no frames have been waited on yet.
+    /// this value reaches `n + frame_count + 1` then frame `n` has been waited on. This starts out
+    /// at `frame_count` because there is nothing to wait for in the first ever `frame_count`
+    /// frames.
     fn biased_complete_frame(&self) -> u64 {
         self.biased_complete_frame.load(Ordering::Relaxed)
     }
@@ -1269,9 +1270,8 @@ impl Flight {
     pub(crate) fn is_oldest_frame_complete(&self) -> bool {
         let current_frame = self.current_frame();
         let biased_complete_frame = self.biased_complete_frame();
-        let frame_count = u64::from(self.frame_count());
 
-        current_frame + 1 - biased_complete_frame <= frame_count
+        biased_complete_frame > current_frame
     }
 
     pub(crate) fn is_frame_complete(&self, frame: u64) -> bool {
