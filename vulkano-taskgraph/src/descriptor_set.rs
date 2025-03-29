@@ -593,69 +593,81 @@ impl GlobalDescriptorSet {
         id
     }
 
-    pub unsafe fn remove_sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
-        let guard = self.resources.pin();
-
-        // SAFETY: We own an `epoch::Guard`.
-        let inner = self.samplers.remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    pub(crate) fn invalidate_sampler<'a>(
+        &'a self,
+        id: SamplerId,
+        guard: &'a epoch::Guard<'a>,
+    ) -> Option<&'a SamplerDescriptor> {
+        self.samplers.invalidate(id, guard)
     }
 
-    pub unsafe fn remove_sampled_image(
+    pub(crate) fn invalidate_sampled_image<'a>(
+        &'a self,
+        id: SampledImageId,
+        guard: &'a epoch::Guard<'a>,
+    ) -> Option<&'a SampledImageDescriptor> {
+        self.sampled_images.invalidate(id, guard)
+    }
+
+    pub(crate) fn invalidate_storage_image<'a>(
+        &'a self,
+        id: StorageImageId,
+        guard: &'a epoch::Guard<'a>,
+    ) -> Option<&'a StorageImageDescriptor> {
+        self.storage_images.invalidate(id, guard)
+    }
+
+    pub(crate) fn invalidate_storage_buffer<'a>(
+        &'a self,
+        id: StorageBufferId,
+        guard: &'a epoch::Guard<'a>,
+    ) -> Option<&'a StorageBufferDescriptor> {
+        self.storage_buffers.invalidate(id, guard)
+    }
+
+    pub(crate) fn invalidate_acceleration_structure<'a>(
+        &'a self,
+        id: AccelerationStructureId,
+        guard: &'a epoch::Guard<'a>,
+    ) -> Option<&'a AccelerationStructureDescriptor> {
+        self.acceleration_structures.invalidate(id, guard)
+    }
+
+    pub(crate) unsafe fn remove_sampler_unchecked(&self, id: SamplerId) -> SamplerDescriptor {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.samplers.remove_unchecked(id) }
+    }
+
+    pub(crate) unsafe fn remove_sampled_image_unchecked(
         &self,
         id: SampledImageId,
-    ) -> Option<Ref<'_, SampledImageDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .sampled_images
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    ) -> SampledImageDescriptor {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.sampled_images.remove_unchecked(id) }
     }
 
-    pub unsafe fn remove_storage_image(
+    pub(crate) unsafe fn remove_storage_image_unchecked(
         &self,
         id: StorageImageId,
-    ) -> Option<Ref<'_, StorageImageDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .storage_images
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    ) -> StorageImageDescriptor {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_images.remove_unchecked(id) }
     }
 
-    pub unsafe fn remove_storage_buffer(
+    pub(crate) unsafe fn remove_storage_buffer_unchecked(
         &self,
         id: StorageBufferId,
-    ) -> Option<Ref<'_, StorageBufferDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .storage_buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    ) -> StorageBufferDescriptor {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_buffers.remove_unchecked(id) }
     }
 
-    pub unsafe fn remove_acceleration_structure(
+    pub(crate) unsafe fn remove_acceleration_structure_unchecked(
         &self,
         id: AccelerationStructureId,
-    ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .acceleration_structures
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    ) -> AccelerationStructureDescriptor {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.acceleration_structures.remove_unchecked(id) }
     }
 
     #[inline]
@@ -717,14 +729,6 @@ impl GlobalDescriptorSet {
             .get(id, unsafe { epoch::unprotected() })?;
 
         Some(Ref { inner, guard })
-    }
-
-    pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {
-        self.samplers.try_collect(guard);
-        self.sampled_images.try_collect(guard);
-        self.storage_images.try_collect(guard);
-        self.storage_buffers.try_collect(guard);
-        self.acceleration_structures.try_collect(guard);
     }
 }
 

@@ -282,7 +282,6 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         let rcx = self.rcx.as_mut().unwrap();
-        let bcx = self.resources.bindless_context().unwrap();
 
         match event {
             WindowEvent::CloseRequested => {
@@ -309,14 +308,13 @@ impl ApplicationHandler for App {
                         })
                         .expect("failed to recreate swapchain");
 
-                    // FIXME(taskgraph): safe resource destruction
-                    flight
-                        .wait_for_frame(flight.current_frame() - 1, None)
-                        .unwrap();
+                    let mut batch = self.resources.create_deferred_batch();
 
                     for &id in &rcx.swapchain_storage_image_ids {
-                        unsafe { bcx.global_set().remove_storage_image(id) };
+                        batch.destroy_storage_image(id);
                     }
+
+                    batch.enqueue();
 
                     rcx.swapchain_storage_image_ids =
                         window_size_dependent_setup(&self.resources, rcx.swapchain_id);

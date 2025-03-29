@@ -33,6 +33,7 @@ use vulkano::{
     DeviceSize, ValidationError,
 };
 
+pub mod collector;
 pub mod command_buffer;
 pub mod descriptor_set;
 pub mod graph;
@@ -941,6 +942,35 @@ impl fmt::Debug for NonExhaustive<'_> {
 }
 
 const NE: NonExhaustive<'static> = NonExhaustive(PhantomData);
+
+macro_rules! assert_unsafe_precondition {
+    ($condition:expr, $message:expr $(,)?) => {
+        // The nesting is intentional. There is a special path in the compiler for `if false`
+        // facilitating conditional compilation without `#[cfg]` and the problems that come with it.
+        if cfg!(debug_assertions) {
+            if !$condition {
+                crate::panic_nounwind(concat!("unsafe precondition(s) validated: ", $message));
+            }
+        }
+    };
+}
+use assert_unsafe_precondition;
+
+/// Polyfill for `core::panicking::panic_nounwind`.
+#[cold]
+#[inline(never)]
+fn panic_nounwind(message: &'static str) -> ! {
+    struct UnwindGuard;
+
+    impl Drop for UnwindGuard {
+        fn drop(&mut self) {
+            panic!();
+        }
+    }
+
+    let _guard = UnwindGuard;
+    std::panic::panic_any(message);
+}
 
 #[cfg(test)]
 mod tests {
