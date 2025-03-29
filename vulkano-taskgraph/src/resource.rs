@@ -1,6 +1,7 @@
 //! Synchronization state tracking of all resources.
 
 use crate::{
+    collector::{self, Collector, DefaultCollector, DeferredBatch},
     descriptor_set::{BindlessContext, BindlessContextCreateInfo},
     Id, InvalidSlotError, Object, Ref,
 };
@@ -9,13 +10,13 @@ use concurrent_slotmap::{epoch, SlotMap};
 use parking_lot::{Mutex, RwLock};
 use smallvec::SmallVec;
 use std::{
-    any::Any,
     hash::Hash,
+    iter,
     num::NonZero,
     ops::{BitOr, BitOrAssign},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc,
+        Arc, Weak,
     },
     time::Duration,
 };
@@ -65,6 +66,9 @@ pub(crate) struct ResourceStorage {
     images: SlotMap<Id, ImageState>,
     swapchains: SlotMap<Id, SwapchainState>,
     flights: SlotMap<Id, Flight>,
+
+    collector: Arc<dyn Collector>,
+    garbage_queue: collector::GlobalQueue,
 }
 
 #[derive(Debug)]
@@ -115,18 +119,14 @@ pub(crate) struct SwapchainSemaphoreState {
 // FIXME: imported/exported fences
 #[derive(Debug)]
 pub struct Flight {
+    resources: Weak<Resources>,
     frame_count: NonZero<u32>,
     current_frame: AtomicU64,
+    biased_complete_frame: AtomicU64,
     fences: SmallVec<[RwLock<Fence>; 3]>,
-    pub(crate) state: Mutex<FlightState>,
+    garbage_queue: collector::LocalQueue,
+    pub(crate) state: Mutex<()>,
 }
-
-#[derive(Debug)]
-pub(crate) struct FlightState {
-    pub(crate) death_rows: SmallVec<[DeathRow; 3]>,
-}
-
-pub(crate) type DeathRow = Vec<Arc<dyn Any + Send + Sync>>;
 
 impl Resources {
     /// Creates a new `Resources` collection.
@@ -138,6 +138,16 @@ impl Resources {
         device: &Arc<Device>,
         create_info: &ResourcesCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
+        let &ResourcesCreateInfo {
+            max_buffers,
+            max_images,
+            max_swapchains,
+            max_flights,
+            bindless_context,
+            collector,
+            _ne: _,
+        } = create_info;
+
         let mut registered_devices = REGISTERED_DEVICES.lock();
         let device_addr = Arc::as_ptr(device) as usize;
 
@@ -166,14 +176,17 @@ impl Resources {
             command_buffer_allocator,
             descriptor_set_allocator,
             locals: ThreadLocal::new(),
-            buffers: SlotMap::with_global_and_key(create_info.max_buffers, global.clone()),
-            images: SlotMap::with_global_and_key(create_info.max_images, global.clone()),
-            swapchains: SlotMap::with_global_and_key(create_info.max_swapchains, global.clone()),
-            flights: SlotMap::with_global_and_key(create_info.max_flights, global.clone()),
+            buffers: SlotMap::with_global_and_key(max_buffers, global.clone()),
+            images: SlotMap::with_global_and_key(max_images, global.clone()),
+            swapchains: SlotMap::with_global_and_key(max_swapchains, global.clone()),
+            flights: SlotMap::with_global_and_key(max_flights, global.clone()),
+            collector: collector
+                .cloned()
+                .unwrap_or_else(|| Arc::new(DefaultCollector)),
+            garbage_queue: collector::GlobalQueue::new(global.clone()),
             global,
         });
-        let bindless_context = create_info
-            .bindless_context
+        let bindless_context = bindless_context
             .map(|bindless_info| BindlessContext::new(&storage, bindless_info))
             .transpose()?;
 
@@ -196,6 +209,21 @@ impl Resources {
 
     pub(crate) fn descriptor_set_allocator(&self) -> &Arc<StandardDescriptorSetAllocator> {
         &self.storage.descriptor_set_allocator
+    }
+
+    pub(crate) fn global(&self) -> &epoch::GlobalHandle {
+        &self.storage.global
+    }
+
+    /// Returns the garbage collector.
+    #[inline]
+    #[must_use]
+    pub fn collector(&self) -> &Arc<dyn Collector> {
+        &self.storage.collector
+    }
+
+    pub(crate) fn garbage_queue(&self) -> &collector::GlobalQueue {
+        &self.storage.garbage_queue
     }
 
     /// Returns the `BindlessContext`.
@@ -294,7 +322,7 @@ impl Resources {
     /// # Errors
     ///
     /// - Returns an error when [`Fence::new_unchecked`] returns an error.
-    pub fn create_flight(&self, frame_count: u32) -> Result<Id<Flight>, VulkanError> {
+    pub fn create_flight(self: &Arc<Self>, frame_count: u32) -> Result<Id<Flight>, VulkanError> {
         let frame_count =
             NonZero::new(frame_count).expect("a flight with zero frames is not valid");
 
@@ -315,12 +343,13 @@ impl Resources {
             .collect::<Result<_, VulkanError>>()?;
 
         let flight = Flight {
+            resources: Arc::downgrade(self),
             frame_count,
             current_frame: AtomicU64::new(0),
+            biased_complete_frame: AtomicU64::new(0),
             fences,
-            state: Mutex::new(FlightState {
-                death_rows: (0..frame_count.get()).map(|_| Vec::new()).collect(),
-            }),
+            garbage_queue: self.garbage_queue().register_local(),
+            state: Mutex::new(()),
         };
 
         let id = self
@@ -520,8 +549,6 @@ impl Resources {
     ///
     /// # Panics
     ///
-    /// - Panics if called from multiple threads at the same time.
-    /// - Panics if the flight is currently being executed.
     /// - Panics if `f` panics.
     /// - Panics if [`Swapchain::recreate`] panics.
     /// - Panics if `new_swapchain.image_count()` is not greater than or equal to the number of
@@ -540,17 +567,13 @@ impl Resources {
         let state = unsafe { self.storage.swapchain_unprotected(id) }.unwrap();
         let swapchain = state.swapchain();
         let flight_id = state.flight_id;
-        let flight = unsafe { self.storage.flight_unprotected_unchecked(flight_id) };
-        let mut flight_state = flight.state.try_lock().unwrap();
+        let flight = unsafe { self.storage.flight_unchecked_unprotected(flight_id) };
 
         let (new_swapchain, new_images) = swapchain.recreate(f(swapchain.create_info()))?;
 
         let frames_in_flight = flight.frame_count();
 
         assert!(new_swapchain.image_count() >= frames_in_flight);
-
-        let death_row = &mut flight_state.death_rows[flight.previous_frame_index() as usize];
-        death_row.push(swapchain.clone());
 
         let new_state = SwapchainState {
             swapchain: new_swapchain,
@@ -566,69 +589,71 @@ impl Resources {
             .swapchains
             .insert_with_tag(new_state, Swapchain::TAG, guard);
 
-        let _ = unsafe { self.remove_swapchain(id) };
+        let mut batch = self.create_deferred_batch();
+        batch.destroy_swapchain(id);
+
+        // SAFETY: Swapchains are owned by a flight in order to facilitates this. No other flight
+        // can be using the swapchain.
+        unsafe { batch.enqueue_with_flights(iter::once(flight_id)) };
 
         Ok(unsafe { new_id.parametrize() })
     }
 
-    /// Removes the buffer corresponding to `id`.
-    ///
-    /// # Safety
-    ///
-    /// - Unless the buffer is being kept alive by other means, it must not be in use in any
-    ///   pending command buffer, and if it is used in any command buffer that's in the executable
-    ///   or recording state, that command buffer must never be executed.
-    pub unsafe fn remove_buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
-        let guard = self.storage.pin();
-
-        let inner = self
+    pub(crate) fn invalidate_buffer<'a>(
+        &'a self,
+        id: Id<Buffer>,
+        guard: &'a epoch::Guard<'_>,
+    ) -> Result<&'a BufferState> {
+        let state = self
             .storage
             .buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .invalidate(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(state)
     }
 
-    /// Removes the image corresponding to `id`.
-    ///
-    /// # Safety
-    ///
-    /// - Unless the image is being kept alive by other means, it must not be in use in any pending
-    ///   command buffer, and if it is used in any command buffer that's in the executable or
-    ///   recording state, that command buffer must never be executed.
-    pub unsafe fn remove_image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
-        let guard = self.storage.pin();
-
-        let inner = self
+    pub(crate) fn invalidate_image<'a>(
+        &'a self,
+        id: Id<Image>,
+        guard: &'a epoch::Guard<'_>,
+    ) -> Result<&'a ImageState> {
+        let state = self
             .storage
             .images
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .invalidate(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(state)
     }
 
-    /// Removes the swapchain corresponding to `id`.
-    ///
-    /// # Safety
-    ///
-    /// - Unless the swapchain is being kept alive by other means, it must not be in use in any
-    ///   pending command buffer, and if it is used in any command buffer that's in the executable
-    ///   or recording state, that command buffer must never be executed.
-    pub unsafe fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
-        let guard = self.storage.pin();
-
-        let inner = self
+    pub(crate) fn invalidate_swapchain<'a>(
+        &'a self,
+        id: Id<Swapchain>,
+        guard: &'a epoch::Guard<'_>,
+    ) -> Result<&'a SwapchainState> {
+        let state = self
             .storage
             .swapchains
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id.erase(), unsafe { epoch::unprotected() })
+            .invalidate(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(state)
+    }
+
+    pub(crate) unsafe fn remove_buffer_unchecked(&self, id: Id<Buffer>) -> BufferState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage.buffers.remove_unchecked(id.erase()) }
+    }
+
+    pub(crate) unsafe fn remove_image_unchecked(&self, id: Id<Image>) -> ImageState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage.images.remove_unchecked(id.erase()) }
+    }
+
+    pub(crate) unsafe fn remove_swapchain_unchecked(&self, id: Id<Swapchain>) -> SwapchainState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage.swapchains.remove_unchecked(id.erase()) }
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -696,16 +721,28 @@ impl Resources {
         unsafe { self.storage.flight_unprotected(id) }
     }
 
-    pub(crate) fn pin(&self) -> epoch::Guard<'_> {
-        self.storage.pin()
+    pub(crate) unsafe fn flight_unchecked_unprotected(&self, id: Id<Flight>) -> &Flight {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage.flight_unchecked_unprotected(id) }
     }
 
-    pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {
-        self.storage.try_collect(guard);
+    pub(crate) unsafe fn flights_unprotected(&self) -> impl Iterator<Item = (Id<Flight>, &Flight)> {
+        self.storage
+            .flights
+            // SAFETY: Enforced by the caller.
+            .iter(unsafe { epoch::unprotected() })
+            .map(|(k, v)| (unsafe { k.parametrize() }, v))
+    }
 
-        if let Some(bindless_context) = &self.bindless_context {
-            bindless_context.global_set().try_collect(guard);
-        }
+    /// Creates a new deferred function batch.
+    ///
+    /// You should batch as many deferred functions together as you can for optimal performance.
+    pub fn create_deferred_batch(&self) -> DeferredBatch<'_> {
+        DeferredBatch::new(self)
+    }
+
+    pub(crate) fn pin(&self) -> epoch::Guard<'_> {
+        self.storage.pin()
     }
 }
 
@@ -846,19 +883,12 @@ impl ResourceStorage {
             .ok_or(InvalidSlotError::new(id))
     }
 
-    pub(crate) unsafe fn flight_unprotected_unchecked(&self, id: Id<Flight>) -> &Flight {
+    pub(crate) unsafe fn flight_unchecked_unprotected(&self, id: Id<Flight>) -> &Flight {
         // SAFETY: Enforced by the caller.
         let unprotected = unsafe { epoch::unprotected() };
 
         // SAFETY: Enforced by the caller.
         unsafe { self.flights.get_unchecked(id.erase(), unprotected) }
-    }
-
-    pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {
-        self.buffers.try_collect(guard);
-        self.images.try_collect(guard);
-        self.swapchains.try_collect(guard);
-        self.flights.try_collect(guard);
     }
 }
 
@@ -1145,12 +1175,21 @@ impl Flight {
         self.frame_count.get()
     }
 
-    /// Returns the current frame counter value. This always starts out at 0 and is monotonically
-    /// increasing with each passing [frame].
+    /// Returns the current frame counter value. This always starts out at `0` and increases by `1`
+    /// after every successful [task graph execution].
+    ///
+    /// [task graph execution]: crate::graph::ExecutableTaskGraph::execute
     #[inline]
     #[must_use]
     pub fn current_frame(&self) -> u64 {
         self.current_frame.load(Ordering::Relaxed)
+    }
+
+    /// Returns the latest complete frame stored at a bias of `frame_count + 1`. That means that if
+    /// this value reaches `n + frame_count + 1`, then frame `n` has been waited on. If the value
+    /// is `frame_count` and below, no frames have been waited on yet.
+    fn biased_complete_frame(&self) -> u64 {
+        self.biased_complete_frame.load(Ordering::Relaxed)
     }
 
     /// Returns the index of the current [frame] in [flight].
@@ -1168,12 +1207,14 @@ impl Flight {
         &self.fences[self.current_frame_index() as usize]
     }
 
+    pub(crate) fn garbage_queue(&self) -> &collector::LocalQueue {
+        &self.garbage_queue
+    }
+
     /// Waits for the oldest [frame] in [flight] to finish.
     #[inline]
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        self.fences[self.current_frame_index() as usize]
-            .read()
-            .wait(timeout)
+        self.wait_for_biased_frame(self.current_frame() + 1, timeout)
     }
 
     /// Waits for the given [frame] to finish. `frame` must have been previously obtained using
@@ -1186,44 +1227,63 @@ impl Flight {
     /// [`current_frame`]: Self::current_frame
     #[inline]
     pub fn wait_for_frame(&self, frame: u64, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        let current_frame = self.current_frame();
+        assert!(frame <= self.current_frame());
 
-        assert!(frame <= current_frame);
+        let biased_frame = frame + u64::from(self.frame_count()) + 1;
 
-        if current_frame - frame > u64::from(self.frame_count()) {
+        self.wait_for_biased_frame(biased_frame, timeout)
+    }
+
+    fn wait_for_biased_frame(
+        &self,
+        biased_frame: u64,
+        timeout: Option<Duration>,
+    ) -> Result<(), VulkanError> {
+        if self.is_biased_frame_complete(biased_frame) {
             return Ok(());
         }
 
-        self.fences[(frame % NonZero::<u64>::from(self.frame_count)) as usize]
+        // The `frame_count` bias cancels out under the modulus, however the `1` bias doesn't, so we
+        // subtract it to get the same index as would be computed using the unbiased `frame`.
+        self.fences[((biased_frame - 1) % NonZero::<u64>::from(self.frame_count)) as usize]
             .read()
-            .wait(timeout)
+            .wait(timeout)?;
+
+        let res = self.biased_complete_frame.fetch_update(
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+            |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
+        );
+
+        if res.is_ok() {
+            let resources = self.resources.upgrade().unwrap();
+            let guard = &resources.pin();
+
+            unsafe { self.garbage_queue.collect(&resources, self, guard) };
+            unsafe { resources.garbage_queue().collect(&resources, guard) };
+        }
+
+        Ok(())
     }
 
-    /// Queues the destruction of the given `object` after the destruction of the command buffer(s)
-    /// for the previous [frame] in [flight].
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called from multiple threads at the same time.
-    /// - Panics if the flight is currently being executed.
-    #[inline]
-    pub fn destroy_object(&self, object: Arc<impl Any + Send + Sync>) {
-        let mut state = self.state.try_lock().unwrap();
-        state.death_rows[self.previous_frame_index() as usize].push(object);
+    pub(crate) fn is_oldest_frame_complete(&self) -> bool {
+        let current_frame = self.current_frame();
+        let biased_complete_frame = self.biased_complete_frame();
+        let frame_count = u64::from(self.frame_count());
+
+        current_frame + 1 - biased_complete_frame <= frame_count
     }
 
-    /// Queues the destruction of the given `objects` after the destruction of the command
-    /// buffer(s) for the previous [frame] in [flight].
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called from multiple threads at the same time.
-    /// - Panics if the flight is currently being executed.
-    #[inline]
-    pub fn destroy_objects(&self, objects: impl IntoIterator<Item = Arc<impl Any + Send + Sync>>) {
-        let mut state = self.state.try_lock().unwrap();
-        state.death_rows[self.previous_frame_index() as usize]
-            .extend(objects.into_iter().map(|object| object as _));
+    pub(crate) fn is_frame_complete(&self, frame: u64) -> bool {
+        debug_assert!(frame <= self.current_frame());
+
+        let biased_frame = frame + u64::from(self.frame_count()) + 1;
+
+        self.is_biased_frame_complete(biased_frame)
+    }
+
+    fn is_biased_frame_complete(&self, biased_frame: u64) -> bool {
+        self.biased_complete_frame() >= biased_frame
     }
 
     pub(crate) unsafe fn next_frame(&self) {
@@ -1263,6 +1323,13 @@ pub struct ResourcesCreateInfo<'a> {
     /// The default value is `None`.
     pub bindless_context: Option<&'a BindlessContextCreateInfo<'a>>,
 
+    /// The garbage collector that should be used.
+    ///
+    /// If you leave the default, the [`DefaultCollector`] will be used.
+    ///
+    /// The default value is `None`.
+    pub collector: Option<&'a Arc<dyn Collector>>,
+
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -1283,6 +1350,7 @@ impl ResourcesCreateInfo<'_> {
             max_swapchains: 1 << 8,
             max_flights: 1 << 8,
             bindless_context: None,
+            collector: None,
             _ne: crate::NE,
         }
     }

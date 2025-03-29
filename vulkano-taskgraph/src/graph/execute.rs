@@ -3,11 +3,10 @@ use super::{
     RenderPassIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
+    collector::Deferred,
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
-    resource::{
-        BufferAccess, BufferState, DeathRow, ImageAccess, ImageState, Resources, SwapchainState,
-    },
+    resource::{BufferAccess, BufferState, ImageAccess, ImageState, Resources, SwapchainState},
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
@@ -15,7 +14,7 @@ use concurrent_slotmap::epoch;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
-    fmt, mem,
+    fmt, iter, mem,
     ops::Range,
     ptr,
     sync::{atomic::Ordering, Arc},
@@ -77,18 +76,17 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 .physical_resources
                 .flight_unprotected(flight_id)
         }
-        .expect("invalid flight");
+        .expect("invalid flight ID");
 
-        let mut flight_state = flight.state.try_lock().unwrap_or_else(|| {
+        let _flight_state = flight.state.try_lock().unwrap_or_else(|| {
             panic!(
                 "another thread is already executing a task graph using the flight {flight_id:?}",
             );
         });
 
-        // TODO: This call is quite expensive.
         assert!(
-            flight.current_fence().read().is_signaled()?,
-            "you must wait on the fence for the current frame before submitting more work",
+            flight.is_oldest_frame_complete(),
+            "you must wait on the oldest frame in flight to finish before submitting more work",
         );
 
         for &swapchain_id in &self.swapchains {
@@ -104,12 +102,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         }
 
         let current_frame_index = flight.current_frame_index();
-        let death_row = &mut flight_state.death_rows[current_frame_index as usize];
-
-        for object in death_row.drain(..) {
-            // FIXME:
-            drop(object);
-        }
+        let mut deferred_batch = resource_map.resources().create_deferred_batch();
+        let deferreds = deferred_batch.deferreds_mut();
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.acquire_images_khr(&resource_map, current_frame_index) }?;
@@ -143,7 +137,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             execute_instructions(
                 self,
                 &resource_map,
-                death_row,
+                deferreds,
                 current_frame_index,
                 state_guard.current_fence,
                 &mut state_guard.submission_count,
@@ -154,7 +148,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         mem::forget(state_guard);
 
         for semaphore in self.semaphores.borrow().iter() {
-            death_row.push(semaphore.clone());
+            deferred_batch.destroy_object(semaphore.clone());
         }
 
         unsafe { flight.next_frame() };
@@ -167,11 +161,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
 
-        if resource_map.guard.try_advance_global() {
-            resource_map
-                .physical_resources
-                .try_collect(&resource_map.guard);
-        }
+        // SAFETY: We only defer the destruction of objects that are frame-local.
+        unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
+
+        resource_map.guard.try_advance_global();
 
         res
     }
@@ -331,7 +324,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn execute_instructions2(
         &self,
         resource_map: &ResourceMap<'_>,
-        death_row: &mut DeathRow,
+        deferreds: &mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &Fence,
         submission_count: &mut usize,
@@ -340,7 +333,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut state = ExecuteState2::new(
             self,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -434,7 +427,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn execute_instructions(
         &self,
         resource_map: &ResourceMap<'_>,
-        death_row: &mut DeathRow,
+        deferreds: &mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &Fence,
         submission_count: &mut usize,
@@ -443,7 +436,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut state = ExecuteState::new(
             self,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -805,7 +798,7 @@ unsafe fn create_framebuffers(
 struct ExecuteState2<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
-    death_row: &'a mut DeathRow,
+    deferreds: &'a mut Vec<Deferred>,
     current_frame_index: u32,
     current_fence: &'a Fence,
     submission_count: &'a mut usize,
@@ -838,7 +831,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
     fn new(
         executable: &'a ExecutableTaskGraph<W>,
         resource_map: &'a ResourceMap<'a>,
-        death_row: &'a mut DeathRow,
+        deferreds: &'a mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &'a Fence,
         submission_count: &'a mut usize,
@@ -858,7 +851,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         Ok(ExecuteState2 {
             executable,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -1051,7 +1044,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 current_command_buffer!(self),
                 &mut self.command_buffer_state,
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
             )
         };
         let mut context = TaskContext {
@@ -1070,7 +1063,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 self.current_per_submit.command_buffer_infos_vk.push(
                     vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()),
                 );
-                self.death_row.push(command_buffer);
+                self.deferreds.push(Deferred::destroy(command_buffer));
             }
         }
 
@@ -1166,7 +1159,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 0,
             )
@@ -1201,7 +1194,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             )
         };
 
-        self.death_row.push(framebuffer.clone());
+        self.deferreds.push(Deferred::destroy(framebuffer.clone()));
 
         Ok(())
     }
@@ -1216,7 +1209,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 self.current_subpass_index,
             )
@@ -1391,7 +1384,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         self.current_per_submit
             .command_buffer_infos_vk
             .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
-        self.death_row.push(Arc::new(command_buffer));
+        self.deferreds.push(Deferred::destroy(command_buffer));
         self.command_buffer_state.reset();
 
         Ok(())
@@ -1401,7 +1394,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 struct ExecuteState<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
-    death_row: &'a mut DeathRow,
+    deferreds: &'a mut Vec<Deferred>,
     current_frame_index: u32,
     current_fence: &'a Fence,
     submission_count: &'a mut usize,
@@ -1437,7 +1430,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
     fn new(
         executable: &'a ExecutableTaskGraph<W>,
         resource_map: &'a ResourceMap<'a>,
-        death_row: &'a mut DeathRow,
+        deferreds: &'a mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &'a Fence,
         submission_count: &'a mut usize,
@@ -1450,7 +1443,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         Ok(ExecuteState {
             executable,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -1650,7 +1643,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 current_command_buffer!(self),
                 &mut self.command_buffer_state,
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
             )
         };
         let mut context = TaskContext {
@@ -1669,7 +1662,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 self.current_per_submit
                     .command_buffers_vk
                     .push(command_buffer.handle());
-                self.death_row.push(command_buffer);
+                self.deferreds.push(Deferred::destroy(command_buffer));
             }
         }
 
@@ -1768,7 +1761,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 0,
             )
@@ -1803,7 +1796,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             )
         };
 
-        self.death_row.push(framebuffer.clone());
+        self.deferreds.push(Deferred::destroy(framebuffer.clone()));
 
         Ok(())
     }
@@ -1818,7 +1811,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 self.current_subpass_index,
             )
@@ -2005,7 +1998,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         self.current_per_submit
             .command_buffers_vk
             .push(command_buffer.handle());
-        self.death_row.push(Arc::new(command_buffer));
+        self.deferreds.push(Deferred::destroy(command_buffer));
         self.command_buffer_state.reset();
 
         Ok(())

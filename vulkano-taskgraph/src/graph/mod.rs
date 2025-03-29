@@ -466,11 +466,11 @@ impl Resources {
 
     fn add_host_buffer_access(&mut self, mut id: Id<Buffer>, access_type: HostAccessType) {
         if id.is_virtual() {
-            self.get(id.erase()).expect("invalid buffer");
+            self.get(id.erase()).expect("invalid buffer ID");
         } else if let Some(&virtual_id) = self.physical_map.get(&id.erase()) {
             id = unsafe { virtual_id.parametrize() };
         } else {
-            id = self.add_physical_buffer(id).expect("invalid buffer");
+            id = self.add_physical_buffer(id).expect("invalid buffer ID");
         }
 
         let host_accesses = match access_type {
@@ -648,7 +648,9 @@ impl ResourceAccesses {
         resources: &mut Resources,
         id: Id<Buffer>,
     ) -> (Id<Buffer>, Option<&mut ResourceAccess>) {
-        let (id, access) = self.get_mut(resources, id.erase()).expect("invalid buffer");
+        let (id, access) = self
+            .get_mut(resources, id.erase())
+            .expect("invalid buffer ID");
 
         (unsafe { id.parametrize() }, access)
     }
@@ -658,7 +660,9 @@ impl ResourceAccesses {
         resources: &mut Resources,
         id: Id<Image>,
     ) -> (Id<Image>, Option<&mut ResourceAccess>) {
-        let (id, access) = self.get_mut(resources, id.erase()).expect("invalid image");
+        let (id, access) = self
+            .get_mut(resources, id.erase())
+            .expect("invalid image ID");
 
         (unsafe { id.parametrize() }, access)
     }

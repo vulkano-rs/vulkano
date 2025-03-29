@@ -360,7 +360,6 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         let rcx = self.rcx.as_mut().unwrap();
-        let bcx = self.resources.bindless_context().unwrap();
 
         match event {
             WindowEvent::CloseRequested => {
@@ -389,22 +388,15 @@ impl ApplicationHandler for App {
 
                     rcx.viewport.extent = window_size.into();
 
-                    // FIXME(taskgraph): safe resource destruction
-                    flight
-                        .wait_for_frame(flight.current_frame() - 1, None)
-                        .unwrap();
-
-                    unsafe { self.resources.remove_image(rcx.bloom_image_id) }.unwrap();
-
-                    unsafe {
-                        bcx.global_set()
-                            .remove_sampled_image(rcx.bloom_sampled_image_id)
-                    }
-                    .unwrap();
+                    let mut batch = self.resources.create_deferred_batch();
+                    batch.destroy_image(rcx.bloom_image_id);
+                    batch.destroy_sampled_image(rcx.bloom_sampled_image_id);
 
                     for &id in &rcx.bloom_storage_image_ids {
-                        let _ = unsafe { bcx.global_set().remove_storage_image(id) };
+                        batch.destroy_storage_image(id);
                     }
+
+                    batch.enqueue();
 
                     (
                         rcx.bloom_image_id,
