@@ -739,6 +739,30 @@ impl Resources {
         DeferredBatch::new(self)
     }
 
+    /// Waits for all frames of all flights to finish.
+    ///
+    /// This is a safe alternative to [`Device::wait_idle`], but unlike that method, this method
+    /// additionally collects outstanding garbage.
+    pub fn wait_idle(&self) -> Result<(), VulkanError> {
+        let guard = &self.pin();
+        let mut collect = false;
+
+        for (_, flight) in self.storage.flights.iter(guard) {
+            let biased_frame = flight.current_frame() + u64::from(flight.frame_count()) + 1;
+
+            if flight.wait_for_biased_frame_inner(biased_frame, None)? {
+                unsafe { flight.garbage_queue().collect(self, flight, guard) };
+                collect = true;
+            }
+        }
+
+        if collect {
+            unsafe { self.garbage_queue().collect(self, guard) };
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn pin(&self) -> epoch::Guard<'_> {
         self.storage.pin()
     }
