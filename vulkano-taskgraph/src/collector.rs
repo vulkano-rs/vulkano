@@ -999,33 +999,44 @@ impl Queue {
     }
 
     unsafe fn drop(&self, resources: &Resources) {
+        // SAFETY: `self.head` is always valid.
         let head_node = unsafe { self.nodes().get_unchecked(self.head) };
+
         let mut curr_index = head_node.next.load(Relaxed);
 
         while curr_index != NIL {
+            // SAFETY: We always push indices of existing nodes into the queue and the nodes vector
+            // never shrinks, so the index must have staid in bounds.
             let curr_node = unsafe { self.nodes().get_unchecked(curr_index) };
 
             let next_index = curr_node.next.load(Relaxed);
 
-            if !is_deleted(next_index) {
-                // SAFETY: The node is not marked as deleted yet and the queue is being dropped,
-                // which means that no other thread can be collecting this same node. The caller
-                // must ensure that we have exclusive access to the queue and that it is not used
-                // again.
-                let deferreds = unsafe { &mut *curr_node.deferreds.get() };
-
-                let mut ccx = CollectorContext {
-                    resources,
-                    frames: &curr_node.frames,
-                };
-
-                // SAFETY: The caller must ensure that `resources` is the correct collection for the
-                // `deferreds`. `ccx.frames()` are the frames for which the deferred functions
-                // should wait. The caller must ensure that those frames have been waited on.
-                unsafe { resources.collector().collect(deferreds, &mut ccx) };
+            // The caller must ensure that we have exclusive access to the queue, so we can simply
+            // skip over deleted nodes without unlinking them.
+            if is_deleted(next_index) {
+                curr_index = next_index & !DELETED_BIT;
+                continue;
             }
 
-            curr_index = next_index & !DELETED_BIT;
+            // The caller must ensure that we have exclusive access to the queue, so we don't need
+            // to use `compare_exchange` or stronger orderings here.
+            curr_node.next.store(next_index | DELETED_BIT, Relaxed);
+
+            // SAFETY: We marked the node as deleted such that the following `Collector::collect`
+            // call cannot reentrantly collect this same node.
+            let deferreds = unsafe { &mut *curr_node.deferreds.get() };
+
+            let mut ccx = CollectorContext {
+                resources,
+                frames: &curr_node.frames,
+            };
+
+            // SAFETY: The caller must ensure that `resources` is the correct collection for the
+            // `deferreds`. `ccx.frames()` are the frames for which the deferred functions should
+            // wait. The caller must ensure that those frames have been waited on.
+            unsafe { resources.collector().collect(deferreds, &mut ccx) };
+
+            curr_index = next_index;
         }
     }
 }
