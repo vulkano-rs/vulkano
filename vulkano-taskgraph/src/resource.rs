@@ -44,7 +44,6 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 /// There can only exist one `Resources` collection per device, because there must only be one
 /// source of truth in regards to the synchronization state of a resource. In a similar vein, each
 /// resource in the collection must be unique.
-// FIXME: Custom collector
 #[derive(Debug)]
 pub struct Resources {
     // DO NOT change the order of these fields! `ResourceStorage` must be dropped first because
@@ -119,6 +118,7 @@ pub(crate) struct SwapchainSemaphoreState {
 // FIXME: imported/exported fences
 #[derive(Debug)]
 pub struct Flight {
+    // HACK: `Flight::wait` needs this in order to collect garbage.
     resources: Weak<Resources>,
     frame_count: NonZero<u32>,
     current_frame: AtomicU64,
@@ -1213,6 +1213,9 @@ impl Flight {
     }
 
     /// Waits for the oldest [frame] in [flight] to finish.
+    ///
+    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the current frame
+    /// index, but unlike that method, this method additionally collects outstanding garbage.
     #[inline]
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         self.wait_for_biased_frame(self.current_frame() + 1, timeout)
@@ -1220,6 +1223,10 @@ impl Flight {
 
     /// Waits for the given [frame] to finish. `frame` must have been previously obtained using
     /// [`current_frame`] on `self`.
+    ///
+    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the frame index `frame
+    /// % frame_count`, but unlike that method, this method additionally collects outstanding
+    /// garbage.
     ///
     /// # Panics
     ///

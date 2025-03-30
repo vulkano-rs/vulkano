@@ -139,7 +139,7 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: We invalidated the resource above, and by our own invariant, the deferred
             // function must have been called after the global epoch was advanced at least 2 steps
-            // and all flights that use the resource have passed.
+            // and all flights that use the descriptor have passed.
             unsafe { bcx.global_set().remove_sampler_unchecked(id) };
         })
     }
@@ -166,7 +166,7 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: We invalidated the resource above, and by our own invariant, the deferred
             // function must have been called after the global epoch was advanced at least 2 steps
-            // and all flights that use the resource have passed.
+            // and all flights that use the descriptor have passed.
             unsafe { bcx.global_set().remove_sampled_image_unchecked(id) };
         })
     }
@@ -193,7 +193,7 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: We invalidated the resource above, and by our own invariant, the deferred
             // function must have been called after the global epoch was advanced at least 2 steps
-            // and all flights that use the resource have passed.
+            // and all flights that use the descriptor have passed.
             unsafe { bcx.global_set().remove_storage_image_unchecked(id) };
         })
     }
@@ -220,7 +220,7 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: We invalidated the resource above, and by our own invariant, the deferred
             // function must have been called after the global epoch was advanced at least 2 steps
-            // and all flights that use the resource have passed.
+            // and all flights that use the descriptor have passed.
             unsafe { bcx.global_set().remove_storage_buffer_unchecked(id) };
         })
     }
@@ -247,7 +247,7 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: We invalidated the resource above, and by our own invariant, the deferred
             // function must have been called after the global epoch was advanced at least 2 steps
-            // and all flights that use the resource have passed.
+            // and all flights that use the descriptor have passed.
             unsafe { bcx.global_set().remove_acceleration_structure_unchecked(id) };
         })
     }
@@ -408,7 +408,7 @@ impl<'a> DeferredBatch<'a> {
             // * We own an `epoch::Guard`.
             // * The caller must ensure that `frames` contained valid flight IDs when extending the
             //   node's `frames` above. Since we have owned an `epoch::Guard` from then until now,
-            //   the flight cannot have been deallocated yet even if it were to be removed between
+            //   the flight cannot have been reallocated yet even if it were to be removed between
             //   then and now.
             let flight = unsafe { self.resources.flight_unchecked_unprotected(flight_id) };
 
@@ -419,6 +419,8 @@ impl<'a> DeferredBatch<'a> {
             //   allocated by us.
             // * The caller must ensure that the node's data is not accessed mutably again.
             // * The caller must ensure that this method is not called again.
+            // * The caller must ensure that `frames` constitutes the correct set of frames for our
+            //   deferred functions.
             unsafe { garbage_queue.push(self.node_index, &self.guard) };
         } else {
             let garbage_queue = self.resources.garbage_queue();
