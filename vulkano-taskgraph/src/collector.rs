@@ -690,6 +690,11 @@ impl GlobalQueue {
         // * The caller must ensure that `guard.global()` is that of `resources.global()`.
         unsafe { self.inner.collect(predicate, resources, guard) };
     }
+
+    pub(crate) unsafe fn drop(&self, resources: &Resources) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.inner.drop(resources) };
+    }
 }
 
 impl fmt::Debug for GlobalQueue {
@@ -738,6 +743,11 @@ impl LocalQueue {
         //   functions were issued.
         // * The caller must ensure that `guard.global()` is that of `resources.global()`.
         unsafe { self.inner.collect(predicate, resources, guard) };
+    }
+
+    pub(crate) unsafe fn drop(&self, resources: &Resources) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.inner.drop(resources) };
     }
 }
 
@@ -985,6 +995,37 @@ impl Queue {
                     curr_index = prev_node.next.load(Acquire);
                 }
             }
+        }
+    }
+
+    unsafe fn drop(&self, resources: &Resources) {
+        let head_node = unsafe { self.nodes().get_unchecked(self.head) };
+        let mut curr_index = head_node.next.load(Relaxed);
+
+        while curr_index != NIL {
+            let curr_node = unsafe { self.nodes().get_unchecked(curr_index) };
+
+            let next_index = curr_node.next.load(Relaxed);
+
+            if !is_deleted(next_index) {
+                // SAFETY: The node is not marked as deleted yet and the queue is being dropped,
+                // which means that no other thread can be collecting this same node. The caller
+                // must ensure that we have exclusive access to the queue and that it is not used
+                // again.
+                let deferreds = unsafe { &mut *curr_node.deferreds.get() };
+
+                let mut ccx = CollectorContext {
+                    resources,
+                    frames: &curr_node.frames,
+                };
+
+                // SAFETY: The caller must ensure that `resources` is the correct collection for the
+                // `deferreds`. `ccx.frames()` are the frames for which the deferred functions
+                // should wait. The caller must ensure that those frames have been waited on.
+                unsafe { resources.collector().collect(deferreds, &mut ccx) };
+            }
+
+            curr_index = next_index & !DELETED_BIT;
         }
     }
 }
@@ -1387,14 +1428,10 @@ mod tests {
         let mut count = 0;
         let mut deleted_count = 0;
 
-        loop {
-            if curr_index == NIL {
-                break;
-            }
+        while curr_index != NIL {
+            let curr_node = unsafe { queue.nodes().get_unchecked(curr_index) };
 
-            let node = unsafe { queue.nodes().get_unchecked(curr_index) };
-
-            let next_index = node.next.load(Relaxed);
+            let next_index = curr_node.next.load(Relaxed);
 
             if is_deleted(next_index) {
                 deleted_count += 1;

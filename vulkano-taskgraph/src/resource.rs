@@ -46,8 +46,6 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 /// resource in the collection must be unique.
 #[derive(Debug)]
 pub struct Resources {
-    // DO NOT change the order of these fields! `ResourceStorage` must be dropped first because
-    // that guarantees that all flights are waited on before the descriptor set is destroyed.
     storage: Arc<ResourceStorage>,
     bindless_context: Option<BindlessContext>,
 }
@@ -898,11 +896,13 @@ unsafe impl DeviceOwned for ResourceStorage {
     }
 }
 
-impl Drop for ResourceStorage {
+impl Drop for Resources {
     fn drop(&mut self) {
-        for (flight_id, flight) in &mut self.flights {
-            let prev_frame_index = flight.previous_frame_index();
-            let fence = flight.fences[prev_frame_index as usize].get_mut();
+        for (flight_id, flight) in self.storage.flights.iter(&self.pin()) {
+            let current_frame = flight.current_frame();
+            let frame_count = NonZero::<u64>::from(flight.frame_count);
+            let prev_frame_index = current_frame.wrapping_sub(1) % frame_count;
+            let fence = flight.fences[prev_frame_index as usize].read();
 
             if let Err(err) = fence.wait(None) {
                 if err == VulkanError::DeviceLost {
@@ -915,10 +915,11 @@ impl Drop for ResourceStorage {
                 );
                 std::process::abort();
             }
+
+            unsafe { flight.garbage_queue.drop(self) };
         }
 
-        // FIXME:
-        let _ = unsafe { self.device().wait_idle() };
+        unsafe { self.storage.garbage_queue.drop(self) };
 
         let mut registered_devices = REGISTERED_DEVICES.lock();
 
@@ -1200,10 +1201,6 @@ impl Flight {
         (self.current_frame() % NonZero::<u64>::from(self.frame_count)) as u32
     }
 
-    fn previous_frame_index(&self) -> u32 {
-        (self.current_frame().wrapping_sub(1) % NonZero::<u64>::from(self.frame_count)) as u32
-    }
-
     pub(crate) fn current_fence(&self) -> &RwLock<Fence> {
         &self.fences[self.current_frame_index() as usize]
     }
@@ -1247,8 +1244,24 @@ impl Flight {
         biased_frame: u64,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
+        if self.wait_for_biased_frame_inner(biased_frame, timeout)? {
+            let resources = self.resources.upgrade().unwrap();
+            let guard = &resources.pin();
+
+            unsafe { self.garbage_queue.collect(&resources, self, guard) };
+            unsafe { resources.garbage_queue().collect(&resources, guard) };
+        }
+
+        Ok(())
+    }
+
+    fn wait_for_biased_frame_inner(
+        &self,
+        biased_frame: u64,
+        timeout: Option<Duration>,
+    ) -> Result<bool, VulkanError> {
         if self.is_biased_frame_complete(biased_frame) {
-            return Ok(());
+            return Ok(false);
         }
 
         // The `frame_count` bias cancels out under the modulus, however the `1` bias doesn't, so we
@@ -1263,15 +1276,7 @@ impl Flight {
             |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
         );
 
-        if res.is_ok() {
-            let resources = self.resources.upgrade().unwrap();
-            let guard = &resources.pin();
-
-            unsafe { self.garbage_queue.collect(&resources, self, guard) };
-            unsafe { resources.garbage_queue().collect(&resources, guard) };
-        }
-
-        Ok(())
+        Ok(res.is_ok())
     }
 
     pub(crate) fn is_oldest_frame_complete(&self) -> bool {

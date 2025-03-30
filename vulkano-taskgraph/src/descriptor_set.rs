@@ -264,8 +264,6 @@ impl BindlessContextCreateInfo<'_> {
 
 #[derive(Debug)]
 pub struct GlobalDescriptorSet {
-    // DO NOT change the order of these fields! `ResourceStorage` must be dropped first because
-    // that guarantees that all flights are waited on before the descriptor set is destroyed.
     resources: Arc<ResourceStorage>,
     inner: RawDescriptorSet,
 
