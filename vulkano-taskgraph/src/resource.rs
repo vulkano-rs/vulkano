@@ -1237,7 +1237,6 @@ impl Flight {
     ///
     /// This is equivalent to [`Fence::wait`] on the fence corresponding to the current frame
     /// index, but unlike that method, this method additionally collects outstanding garbage.
-    #[inline]
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         self.wait_for_biased_frame(self.current_frame() + 1, timeout)
     }
@@ -1254,7 +1253,6 @@ impl Flight {
     /// - Panics if `frame` is greater than the current frame.
     ///
     /// [`current_frame`]: Self::current_frame
-    #[inline]
     pub fn wait_for_frame(&self, frame: u64, timeout: Option<Duration>) -> Result<(), VulkanError> {
         assert!(frame <= self.current_frame());
 

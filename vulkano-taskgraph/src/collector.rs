@@ -408,8 +408,8 @@ impl<'a> DeferredBatch<'a> {
             // * We own an `epoch::Guard`.
             // * The caller must ensure that `frames` contained valid flight IDs when extending the
             //   node's `frames` above. Since we have owned an `epoch::Guard` from then until now,
-            //   the flight cannot have been reallocated yet even if it were to be removed between
-            //   then and now.
+            //   the flight cannot have been dropped yet even if it were to be removed between then
+            //   and now.
             let flight = unsafe { self.resources.flight_unchecked_unprotected(flight_id) };
 
             let garbage_queue = flight.garbage_queue();
@@ -1080,11 +1080,7 @@ impl NodeAllocator {
     fn allocate(&self, _guard: &epoch::Guard<'_>) -> u32 {
         let mut head_index = self.free_list_head.load(Acquire);
 
-        loop {
-            if head_index == NIL {
-                break;
-            }
-
+        while head_index != NIL {
             // SAFETY: We always push indices of existing nodes into the free-list and the nodes
             // vector never shrinks, so the index must have staid in bounds.
             let head_ptr = unsafe { self.nodes.get_unchecked_raw(head_index) };
@@ -1252,6 +1248,7 @@ impl NodeVec {
         index
     }
 
+    #[inline(never)]
     fn reserve_for_push(&self, old_capacity: u32) {
         if old_capacity >= MAX_CAPACITY {
             capacity_overflow();
