@@ -1302,24 +1302,8 @@ impl Flight {
         biased_frame: u64,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
-        if self.wait_for_biased_frame_inner(biased_frame, timeout)? {
-            let resources = self.resources.upgrade().unwrap();
-            let guard = &resources.pin();
-
-            unsafe { self.garbage_queue.collect(&resources, self, guard) };
-            unsafe { resources.garbage_queue().collect(&resources, guard) };
-        }
-
-        Ok(())
-    }
-
-    fn wait_for_biased_frame_inner(
-        &self,
-        biased_frame: u64,
-        timeout: Option<Duration>,
-    ) -> Result<bool, VulkanError> {
         if self.is_biased_frame_complete(biased_frame) {
-            return Ok(false);
+            return Ok(());
         }
 
         // The `frame_count` bias cancels out under the modulus, however the `1` bias doesn't, so we
@@ -1334,7 +1318,15 @@ impl Flight {
             |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
         );
 
-        Ok(res.is_ok())
+        if res.is_ok() {
+            let resources = self.resources.upgrade().unwrap();
+            let guard = &resources.pin();
+
+            unsafe { self.garbage_queue.collect(&resources, self, guard) };
+            unsafe { resources.garbage_queue().collect(&resources, guard) };
+        }
+
+        Ok(())
     }
 
     pub(crate) fn is_oldest_frame_complete(&self) -> bool {
