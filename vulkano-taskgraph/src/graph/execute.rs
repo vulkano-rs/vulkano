@@ -152,8 +152,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             deferred_batch.destroy_object(semaphore.clone());
         }
 
-        unsafe { flight.next_frame() };
-
         pre_present_notify();
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
@@ -166,6 +164,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
 
         resource_map.guard.try_advance_global();
+
+        unsafe { flight.next_frame() };
 
         res
     }
