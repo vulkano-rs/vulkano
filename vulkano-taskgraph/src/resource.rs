@@ -1,6 +1,7 @@
 //! Synchronization state tracking of all resources.
 
 use crate::{
+    assert_unsafe_precondition,
     collector::{self, Collector, DefaultCollector, DeferredBatch},
     descriptor_set::{BindlessContext, BindlessContextCreateInfo},
     Id, InvalidSlotError, Object, Ref,
@@ -804,10 +805,10 @@ impl ResourceStorage {
     }
 
     pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
-        #[cfg(debug_assertions)]
-        if self.buffers.get(id.erase(), &self.pin()).is_none() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.buffers.get(id.erase(), &self.pin()).is_some(),
+            "`id` must refer to a valid buffer",
+        );
 
         // SAFETY: Enforced by the caller.
         let unprotected = unsafe { epoch::unprotected() };
@@ -836,10 +837,10 @@ impl ResourceStorage {
     }
 
     pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
-        #[cfg(debug_assertions)]
-        if self.images.get(id.erase(), &self.pin()).is_none() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.images.get(id.erase(), &self.pin()).is_some(),
+            "`id` must refer to a valid image",
+        );
 
         // SAFETY: Enforced by the caller.
         let unprotected = unsafe { epoch::unprotected() };
@@ -874,10 +875,10 @@ impl ResourceStorage {
         &self,
         id: Id<Swapchain>,
     ) -> &SwapchainState {
-        #[cfg(debug_assertions)]
-        if self.swapchains.get(id.erase(), &self.pin()).is_none() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.swapchains.get(id.erase(), &self.pin()).is_some(),
+            "`id` must refer to a valid swapchain",
+        );
 
         // SAFETY: Enforced by the caller.
         let unprotected = unsafe { epoch::unprotected() };

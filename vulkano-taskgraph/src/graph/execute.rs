@@ -3,6 +3,7 @@ use super::{
     RenderPassIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
+    assert_unsafe_precondition,
     collector::Deferred,
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
@@ -2633,10 +2634,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &BufferState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must refer to a valid virtual buffer",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
@@ -2653,10 +2654,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must refer to a valid virtual image",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
@@ -2676,10 +2677,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn swapchain_unchecked(&self, id: Id<Swapchain>) -> &SwapchainState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must refer to a valid virtual swapchain",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
