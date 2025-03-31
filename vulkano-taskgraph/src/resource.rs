@@ -966,6 +966,9 @@ impl Drop for Resources {
             std::process::abort();
         }
 
+        // FIXME:
+        let _ = unsafe { self.device().wait_idle() };
+
         for (_, flight) in self.storage.flights.iter(guard) {
             // SAFETY:
             // * We are being dropped, which is proof that no outstanding references to any slots
