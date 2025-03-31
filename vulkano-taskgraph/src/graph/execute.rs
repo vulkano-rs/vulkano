@@ -2636,7 +2636,7 @@ impl<'a> ResourceMap<'a> {
     pub(crate) unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &BufferState {
         assert_unsafe_precondition!(
             self.virtual_resources.get(id.erase()).is_ok(),
-            "`id` must refer to a valid virtual buffer",
+            "`id` must be a valid virtual buffer ID",
         );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
@@ -2656,7 +2656,7 @@ impl<'a> ResourceMap<'a> {
     pub(crate) unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageState {
         assert_unsafe_precondition!(
             self.virtual_resources.get(id.erase()).is_ok(),
-            "`id` must refer to a valid virtual image",
+            "`id` must be a valid virtual image ID",
         );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
@@ -2679,7 +2679,7 @@ impl<'a> ResourceMap<'a> {
     pub(crate) unsafe fn swapchain_unchecked(&self, id: Id<Swapchain>) -> &SwapchainState {
         assert_unsafe_precondition!(
             self.virtual_resources.get(id.erase()).is_ok(),
-            "`id` must refer to a valid virtual swapchain",
+            "`id` must be a valid virtual swapchain ID",
         );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.

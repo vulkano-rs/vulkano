@@ -819,7 +819,7 @@ impl ResourceStorage {
     pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
         assert_unsafe_precondition!(
             self.buffers.get(id.erase(), &self.pin()).is_some(),
-            "`id` must refer to a valid buffer",
+            "`id` must be a valid buffer ID",
         );
 
         // SAFETY: Enforced by the caller.
@@ -851,7 +851,7 @@ impl ResourceStorage {
     pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
         assert_unsafe_precondition!(
             self.images.get(id.erase(), &self.pin()).is_some(),
-            "`id` must refer to a valid image",
+            "`id` must be a valid image ID",
         );
 
         // SAFETY: Enforced by the caller.
@@ -889,7 +889,7 @@ impl ResourceStorage {
     ) -> &SwapchainState {
         assert_unsafe_precondition!(
             self.swapchains.get(id.erase(), &self.pin()).is_some(),
-            "`id` must refer to a valid swapchain",
+            "`id` must be a valid swapchain ID",
         );
 
         // SAFETY: Enforced by the caller.
