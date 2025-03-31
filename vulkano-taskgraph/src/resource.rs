@@ -746,18 +746,30 @@ impl Resources {
     /// additionally collects outstanding garbage.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.pin();
-        let mut collect = false;
+        let mut fences = SmallVec::<[_; 8]>::new();
+        let mut flights = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
-            let biased_frame = flight.current_frame() + u64::from(flight.frame_count()) + 1;
+            let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
 
-            if flight.wait_for_biased_frame_inner(biased_frame, None)? {
-                unsafe { flight.garbage_queue().collect(self, flight, guard) };
-                collect = true;
+            if flight.is_biased_frame_complete(biased_frame) {
+                continue;
             }
+
+            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
+            fences.push(flight.fences[frame_index as usize].read());
+            flights.push(flight);
         }
 
-        if collect {
+        // SAFETY: We created these fences with the same device as `self`.
+        unsafe { Fence::multi_wait_unchecked(fences.iter().map(|guard| &**guard), None) }?;
+        drop(fences);
+
+        for &flight in &flights {
+            unsafe { flight.garbage_queue().collect(self, flight, guard) };
+        }
+
+        if !flights.is_empty() {
             unsafe { self.garbage_queue().collect(self, guard) };
         }
 
@@ -923,27 +935,47 @@ unsafe impl DeviceOwned for ResourceStorage {
 
 impl Drop for Resources {
     fn drop(&mut self) {
-        for (flight_id, flight) in self.storage.flights.iter(&self.pin()) {
-            let current_frame = flight.current_frame();
-            let frame_count = NonZero::<u64>::from(flight.frame_count);
-            let prev_frame_index = current_frame.wrapping_sub(1) % frame_count;
-            let fence = flight.fences[prev_frame_index as usize].read();
+        // SAFETY: We are being dropped, which is proof that no outstanding references to any slots
+        // can exist.
+        let guard = unsafe { epoch::unprotected() };
 
-            if let Err(err) = fence.wait(None) {
-                if err == VulkanError::DeviceLost {
-                    break;
-                }
+        let mut fences = SmallVec::<[_; 8]>::new();
 
-                eprintln!(
-                    "failed to wait for flight {flight_id:?} to finish rendering graceful shutdown \
-                    impossible: {err}; aborting",
-                );
-                std::process::abort();
+        for (_, flight) in self.storage.flights.iter(guard) {
+            let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
+
+            if flight.is_biased_frame_complete(biased_frame) {
+                continue;
             }
 
+            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
+            fences.push(flight.fences[frame_index as usize].read());
+        }
+
+        if let Err(err) =
+            // SAFETY: We created these fences with the same device as `self`.
+            unsafe { Fence::multi_wait_unchecked(fences.iter().map(|guard| &**guard), None) }
+        {
+            if err != VulkanError::DeviceLost {
+                return;
+            }
+
+            eprintln!(
+                "failed to wait for idle rendering graceful shutdown impossible: {err}; aborting",
+            );
+            std::process::abort();
+        }
+
+        for (_, flight) in self.storage.flights.iter(guard) {
+            // SAFETY:
+            // * We are being dropped, which is proof that no outstanding references to any slots
+            //   can exist and that we have exclusive access to this queue.
+            // * We waited on the flight above.
+            // * `self` is the correct `Resources` collection.
             unsafe { flight.garbage_queue.drop(self) };
         }
 
+        // SAFETY: Same as the `drop` above.
         unsafe { self.storage.garbage_queue.drop(self) };
 
         let mut registered_devices = REGISTERED_DEVICES.lock();
