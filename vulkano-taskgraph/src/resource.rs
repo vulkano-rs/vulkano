@@ -1303,6 +1303,16 @@ impl Flight {
         self.wait_for_biased_frame(biased_frame, timeout)
     }
 
+    /// Waits for all [frames] in [flight] to finish.
+    ///
+    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the previous frame
+    /// index, but unlike that method, this method additionally collects outstanding garbage.
+    pub fn wait_idle(&self) -> Result<(), VulkanError> {
+        let biased_frame = self.current_frame() + u64::from(self.frame_count());
+
+        self.wait_for_biased_frame(biased_frame, None)
+    }
+
     fn wait_for_biased_frame(
         &self,
         biased_frame: u64,
