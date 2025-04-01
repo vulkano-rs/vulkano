@@ -747,7 +747,7 @@ impl Resources {
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.pin();
         let mut fences = SmallVec::<[_; 8]>::new();
-        let mut flights = SmallVec::<[_; 8]>::new();
+        let mut frames = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
             let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
@@ -758,18 +758,24 @@ impl Resources {
 
             let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
             fences.push(flight.fences[frame_index as usize].read());
-            flights.push(flight);
+            frames.push((flight, biased_frame));
         }
 
         // SAFETY: We created these fences with the same device as `self`.
         unsafe { Fence::multi_wait_unchecked(fences.iter().map(|guard| &**guard), None) }?;
         drop(fences);
 
-        for &flight in &flights {
-            unsafe { flight.garbage_queue().collect(self, flight, guard) };
+        let mut collect = false;
+
+        for &(flight, biased_frame) in &frames {
+            // SAFETY: We waited for the frame.
+            if unsafe { flight.update_biased_complete_frame(biased_frame) }.is_ok() {
+                unsafe { flight.garbage_queue().collect(self, flight, guard) };
+                collect = true;
+            }
         }
 
-        if !flights.is_empty() {
+        if collect {
             unsafe { self.garbage_queue().collect(self, guard) };
         }
 
@@ -1312,13 +1318,8 @@ impl Flight {
             .read()
             .wait(timeout)?;
 
-        let res = self.biased_complete_frame.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
-        );
-
-        if res.is_ok() {
+        // SAFETY: We waited for the frame.
+        if unsafe { self.update_biased_complete_frame(biased_frame) }.is_ok() {
             let resources = self.resources.upgrade().unwrap();
             let guard = &resources.pin();
 
@@ -1327,6 +1328,14 @@ impl Flight {
         }
 
         Ok(())
+    }
+
+    unsafe fn update_biased_complete_frame(&self, biased_frame: u64) -> Result<u64, u64> {
+        self.biased_complete_frame.fetch_update(
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+            |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
+        )
     }
 
     pub(crate) fn is_oldest_frame_complete(&self) -> bool {
