@@ -1339,10 +1339,7 @@ impl Flight {
     }
 
     pub(crate) fn is_oldest_frame_complete(&self) -> bool {
-        let current_frame = self.current_frame();
-        let biased_complete_frame = self.biased_complete_frame();
-
-        biased_complete_frame > current_frame
+        self.biased_complete_frame() > self.current_frame()
     }
 
     pub(crate) fn is_frame_complete(&self, frame: u64) -> bool {
