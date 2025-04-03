@@ -21,7 +21,9 @@ mod global_image;
 
 pub use global_acceleration_structure::GlobalAccelerationStructureTracker;
 pub use global_buffer::GlobalBufferTracker;
-pub use global_image::{GlobalImageCreateError, GlobalImageCreateInfo, GlobalImageTracker};
+pub use global_image::{
+    GlobalImageCreateError, GlobalImageCreateInfo, GlobalImageTracker, ModifyImageViewCreateInfo,
+};
 
 #[derive(Clone)]
 pub struct ResourceAccess {
