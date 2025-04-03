@@ -16,6 +16,7 @@ categories = { workspace = true }
 [dependencies]
 foldhash = { workspace = true }
 vulkano = { workspace = true }
+vulkano-taskgraph = { workspace = true }
 winit = { workspace = true }
 
 [lints]

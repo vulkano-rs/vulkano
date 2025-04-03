@@ -1896,6 +1896,7 @@ version = "0.35.0"
 dependencies = [
  "foldhash",
  "vulkano",
+ "vulkano-taskgraph",
  "winit",
 ]
 
