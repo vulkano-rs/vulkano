@@ -102,7 +102,8 @@ impl GlobalImageTracker {
     ) -> Result<Self, Validated<VulkanError>> {
         let bcx = resources.bindless_context().unwrap();
 
-        let virtual_id = task_graph.map(|task_graph| task_graph.add_image(&ImageCreateInfo::default()));
+        let virtual_id =
+            task_graph.map(|task_graph| task_graph.add_image(&ImageCreateInfo::default()));
 
         if create_info.storage_layout.is_none() && create_info.sampled_layout.is_none() {
             return Ok(Self {
@@ -126,11 +127,15 @@ impl GlobalImageTracker {
 
         let image_view = ImageView::new(image, image_view_create_info)?;
 
-        let storage_image_id = create_info.storage_layout.map(|storage_layout| bcx.global_set()
-            .add_storage_image(image_view.clone(), storage_layout));
+        let storage_image_id = create_info.storage_layout.map(|storage_layout| {
+            bcx.global_set()
+                .add_storage_image(image_view.clone(), storage_layout)
+        });
 
-        let sampled_image_id = create_info.sampled_layout.map(|sampled_layout| bcx.global_set()
-            .add_sampled_image(image_view, sampled_layout));
+        let sampled_image_id = create_info.sampled_layout.map(|sampled_layout| {
+            bcx.global_set()
+                .add_sampled_image(image_view, sampled_layout)
+        });
 
         Ok(Self {
             physical_id,
