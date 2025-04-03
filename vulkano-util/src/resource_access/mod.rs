@@ -24,6 +24,7 @@ pub use global_acceleration_structure::GlobalAccelerationStructureTracker;
 pub use global_buffer::GlobalBufferTracker;
 pub use global_image::{GlobalImageCreateInfo, GlobalImageTracker};
 
+#[derive(Clone)]
 pub struct ResourceAccess {
     resources: Arc<Resources>,
     device: Arc<Device>,
