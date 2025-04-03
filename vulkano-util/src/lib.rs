@@ -5,4 +5,5 @@ pub mod renderer;
 pub mod resource_access;
 pub mod window;
 
+pub use load_module::{create_compute_pipeline, load_module};
 pub use resource_access::*;
