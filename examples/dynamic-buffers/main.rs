@@ -4,7 +4,7 @@
 // Each draw or dispatch call can specify an offset into the buffer to read object data from,
 // without having to rebind descriptor sets.
 
-use std::{iter::repeat, sync::Arc};
+use std::{iter, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -178,7 +178,7 @@ fn main() {
             // Fill up the buffer with data.
             aligned_data.extend(bytes);
             // Zero out any padding needed for alignment.
-            aligned_data.extend(repeat(0).take(align - bytes.len()));
+            aligned_data.extend(iter::repeat_n(0, align - bytes.len()));
         }
 
         aligned_data

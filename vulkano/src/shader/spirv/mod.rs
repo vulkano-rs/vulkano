@@ -109,10 +109,7 @@ impl Spirv {
                 }
             }
 
-            if matches!(
-                instruction,
-                Instruction::Line { .. } | Instruction::NoLine { .. }
-            ) {
+            if matches!(instruction, Instruction::Line { .. } | Instruction::NoLine) {
                 continue;
             }
 
@@ -153,7 +150,7 @@ impl Spirv {
                     let current_function = current_function.insert(function);
                     current_function.instructions.push(instruction);
                 }
-                Instruction::FunctionEnd { .. } => {
+                Instruction::FunctionEnd => {
                     let current_function = current_function.take().unwrap();
                     current_function.instructions.push(instruction);
                 }

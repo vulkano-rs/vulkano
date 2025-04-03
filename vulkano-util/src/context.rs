@@ -252,10 +252,11 @@ impl VulkanoContext {
         };
 
         let graphics_queue = queues.next().unwrap();
-        let compute_queue = queue_family_compute
-            .is_some()
-            .then(|| queues.next().unwrap())
-            .unwrap_or(graphics_queue.clone());
+        let compute_queue = if queue_family_compute.is_some() {
+            queues.next().unwrap()
+        } else {
+            graphics_queue.clone()
+        };
         let transfer_queue = queue_family_transfer
             .is_some()
             .then(|| queues.next().unwrap());
