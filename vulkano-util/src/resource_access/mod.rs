@@ -82,7 +82,7 @@ impl ResourceAccess {
         let image_id = self
             .resources
             .create_image(image_info, allocation_info)
-            .map_err(|err| err.map(|err| GlobalImageCreateError::AllocateImageError(err)))?;
+            .map_err(|err| err.map(GlobalImageCreateError::AllocateImageError))?;
 
         GlobalImageTracker::new(
             task_graph,
@@ -90,7 +90,7 @@ impl ResourceAccess {
             image_id,
             global_image_create_info,
         )
-        .map_err(|err| err.map(|err| GlobalImageCreateError::VulkanError(err)))
+        .map_err(|err| err.map(GlobalImageCreateError::VulkanError))
     }
 
     pub fn update_global_image(
@@ -200,7 +200,7 @@ impl ResourceAccess {
         Ok(buffer_id)
     }
 
-    pub fn buffer_from_slice<'a, T: BufferContents + Copy>(
+    pub fn buffer_from_slice<T: BufferContents + Copy>(
         &self,
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
