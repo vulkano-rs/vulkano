@@ -94,7 +94,7 @@ pub struct GlobalImageTracker {
 }
 
 impl GlobalImageTracker {
-    pub fn new<W>(
+    pub fn new<W: ?Sized>(
         task_graph: Option<&mut TaskGraph<W>>,
         resources: &Resources,
         physical_id: Id<Image>,
@@ -161,7 +161,7 @@ impl GlobalImageTracker {
         self.sampled_image_id.unwrap()
     }
 
-    pub fn update_virtual<W>(&mut self, task_graph: &mut TaskGraph<W>) {
+    pub fn update_virtual<W: ?Sized>(&mut self, task_graph: &mut TaskGraph<W>) {
         if let Some(virtual_id) = &mut self.virtual_id {
             *virtual_id = task_graph.add_image(&ImageCreateInfo::default());
         }

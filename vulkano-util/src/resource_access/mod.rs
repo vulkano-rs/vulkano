@@ -73,7 +73,7 @@ impl ResourceAccess {
         bcx.pipeline_layout_from_stages(stages)
     }
 
-    pub fn create_global_image<W: 'static>(
+    pub fn create_global_image<W: 'static + ?Sized>(
         &self,
         task_graph: Option<&mut TaskGraph<W>>,
         image_info: ImageCreateInfo,
