@@ -19,8 +19,11 @@ Changes to `GraphicsPipeline`:
 ### Additions
 
 - Added `new` constructors to all `*Info`-like structs.
+- Added `Instance::from_handle_borrowed` and `Device::from_handle_borrowed`.
 
 ### Bugs fixed
+- When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.
+- [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
 
 # Version 0.35.1 (2025-02-08)
 
