@@ -1,4 +1,3 @@
-use global_image::GlobalImageCreateError;
 use std::sync::Arc;
 use vulkano::{
     acceleration_structure::{AccelerationStructure, AccelerationStructureCreateInfo},
@@ -22,7 +21,7 @@ mod global_image;
 
 pub use global_acceleration_structure::GlobalAccelerationStructureTracker;
 pub use global_buffer::GlobalBufferTracker;
-pub use global_image::{GlobalImageCreateInfo, GlobalImageTracker};
+pub use global_image::{GlobalImageCreateError, GlobalImageCreateInfo, GlobalImageTracker};
 
 #[derive(Clone)]
 pub struct ResourceAccess {

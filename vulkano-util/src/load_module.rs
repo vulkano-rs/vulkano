@@ -1,4 +1,4 @@
-use crate::ResourceAccess;
+use crate::resource_access::ResourceAccess;
 use std::sync::Arc;
 use vulkano::{
     pipeline::{
