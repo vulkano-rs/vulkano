@@ -38,11 +38,6 @@ pub struct PipelineCache {
 impl PipelineCache {
     /// Builds a new pipeline cache.
     ///
-    /// # Safety
-    ///
-    /// - The data in `create_info.initial_data` must be valid data that was previously retrieved
-    ///   using [`get_data`](PipelineCache::get_data).
-    ///
     /// # Examples
     ///
     /// This example loads a cache from a file, if it exists.
@@ -52,37 +47,36 @@ impl PipelineCache {
     /// # use std::sync::Arc;
     /// # use vulkano::device::Device;
     /// use std::{fs::File, io::Read};
-    /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo};
+    /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData};
     /// # let device: Arc<Device> = return;
     ///
     /// let initial_data = {
     ///     let file = File::open("pipeline_cache.bin");
     ///     if let Ok(mut file) = file {
     ///         let mut data = Vec::new();
-    ///         if let Ok(_) = file.read_to_end(&mut data) {
-    ///             data
+    ///         if file.read_to_end(&mut data).is_ok() {
+    ///             // This is unsafe because there is no way to be sure that the file contains
+    ///             // valid data.
+    ///             Some(unsafe { PipelineCacheData::new(data) })
     ///         } else {
-    ///             Vec::new()
+    ///             None
     ///         }
     ///     } else {
-    ///         Vec::new()
+    ///         None
     ///     }
     /// };
     ///
-    /// // This is unsafe because there is no way to be sure that the file contains valid data.
-    /// let cache = unsafe {
-    ///     PipelineCache::new(
-    ///         device.clone(),
-    ///         PipelineCacheCreateInfo {
-    ///             initial_data,
-    ///             ..Default::default()
-    ///         },
-    ///     )
-    /// }
+    /// let cache = PipelineCache::new(
+    ///     device.clone(),
+    ///     PipelineCacheCreateInfo {
+    ///         initial_data,
+    ///         ..Default::default()
+    ///     },
+    /// )
     /// .unwrap();
     /// ```
     #[inline]
-    pub unsafe fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: PipelineCacheCreateInfo,
     ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
@@ -174,7 +168,7 @@ impl PipelineCache {
     /// // If an error happens (eg. no permission for the file) we simply skip storing the cache.
     /// if let Ok(data) = cache.get_data() {
     ///     if let Ok(mut file) = File::create("pipeline_cache.bin.tmp") {
-    ///         if let Ok(_) = file.write_all(&data) {
+    ///         if file.write_all(&data).is_ok() {
     ///             let _ = fs::rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
     ///         } else {
     ///             let _ = fs::remove_file("pipeline_cache.bin.tmp");
@@ -225,8 +219,52 @@ impl PipelineCache {
     /// Merges other pipeline caches into this one.
     ///
     /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
+    ///
+    /// # Examples
+    ///
+    /// This example loads a pipeline cache from the disk and merges it with the current pipeline
+    /// cache.
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::device::Device;
+    /// use std::{fs::File, io::Read};
+    /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData};
+    /// # let device: Arc<Device> = return;
+    ///
+    /// // Imagine this is an existing cache that got modified at runtime.
+    /// let current_cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+    ///
+    /// // Load a new pipeline cache from the disk
+    /// let new_data = {
+    ///     let file = File::open("pipeline_cache.bin");
+    ///     if let Ok(mut file) = file {
+    ///         let mut data = Vec::new();
+    ///         if file.read_to_end(&mut data).is_ok() {
+    ///             // This is unsafe because there is no way to be sure that the file contains
+    ///             // valid data.
+    ///             Some(unsafe { PipelineCacheData::new(data) })
+    ///         } else {
+    ///             None
+    ///         }
+    ///     } else {
+    ///         None
+    ///     }
+    /// };
+    ///
+    /// let new_cache = PipelineCache::new(
+    ///     device.clone(),
+    ///     PipelineCacheCreateInfo {
+    ///         initial_data: new_data,
+    ///         ..Default::default()
+    ///     },
+    /// )
+    /// .unwrap();
+    ///
+    /// // Now merge the new pipeline cache into the existing one
+    /// current_cache.merge([new_cache.as_ref()]).unwrap();
+    /// ```
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
-    // TODO: write example
     pub fn merge<'a>(
         &self,
         src_caches: impl IntoIterator<Item = &'a PipelineCache>,
@@ -314,15 +352,11 @@ pub struct PipelineCacheCreateInfo {
 
     /// The initial data to provide to the cache.
     ///
-    /// If this is not empty, then the data must have been previously retrieved by calling
+    /// If this is not `None`, then the data must have been previously retrieved by calling
     /// [`PipelineCache::get_data`].
     ///
-    /// The data passed to this function will most likely be blindly trusted by the Vulkan
-    /// implementation. Therefore you can easily crash your application or the system by passing
-    /// wrong data.
-    ///
-    /// The default value is empty.
-    pub initial_data: Vec<u8>,
+    /// The default value is `None`.
+    pub initial_data: Option<PipelineCacheData>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -340,7 +374,7 @@ impl PipelineCacheCreateInfo {
     pub const fn new() -> Self {
         Self {
             flags: PipelineCacheCreateFlags::empty(),
-            initial_data: Vec::new(),
+            initial_data: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -369,8 +403,8 @@ impl PipelineCacheCreateInfo {
 
         let mut val_vk = vk::PipelineCacheCreateInfo::default().flags(flags.into());
 
-        if !initial_data.is_empty() {
-            val_vk = val_vk.initial_data(initial_data);
+        if let Some(initial_data) = initial_data {
+            val_vk = val_vk.initial_data(initial_data.as_ref());
         }
 
         val_vk
@@ -392,6 +426,37 @@ vulkan_bitflags! {
     ]), */
 }
 
+/// Represents the data of a **valid** Vulkan pipeline cache binary.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct PipelineCacheData(Vec<u8>);
+
+impl PipelineCacheData {
+    /// Creates new pipeline cache data from the given bytes.
+    ///
+    /// # Safety
+    ///
+    /// - The data passed to this function will most likely be blindly trusted by the Vulkan
+    ///   implementation. Therefore you can easily crash your application or the system by passing
+    ///   wrong data and using it for creating a pipeline cache.
+    #[inline]
+    pub unsafe fn new(data: Vec<u8>) -> Self {
+        Self(data)
+    }
+
+    /// Returns a slice of bytes of the pipeline cache data.
+    #[inline]
+    pub fn data(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for PipelineCacheData {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.data()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -406,7 +471,7 @@ mod tests {
     #[test]
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let pipeline = unsafe { PipelineCache::new(device, Default::default()) }.unwrap();
+        let pipeline = PipelineCache::new(device, Default::default()).unwrap();
         match pipeline.merge([pipeline.as_ref()]) {
             Err(_) => (),
             Ok(_) => panic!(),
@@ -417,7 +482,7 @@ mod tests {
     fn cache_returns_same_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
 
         let cs = {
             /*
@@ -464,7 +529,7 @@ mod tests {
     fn cache_returns_different_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
 
         let _first_pipeline = {
             let cs = {
@@ -559,7 +624,7 @@ mod tests {
     fn cache_data_does_not_change() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
+        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
 
         let cs = {
             /*
