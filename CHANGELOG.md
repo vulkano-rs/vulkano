@@ -15,11 +15,13 @@
 
 Changes to `GraphicsPipeline`:
 - `ColorBlendState::new` and `ViewportState::new` (previously deprecated, now undeprecated) now return the same as `Default::default()`.
+- `PipelineCacheCreateInfo::initial_data` now takes `Option<PipelineCacheData>` instead of `Vec<u8>` in order to make `PipelineCache::new` safe.
 
 ### Additions
 
 - Added `new` constructors to all `*Info`-like structs.
 - Added `Instance::from_handle_borrowed` and `Device::from_handle_borrowed`.
+- Added a safe `PipelineCacheData` binary data wrapper.
 
 ### Bugs fixed
 - When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.

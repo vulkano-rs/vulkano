@@ -619,7 +619,7 @@ impl BufferState {
     pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive { .. } => return Err(AccessConflict::HostWrite),
+                CurrentAccess::CpuExclusive => return Err(AccessConflict::HostWrite),
                 CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared { .. } => (),
             }
