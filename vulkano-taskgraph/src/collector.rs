@@ -293,13 +293,20 @@ impl<'a> DeferredBatch<'a> {
             (flight_id, flight.current_frame())
         });
 
+        let mut this = ManuallyDrop::new(self);
+
         // SAFETY:
         // * We own `self`, which ensures that this method isn't called again.
         // * We have wrapped `self` in a `ManuallyDrop` to ensure that the `Drop` implementation
         //   doesn't call this method.
         // * The caller must ensure that `flight_ids` constitutes the correct set of flights for our
         //   deferred functions.
-        unsafe { ManuallyDrop::new(self).enqueue_inner(frames) }
+        unsafe { this.enqueue_inner(frames) };
+
+        // SAFETY:
+        // * We own `self`, which ensures that this method isn't called again.
+        // * We have wrapped `self` in a `ManuallyDrop` which ensures that the field isn't dropped.
+        unsafe { ptr::drop_in_place(&mut this.guard) };
     }
 
     /// Enqueues the deferred functions for after the given `frames` have been waited on.
@@ -333,13 +340,20 @@ impl<'a> DeferredBatch<'a> {
                 .expect("invalid flight ID");
         });
 
+        let mut this = ManuallyDrop::new(self);
+
         // SAFETY:
         // * We own `self`, which ensures that this method isn't called again.
         // * We have wrapped `self` in a `ManuallyDrop` to ensure that the `Drop` implementation
         //   doesn't call this method.
         // * The caller must ensure that `frames` constitutes the correct set of frames for our
         //   deferred functions.
-        unsafe { ManuallyDrop::new(self).enqueue_inner(frames) }
+        unsafe { this.enqueue_inner(frames) };
+
+        // SAFETY:
+        // * We own `self`, which ensures that this method isn't called again.
+        // * We have wrapped `self` in a `ManuallyDrop` which ensures that the field isn't dropped.
+        unsafe { ptr::drop_in_place(&mut this.guard) };
     }
 
     unsafe fn enqueue_inner(&mut self, frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
