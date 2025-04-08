@@ -3,7 +3,7 @@
 //! panics in random places.
 
 use command_buffer::RecordingCommandBuffer;
-use concurrent_slotmap::{epoch, Key, SlotId};
+use concurrent_slotmap::{hyaline, Key, SlotId};
 use graph::{CompileInfo, ExecuteError, ResourceMap, TaskGraph};
 use linear_map::LinearMap;
 use resource::{
@@ -263,8 +263,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.buffer(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().buffer_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.buffer_protected(id, guard)?)
         }
     }
 
@@ -282,8 +284,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.image(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().image_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.image_protected(id, guard)?)
         }
     }
 
@@ -295,8 +299,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.swapchain(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().swapchain_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.swapchain_protected(id, guard)?)
         }
     }
 
@@ -879,7 +885,7 @@ impl<T> Ord for Id<T> {
 pub struct Ref<'a, T> {
     inner: &'a T,
     #[allow(unused)]
-    guard: epoch::Guard<'a>,
+    guard: hyaline::Guard<'a>,
 }
 
 impl<T> Deref for Ref<'_, T> {

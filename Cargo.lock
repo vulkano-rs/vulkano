@@ -298,8 +298,9 @@ dependencies = [
 [[package]]
 name = "concurrent-slotmap"
 version = "0.1.0-alpha.2"
-source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=c10c56adeae11fcc9cd0a1d5c36d3cf258d9f505#c10c56adeae11fcc9cd0a1d5c36d3cf258d9f505"
+source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=d54a4c4dc48f44436169fb3a5b12a4b977abd93f#d54a4c4dc48f44436169fb3a5b12a4b977abd93f"
 dependencies = [
+ "thread_local",
  "virtual-buffer",
 ]
 
@@ -1887,7 +1888,6 @@ dependencies = [
  "parking_lot",
  "smallvec",
  "thread_local",
- "virtual-buffer",
  "vulkano",
 ]
 

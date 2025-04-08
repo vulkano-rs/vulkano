@@ -1,3 +1,5 @@
+// FIXME: docs
+
 use concurrent_slotmap::{Key, SlotId};
 use core::slice;
 use std::{
@@ -10,7 +12,13 @@ const NIL: u32 = u32::MAX;
 
 const TAG_MASK: u32 = SlotId::TAG_MASK;
 
-const OCCUPIED_BIT: u32 = SlotId::OCCUPIED_BIT;
+const STATE_MASK: u32 = SlotId::STATE_MASK;
+
+const OCCUPIED_TAG: u32 = SlotId::OCCUPIED_TAG;
+
+const GENERATION_MASK: u32 = u32::MAX >> (SlotId::TAG_BITS + SlotId::STATE_BITS);
+
+const ONE_GENERATION: u32 = 1 << (SlotId::TAG_BITS + SlotId::STATE_BITS);
 
 pub struct SlotMap<K, V> {
     inner: SlotMapInner<V>,
@@ -132,7 +140,7 @@ impl<V> SlotMapInner<V> {
             let slot = unsafe { self.slots.get_unchecked_mut(self.free_list_head as usize) };
 
             let index = self.free_list_head;
-            let generation = slot.generation.wrapping_add(OCCUPIED_BIT | tag);
+            let generation = slot.generation | OCCUPIED_TAG | tag;
 
             // SAFETY: We always link free slots into the free-list by setting the `next_free`
             // union field.
@@ -143,7 +151,7 @@ impl<V> SlotMapInner<V> {
 
             self.len += 1;
 
-            // SAFETY: The `OCCUPIED_BIT` is set.
+            // SAFETY: The generation's state tag is `OCCUPIED_TAG`.
             unsafe { SlotId::new_unchecked(index, generation) }
         } else {
             if self.slots.len() == (NIL - 1) as usize {
@@ -151,7 +159,7 @@ impl<V> SlotMapInner<V> {
             }
 
             let index = self.slots.len() as u32;
-            let generation = OCCUPIED_BIT | tag;
+            let generation = OCCUPIED_TAG | tag;
 
             self.slots.push(Slot {
                 generation,
@@ -162,7 +170,7 @@ impl<V> SlotMapInner<V> {
 
             self.len += 1;
 
-            // SAFETY: The `OCCUPIED_BIT` is set.
+            // SAFETY: The generation's state tag is `OCCUPIED_TAG`.
             unsafe { SlotId::new_unchecked(index, generation) }
         }
     }
@@ -171,7 +179,7 @@ impl<V> SlotMapInner<V> {
         let slot = self.slots.get_mut(id.index() as usize)?;
 
         if slot.generation == id.generation() {
-            slot.generation = (id.generation() & !TAG_MASK).wrapping_add(OCCUPIED_BIT);
+            slot.generation = (id.generation() & GENERATION_MASK).wrapping_add(ONE_GENERATION);
 
             // SAFETY: We checked that the slot's generation matches `id.generation`. By `SlotId`'s
             // invariant, its generation's `OCCUPIED_BIT` bit must be set. Therefore, reading the
@@ -338,7 +346,7 @@ impl<V> Slot<V> {
 impl<V> Drop for Slot<V> {
     #[inline]
     fn drop(&mut self) {
-        if self.generation & OCCUPIED_BIT != 0 {
+        if is_occupied(self.generation) {
             // SAFETY: We checked that the slot is occupied.
             let value = unsafe { &mut self.inner.value };
 
@@ -406,7 +414,7 @@ impl<'a, K: Key, V> Iterator for Iter<'a, K, V> {
         loop {
             let (index, slot) = self.inner.next()?;
 
-            if slot.generation & OCCUPIED_BIT != 0 {
+            if is_occupied(slot.generation) {
                 // SAFETY: We checked that the occupied bit is set.
                 let id = unsafe { SlotId::new_unchecked(index as u32, slot.generation) };
 
@@ -426,7 +434,7 @@ impl<K: Key, V> DoubleEndedIterator for Iter<'_, K, V> {
         loop {
             let (index, slot) = self.inner.next_back()?;
 
-            if slot.generation & OCCUPIED_BIT != 0 {
+            if is_occupied(slot.generation) {
                 // SAFETY: We checked that the occupied bit is set.
                 let id = unsafe { SlotId::new_unchecked(index as u32, slot.generation) };
 
@@ -455,7 +463,7 @@ impl<'a, K: Key, V> Iterator for IterMut<'a, K, V> {
         loop {
             let (index, slot) = self.inner.next()?;
 
-            if slot.generation & OCCUPIED_BIT != 0 {
+            if is_occupied(slot.generation) {
                 // SAFETY: We checked that the occupied bit is set.
                 let id = unsafe { SlotId::new_unchecked(index as u32, slot.generation) };
 
@@ -475,7 +483,7 @@ impl<K: Key, V> DoubleEndedIterator for IterMut<'_, K, V> {
         loop {
             let (index, slot) = self.inner.next_back()?;
 
-            if slot.generation & OCCUPIED_BIT != 0 {
+            if is_occupied(slot.generation) {
                 // SAFETY: We checked that the occupied bit is set.
                 let id = unsafe { SlotId::new_unchecked(index as u32, slot.generation) };
 
@@ -490,6 +498,10 @@ impl<K: Key, V> DoubleEndedIterator for IterMut<'_, K, V> {
 }
 
 impl<K: Key, V> FusedIterator for IterMut<'_, K, V> {}
+
+fn is_occupied(generation: u32) -> bool {
+    generation & STATE_MASK == OCCUPIED_TAG
+}
 
 #[cfg(test)]
 mod tests {
@@ -1005,7 +1017,7 @@ mod tests {
         assert_eq!(map.get_many_mut([z, y, x]), Some([&mut 3, &mut 2, &mut 1]));
 
         assert_eq!(map.get_many_mut([x, x]), None);
-        assert_eq!(map.get_many_mut([x, SlotId::new(3, OCCUPIED_BIT)]), None);
+        assert_eq!(map.get_many_mut([x, SlotId::new(3, OCCUPIED_TAG)]), None);
 
         map.remove(y);
 

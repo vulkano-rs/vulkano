@@ -21,7 +21,6 @@ foldhash = { workspace = true }
 parking_lot = { workspace = true }
 smallvec = { workspace = true }
 thread_local = { workspace = true }
-virtual-buffer = { workspace = true }
 vulkano = { workspace = true }
 
 [lints]

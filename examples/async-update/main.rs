@@ -915,7 +915,7 @@ fn run_worker(
             resources
                 .flight(transfer_flight_id)
                 .unwrap()
-                .wait(None)
+                .wait_idle()
                 .unwrap();
 
             last_frame = graphics_flight.current_frame();

@@ -2,17 +2,17 @@
 
 use crate::{
     assert_unsafe_precondition,
-    collector::{self, Collector, DefaultCollector, DeferredBatch},
+    collector::{self, DeferredBatch},
     descriptor_set::{BindlessContext, BindlessContextCreateInfo},
     Id, InvalidSlotError, Object, Ref,
 };
 use ash::vk;
-use concurrent_slotmap::{epoch, SlotMap};
+use concurrent_slotmap::{hyaline, SlotMap};
 use parking_lot::{Mutex, RwLock};
 use smallvec::SmallVec;
 use std::{
     hash::Hash,
-    iter,
+    iter, mem,
     num::NonZero,
     ops::{BitOr, BitOrAssign},
     sync::{
@@ -21,7 +21,6 @@ use std::{
     },
     time::Duration,
 };
-use thread_local::ThreadLocal;
 use vulkano::{
     buffer::{AllocateBufferError, Buffer, BufferCreateInfo},
     command_buffer::allocator::StandardCommandBufferAllocator,
@@ -58,14 +57,12 @@ pub(crate) struct ResourceStorage {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
-    global: epoch::GlobalHandle,
-    locals: ThreadLocal<epoch::UniqueLocalHandle>,
+    hyaline_collector: hyaline::CollectorHandle,
     buffers: SlotMap<Id, BufferState>,
     images: SlotMap<Id, ImageState>,
     swapchains: SlotMap<Id, SwapchainState>,
     flights: SlotMap<Id, Flight>,
 
-    collector: Arc<dyn Collector>,
     garbage_queue: collector::GlobalQueue,
 }
 
@@ -143,7 +140,6 @@ impl Resources {
             max_swapchains,
             max_flights,
             bindless_context,
-            collector,
             _ne: _,
         } = create_info;
 
@@ -168,22 +164,18 @@ impl Resources {
             Default::default(),
         ));
 
-        let global = epoch::GlobalHandle::new();
+        let hyaline_collector = hyaline::CollectorHandle::new();
         let storage = Arc::new(ResourceStorage {
             device: device.clone(),
             memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
-            locals: ThreadLocal::new(),
-            buffers: SlotMap::with_global_and_key(max_buffers, global.clone()),
-            images: SlotMap::with_global_and_key(max_images, global.clone()),
-            swapchains: SlotMap::with_global_and_key(max_swapchains, global.clone()),
-            flights: SlotMap::with_global_and_key(max_flights, global.clone()),
-            collector: collector
-                .cloned()
-                .unwrap_or_else(|| Arc::new(DefaultCollector)),
-            garbage_queue: collector::GlobalQueue::new(global.clone()),
-            global,
+            buffers: SlotMap::with_collector_and_key(max_buffers, hyaline_collector.clone()),
+            images: SlotMap::with_collector_and_key(max_images, hyaline_collector.clone()),
+            swapchains: SlotMap::with_collector_and_key(max_swapchains, hyaline_collector.clone()),
+            flights: SlotMap::with_collector_and_key(max_flights, hyaline_collector.clone()),
+            garbage_queue: collector::GlobalQueue::new(hyaline_collector.clone()),
+            hyaline_collector,
         });
         let bindless_context = bindless_context
             .map(|bindless_info| BindlessContext::new(&storage, bindless_info))
@@ -210,15 +202,9 @@ impl Resources {
         &self.storage.descriptor_set_allocator
     }
 
-    pub(crate) fn global(&self) -> &epoch::GlobalHandle {
-        &self.storage.global
-    }
-
-    /// Returns the garbage collector.
-    #[inline]
-    #[must_use]
-    pub fn collector(&self) -> &Arc<dyn Collector> {
-        &self.storage.collector
+    #[cfg(test)]
+    pub(crate) fn hyaline_collector(&self) -> &hyaline::CollectorHandle {
+        &self.storage.hyaline_collector
     }
 
     pub(crate) fn garbage_queue(&self) -> &collector::GlobalQueue {
@@ -503,7 +489,9 @@ impl Resources {
     ) -> Result<Id<Swapchain>, VulkanError> {
         let guard = &self.storage.pin();
 
-        let frames_in_flight = unsafe { self.storage.flight_unprotected(flight_id) }
+        let frames_in_flight = self
+            .storage
+            .flight_protected(flight_id, &self.storage.pin())
             .unwrap()
             .frame_count();
 
@@ -563,10 +551,10 @@ impl Resources {
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
         let guard = &self.storage.pin();
 
-        let state = unsafe { self.storage.swapchain_unprotected(id) }.unwrap();
+        let state = self.storage.swapchain_protected(id, guard).unwrap();
         let swapchain = state.swapchain();
         let flight_id = state.flight_id;
-        let flight = unsafe { self.storage.flight_unchecked_unprotected(flight_id) };
+        let flight = unsafe { self.storage.flight_unchecked_protected(flight_id, guard) };
 
         let (new_swapchain, new_images) = swapchain.recreate(f(swapchain.create_info()))?;
 
@@ -601,7 +589,7 @@ impl Resources {
     pub(crate) fn invalidate_buffer<'a>(
         &'a self,
         id: Id<Buffer>,
-        guard: &'a epoch::Guard<'_>,
+        guard: &'a hyaline::Guard<'_>,
     ) -> Result<&'a BufferState> {
         let state = self
             .storage
@@ -615,7 +603,7 @@ impl Resources {
     pub(crate) fn invalidate_image<'a>(
         &'a self,
         id: Id<Image>,
-        guard: &'a epoch::Guard<'_>,
+        guard: &'a hyaline::Guard<'_>,
     ) -> Result<&'a ImageState> {
         let state = self
             .storage
@@ -629,7 +617,7 @@ impl Resources {
     pub(crate) fn invalidate_swapchain<'a>(
         &'a self,
         id: Id<Swapchain>,
-        guard: &'a epoch::Guard<'_>,
+        guard: &'a hyaline::Guard<'_>,
     ) -> Result<&'a SwapchainState> {
         let state = self
             .storage
@@ -640,19 +628,16 @@ impl Resources {
         Ok(state)
     }
 
-    pub(crate) unsafe fn remove_buffer_unchecked(&self, id: Id<Buffer>) -> BufferState {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.buffers.remove_unchecked(id.erase()) }
+    pub(crate) fn remove_invalidated_buffer(&self, id: Id<Buffer>) -> Option<()> {
+        self.storage.buffers.remove_invalidated(id.erase())
     }
 
-    pub(crate) unsafe fn remove_image_unchecked(&self, id: Id<Image>) -> ImageState {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.images.remove_unchecked(id.erase()) }
+    pub(crate) fn remove_invalidated_image(&self, id: Id<Image>) -> Option<()> {
+        self.storage.images.remove_invalidated(id.erase())
     }
 
-    pub(crate) unsafe fn remove_swapchain_unchecked(&self, id: Id<Swapchain>) -> SwapchainState {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.swapchains.remove_unchecked(id.erase()) }
+    pub(crate) fn remove_invalidated_swapchain(&self, id: Id<Swapchain>) -> Option<()> {
+        self.storage.swapchains.remove_invalidated(id.erase())
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -661,14 +646,21 @@ impl Resources {
         self.storage.buffer(id)
     }
 
-    pub(crate) unsafe fn buffer_unprotected(&self, id: Id<Buffer>) -> Result<&BufferState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.buffer_unprotected(id) }
+    pub(crate) fn buffer_protected<'a>(
+        &'a self,
+        id: Id<Buffer>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a BufferState> {
+        self.storage.buffer_protected(id, guard)
     }
 
-    pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
+    pub(crate) unsafe fn buffer_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Buffer>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a BufferState {
         // SAFETY: Enforced by the caller.
-        unsafe { self.storage.buffer_unchecked_unprotected(id) }
+        unsafe { self.storage.buffer_unchecked_protected(id, guard) }
     }
 
     /// Returns the image corresponding to `id`.
@@ -677,14 +669,21 @@ impl Resources {
         self.storage.image(id)
     }
 
-    pub(crate) unsafe fn image_unprotected(&self, id: Id<Image>) -> Result<&ImageState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.image_unprotected(id) }
+    pub(crate) fn image_protected<'a>(
+        &'a self,
+        id: Id<Image>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a ImageState> {
+        self.storage.image_protected(id, guard)
     }
 
-    pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
+    pub(crate) unsafe fn image_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Image>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a ImageState {
         // SAFETY: Enforced by the caller.
-        unsafe { self.storage.image_unchecked_unprotected(id) }
+        unsafe { self.storage.image_unchecked_protected(id, guard) }
     }
 
     /// Returns the swapchain corresponding to `id`.
@@ -693,20 +692,21 @@ impl Resources {
         self.storage.swapchain(id)
     }
 
-    pub(crate) unsafe fn swapchain_unprotected(
-        &self,
+    pub(crate) fn swapchain_protected<'a>(
+        &'a self,
         id: Id<Swapchain>,
-    ) -> Result<&SwapchainState> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.swapchain_unprotected(id) }
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a SwapchainState> {
+        self.storage.swapchain_protected(id, guard)
     }
 
-    pub(crate) unsafe fn swapchain_unchecked_unprotected(
-        &self,
+    pub(crate) unsafe fn swapchain_unchecked_protected<'a>(
+        &'a self,
         id: Id<Swapchain>,
-    ) -> &SwapchainState {
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a SwapchainState {
         // SAFETY: Enforced by the caller.
-        unsafe { self.storage.swapchain_unchecked_unprotected(id) }
+        unsafe { self.storage.swapchain_unchecked_protected(id, guard) }
     }
 
     /// Returns the [flight] corresponding to `id`.
@@ -715,21 +715,30 @@ impl Resources {
         self.storage.flight(id)
     }
 
-    pub(crate) unsafe fn flight_unprotected(&self, id: Id<Flight>) -> Result<&Flight> {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage.flight_unprotected(id) }
+    pub(crate) fn flight_protected<'a>(
+        &'a self,
+        id: Id<Flight>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a Flight> {
+        self.storage.flight_protected(id, guard)
     }
 
-    pub(crate) unsafe fn flight_unchecked_unprotected(&self, id: Id<Flight>) -> &Flight {
+    pub(crate) unsafe fn flight_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Flight>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a Flight {
         // SAFETY: Enforced by the caller.
-        unsafe { self.storage.flight_unchecked_unprotected(id) }
+        unsafe { self.storage.flight_unchecked_protected(id, guard) }
     }
 
-    pub(crate) unsafe fn flights_unprotected(&self) -> impl Iterator<Item = (Id<Flight>, &Flight)> {
+    pub(crate) fn flights_protected<'a>(
+        &'a self,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> impl Iterator<Item = (Id<Flight>, &'a Flight)> {
         self.storage
             .flights
-            // SAFETY: Enforced by the caller.
-            .iter(unsafe { epoch::unprotected() })
+            .iter(guard)
             .map(|(k, v)| (unsafe { k.parametrize() }, v))
     }
 
@@ -745,7 +754,7 @@ impl Resources {
     /// This is a safe alternative to [`Device::wait_idle`], but unlike that method, this method
     /// additionally collects outstanding garbage.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
-        let guard = &self.pin();
+        let guard = &self.storage.pin();
         let mut fences = SmallVec::<[_; 8]>::new();
         let mut frames = SmallVec::<[_; 8]>::new();
 
@@ -782,7 +791,7 @@ impl Resources {
         Ok(())
     }
 
-    pub(crate) fn pin(&self) -> epoch::Guard<'_> {
+    pub(crate) fn pin(&self) -> hyaline::Guard<'_> {
         self.storage.pin()
     }
 }
@@ -795,12 +804,13 @@ unsafe impl DeviceOwned for Resources {
 }
 
 impl ResourceStorage {
-    pub(crate) fn global(&self) -> &epoch::GlobalHandle {
-        &self.global
+    pub(crate) fn hyaline_collector(&self) -> &hyaline::CollectorHandle {
+        &self.hyaline_collector
     }
 
-    pub(crate) fn pin(&self) -> epoch::Guard<'_> {
-        self.locals.get_or(|| self.global.register_local()).pin()
+    pub(crate) fn pin(&self) -> hyaline::Guard<'_> {
+        // SAFETY: The guard's lifetime is bound to the collection.
+        unsafe { self.hyaline_collector.pin() }
     }
 
     pub(crate) fn buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
@@ -808,31 +818,37 @@ impl ResourceStorage {
 
         let inner = self
             .buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            // SAFETY: We own the `hyaline::Guard`.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
             .ok_or(InvalidSlotError::new(id))?;
 
         Ok(Ref { inner, guard })
     }
 
-    pub(crate) unsafe fn buffer_unprotected(&self, id: Id<Buffer>) -> Result<&BufferState> {
+    pub(crate) fn buffer_protected<'a>(
+        &'a self,
+        id: Id<Buffer>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a BufferState> {
         self.buffers
-            // SAFETY: Enforced by the caller.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            .get(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))
     }
 
-    pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
+    pub(crate) unsafe fn buffer_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Buffer>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a BufferState {
         assert_unsafe_precondition!(
             self.buffers.get(id.erase(), &self.pin()).is_some(),
             "`id` must be a valid buffer ID",
         );
 
         // SAFETY: Enforced by the caller.
-        let unprotected = unsafe { epoch::unprotected() };
-
-        // SAFETY: Enforced by the caller.
-        unsafe { self.buffers.get_unchecked(id.erase(), unprotected) }
+        unsafe { self.buffers.get_unchecked(id.erase(), guard) }
     }
 
     pub(crate) fn image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
@@ -840,31 +856,37 @@ impl ResourceStorage {
 
         let inner = self
             .images
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            // SAFETY: We own the `hyaline::Guard`.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
             .ok_or(InvalidSlotError::new(id))?;
 
         Ok(Ref { inner, guard })
     }
 
-    pub(crate) unsafe fn image_unprotected(&self, id: Id<Image>) -> Result<&ImageState> {
+    pub(crate) fn image_protected<'a>(
+        &'a self,
+        id: Id<Image>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a ImageState> {
         self.images
-            // SAFETY: Enforced by the caller.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            .get(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))
     }
 
-    pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
+    pub(crate) unsafe fn image_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Image>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a ImageState {
         assert_unsafe_precondition!(
             self.images.get(id.erase(), &self.pin()).is_some(),
             "`id` must be a valid image ID",
         );
 
         // SAFETY: Enforced by the caller.
-        let unprotected = unsafe { epoch::unprotected() };
-
-        // SAFETY: Enforced by the caller.
-        unsafe { self.images.get_unchecked(id.erase(), unprotected) }
+        unsafe { self.images.get_unchecked(id.erase(), guard) }
     }
 
     pub(crate) fn swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
@@ -872,37 +894,37 @@ impl ResourceStorage {
 
         let inner = self
             .swapchains
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            // SAFETY: We own the `hyaline::Guard`.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
             .ok_or(InvalidSlotError::new(id))?;
 
         Ok(Ref { inner, guard })
     }
 
-    pub(crate) unsafe fn swapchain_unprotected(
-        &self,
+    pub(crate) fn swapchain_protected<'a>(
+        &'a self,
         id: Id<Swapchain>,
-    ) -> Result<&SwapchainState> {
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a SwapchainState> {
         self.swapchains
-            // SAFETY: Enforced by the caller.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            .get(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))
     }
 
-    pub(crate) unsafe fn swapchain_unchecked_unprotected(
-        &self,
+    pub(crate) unsafe fn swapchain_unchecked_protected<'a>(
+        &'a self,
         id: Id<Swapchain>,
-    ) -> &SwapchainState {
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a SwapchainState {
         assert_unsafe_precondition!(
             self.swapchains.get(id.erase(), &self.pin()).is_some(),
             "`id` must be a valid swapchain ID",
         );
 
         // SAFETY: Enforced by the caller.
-        let unprotected = unsafe { epoch::unprotected() };
-
-        // SAFETY: Enforced by the caller.
-        unsafe { self.swapchains.get_unchecked(id.erase(), unprotected) }
+        unsafe { self.swapchains.get_unchecked(id.erase(), guard) }
     }
 
     pub(crate) fn flight(&self, id: Id<Flight>) -> Result<Ref<'_, Flight>> {
@@ -910,26 +932,32 @@ impl ResourceStorage {
 
         let inner = self
             .flights
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            // SAFETY: We own the `hyaline::Guard`.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
             .ok_or(InvalidSlotError::new(id))?;
 
         Ok(Ref { inner, guard })
     }
 
-    pub(crate) unsafe fn flight_unprotected(&self, id: Id<Flight>) -> Result<&Flight> {
+    pub(crate) fn flight_protected<'a>(
+        &'a self,
+        id: Id<Flight>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Result<&'a Flight> {
         self.flights
-            // SAFETY: Enforced by the caller.
-            .get(id.erase(), unsafe { epoch::unprotected() })
+            .get(id.erase(), guard)
             .ok_or(InvalidSlotError::new(id))
     }
 
-    pub(crate) unsafe fn flight_unchecked_unprotected(&self, id: Id<Flight>) -> &Flight {
+    pub(crate) unsafe fn flight_unchecked_protected<'a>(
+        &'a self,
+        id: Id<Flight>,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> &'a Flight {
         // SAFETY: Enforced by the caller.
-        let unprotected = unsafe { epoch::unprotected() };
-
-        // SAFETY: Enforced by the caller.
-        unsafe { self.flights.get_unchecked(id.erase(), unprotected) }
+        unsafe { self.flights.get_unchecked(id.erase(), guard) }
     }
 }
 
@@ -941,9 +969,7 @@ unsafe impl DeviceOwned for ResourceStorage {
 
 impl Drop for Resources {
     fn drop(&mut self) {
-        // SAFETY: We are being dropped, which is proof that no outstanding references to any slots
-        // can exist.
-        let guard = unsafe { epoch::unprotected() };
+        let guard = &self.storage.pin();
 
         let mut fences = SmallVec::<[_; 8]>::new();
 
@@ -981,11 +1007,11 @@ impl Drop for Resources {
             //   can exist and that we have exclusive access to this queue.
             // * We waited on the flight above.
             // * `self` is the correct `Resources` collection.
-            unsafe { flight.garbage_queue.drop(self) };
+            unsafe { flight.garbage_queue.drop(self, guard) };
         }
 
         // SAFETY: Same as the `drop` above.
-        unsafe { self.storage.garbage_queue.drop(self) };
+        unsafe { self.storage.garbage_queue.drop(self, guard) };
 
         let mut registered_devices = REGISTERED_DEVICES.lock();
 
@@ -1401,13 +1427,6 @@ pub struct ResourcesCreateInfo<'a> {
     /// The default value is `None`.
     pub bindless_context: Option<&'a BindlessContextCreateInfo<'a>>,
 
-    /// The garbage collector that should be used.
-    ///
-    /// If you leave the default, the [`DefaultCollector`] will be used.
-    ///
-    /// The default value is `None`.
-    pub collector: Option<&'a Arc<dyn Collector>>,
-
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -1428,7 +1447,6 @@ impl ResourcesCreateInfo<'_> {
             max_swapchains: 1 << 8,
             max_flights: 1 << 8,
             bindless_context: None,
-            collector: None,
             _ne: crate::NE,
         }
     }

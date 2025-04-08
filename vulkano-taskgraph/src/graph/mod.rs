@@ -325,8 +325,8 @@ impl<W: ?Sized> Nodes<W> {
     }
 
     unsafe fn node_unchecked(&self, index: NodeIndex) -> &Node<W> {
-        // SAFETY: The `OCCUPIED_BIT` is set.
-        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_BIT) });
+        // SAFETY: The generation's state tag is `OCCUPIED_TAG`.
+        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_TAG) });
 
         // SAFETY: The caller must ensure that the `index` is valid.
         unsafe { self.inner.get_unchecked(id) }
@@ -337,8 +337,8 @@ impl<W: ?Sized> Nodes<W> {
     }
 
     unsafe fn node_unchecked_mut(&mut self, index: NodeIndex) -> &mut Node<W> {
-        // SAFETY: The `OCCUPIED_BIT` is set.
-        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_BIT) });
+        // SAFETY: The generation's state tag is `OCCUPIED_TAG`.
+        let id = NodeId(unsafe { SlotId::new_unchecked(index, SlotId::OCCUPIED_TAG) });
 
         // SAFETY: The caller must ensure that the `index` is valid.
         unsafe { self.inner.get_unchecked_mut(id) }

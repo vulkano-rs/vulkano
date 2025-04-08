@@ -4,9 +4,9 @@ use crate::{
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use concurrent_slotmap::{epoch, SlotMap};
+use concurrent_slotmap::{hyaline, SlotMap};
 use foldhash::HashMap;
-use std::{collections::BTreeMap, iter, sync::Arc};
+use std::{collections::BTreeMap, iter, mem, sync::Arc};
 use vulkano::{
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, Subbuffer},
@@ -313,7 +313,7 @@ impl GlobalDescriptorSet {
         let allocator = Arc::new(GlobalDescriptorSetAllocator::new(device));
         let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
 
-        let global = resources.global();
+        let hyaline_collector = resources.hyaline_collector();
 
         let descriptor_count = |n| layout.bindings().get(&n).map_or(0, |b| b.descriptor_count);
         let max_samplers = descriptor_count(SAMPLER_BINDING);
@@ -325,13 +325,22 @@ impl GlobalDescriptorSet {
         Ok(GlobalDescriptorSet {
             resources: resources.clone(),
             inner,
-            samplers: SlotMap::with_global_and_key(max_samplers, global.clone()),
-            sampled_images: SlotMap::with_global_and_key(max_sampled_images, global.clone()),
-            storage_images: SlotMap::with_global_and_key(max_storage_images, global.clone()),
-            storage_buffers: SlotMap::with_global_and_key(max_storage_buffers, global.clone()),
-            acceleration_structures: SlotMap::with_global_and_key(
+            samplers: SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone()),
+            sampled_images: SlotMap::with_collector_and_key(
+                max_sampled_images,
+                hyaline_collector.clone(),
+            ),
+            storage_images: SlotMap::with_collector_and_key(
+                max_storage_images,
+                hyaline_collector.clone(),
+            ),
+            storage_buffers: SlotMap::with_collector_and_key(
+                max_storage_buffers,
+                hyaline_collector.clone(),
+            ),
+            acceleration_structures: SlotMap::with_collector_and_key(
                 max_acceleration_structures,
-                global.clone(),
+                hyaline_collector.clone(),
             ),
         })
     }
@@ -594,7 +603,7 @@ impl GlobalDescriptorSet {
     pub(crate) fn invalidate_sampler<'a>(
         &'a self,
         id: SamplerId,
-        guard: &'a epoch::Guard<'a>,
+        guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a SamplerDescriptor> {
         self.samplers.invalidate(id, guard)
     }
@@ -602,7 +611,7 @@ impl GlobalDescriptorSet {
     pub(crate) fn invalidate_sampled_image<'a>(
         &'a self,
         id: SampledImageId,
-        guard: &'a epoch::Guard<'a>,
+        guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a SampledImageDescriptor> {
         self.sampled_images.invalidate(id, guard)
     }
@@ -610,7 +619,7 @@ impl GlobalDescriptorSet {
     pub(crate) fn invalidate_storage_image<'a>(
         &'a self,
         id: StorageImageId,
-        guard: &'a epoch::Guard<'a>,
+        guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageImageDescriptor> {
         self.storage_images.invalidate(id, guard)
     }
@@ -618,7 +627,7 @@ impl GlobalDescriptorSet {
     pub(crate) fn invalidate_storage_buffer<'a>(
         &'a self,
         id: StorageBufferId,
-        guard: &'a epoch::Guard<'a>,
+        guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageBufferDescriptor> {
         self.storage_buffers.invalidate(id, guard)
     }
@@ -626,54 +635,42 @@ impl GlobalDescriptorSet {
     pub(crate) fn invalidate_acceleration_structure<'a>(
         &'a self,
         id: AccelerationStructureId,
-        guard: &'a epoch::Guard<'a>,
+        guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a AccelerationStructureDescriptor> {
         self.acceleration_structures.invalidate(id, guard)
     }
 
-    pub(crate) unsafe fn remove_sampler_unchecked(&self, id: SamplerId) -> SamplerDescriptor {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.samplers.remove_unchecked(id) }
+    pub(crate) fn remove_invalidated_sampler(&self, id: SamplerId) -> Option<()> {
+        self.samplers.remove_invalidated(id)
     }
 
-    pub(crate) unsafe fn remove_sampled_image_unchecked(
-        &self,
-        id: SampledImageId,
-    ) -> SampledImageDescriptor {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.sampled_images.remove_unchecked(id) }
+    pub(crate) fn remove_invalidated_sampled_image(&self, id: SampledImageId) -> Option<()> {
+        self.sampled_images.remove_invalidated(id)
     }
 
-    pub(crate) unsafe fn remove_storage_image_unchecked(
-        &self,
-        id: StorageImageId,
-    ) -> StorageImageDescriptor {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage_images.remove_unchecked(id) }
+    pub(crate) fn remove_invalidated_storage_image(&self, id: StorageImageId) -> Option<()> {
+        self.storage_images.remove_invalidated(id)
     }
 
-    pub(crate) unsafe fn remove_storage_buffer_unchecked(
-        &self,
-        id: StorageBufferId,
-    ) -> StorageBufferDescriptor {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.storage_buffers.remove_unchecked(id) }
+    pub(crate) fn remove_invalidated_storage_buffer(&self, id: StorageBufferId) -> Option<()> {
+        self.storage_buffers.remove_invalidated(id)
     }
 
-    pub(crate) unsafe fn remove_acceleration_structure_unchecked(
+    pub(crate) fn remove_invalidated_acceleration_structure(
         &self,
         id: AccelerationStructureId,
-    ) -> AccelerationStructureDescriptor {
-        // SAFETY: Enforced by the caller.
-        unsafe { self.acceleration_structures.remove_unchecked(id) }
+    ) -> Option<()> {
+        self.acceleration_structures.remove_invalidated(id)
     }
 
     #[inline]
     pub fn sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own an `epoch::Guard`.
-        let inner = self.samplers.get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We own the `hyaline::Guard`.
+        let inner = self.samplers.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
         Some(Ref { inner, guard })
     }
@@ -682,10 +679,10 @@ impl GlobalDescriptorSet {
     pub fn sampled_image(&self, id: SampledImageId) -> Option<Ref<'_, SampledImageDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .sampled_images
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We own the `hyaline::Guard`.
+        let inner = self.sampled_images.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
         Some(Ref { inner, guard })
     }
@@ -694,10 +691,10 @@ impl GlobalDescriptorSet {
     pub fn storage_image(&self, id: StorageImageId) -> Option<Ref<'_, StorageImageDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .storage_images
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We own the `hyaline::Guard`.
+        let inner = self.storage_images.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
         Some(Ref { inner, guard })
     }
@@ -706,10 +703,10 @@ impl GlobalDescriptorSet {
     pub fn storage_buffer(&self, id: StorageBufferId) -> Option<Ref<'_, StorageBufferDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .storage_buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We own the `hyaline::Guard`.
+        let inner = self.storage_buffers.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
         Some(Ref { inner, guard })
     }
@@ -721,10 +718,10 @@ impl GlobalDescriptorSet {
     ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .acceleration_structures
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We own the `hyaline::Guard`.
+        let inner = self.acceleration_structures.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
         Some(Ref { inner, guard })
     }

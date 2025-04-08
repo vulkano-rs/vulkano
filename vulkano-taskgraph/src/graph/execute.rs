@@ -11,7 +11,7 @@ use crate::{
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
-use concurrent_slotmap::epoch;
+use concurrent_slotmap::hyaline;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
@@ -71,13 +71,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         let flight_id = self.flight_id;
 
-        // SAFETY: `resource_map` owns an `epoch::Guard`.
-        let flight = unsafe {
-            resource_map
-                .physical_resources
-                .flight_unprotected(flight_id)
-        }
-        .expect("invalid flight ID");
+        let flight = resource_map
+            .physical_resources
+            .flight_protected(flight_id, &resource_map.guard)
+            .expect("invalid flight ID");
 
         let _flight_state = flight.state.try_lock().unwrap_or_else(|| {
             panic!(
@@ -162,8 +159,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
-
-        resource_map.guard.try_advance_global();
 
         unsafe { flight.next_frame() };
 
@@ -2301,7 +2296,7 @@ pub struct ResourceMap<'a> {
     physical_resources: Arc<Resources>,
     map: Vec<*const ()>,
     len: u32,
-    guard: epoch::Guard<'a>,
+    guard: hyaline::Guard<'a>,
 }
 
 impl<'a> ResourceMap<'a> {
@@ -2320,22 +2315,17 @@ impl<'a> ResourceMap<'a> {
                 ObjectType::Buffer => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe { physical_resources.buffer_unprotected(physical_id) }?)
+                    <*const _>::cast(physical_resources.buffer_protected(physical_id, &guard)?)
                 }
                 ObjectType::Image => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe { physical_resources.image_unprotected(physical_id) }?)
+                    <*const _>::cast(physical_resources.image_protected(physical_id, &guard)?)
                 }
                 ObjectType::Swapchain => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe {
-                        physical_resources.swapchain_unprotected(physical_id)
-                    }?)
+                    <*const _>::cast(physical_resources.swapchain_protected(physical_id, &guard)?)
                 }
                 _ => unreachable!(),
             };
@@ -2377,8 +2367,9 @@ impl<'a> ResourceMap<'a> {
     ) -> Result<(), InvalidSlotError> {
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.buffer_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .buffer_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.buffer().sharing().is_exclusive(),
@@ -2421,12 +2412,10 @@ impl<'a> ResourceMap<'a> {
         virtual_id: Id<Buffer>,
         physical_id: Id<Buffer>,
     ) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .buffer_unchecked_unprotected(physical_id)
+                .buffer_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2459,8 +2448,9 @@ impl<'a> ResourceMap<'a> {
 
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.image_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .image_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.image().sharing().is_exclusive(),
@@ -2499,12 +2489,10 @@ impl<'a> ResourceMap<'a> {
     /// - The physical resource must not have a mapping from another virtual resource.
     #[inline]
     pub unsafe fn insert_image_unchecked(&mut self, virtual_id: Id<Image>, physical_id: Id<Image>) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .image_unchecked_unprotected(physical_id)
+                .image_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2534,8 +2522,9 @@ impl<'a> ResourceMap<'a> {
     ) -> Result<(), InvalidSlotError> {
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.swapchain_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .swapchain_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.swapchain().image_sharing().is_exclusive(),
@@ -2578,12 +2567,10 @@ impl<'a> ResourceMap<'a> {
         virtual_id: Id<Swapchain>,
         physical_id: Id<Swapchain>,
     ) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .swapchain_unchecked_unprotected(physical_id)
+                .swapchain_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2624,6 +2611,10 @@ impl<'a> ResourceMap<'a> {
         // present in `self.virtual_resources`. It follows then, that when the length of `self` is
         // that of `self.virtual_resources`, that the virtual resources are mapped exhaustively.
         self.len() == self.virtual_resources.len()
+    }
+
+    pub(crate) fn guard(&self) -> &hyaline::Guard<'_> {
+        &self.guard
     }
 
     pub(crate) unsafe fn buffer(&self, id: Id<Buffer>) -> Result<&BufferState, InvalidSlotError> {

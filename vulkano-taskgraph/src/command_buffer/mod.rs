@@ -165,10 +165,8 @@ impl<'a> ResourceAccesses<'a> {
         } else {
             let resources = self.resource_map.resources();
 
-            // SAFETY:
-            // * `ResourceMap` owns an `epoch::Guard`.
-            // * The caller must ensure that `id` is valid.
-            unsafe { resources.buffer_unchecked_unprotected(id) }.buffer()
+            // SAFETY: The caller must ensure that `id` is valid.
+            unsafe { resources.buffer_unchecked_protected(id, self.resource_map.guard()) }.buffer()
         }
     }
 
@@ -182,10 +180,8 @@ impl<'a> ResourceAccesses<'a> {
         } else {
             let resources = self.resource_map.resources();
 
-            // SAFETY:
-            // * The caller must ensure that `id` is valid.
-            // * `ResourceMap` owns an `epoch::Guard`.
-            unsafe { resources.image_unchecked_unprotected(id) }.image()
+            // SAFETY: The caller must ensure that `id` is valid.
+            unsafe { resources.image_unchecked_protected(id, self.resource_map.guard()) }.image()
         }
     }
 }
