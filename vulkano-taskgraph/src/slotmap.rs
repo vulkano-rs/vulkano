@@ -16,7 +16,7 @@ const STATE_MASK: u32 = SlotId::STATE_MASK;
 
 const OCCUPIED_TAG: u32 = SlotId::OCCUPIED_TAG;
 
-const GENERATION_MASK: u32 = u32::MAX >> (SlotId::TAG_BITS + SlotId::STATE_BITS);
+const GENERATION_MASK: u32 = u32::MAX << (SlotId::TAG_BITS + SlotId::STATE_BITS);
 
 const ONE_GENERATION: u32 = 1 << (SlotId::TAG_BITS + SlotId::STATE_BITS);
 
@@ -181,13 +181,13 @@ impl<V> SlotMapInner<V> {
         if slot.generation == id.generation() {
             slot.generation = (id.generation() & GENERATION_MASK).wrapping_add(ONE_GENERATION);
 
-            // SAFETY: We checked that the slot's generation matches `id.generation`. By `SlotId`'s
-            // invariant, its generation's `OCCUPIED_BIT` bit must be set. Therefore, reading the
-            // slot is safe, as the only way the slot's occupied bit can be set is when inserting
-            // after initialization of the slot.
+            // SAFETY: We checked that `id.generation` matches the slot's generation, which means
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
+            // must have been initialized in `SlotMap::insert`.
             let value = unsafe { &mut slot.inner.value };
 
-            // SAFETY: We unset the slot's `OCCUPIED_BIT` such that it can't be accessed again.
+            // SAFETY: We set the slot's state tag to `VACANT_TAG` such that future attempts to
+            // access the slot will fail.
             let value = unsafe { ManuallyDrop::take(value) };
 
             slot.inner.next_free = self.free_list_head;
@@ -206,10 +206,9 @@ impl<V> SlotMapInner<V> {
         let slot = self.slots.get(id.index() as usize)?;
 
         if slot.generation == id.generation() {
-            // SAFETY: We checked that the slot's generation matches `id.generation`. By `SlotId`'s
-            // invariant, its generation's `OCCUPIED_BIT` bit must be set. Therefore, reading the
-            // value is safe, as the only way the slot's occupied bit can be set is when inserting
-            // after initialization of the slot.
+            // SAFETY: We checked that `id.generation` matches the slot's generation, which means
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
+            // must have been initialized in `SlotMap::insert`.
             Some(unsafe { slot.value_unchecked() })
         } else {
             None
@@ -230,10 +229,9 @@ impl<V> SlotMapInner<V> {
         let slot = self.slots.get_mut(id.index() as usize)?;
 
         if slot.generation == id.generation() {
-            // SAFETY: We checked that the slot's generation matches `id.generation`. By `SlotId`'s
-            // invariant, its generation's `OCCUPIED_BIT` bit must be set. Therefore, reading the
-            // value is safe, as the only way the slot's occupied bit can be set is when inserting
-            // after initialization of the slot.
+            // SAFETY: We checked that `id.generation` matches the slot's generation, which means
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
+            // must have been initialized in `SlotMap::insert`.
             Some(unsafe { slot.value_unchecked_mut() })
         } else {
             None
@@ -298,10 +296,9 @@ impl<V> SlotMapInner<V> {
                 return None;
             }
 
-            // SAFETY: We checked that the slot's generation matches `id.generation`. By `SlotId`'s
-            // invariant, its generation's `OCCUPIED_BIT` bit must be set. Therefore, reading the
-            // value is safe, as the only way the slot's occupied bit can be set is when inserting
-            // after initialization of the slot.
+            // SAFETY: We checked that `id.generation` matches the slot's generation, which means
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
+            // must have been initialized in `SlotMap::insert`.
             let value = unsafe { slot.value_unchecked_mut() };
 
             // SAFETY: `i` is in bounds of the array.
