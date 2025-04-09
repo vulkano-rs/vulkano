@@ -99,6 +99,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             );
         }
 
+        unsafe { flight.start_next_frame() };
+
         let current_frame_index = flight.current_frame_index();
         let mut deferred_batch = resource_map.resources().create_deferred_batch();
         let deferreds = deferred_batch.deferreds_mut();

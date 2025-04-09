@@ -36,7 +36,7 @@ use vulkano::{buffer::Buffer, image::Image, swapchain::Swapchain};
 pub struct DeferredBatch<'a> {
     resources: &'a Resources,
     node_index: u32,
-    frames: *mut SmallVec<[(Id<Flight>, u64); 4]>,
+    biased_frames: *mut SmallVec<[(Id<Flight>, u64); 4]>,
     deferreds: *mut Vec<Deferred>,
     guard: hyaline::Guard<'a>,
     drop_guard: bool,
@@ -52,7 +52,7 @@ impl<'a> DeferredBatch<'a> {
         DeferredBatch {
             resources,
             node_index,
-            frames: node.frames.get(),
+            biased_frames: node.biased_frames.get(),
             deferreds: node.deferreds.get(),
             guard,
             drop_guard: false,
@@ -286,13 +286,14 @@ impl<'a> DeferredBatch<'a> {
     pub unsafe fn enqueue_with_flights(self, flight_ids: impl IntoIterator<Item = Id<Flight>>) {
         let guard = self.guard.clone();
 
-        let frames = flight_ids.into_iter().map(|flight_id| {
+        let biased_frames = flight_ids.into_iter().map(|flight_id| {
             let flight = self
                 .resources
                 .flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
+            let biased_frame = flight.biased_started_frame() + u64::from(flight.frame_count());
 
-            (flight_id, flight.current_frame())
+            (flight_id, biased_frame)
         });
 
         let mut this = ManuallyDrop::new(self);
@@ -307,7 +308,7 @@ impl<'a> DeferredBatch<'a> {
         //   doesn't call this method.
         // * The caller must ensure that `flight_ids` constitutes the correct set of flights for our
         //   deferred functions.
-        unsafe { this.enqueue_inner(frames) };
+        unsafe { this.enqueue_inner(biased_frames) };
     }
 
     /// Enqueues the deferred functions for after the given `frames` have been waited on.
@@ -335,10 +336,14 @@ impl<'a> DeferredBatch<'a> {
     pub unsafe fn enqueue_with_frames(self, frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
         let guard = self.guard.clone();
 
-        let frames = frames.into_iter().inspect(|&(flight_id, _)| {
-            self.resources
+        let biased_frames = frames.into_iter().map(|(flight_id, frame)| {
+            let flight = self
+                .resources
                 .flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
+            let biased_frame = frame + u64::from(flight.frame_count()) + 1;
+
+            (flight_id, biased_frame)
         });
 
         let mut this = ManuallyDrop::new(self);
@@ -353,14 +358,14 @@ impl<'a> DeferredBatch<'a> {
         //   doesn't call this method.
         // * The caller must ensure that `frames` constitutes the correct set of frames for our
         //   deferred functions.
-        unsafe { this.enqueue_inner(frames) };
+        unsafe { this.enqueue_inner(biased_frames) };
     }
 
     unsafe fn set_drop_guard(&mut self) {
         self.drop_guard = true;
     }
 
-    unsafe fn enqueue_inner(&mut self, frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
+    unsafe fn enqueue_inner(&mut self, biased_frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
         struct ClearGuard<'a, 'b>(&'a mut DeferredBatch<'b>);
 
         impl Drop for ClearGuard<'_, '_> {
@@ -382,19 +387,19 @@ impl<'a> DeferredBatch<'a> {
             }
         }
 
-        let frames_ptr = self.frames;
+        let biased_frames_ptr = self.biased_frames;
         let this = ClearGuard(self);
 
         // SAFETY: By our own invariant, the node denoted by `self.node_index` must have been
         // allocated by us, which means that no other threads can be accessing this node's data
         // while we haven't pushed it to a garbage queue.
-        let node_frames = unsafe { &mut *frames_ptr };
-        node_frames.clear();
-        node_frames.extend(frames);
+        let node_biased_frames = unsafe { &mut *biased_frames_ptr };
+        node_biased_frames.clear();
+        node_biased_frames.extend(biased_frames);
 
         mem::forget(this);
 
-        if let &[(flight_id, _)] = node_frames.as_slice() {
+        if let &[(flight_id, _)] = node_biased_frames.as_slice() {
             // SAFETY: The caller must ensure that `frames` contained valid flight IDs when
             // extending the node's `frames` above. Since we have owned a `hyaline::Guard` from then
             // until now, the flight cannot have been dropped yet even if it were to be removed
@@ -435,13 +440,17 @@ impl Drop for DeferredBatch<'_> {
     fn drop(&mut self) {
         let guard = self.guard.clone();
         let flights = self.resources.flights_protected(&guard);
-        let frames = flights.map(|(flight_id, flight)| (flight_id, flight.current_frame()));
+        let biased_frames = flights.map(|(flight_id, flight)| {
+            let biased_frame = flight.biased_started_frame() + u64::from(flight.frame_count());
+
+            (flight_id, biased_frame)
+        });
 
         // SAFETY:
         // * We're dropping `self`, which ensures that this method isn't called again.
         // * `frames` includes the current frame of every flight, so there can be no flight that
         //   uses any of the resources/descriptors being destroyed that isn't waited on.
-        unsafe { self.enqueue_inner(frames) };
+        unsafe { self.enqueue_inner(biased_frames) };
     }
 }
 
@@ -548,13 +557,13 @@ impl GlobalQueue {
     }
 
     pub(crate) unsafe fn collect(&self, resources: &Resources, guard: &hyaline::Guard<'_>) {
-        let predicate = |frames: &[(Id<Flight>, u64)]| {
-            for &(flight_id, frame) in frames {
+        let predicate = |biased_frames: &[(Id<Flight>, u64)]| {
+            for &(flight_id, biased_frame) in biased_frames {
                 let Ok(flight) = resources.flight_protected(flight_id, guard) else {
                     continue;
                 };
 
-                if !flight.is_frame_complete(frame) {
+                if !flight.is_biased_frame_complete(biased_frame) {
                     return ControlFlow::Continue(false);
                 }
             }
@@ -598,9 +607,9 @@ impl LocalQueue {
         flight: &Flight,
         guard: &hyaline::Guard<'_>,
     ) {
-        let predicate = |frames: &[(Id<Flight>, u64)]| {
-            if let &[(_, frame)] = frames {
-                if flight.is_frame_complete(frame) {
+        let predicate = |biased_frames: &[(Id<Flight>, u64)]| {
+            if let &[(_, biased_frame)] = biased_frames {
+                if flight.is_biased_frame_complete(biased_frame) {
                     ControlFlow::Continue(true)
                 } else {
                     ControlFlow::Break(())
@@ -808,9 +817,9 @@ impl Queue {
 
             // SAFETY: The caller of `Queue::push` must ensure that the pushed node is not accessed
             // mutably again such that we have shared access to the node's `frames`.
-            let frames = unsafe { &*curr_node.frames.get() };
+            let biased_frames = unsafe { &*curr_node.biased_frames.get() };
 
-            match collect_predicate(frames) {
+            match collect_predicate(biased_frames) {
                 ControlFlow::Continue(false) => {
                     // The node cannot be collected but there might be more collectable nodes. Move
                     // onto the next node.
@@ -923,7 +932,7 @@ fn is_deleted(index: u32) -> bool {
 
 struct Node {
     next: AtomicU32,
-    frames: UnsafeCell<SmallVec<[(Id<Flight>, u64); 4]>>,
+    biased_frames: UnsafeCell<SmallVec<[(Id<Flight>, u64); 4]>>,
     deferreds: UnsafeCell<Vec<Deferred>>,
 }
 
@@ -946,7 +955,7 @@ impl NodeAllocator {
         let (id, node) = self.inner.revive_or_insert_with(guard, |_| {
             MaybeUninit::new(Node {
                 next: AtomicU32::new(NIL),
-                frames: UnsafeCell::new(SmallVec::new()),
+                biased_frames: UnsafeCell::new(SmallVec::new()),
                 deferreds: UnsafeCell::new(Vec::new()),
             })
         });

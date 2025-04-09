@@ -118,6 +118,7 @@ pub struct Flight {
     // HACK: `Flight::wait` needs this in order to collect garbage.
     resources: Weak<Resources>,
     frame_count: NonZero<u32>,
+    biased_started_frame: AtomicU64,
     current_frame: AtomicU64,
     biased_complete_frame: AtomicU64,
     fences: SmallVec<[RwLock<Fence>; 3]>,
@@ -331,6 +332,7 @@ impl Resources {
         let flight = Flight {
             resources: Arc::downgrade(self),
             frame_count,
+            biased_started_frame: AtomicU64::new(0),
             current_frame: AtomicU64::new(0),
             biased_complete_frame: AtomicU64::new(u64::from(frame_count.get())),
             fences,
@@ -1273,6 +1275,13 @@ impl Flight {
         self.frame_count.get()
     }
 
+    /// Returns the latest started frame stored at a bias of `1`. That means that if this value
+    /// reaches `n + 1` then frame `n` has started execution. This starts out at `0` because no
+    /// frame has started execution yet when a flight is created.
+    pub(crate) fn biased_started_frame(&self) -> u64 {
+        self.biased_started_frame.load(Ordering::Relaxed)
+    }
+
     /// Returns the current frame counter value. This always starts out at `0` and increases by `1`
     /// after every successful [task graph execution].
     ///
@@ -1383,16 +1392,12 @@ impl Flight {
         self.biased_complete_frame() > self.current_frame()
     }
 
-    pub(crate) fn is_frame_complete(&self, frame: u64) -> bool {
-        debug_assert!(frame <= self.current_frame());
-
-        let biased_frame = frame + u64::from(self.frame_count()) + 1;
-
-        self.is_biased_frame_complete(biased_frame)
+    pub(crate) fn is_biased_frame_complete(&self, biased_frame: u64) -> bool {
+        self.biased_complete_frame() >= biased_frame
     }
 
-    fn is_biased_frame_complete(&self, biased_frame: u64) -> bool {
-        self.biased_complete_frame() >= biased_frame
+    pub(crate) unsafe fn start_next_frame(&self) {
+        self.biased_started_frame.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) unsafe fn next_frame(&self) {
