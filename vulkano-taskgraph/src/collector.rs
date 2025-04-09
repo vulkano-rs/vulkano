@@ -39,6 +39,7 @@ pub struct DeferredBatch<'a> {
     frames: *mut SmallVec<[(Id<Flight>, u64); 4]>,
     deferreds: *mut Vec<Deferred>,
     guard: hyaline::Guard<'a>,
+    drop_guard: bool,
 }
 
 impl<'a> DeferredBatch<'a> {
@@ -54,6 +55,7 @@ impl<'a> DeferredBatch<'a> {
             frames: node.frames.get(),
             deferreds: node.deferreds.get(),
             guard,
+            drop_guard: false,
         }
     }
 
@@ -295,6 +297,10 @@ impl<'a> DeferredBatch<'a> {
 
         let mut this = ManuallyDrop::new(self);
 
+        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot drop
+        // the guard naturally.
+        unsafe { this.set_drop_guard() };
+
         // SAFETY:
         // * We own `self`, which ensures that this method isn't called again.
         // * We have wrapped `self` in a `ManuallyDrop` to ensure that the `Drop` implementation
@@ -302,11 +308,6 @@ impl<'a> DeferredBatch<'a> {
         // * The caller must ensure that `flight_ids` constitutes the correct set of flights for our
         //   deferred functions.
         unsafe { this.enqueue_inner(frames) };
-
-        // SAFETY:
-        // * We own `self`, which ensures that this method isn't called again.
-        // * We have wrapped `self` in a `ManuallyDrop` which ensures that the field isn't dropped.
-        unsafe { ptr::drop_in_place(&mut this.guard) };
     }
 
     /// Enqueues the deferred functions for after the given `frames` have been waited on.
@@ -342,6 +343,10 @@ impl<'a> DeferredBatch<'a> {
 
         let mut this = ManuallyDrop::new(self);
 
+        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot drop
+        // the guard naturally.
+        unsafe { this.set_drop_guard() };
+
         // SAFETY:
         // * We own `self`, which ensures that this method isn't called again.
         // * We have wrapped `self` in a `ManuallyDrop` to ensure that the `Drop` implementation
@@ -349,11 +354,10 @@ impl<'a> DeferredBatch<'a> {
         // * The caller must ensure that `frames` constitutes the correct set of frames for our
         //   deferred functions.
         unsafe { this.enqueue_inner(frames) };
+    }
 
-        // SAFETY:
-        // * We own `self`, which ensures that this method isn't called again.
-        // * We have wrapped `self` in a `ManuallyDrop` which ensures that the field isn't dropped.
-        unsafe { ptr::drop_in_place(&mut this.guard) };
+    unsafe fn set_drop_guard(&mut self) {
+        self.drop_guard = true;
     }
 
     unsafe fn enqueue_inner(&mut self, frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
@@ -370,6 +374,11 @@ impl<'a> DeferredBatch<'a> {
                 // been allocated by us, and since we haven't pushed it to any garbage queue, the
                 // node is still unlinked and therefore safe to deallocate.
                 unsafe { node_allocator.deallocate(self.0.node_index, &self.0.guard) };
+
+                if self.0.drop_guard {
+                    // SAFETY: The caller must ensure that this method is not called again.
+                    unsafe { ptr::drop_in_place(&mut self.0.guard) };
+                }
             }
         }
 
@@ -410,6 +419,11 @@ impl<'a> DeferredBatch<'a> {
 
             // SAFETY: Same as the `push` above.
             unsafe { garbage_queue.push(self.node_index, &self.guard) };
+        }
+
+        if self.drop_guard {
+            // SAFETY: The caller must ensure that this method is not called again.
+            unsafe { ptr::drop_in_place(&mut self.guard) };
         }
     }
 }
