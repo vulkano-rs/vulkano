@@ -1,5 +1,3 @@
-// FIXME: docs
-
 use concurrent_slotmap::{Key, SlotId};
 use core::slice;
 use std::{

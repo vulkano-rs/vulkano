@@ -44,6 +44,7 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 /// There can only exist one `Resources` collection per device, because there must only be one
 /// source of truth in regards to the synchronization state of a resource. In a similar vein, each
 /// resource in the collection must be unique.
+// FIXME: Custom collector
 #[derive(Debug)]
 pub struct Resources {
     storage: Arc<ResourceStorage>,
@@ -818,7 +819,11 @@ impl ResourceStorage {
 
         let inner = self
             .buffers
-            // SAFETY: We own the `hyaline::Guard`.
+            // SAFETY: We unbind the lifetime because this would result in E0515 otherwise. This is
+            // perfectly safe to do -- none of these methods actually borrow from the guard (there's
+            // physically no way for them to; this is encoded in the type system). The lifetime is
+            // bound to the returned reference to ensure that the reference doesn't outlive the
+            // guard. We enforce that by `Ref` owning the `hyaline::Guard` instead.
             .get(id.erase(), unsafe {
                 mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
             })
@@ -856,7 +861,7 @@ impl ResourceStorage {
 
         let inner = self
             .images
-            // SAFETY: We own the `hyaline::Guard`.
+            // SAFETY: Same as in the `buffer` method above.
             .get(id.erase(), unsafe {
                 mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
             })
@@ -894,7 +899,7 @@ impl ResourceStorage {
 
         let inner = self
             .swapchains
-            // SAFETY: We own the `hyaline::Guard`.
+            // SAFETY: Same as in the `buffer` method above.
             .get(id.erase(), unsafe {
                 mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
             })

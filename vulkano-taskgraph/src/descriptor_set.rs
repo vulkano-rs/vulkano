@@ -667,7 +667,11 @@ impl GlobalDescriptorSet {
     pub fn sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own the `hyaline::Guard`.
+        // SAFETY: We unbind the lifetime because this would result in E0515 otherwise. This is
+        // perfectly safe to do -- none of these methods actually borrow from the guard (there's
+        // physically no way for them to; this is encoded in the type system). The lifetime is bound
+        // to the returned reference to ensure that the reference doesn't outlive the guard. We
+        // enforce that by `Ref` owning the `hyaline::Guard` instead.
         let inner = self.samplers.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
@@ -679,7 +683,7 @@ impl GlobalDescriptorSet {
     pub fn sampled_image(&self, id: SampledImageId) -> Option<Ref<'_, SampledImageDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own the `hyaline::Guard`.
+        // SAFETY: Same as in the `sampler` method above.
         let inner = self.sampled_images.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
@@ -691,7 +695,7 @@ impl GlobalDescriptorSet {
     pub fn storage_image(&self, id: StorageImageId) -> Option<Ref<'_, StorageImageDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own the `hyaline::Guard`.
+        // SAFETY: Same as in the `sampler` method above.
         let inner = self.storage_images.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
@@ -703,7 +707,7 @@ impl GlobalDescriptorSet {
     pub fn storage_buffer(&self, id: StorageBufferId) -> Option<Ref<'_, StorageBufferDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own the `hyaline::Guard`.
+        // SAFETY: Same as in the `sampler` method above.
         let inner = self.storage_buffers.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
@@ -718,7 +722,7 @@ impl GlobalDescriptorSet {
     ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own the `hyaline::Guard`.
+        // SAFETY: Same as in the `sampler` method above.
         let inner = self.acceleration_structures.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
