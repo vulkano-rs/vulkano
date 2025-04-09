@@ -20,6 +20,7 @@ use std::{
     marker::PhantomData,
     mem,
     ops::{Deref, RangeBounds},
+    ptr::NonNull,
     sync::Arc,
 };
 use vulkano::{
@@ -882,10 +883,23 @@ impl<T> Ord for Id<T> {
 /// When you use [`Id`] to retrieve something, you can get back a `Ref` with the same type
 /// parameter, which you can then dereference to get at the underlying data denoted by the type
 /// parameter.
-pub struct Ref<'a, T> {
-    inner: &'a T,
+pub struct Ref<'a, T: 'a> {
+    // We cannot use a reference here because references must remain valid for the duration of a
+    // function call they are passed to. Our reference is only valid until the guard is dropped,
+    // therefore passing `Ref` to a function would be unsound as the reference could get
+    // invalidated in the middle (or even at the end would be unsound).
+    inner: NonNull<T>,
     #[allow(unused)]
     guard: hyaline::Guard<'a>,
+}
+
+impl<'a, T> Ref<'a, T> {
+    fn new(inner: &'a T, guard: hyaline::Guard<'a>) -> Self {
+        Ref {
+            inner: inner.into(),
+            guard,
+        }
+    }
 }
 
 impl<T> Deref for Ref<'_, T> {
@@ -893,13 +907,14 @@ impl<T> Deref for Ref<'_, T> {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.inner
+        // SAFETY: The pointer was constructured from an existing reference in `Ref::new`.
+        unsafe { self.inner.as_ref() }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.inner, f)
+        fmt::Debug::fmt(&**self, f)
     }
 }
 

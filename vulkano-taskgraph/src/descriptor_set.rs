@@ -672,11 +672,11 @@ impl GlobalDescriptorSet {
         // physically no way for them to; this is encoded in the type system). The lifetime is bound
         // to the returned reference to ensure that the reference doesn't outlive the guard. We
         // enforce that by `Ref` owning the `hyaline::Guard` instead.
-        let inner = self.samplers.get(id, unsafe {
+        let descriptor = self.samplers.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
@@ -684,11 +684,11 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let inner = self.sampled_images.get(id, unsafe {
+        let descriptor = self.sampled_images.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
@@ -696,11 +696,11 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let inner = self.storage_images.get(id, unsafe {
+        let descriptor = self.storage_images.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
@@ -708,11 +708,11 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let inner = self.storage_buffers.get(id, unsafe {
+        let descriptor = self.storage_buffers.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
@@ -723,11 +723,11 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let inner = self.acceleration_structures.get(id, unsafe {
+        let descriptor = self.acceleration_structures.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 }
 

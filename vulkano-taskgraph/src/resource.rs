@@ -817,7 +817,7 @@ impl ResourceStorage {
     pub(crate) fn buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
         let guard = self.pin();
 
-        let inner = self
+        let state = self
             .buffers
             // SAFETY: We unbind the lifetime because this would result in E0515 otherwise. This is
             // perfectly safe to do -- none of these methods actually borrow from the guard (there's
@@ -829,7 +829,7 @@ impl ResourceStorage {
             })
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(Ref::new(state, guard))
     }
 
     pub(crate) fn buffer_protected<'a>(
@@ -859,7 +859,7 @@ impl ResourceStorage {
     pub(crate) fn image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
         let guard = self.pin();
 
-        let inner = self
+        let state = self
             .images
             // SAFETY: Same as in the `buffer` method above.
             .get(id.erase(), unsafe {
@@ -867,7 +867,7 @@ impl ResourceStorage {
             })
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(Ref::new(state, guard))
     }
 
     pub(crate) fn image_protected<'a>(
@@ -897,7 +897,7 @@ impl ResourceStorage {
     pub(crate) fn swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
         let guard = self.pin();
 
-        let inner = self
+        let state = self
             .swapchains
             // SAFETY: Same as in the `buffer` method above.
             .get(id.erase(), unsafe {
@@ -905,7 +905,7 @@ impl ResourceStorage {
             })
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(Ref::new(state, guard))
     }
 
     pub(crate) fn swapchain_protected<'a>(
@@ -935,7 +935,7 @@ impl ResourceStorage {
     pub(crate) fn flight(&self, id: Id<Flight>) -> Result<Ref<'_, Flight>> {
         let guard = self.pin();
 
-        let inner = self
+        let state = self
             .flights
             // SAFETY: We own the `hyaline::Guard`.
             .get(id.erase(), unsafe {
@@ -943,7 +943,7 @@ impl ResourceStorage {
             })
             .ok_or(InvalidSlotError::new(id))?;
 
-        Ok(Ref { inner, guard })
+        Ok(Ref::new(state, guard))
     }
 
     pub(crate) fn flight_protected<'a>(
