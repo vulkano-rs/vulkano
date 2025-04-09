@@ -291,9 +291,8 @@ impl<'a> DeferredBatch<'a> {
                 .resources
                 .flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
-            let biased_frame = flight.biased_started_frame() + u64::from(flight.frame_count());
 
-            (flight_id, biased_frame)
+            (flight_id, flight.biased_started_frame())
         });
 
         let mut this = ManuallyDrop::new(self);
@@ -440,11 +439,8 @@ impl Drop for DeferredBatch<'_> {
     fn drop(&mut self) {
         let guard = self.guard.clone();
         let flights = self.resources.flights_protected(&guard);
-        let biased_frames = flights.map(|(flight_id, flight)| {
-            let biased_frame = flight.biased_started_frame() + u64::from(flight.frame_count());
-
-            (flight_id, biased_frame)
-        });
+        let biased_frames =
+            flights.map(|(flight_id, flight)| (flight_id, flight.biased_started_frame()));
 
         // SAFETY:
         // * We're dropping `self`, which ensures that this method isn't called again.

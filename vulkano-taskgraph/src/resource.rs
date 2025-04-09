@@ -332,7 +332,7 @@ impl Resources {
         let flight = Flight {
             resources: Arc::downgrade(self),
             frame_count,
-            biased_started_frame: AtomicU64::new(0),
+            biased_started_frame: AtomicU64::new(u64::from(frame_count.get())),
             current_frame: AtomicU64::new(0),
             biased_complete_frame: AtomicU64::new(u64::from(frame_count.get())),
             fences,
@@ -1275,9 +1275,9 @@ impl Flight {
         self.frame_count.get()
     }
 
-    /// Returns the latest started frame stored at a bias of `1`. That means that if this value
-    /// reaches `n + 1` then frame `n` has started execution. This starts out at `0` because no
-    /// frame has started execution yet when a flight is created.
+    /// Returns the latest started frame stored at a bias of `frame_count + 1`. That means that if
+    /// this value reaches `n + frame_count + 1` then frame `n` has started execution. This starts
+    /// out at `frame_count` because no frame has started execution yet when a flight is created.
     pub(crate) fn biased_started_frame(&self) -> u64 {
         self.biased_started_frame.load(Ordering::Relaxed)
     }
