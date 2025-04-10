@@ -1323,7 +1323,9 @@ impl Flight {
         self.wait_for_biased_frame(self.current_frame() + 1, timeout)
     }
 
-    /// Waits for the given [frame] to finish. `frame` must have been previously obtained using
+    /// Waits for the given [frame] to finish.
+    ///
+    /// `frame` must be a past (not including current) frame previously obtained using
     /// [`current_frame`] on `self`.
     ///
     /// This is equivalent to [`Fence::wait`] on the fence corresponding to the frame index `frame
@@ -1336,7 +1338,7 @@ impl Flight {
     ///
     /// [`current_frame`]: Self::current_frame
     pub fn wait_for_frame(&self, frame: u64, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        assert!(frame <= self.current_frame());
+        assert!(frame < self.current_frame());
 
         let biased_frame = frame + u64::from(self.frame_count()) + 1;
 

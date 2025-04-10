@@ -23,7 +23,7 @@ use std::{
         mpsc, Arc,
     },
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
@@ -877,6 +877,11 @@ fn run_worker(
         // do, but our work is hard-coded.
         while let Ok(()) = channel.recv() {
             let graphics_flight = resources.flight(graphics_flight_id).unwrap();
+
+            // We can't wait for a frame that hasn't been executed yet.
+            while last_frame == graphics_flight.current_frame() {
+                thread::sleep(Duration::from_millis(1));
+            }
 
             // We swap the texture index to use after a write, but there is no guarantee that other
             // tasks have actually moved on to using the new texture. What could happen then, if
