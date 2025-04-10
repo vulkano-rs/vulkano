@@ -1400,6 +1400,10 @@ impl Flight {
         self.biased_started_frame.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub(crate) unsafe fn undo_start_next_frame(&self) {
+        self.biased_started_frame.fetch_sub(1, Ordering::Relaxed);
+    }
+
     pub(crate) unsafe fn next_frame(&self) {
         self.current_frame.fetch_add(1, Ordering::Relaxed);
     }

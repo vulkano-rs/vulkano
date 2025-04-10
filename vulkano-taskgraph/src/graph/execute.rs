@@ -7,7 +7,9 @@ use crate::{
     collector::Deferred,
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
-    resource::{BufferAccess, BufferState, ImageAccess, ImageState, Resources, SwapchainState},
+    resource::{
+        BufferAccess, BufferState, Flight, ImageAccess, ImageState, Resources, SwapchainState,
+    },
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
@@ -99,8 +101,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             );
         }
 
-        unsafe { flight.start_next_frame() };
-
         let current_frame_index = flight.current_frame_index();
         let mut deferred_batch = resource_map.resources().create_deferred_batch();
         let deferreds = deferred_batch.deferreds_mut();
@@ -119,9 +119,12 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.create_framebuffers(&resource_map) }?;
 
+        unsafe { flight.start_next_frame() };
+
         let mut state_guard = StateGuard {
             executable: self,
             resource_map: &resource_map,
+            flight,
             current_fence: &mut current_fence,
             submission_count: 0,
         };
@@ -151,6 +154,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             deferred_batch.destroy_object(semaphore.clone());
         }
 
+        unsafe { flight.next_frame() };
+
         pre_present_notify();
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
@@ -161,8 +166,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
-
-        unsafe { flight.next_frame() };
 
         res
     }
@@ -2169,6 +2172,7 @@ fn convert_access_mask(mut access_mask: AccessFlags) -> vk::AccessFlags {
 struct StateGuard<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
+    flight: &'a Flight,
     current_fence: &'a mut Fence,
     submission_count: usize,
 }
@@ -2176,6 +2180,9 @@ struct StateGuard<'a, W: ?Sized + 'static> {
 impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
     #[cold]
     fn drop(&mut self) {
+        // Make sure that the started frame cannot outrun the current frame.
+        unsafe { self.flight.undo_start_next_frame() };
+
         let device = self.executable.device();
 
         // SAFETY: The parameters are valid.
