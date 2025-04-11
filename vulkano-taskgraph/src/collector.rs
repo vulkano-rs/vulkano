@@ -286,13 +286,14 @@ impl<'a> DeferredBatch<'a> {
     pub unsafe fn enqueue_with_flights(self, flight_ids: impl IntoIterator<Item = Id<Flight>>) {
         let guard = self.guard.clone();
 
-        let biased_frames = flight_ids.into_iter().map(|flight_id| {
+        let biased_frames = flight_ids.into_iter().flat_map(|flight_id| {
             let flight = self
                 .resources
                 .flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
+            let biased_frame = flight.biased_started_frame();
 
-            (flight_id, flight.biased_started_frame())
+            (!flight.is_biased_frame_complete(biased_frame)).then_some((flight_id, biased_frame))
         });
 
         let mut this = ManuallyDrop::new(self);
@@ -335,14 +336,14 @@ impl<'a> DeferredBatch<'a> {
     pub unsafe fn enqueue_with_frames(self, frames: impl IntoIterator<Item = (Id<Flight>, u64)>) {
         let guard = self.guard.clone();
 
-        let biased_frames = frames.into_iter().map(|(flight_id, frame)| {
+        let biased_frames = frames.into_iter().flat_map(|(flight_id, frame)| {
             let flight = self
                 .resources
                 .flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
             let biased_frame = frame + u64::from(flight.frame_count()) + 1;
 
-            (flight_id, biased_frame)
+            (!flight.is_biased_frame_complete(biased_frame)).then_some((flight_id, biased_frame))
         });
 
         let mut this = ManuallyDrop::new(self);
@@ -398,31 +399,45 @@ impl<'a> DeferredBatch<'a> {
 
         mem::forget(this);
 
-        if let &[(flight_id, _)] = node_biased_frames.as_slice() {
-            // SAFETY: The caller must ensure that `frames` contained valid flight IDs when
-            // extending the node's `frames` above. Since we have owned a `hyaline::Guard` from then
-            // until now, the flight cannot have been dropped yet even if it were to be removed
-            // between then and now.
-            let flight = unsafe {
-                self.resources
-                    .flight_unchecked_protected(flight_id, &self.guard)
-            };
+        match node_biased_frames.as_slice() {
+            [] => {
+                // SAFETY: There are no frames to wait on; we can collect immediately.
+                unsafe { collect(self.resources, self.deferreds_mut()) };
 
-            let garbage_queue = flight.garbage_queue();
+                let node_allocator = self.resources.garbage_queue().node_allocator();
 
-            // SAFETY:
-            // * By our own invariant, the node denoted by `self.node_index` must have been
-            //   allocated by us.
-            // * The caller must ensure that the node's data is not accessed mutably again.
-            // * The caller must ensure that this method is not called again.
-            // * The caller must ensure that `frames` constitutes the correct set of frames for our
-            //   deferred functions.
-            unsafe { garbage_queue.push(self.node_index, &self.guard) };
-        } else {
-            let garbage_queue = self.resources.garbage_queue();
+                // SAFETY: By our own invariant, the node denoted by `self.node_index` must have
+                // been allocated by us, and since we haven't pushed it to any garbage queue, the
+                // node is still unlinked and therefore safe to deallocate.
+                unsafe { node_allocator.deallocate(self.node_index, &self.guard) };
+            }
+            &[(flight_id, _)] => {
+                // SAFETY: The caller must ensure that `frames` contained valid flight IDs when
+                // extending the node's `frames` above. Since we have owned a `hyaline::Guard` from
+                // then until now, the flight cannot have been dropped yet even if it were to be
+                // removed between then and now.
+                let flight = unsafe {
+                    self.resources
+                        .flight_unchecked_protected(flight_id, &self.guard)
+                };
 
-            // SAFETY: Same as the `push` above.
-            unsafe { garbage_queue.push(self.node_index, &self.guard) };
+                let garbage_queue = flight.garbage_queue();
+
+                // SAFETY:
+                // * By our own invariant, the node denoted by `self.node_index` must have been
+                //   allocated by us.
+                // * The caller must ensure that the node's data is not accessed mutably again.
+                // * The caller must ensure that this method is not called again.
+                // * The caller must ensure that `frames` constitutes the correct set of frames for
+                //   our deferred functions.
+                unsafe { garbage_queue.push(self.node_index, &self.guard) };
+            }
+            _ => {
+                let garbage_queue = self.resources.garbage_queue();
+
+                // SAFETY: Same as the `push` above.
+                unsafe { garbage_queue.push(self.node_index, &self.guard) };
+            }
         }
 
         if self.drop_guard {
@@ -439,8 +454,11 @@ impl Drop for DeferredBatch<'_> {
     fn drop(&mut self) {
         let guard = self.guard.clone();
         let flights = self.resources.flights_protected(&guard);
-        let biased_frames =
-            flights.map(|(flight_id, flight)| (flight_id, flight.biased_started_frame()));
+        let biased_frames = flights.flat_map(|(flight_id, flight)| {
+            let biased_frame = flight.biased_started_frame();
+
+            (!flight.is_biased_frame_complete(biased_frame)).then_some((flight_id, biased_frame))
+        });
 
         // SAFETY:
         // * We're dropping `self`, which ensures that this method isn't called again.
@@ -850,7 +868,7 @@ impl Queue {
                     // * The caller must ensure that `resources` is the correct collection for the
                     //   `deferreds`.
                     // * The caller must ensure that `frames` have been waited on.
-                    unsafe { self.collect_unchecked(resources, deferreds) };
+                    unsafe { collect(resources, deferreds) };
 
                     prev_node = curr_node;
                     curr_index = next_index;
@@ -896,34 +914,34 @@ impl Queue {
             // * The caller must ensure that `resources` is the correct collection for the
             //   `deferreds`.
             // * The caller must ensure that all frames have been waited on.
-            unsafe { self.collect_unchecked(resources, deferreds) };
+            unsafe { collect(resources, deferreds) };
 
             curr_index = next_index;
-        }
-    }
-
-    unsafe fn collect_unchecked(&self, resources: &Resources, deferreds: &mut Vec<Deferred>) {
-        struct ClearGuard<'a>(&'a mut Vec<Deferred>);
-
-        impl Drop for ClearGuard<'_> {
-            fn drop(&mut self) {
-                self.0.clear();
-            }
-        }
-
-        for deferred in ClearGuard(deferreds).0.iter_mut() {
-            // SAFETY:
-            // * The deferred cannot be called again because we call it once and ensure that the
-            //   `deferreds` vector gets cleared afterward in all cases.
-            // * The caller must ensure that `resources` is the collection for which the `deferreds`
-            //   were issued.
-            unsafe { deferred.call_in_place(resources) };
         }
     }
 }
 
 fn is_deleted(index: u32) -> bool {
     index & DELETED_BIT != 0
+}
+
+unsafe fn collect(resources: &Resources, deferreds: &mut Vec<Deferred>) {
+    struct ClearGuard<'a>(&'a mut Vec<Deferred>);
+
+    impl Drop for ClearGuard<'_> {
+        fn drop(&mut self) {
+            self.0.clear();
+        }
+    }
+
+    for deferred in ClearGuard(deferreds).0.iter_mut() {
+        // SAFETY:
+        // * The deferred cannot be called again because we call it once and ensure that the
+        //   `deferreds` vector gets cleared afterward in all cases.
+        // * The caller must ensure that `resources` is the collection for which the `deferreds`
+        //   were issued.
+        unsafe { deferred.call_in_place(resources) };
+    }
 }
 
 struct Node {
