@@ -7,7 +7,15 @@ use super::{
 use crate::{linear_map::LinearMap, resource::Flight, Id, QueueFamilyType};
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{cell::RefCell, cmp, error::Error, fmt, ops::Range, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    cmp,
+    error::Error,
+    fmt,
+    mem::ManuallyDrop,
+    ops::Range,
+    sync::Arc,
+};
 use vulkano::{
     device::{Device, DeviceOwned, Queue, QueueFlags},
     format::Format,
@@ -256,11 +264,8 @@ impl<W: ?Sized> TaskGraph<W> {
         }
 
         let semaphores = match (0..semaphore_count)
-            .map(|_| {
-                // SAFETY: The parameters are valid.
-                unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) }
-                    .map(Arc::new)
-            })
+            // SAFETY: The parameters are valid.
+            .map(|_| unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) })
             .collect::<Result<_, _>>()
         {
             Ok(semaphores) => semaphores,
@@ -270,7 +275,7 @@ impl<W: ?Sized> TaskGraph<W> {
         let swapchains = last_swapchain_accesses.keys().copied().collect();
 
         Ok(ExecutableTaskGraph {
-            graph: self,
+            graph: ManuallyDrop::new(self),
             flight_id,
             instructions: builder.instructions,
             submissions: builder.submissions,
@@ -281,6 +286,8 @@ impl<W: ?Sized> TaskGraph<W> {
             swapchains,
             present_queue: present_queue.cloned(),
             last_accesses,
+            last_frame: Cell::new(None),
+            drop_graph: true,
         })
     }
 
@@ -1656,8 +1663,12 @@ impl FinalRepresentationBuilder {
 impl<W: ?Sized> ExecutableTaskGraph<W> {
     /// Decompiles the graph back into a modifiable form.
     #[inline]
-    pub fn decompile(self) -> TaskGraph<W> {
-        self.graph
+    pub fn decompile(mut self) -> TaskGraph<W> {
+        self.drop_graph = false;
+
+        // SAFETY: We unset the `drop_graph` flag which ensures that the graph isn't dropped by the
+        // `Drop` implementation.
+        unsafe { ManuallyDrop::take(&mut self.graph) }
     }
 }
 

@@ -15,7 +15,14 @@ use concurrent_slotmap::SlotId;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow, cell::RefCell, error::Error, fmt, hint, iter::FusedIterator, ops::Range, sync::Arc,
+    borrow::Cow,
+    cell::{Cell, RefCell},
+    error::Error,
+    fmt, hint,
+    iter::{self, FusedIterator},
+    mem::ManuallyDrop,
+    ops::Range,
+    sync::Arc,
 };
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo},
@@ -1206,17 +1213,19 @@ impl AttachmentInfo<'_> {
 
 /// A [`TaskGraph`] that has been compiled into an executable form.
 pub struct ExecutableTaskGraph<W: ?Sized> {
-    graph: TaskGraph<W>,
+    graph: ManuallyDrop<TaskGraph<W>>,
     flight_id: Id<Flight>,
     instructions: Vec<Instruction>,
     submissions: Vec<Submission>,
     barriers: Vec<MemoryBarrier>,
     render_passes: RefCell<Vec<RenderPassState>>,
     clear_attachments: Vec<Id>,
-    semaphores: RefCell<Vec<Arc<Semaphore>>>,
+    semaphores: RefCell<Vec<Semaphore>>,
     swapchains: SmallVec<[Id<Swapchain>; 1]>,
     present_queue: Option<Arc<Queue>>,
     last_accesses: Vec<ResourceAccess>,
+    last_frame: Cell<Option<u64>>,
+    drop_graph: bool,
 }
 
 // FIXME: Initial queue family ownership transfers
@@ -1370,6 +1379,34 @@ impl<W: ?Sized> fmt::Debug for ExecutableTaskGraph<W> {
             .field("swapchains", &self.swapchains)
             .field("present_queue", &self.present_queue)
             .finish_non_exhaustive()
+    }
+}
+
+impl<W: ?Sized> Drop for ExecutableTaskGraph<W> {
+    fn drop(&mut self) {
+        if let Some(last_frame) = self.last_frame.get() {
+            let resources = &self.graph.resources.physical_resources;
+            let mut batch = resources.create_deferred_batch();
+
+            for semaphore in self.semaphores.get_mut().drain(..) {
+                batch.destroy_object(semaphore);
+            }
+
+            for render_pass_state in self.render_passes.get_mut() {
+                for framebuffer in render_pass_state.framebuffers.drain(..) {
+                    batch.destroy_object(framebuffer);
+                }
+            }
+
+            // SAFETY: We only defer the destruction of objects that are graph-local and
+            // `last_frame` is the last frame that the graph executed.
+            unsafe { batch.enqueue_with_frames(iter::once((self.flight_id, last_frame))) };
+        }
+
+        if self.drop_graph {
+            // SAFETY: We are being dropped which ensures that the graph cannot be used again.
+            unsafe { ManuallyDrop::drop(&mut self.graph) };
+        }
     }
 }
 

@@ -150,9 +150,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         mem::forget(state_guard);
 
-        for semaphore in self.semaphores.borrow().iter() {
-            deferred_batch.destroy_object(semaphore.clone());
-        }
+        self.last_frame.set(Some(flight.current_frame()));
 
         unsafe { flight.next_frame() };
 
@@ -267,6 +265,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     }
 
     unsafe fn create_framebuffers(&self, resource_map: &ResourceMap<'_>) -> Result {
+        let mut batch = None;
+
         for render_pass_state in self.render_passes.borrow_mut().iter_mut() {
             // If we're executing this task graph for the first time, there are no framebuffers
             // yet, so we need to create them.
@@ -305,6 +305,14 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 };
 
                 if attachment.image() != image {
+                    let batch = batch.get_or_insert_with(|| {
+                        resource_map.physical_resources.create_deferred_batch()
+                    });
+
+                    for framebuffer in render_pass_state.framebuffers.drain(..) {
+                        batch.destroy_object(framebuffer);
+                    }
+
                     unsafe {
                         create_framebuffers(
                             &render_pass_state.render_pass,
@@ -314,9 +322,18 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                             resource_map,
                         )
                     }?;
+
                     break;
                 }
             }
+        }
+
+        if let Some(batch) = batch {
+            let last_frame = self.last_frame.get().unwrap();
+
+            // SAFETY: We only destroy objects that are graph-local and `last_frame` is the last
+            // frame in which they were used.
+            unsafe { batch.enqueue_with_frames(iter::once((self.flight_id, last_frame))) };
         }
 
         Ok(())
@@ -709,6 +726,8 @@ unsafe fn create_framebuffers(
     swapchains: &[Id<Swapchain>],
     resource_map: &ResourceMap<'_>,
 ) -> Result<()> {
+    debug_assert!(framebuffers.is_empty());
+
     let swapchain_image_counts = swapchains
         .iter()
         .map(|&id| {
@@ -720,7 +739,6 @@ unsafe fn create_framebuffers(
     let mut swapchain_image_indices: SmallVec<[u32; 1]> =
         smallvec![0; swapchain_image_counts.len()];
 
-    framebuffers.clear();
     framebuffers.reserve_exact(swapchain_image_counts.iter().product::<u32>() as usize);
 
     'outer: loop {
@@ -1194,8 +1212,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 vk::SubpassContents::INLINE,
             )
         };
-
-        self.deferreds.push(Deferred::destroy(framebuffer.clone()));
 
         Ok(())
     }
@@ -1797,8 +1813,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             )
         };
 
-        self.deferreds.push(Deferred::destroy(framebuffer.clone()));
-
         Ok(())
     }
 
@@ -2242,7 +2256,7 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             // SAFETY: The parameters are valid.
             match unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) } {
                 Ok(new_semaphore) => {
-                    *semaphore = Arc::new(new_semaphore);
+                    *semaphore = new_semaphore;
                 }
                 Err(err) => {
                     if err == VulkanError::DeviceLost {
