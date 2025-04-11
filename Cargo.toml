@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "autogen",
     "examples/*",
     "vulkano",
     "vulkano-macros",
@@ -42,7 +43,8 @@ version = "0.35"
 path = "vulkano-util"
 
 [workspace.dependencies]
-# When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
+# When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses,
+# and run `cargo run --bin autogen` to update the generated files.
 # All versions of vk.xml can be found at:
 # https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml
 ash = "0.38.0"
@@ -56,6 +58,7 @@ indexmap = "2.0"
 libloading = "0.8"
 nom = "7.1"
 parking_lot = "0.12"
+prettyplease = "0.2.32"
 proc-macro2 = "1.0"
 proc-macro-crate = "3.0"
 quote = "1.0"
