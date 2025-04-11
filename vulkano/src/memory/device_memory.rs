@@ -1215,6 +1215,30 @@ pub enum MemoryImportInfo {
         handle_type: ExternalMemoryHandleType,
         handle: vk::HANDLE,
     },
+
+    /// Import memory from a Windows handle to a D3D texture.
+    ///
+    /// `handle_type` must be [`ExternalMemoryHandleType::D3D11Texture`] or
+    /// [`ExternalMemoryHandleType::D3D11TextureKmt`].
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Windows handle to a D3D texture resource.
+    /// - Vulkan will not take ownership of `handle`.
+    /// - To determine a valid value for [`MemoryAllocateInfo::memory_type_index`], you *must* call
+    ///   the Vulkan function `vkGetMemoryWin32HandlePropertiesKHR` (which populates the
+    ///   `pMemoryWin32HandleProperties` parameter, a `VkMemoryWin32HandlePropertiesKHR` structure,
+    ///   `memoryTypeBits` member of the `VkMemoryWin32HandlePropertiesKHR` structure.
+    /// - [`MemoryAllocateInfo::allocation_size`] parameter is ignored, and the implementation will
+    ///   query the size of the allocation from the OS.
+    /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`], the
+    ///   imported one must also use it, and the associated buffer or image must be defined
+    ///   identically to the original.
+    D3D {
+        handle_type: ExternalMemoryHandleType,
+        handle: vk::HANDLE,
+        memory_type_index: u32,
+    },
 }
 
 impl MemoryImportInfo {
@@ -1312,6 +1336,70 @@ impl MemoryImportInfo {
                 // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
                 // Can't validate, must be ensured by user
             }
+            MemoryImportInfo::D3D {
+                handle_type,
+                handle,
+                memory_type_index,
+            } => {
+                if !device.enabled_extensions().khr_external_memory_win32 {
+                    return Err(Box::new(ValidationError {
+                        problem: "is `MemoryImportInfo::D3D`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_external_memory_win32"),
+                        ])]),
+                        ..Default::default()
+                    }));
+                }
+
+                handle_type.validate_device(device).map_err(|err| {
+                    err.add_context("handle_type")
+                        .set_vuids(&["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter"])
+                })?;
+
+                match handle_type {
+                    ExternalMemoryHandleType::D3D11TextureKmt
+                    | ExternalMemoryHandleType::D3D11Texture => {
+                        // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                        // Can't validate, must be ensured by user
+
+                        // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                        // Can't validate, must be ensured by user
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            context: "handle_type".into(),
+                            problem: "is not `ExternalMemoryHandleType::D3D11TextureKmt` or \
+                                `ExternalMemoryHandleType::D3D11TextureKmt`"
+                                .into(),
+                            vuids: &["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
+                let memory_type_bits = device
+                    .memory_win32_handle_properties(*handle_type, *handle)
+                    .map_err(|e| match e {
+                        Validated::Error(vulkan_error) => Box::new(ValidationError {
+                            context: "memory_win32_handle_properties".into(),
+                            problem: format!("Vulkan error {:?}", vulkan_error).into(),
+                            ..Default::default()
+                        }),
+                        Validated::ValidationError(err) => err,
+                    })?
+                    .memory_type_bits;
+
+                if (memory_type_bits & (1u32 << memory_type_index)) == 0 {
+                    return Err(Box::new(ValidationError {
+                        context: "memory_type_index".into(),
+                        problem: "is not among the valid memory types for the given D3D handle"
+                            .into(),
+                        vuids: &["VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645"],
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -1321,6 +1409,7 @@ impl MemoryImportInfo {
         match self {
             MemoryImportInfo::Fd { handle_type, .. } => *handle_type,
             MemoryImportInfo::Win32 { handle_type, .. } => *handle_type,
+            MemoryImportInfo::D3D { handle_type, .. } => *handle_type,
         }
     }
 
@@ -1348,6 +1437,15 @@ impl MemoryImportInfo {
             MemoryImportInfo::Win32 {
                 handle_type,
                 handle,
+            } => MemoryImportInfoVk::Win32Handle(
+                vk::ImportMemoryWin32HandleInfoKHR::default()
+                    .handle_type(handle_type.into())
+                    .handle(handle),
+            ),
+            MemoryImportInfo::D3D {
+                handle_type,
+                handle,
+                memory_type_index: _memory_type_index,
             } => MemoryImportInfoVk::Win32Handle(
                 vk::ImportMemoryWin32HandleInfoKHR::default()
                     .handle_type(handle_type.into())
