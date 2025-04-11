@@ -1,5 +1,5 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
-use crate::autogen::conjunctive_normal_form::ConjunctiveNormalForm;
+use crate::conjunctive_normal_form::ConjunctiveNormalForm;
 use heck::ToSnakeCase;
 use nom::{
     branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,

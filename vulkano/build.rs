@@ -1,7 +1,5 @@
 use std::env;
 
-mod autogen;
-
 fn main() {
     let target = env::var("TARGET").unwrap();
     if target.contains("apple-ios") || target.contains("apple-tvos") {
@@ -16,9 +14,4 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=IOKit");
         println!("cargo:rustc-link-lib=framework=Foundation");
     }
-
-    // Run autogen
-    println!("cargo:rerun-if-changed=vk.xml");
-    println!("cargo:rerun-if-changed=spirv.core.grammar.json");
-    autogen::autogen();
 }
