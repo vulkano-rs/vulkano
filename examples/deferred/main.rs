@@ -432,14 +432,11 @@ impl ApplicationHandler for App {
 
                     rcx.viewport.extent = window_size.into();
 
-                    // FIXME(taskgraph): safe resource destruction
-                    flight
-                        .wait_for_frame(flight.current_frame() - 1, None)
-                        .unwrap();
-
-                    unsafe { self.resources.remove_image(rcx.diffuse_image_id) }.unwrap();
-                    unsafe { self.resources.remove_image(rcx.normals_image_id) }.unwrap();
-                    unsafe { self.resources.remove_image(rcx.depth_image_id) }.unwrap();
+                    self.resources
+                        .create_deferred_batch()
+                        .destroy_image(rcx.diffuse_image_id)
+                        .destroy_image(rcx.normals_image_id)
+                        .destroy_image(rcx.depth_image_id);
 
                     (
                         rcx.diffuse_image_id,
