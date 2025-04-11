@@ -24,12 +24,15 @@ Changes to `GraphicsPipeline`:
 - Added a safe `PipelineCacheData` binary data wrapper.
 
 ### Bugs fixed
+
 - When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.
 - [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
+- The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
 
 # Version 0.35.1 (2025-02-08)
 
 ### Bugs fixed
+
 - Fixed a bug in `StandardMemoryAllocator` where if the suballocation count of a `DeviceMemory` block would drop to zero, no more suballocations could be made, leading to needless allocations of new `DeviceMemory` blocks.
 - Fixed a panic for non-contiguous push constants ranges.
 - Vulkano-taskgraph: Fixed a panic that would happen when looking up the previous barrier and it's an initial barrier.
