@@ -640,16 +640,27 @@ impl Resources {
         Ok(state)
     }
 
-    pub(crate) fn remove_invalidated_buffer(&self, id: Id<Buffer>) -> Option<()> {
-        self.storage.buffers.remove_invalidated(id.erase())
+    pub(crate) unsafe fn remove_invalidated_buffer_unchecked(&self, id: Id<Buffer>) {
+        // SAFETY: Enforced by the caller.
+        unsafe {
+            self.storage
+                .buffers
+                .remove_invalidated_unchecked(id.erase())
+        };
     }
 
-    pub(crate) fn remove_invalidated_image(&self, id: Id<Image>) -> Option<()> {
-        self.storage.images.remove_invalidated(id.erase())
+    pub(crate) unsafe fn remove_invalidated_image_unchecked(&self, id: Id<Image>) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage.images.remove_invalidated_unchecked(id.erase()) };
     }
 
-    pub(crate) fn remove_invalidated_swapchain(&self, id: Id<Swapchain>) -> Option<()> {
-        self.storage.swapchains.remove_invalidated(id.erase())
+    pub(crate) unsafe fn remove_invalidated_swapchain_unchecked(&self, id: Id<Swapchain>) {
+        // SAFETY: Enforced by the caller.
+        unsafe {
+            self.storage
+                .swapchains
+                .remove_invalidated_unchecked(id.erase())
+        };
     }
 
     /// Returns the buffer corresponding to `id`.

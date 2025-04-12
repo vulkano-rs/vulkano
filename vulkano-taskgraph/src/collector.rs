@@ -71,7 +71,10 @@ impl<'a> DeferredBatch<'a> {
             .expect("invalid buffer ID");
 
         self.defer(move |resources| {
-            resources.remove_invalidated_buffer(id);
+            // SAFETY: Since this method is the only way to remove the buffer and future attempts to
+            // remove it will fail because we invalidated the buffer above, there is no way the
+            // buffer can be removed besides this deferred function.
+            unsafe { resources.remove_invalidated_buffer_unchecked(id) };
         })
     }
 
@@ -87,7 +90,8 @@ impl<'a> DeferredBatch<'a> {
             .expect("invalid image ID");
 
         self.defer(move |resources| {
-            resources.remove_invalidated_image(id);
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe { resources.remove_invalidated_image_unchecked(id) };
         })
     }
 
@@ -103,7 +107,8 @@ impl<'a> DeferredBatch<'a> {
             .expect("invalid swapchain ID");
 
         self.defer(move |resources| {
-            resources.remove_invalidated_swapchain(id);
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe { resources.remove_invalidated_swapchain_unchecked(id) };
         })
     }
 
@@ -126,7 +131,9 @@ impl<'a> DeferredBatch<'a> {
 
         self.defer(move |resources| {
             let bcx = resources.bindless_context().unwrap();
-            bcx.global_set().remove_invalidated_sampler(id);
+
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe { bcx.global_set().remove_invalidated_sampler_unchecked(id) };
         })
     }
 
@@ -149,7 +156,12 @@ impl<'a> DeferredBatch<'a> {
 
         self.defer(move |resources| {
             let bcx = resources.bindless_context().unwrap();
-            bcx.global_set().remove_invalidated_sampled_image(id);
+
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe {
+                bcx.global_set()
+                    .remove_invalidated_sampled_image_unchecked(id)
+            };
         })
     }
 
@@ -172,7 +184,12 @@ impl<'a> DeferredBatch<'a> {
 
         self.defer(move |resources| {
             let bcx = resources.bindless_context().unwrap();
-            bcx.global_set().remove_invalidated_storage_image(id);
+
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe {
+                bcx.global_set()
+                    .remove_invalidated_storage_image_unchecked(id)
+            };
         })
     }
 
@@ -195,7 +212,12 @@ impl<'a> DeferredBatch<'a> {
 
         self.defer(move |resources| {
             let bcx = resources.bindless_context().unwrap();
-            bcx.global_set().remove_invalidated_storage_buffer(id);
+
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe {
+                bcx.global_set()
+                    .remove_invalidated_storage_buffer_unchecked(id)
+            };
         })
     }
 
@@ -218,8 +240,12 @@ impl<'a> DeferredBatch<'a> {
 
         self.defer(move |resources| {
             let bcx = resources.bindless_context().unwrap();
-            bcx.global_set()
-                .remove_invalidated_acceleration_structure(id);
+
+            // SAFETY: Same as in the `destroy_buffer` method above.
+            unsafe {
+                bcx.global_set()
+                    .remove_invalidated_acceleration_structure_unchecked(id)
+            };
         })
     }
 

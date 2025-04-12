@@ -647,27 +647,35 @@ impl GlobalDescriptorSet {
         self.acceleration_structures.invalidate(id, guard)
     }
 
-    pub(crate) fn remove_invalidated_sampler(&self, id: SamplerId) -> Option<()> {
-        self.samplers.remove_invalidated(id)
+    pub(crate) unsafe fn remove_invalidated_sampler_unchecked(&self, id: SamplerId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.samplers.remove_invalidated_unchecked(id) };
     }
 
-    pub(crate) fn remove_invalidated_sampled_image(&self, id: SampledImageId) -> Option<()> {
-        self.sampled_images.remove_invalidated(id)
+    pub(crate) unsafe fn remove_invalidated_sampled_image_unchecked(&self, id: SampledImageId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.sampled_images.remove_invalidated_unchecked(id) };
     }
 
-    pub(crate) fn remove_invalidated_storage_image(&self, id: StorageImageId) -> Option<()> {
-        self.storage_images.remove_invalidated(id)
+    pub(crate) unsafe fn remove_invalidated_storage_image_unchecked(&self, id: StorageImageId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_images.remove_invalidated_unchecked(id) };
     }
 
-    pub(crate) fn remove_invalidated_storage_buffer(&self, id: StorageBufferId) -> Option<()> {
-        self.storage_buffers.remove_invalidated(id)
+    pub(crate) unsafe fn remove_invalidated_storage_buffer_unchecked(&self, id: StorageBufferId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_buffers.remove_invalidated_unchecked(id) };
     }
 
-    pub(crate) fn remove_invalidated_acceleration_structure(
+    pub(crate) unsafe fn remove_invalidated_acceleration_structure_unchecked(
         &self,
         id: AccelerationStructureId,
-    ) -> Option<()> {
-        self.acceleration_structures.remove_invalidated(id)
+    ) {
+        // SAFETY: Enforced by the caller.
+        unsafe {
+            self.acceleration_structures
+                .remove_invalidated_unchecked(id)
+        };
     }
 
     #[inline]
