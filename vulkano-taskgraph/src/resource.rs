@@ -172,11 +172,25 @@ impl Resources {
             memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
-            buffers: SlotMap::with_collector_and_key(max_buffers, hyaline_collector.clone()),
-            images: SlotMap::with_collector_and_key(max_images, hyaline_collector.clone()),
-            swapchains: SlotMap::with_collector_and_key(max_swapchains, hyaline_collector.clone()),
-            flights: SlotMap::with_collector_and_key(max_flights, hyaline_collector.clone()),
-            garbage_queue: collector::GlobalQueue::new(hyaline_collector.clone()),
+            // SAFETY: We make sure that any guard we acquire through `ResourceStorage::pin` doesn't
+            // outlive the `Resources` collection.
+            buffers: unsafe {
+                SlotMap::with_collector_and_key(max_buffers, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            images: unsafe {
+                SlotMap::with_collector_and_key(max_images, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            swapchains: unsafe {
+                SlotMap::with_collector_and_key(max_swapchains, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            flights: unsafe {
+                SlotMap::with_collector_and_key(max_flights, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            garbage_queue: unsafe { collector::GlobalQueue::new(hyaline_collector.clone()) },
             hyaline_collector,
         });
         let bindless_context = bindless_context
@@ -202,11 +216,6 @@ impl Resources {
 
     pub(crate) fn descriptor_set_allocator(&self) -> &Arc<StandardDescriptorSetAllocator> {
         &self.storage.descriptor_set_allocator
-    }
-
-    #[cfg(test)]
-    pub(crate) fn hyaline_collector(&self) -> &hyaline::CollectorHandle {
-        &self.storage.hyaline_collector
     }
 
     pub(crate) fn garbage_queue(&self) -> &collector::GlobalQueue {

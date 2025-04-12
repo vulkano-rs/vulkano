@@ -549,9 +549,10 @@ pub(crate) struct GlobalQueue {
 }
 
 impl GlobalQueue {
-    pub(crate) fn new(hyaline_collector: hyaline::CollectorHandle) -> Self {
+    pub(crate) unsafe fn new(hyaline_collector: hyaline::CollectorHandle) -> Self {
         GlobalQueue {
-            inner: Queue::new(hyaline_collector),
+            // SAFETY: Enforced by the caller.
+            inner: unsafe { Queue::with_collector(hyaline_collector) },
         }
     }
 
@@ -662,8 +663,14 @@ struct Queue {
 }
 
 impl Queue {
-    fn new(hyaline_collector: hyaline::CollectorHandle) -> Self {
-        let node_allocator = Arc::new(NodeAllocator::new(hyaline_collector));
+    #[cfg(test)]
+    fn new() -> Self {
+        unsafe { Self::with_collector(hyaline::CollectorHandle::new()) }
+    }
+
+    unsafe fn with_collector(hyaline_collector: hyaline::CollectorHandle) -> Self {
+        // SAFETY: Enforced by the caller.
+        let node_allocator = Arc::new(unsafe { NodeAllocator::new(hyaline_collector) });
 
         Self::with_allocator(node_allocator)
     }
@@ -959,9 +966,10 @@ struct NodeAllocator {
 }
 
 impl NodeAllocator {
-    fn new(hyaline_collector: hyaline::CollectorHandle) -> Self {
+    unsafe fn new(hyaline_collector: hyaline::CollectorHandle) -> Self {
         NodeAllocator {
-            inner: SlotMap::with_collector(MAX_NODES, hyaline_collector),
+            // SAFETY: Enforced by the caller
+            inner: unsafe { SlotMap::with_collector(MAX_NODES, hyaline_collector) },
         }
     }
 
@@ -1020,8 +1028,7 @@ mod tests {
     #[test]
     fn queue_basic_usage() {
         let (resources, _) = test_queues!();
-        let hyaline_collector = resources.hyaline_collector();
-        let queue = Queue::new(hyaline_collector.clone());
+        let queue = Queue::new();
 
         {
             let guard = &queue.node_allocator.inner.pin();
@@ -1040,7 +1047,7 @@ mod tests {
         assert_eq!(queue_len(&queue), (0, 2));
 
         {
-            let guard = &unsafe { hyaline_collector.pin() };
+            let guard = &queue.node_allocator.inner.pin();
             let predicate = |_: &_| ControlFlow::Continue(true);
             unsafe { queue.collect(predicate, &resources, guard) };
         }
@@ -1051,8 +1058,7 @@ mod tests {
     #[test]
     fn queue_collect_stress() {
         let (resources, _) = test_queues!();
-        let hyaline_collector = resources.hyaline_collector();
-        let queue = Queue::new(hyaline_collector.clone());
+        let queue = Queue::new();
 
         // TODO: `Queue::push` is quadratic in isolation.
         {
@@ -1093,8 +1099,7 @@ mod tests {
     #[test]
     fn queue_push_collect_stress() {
         let (resources, _) = test_queues!();
-        let hyaline_collector = resources.hyaline_collector();
-        let queue = Queue::new(hyaline_collector.clone());
+        let queue = Queue::new();
         let barrier = Barrier::new(THREADS);
 
         thread::scope(|scope| {

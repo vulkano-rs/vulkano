@@ -47,7 +47,7 @@ path = "vulkano-util"
 # https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml
 ash = "0.38.0"
 bytemuck = "1.9"
-concurrent-slotmap = { git = "https://github.com/vulkano-rs/concurrent-slotmap", rev = "d54a4c4dc48f44436169fb3a5b12a4b977abd93f" }
+concurrent-slotmap = { git = "https://github.com/vulkano-rs/concurrent-slotmap", rev = "6c328e2857f8461c177046414962ee6c7784f61c" }
 crossbeam-queue = "0.3"
 foldhash = "0.1"
 half = "2.0"

@@ -325,23 +325,30 @@ impl GlobalDescriptorSet {
         Ok(GlobalDescriptorSet {
             resources: resources.clone(),
             inner,
-            samplers: SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone()),
-            sampled_images: SlotMap::with_collector_and_key(
-                max_sampled_images,
-                hyaline_collector.clone(),
-            ),
-            storage_images: SlotMap::with_collector_and_key(
-                max_storage_images,
-                hyaline_collector.clone(),
-            ),
-            storage_buffers: SlotMap::with_collector_and_key(
-                max_storage_buffers,
-                hyaline_collector.clone(),
-            ),
-            acceleration_structures: SlotMap::with_collector_and_key(
-                max_acceleration_structures,
-                hyaline_collector.clone(),
-            ),
+            // SAFETY: We make sure that any guard we acquire through `ResourceStorage::pin` doesn't
+            // outlive the `Resources` collection.
+            samplers: unsafe {
+                SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            sampled_images: unsafe {
+                SlotMap::with_collector_and_key(max_sampled_images, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            storage_images: unsafe {
+                SlotMap::with_collector_and_key(max_storage_images, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            storage_buffers: unsafe {
+                SlotMap::with_collector_and_key(max_storage_buffers, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            acceleration_structures: unsafe {
+                SlotMap::with_collector_and_key(
+                    max_acceleration_structures,
+                    hyaline_collector.clone(),
+                )
+            },
         })
     }
 
