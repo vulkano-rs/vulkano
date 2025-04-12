@@ -804,28 +804,28 @@ impl AccelerationStructureDescriptor {
 pub struct GlobalDescriptorSetCreateInfo<'a> {
     /// The maximum number of [`Sampler`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `256` (2<sup>8</sup>).
+    /// The default value is `100`.
     pub max_samplers: u32,
 
     /// The maximum number of sampled [`Image`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_sampled_images: u32,
 
     /// The maximum number of storage [`Image`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_storage_images: u32,
 
     /// The maximum number of storage [`Buffer`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_storage_buffers: u32,
 
     /// The maximum number of [`AccelerationStructure`] descriptors that the collection can hold at
     /// once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_acceleration_structures: u32,
 
     pub _ne: crate::NonExhaustive<'a>,
@@ -843,11 +843,11 @@ impl GlobalDescriptorSetCreateInfo<'_> {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            max_samplers: 1 << 8,
-            max_sampled_images: 1 << 20,
-            max_storage_images: 1 << 20,
-            max_storage_buffers: 1 << 20,
-            max_acceleration_structures: 1 << 20,
+            max_samplers: 100,
+            max_sampled_images: 1_000_000,
+            max_storage_images: 1_000_000,
+            max_storage_buffers: 1_000_000,
+            max_acceleration_structures: 1_000_000,
             _ne: crate::NE,
         }
     }
