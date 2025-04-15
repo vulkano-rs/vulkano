@@ -65,6 +65,7 @@ impl<'a> DeferredBatch<'a> {
     ///
     /// - Panics if `id` is not a valid physical resource ID.
     #[inline]
+    #[track_caller]
     pub fn destroy_buffer(&mut self, id: Id<Buffer>) -> &mut Self {
         self.resources
             .invalidate_buffer(id, &self.guard)
@@ -84,6 +85,7 @@ impl<'a> DeferredBatch<'a> {
     ///
     /// - Panics if `id` is not a valid physical resource ID.
     #[inline]
+    #[track_caller]
     pub fn destroy_image(&mut self, id: Id<Image>) -> &mut Self {
         self.resources
             .invalidate_image(id, &self.guard)
@@ -101,6 +103,7 @@ impl<'a> DeferredBatch<'a> {
     ///
     /// - Panics if `id` is not a valid physical resource ID.
     #[inline]
+    #[track_caller]
     pub fn destroy_swapchain(&mut self, id: Id<Swapchain>) -> &mut Self {
         self.resources
             .invalidate_swapchain(id, &self.guard)
@@ -119,6 +122,7 @@ impl<'a> DeferredBatch<'a> {
     /// - Panics if the `Resources` collection wasn't created with a bindless context.
     /// - Panics if `id` is invalid.
     #[inline]
+    #[track_caller]
     pub fn destroy_sampler(&mut self, id: SamplerId) -> &mut Self {
         let bcx = self
             .resources
@@ -144,6 +148,7 @@ impl<'a> DeferredBatch<'a> {
     /// - Panics if the `Resources` collection wasn't created with a bindless context.
     /// - Panics if `id` is invalid.
     #[inline]
+    #[track_caller]
     pub fn destroy_sampled_image(&mut self, id: SampledImageId) -> &mut Self {
         let bcx = self
             .resources
@@ -172,6 +177,7 @@ impl<'a> DeferredBatch<'a> {
     /// - Panics if the `Resources` collection wasn't created with a bindless context.
     /// - Panics if `id` is invalid.
     #[inline]
+    #[track_caller]
     pub fn destroy_storage_image(&mut self, id: StorageImageId) -> &mut Self {
         let bcx = self
             .resources
@@ -200,6 +206,7 @@ impl<'a> DeferredBatch<'a> {
     /// - Panics if the `Resources` collection wasn't created with a bindless context.
     /// - Panics if `id` is invalid.
     #[inline]
+    #[track_caller]
     pub fn destroy_storage_buffer(&mut self, id: StorageBufferId) -> &mut Self {
         let bcx = self
             .resources
@@ -228,6 +235,7 @@ impl<'a> DeferredBatch<'a> {
     /// - Panics if the `Resources` collection wasn't created with a bindless context.
     /// - Panics if `id` is invalid.
     #[inline]
+    #[track_caller]
     pub fn destroy_acceleration_structure(&mut self, id: AccelerationStructureId) -> &mut Self {
         let bcx = self
             .resources
