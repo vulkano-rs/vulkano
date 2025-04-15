@@ -413,17 +413,32 @@ impl<'a> DeferredBatch<'a> {
             }
         }
 
-        let biased_frames_ptr = self.biased_frames;
         let this = ClearGuard(self);
 
         // SAFETY: By our own invariant, the node denoted by `self.node_index` must have been
         // allocated by us, which means that no other threads can be accessing this node's data
         // while we haven't pushed it to a garbage queue.
-        let node_biased_frames = unsafe { &mut *biased_frames_ptr };
+        let node_biased_frames = unsafe { &mut *this.0.biased_frames };
         node_biased_frames.clear();
         node_biased_frames.extend(biased_frames);
 
         mem::forget(this);
+
+        if self.deferreds_mut().is_empty() {
+            let node_allocator = self.resources.garbage_queue().node_allocator();
+
+            // SAFETY: By our own invariant, the node denoted by `self.node_index` must have been
+            // allocated by us, and since we haven't pushed it to any garbage queue, the node is
+            // still unlinked and therefore safe to deallocate.
+            unsafe { node_allocator.deallocate(self.node_index, &self.guard) };
+
+            if self.drop_guard {
+                // SAFETY: The caller must ensure that this method is not called again.
+                unsafe { ptr::drop_in_place(&mut self.guard) };
+            }
+
+            return;
+        }
 
         match node_biased_frames.as_slice() {
             [] => {
