@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     assert_unsafe_precondition,
-    collector::Deferred,
+    collector::{Deferred, DeferredBatch},
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
     resource::{
@@ -17,7 +17,8 @@ use concurrent_slotmap::hyaline;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
-    fmt, iter, mem,
+    fmt, iter,
+    mem::{self, ManuallyDrop},
     ops::Range,
     ptr,
     sync::{atomic::Ordering, Arc},
@@ -102,8 +103,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         }
 
         let current_frame_index = flight.current_frame_index();
-        let mut deferred_batch = resource_map.resources().create_deferred_batch();
-        let deferreds = deferred_batch.deferreds_mut();
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.acquire_images_khr(&resource_map, current_frame_index) }?;
@@ -126,8 +125,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             resource_map: &resource_map,
             flight,
             current_fence: &mut current_fence,
+            deferred_batch: Some(resource_map.resources().create_deferred_batch()),
             submission_count: 0,
         };
+        let deferreds = state_guard.deferred_batch.as_mut().unwrap().deferreds_mut();
 
         let execute_instructions = if self.device().enabled_features().synchronization2 {
             Self::execute_instructions2
@@ -148,7 +149,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             )
         }?;
 
-        mem::forget(state_guard);
+        let mut state_guard = ManuallyDrop::new(state_guard);
 
         self.last_frame.set(Some(flight.current_frame()));
 
@@ -161,6 +162,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
+
+        let deferred_batch = state_guard.deferred_batch.take().unwrap();
 
         // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
@@ -2188,6 +2191,7 @@ struct StateGuard<'a, W: ?Sized + 'static> {
     resource_map: &'a ResourceMap<'a>,
     flight: &'a Flight,
     current_fence: &'a mut Fence,
+    deferred_batch: Option<DeferredBatch<'a>>,
     submission_count: usize,
 }
 
@@ -2228,6 +2232,12 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
         }
 
         if self.submission_count == 0 {
+            let deferred_batch = self.deferred_batch.take().unwrap();
+
+            // SAFETY: No submissions were made, so it's safe to collect the deferred batch
+            // immediately.
+            unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
+
             return;
         }
 
@@ -2249,6 +2259,12 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
                 std::process::abort();
             }
         }
+
+        let deferred_batch = self.deferred_batch.take().unwrap();
+
+        // SAFETY: We waited for idle on all queues that could access any objects being destroyed,
+        // so it's safe to collect the deferred batch immediately.
+        unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
 
         // But even after waiting for idle, the state of the graph is invalid because some
         // semaphores are still signalled, so we have to recreate them.
