@@ -440,6 +440,8 @@ impl<'a> DeferredBatch<'a> {
             // still unlinked and therefore safe to deallocate.
             unsafe { node_allocator.deallocate(self.node_index, &self.guard) };
 
+            self.guard.flush();
+
             if self.drop_guard {
                 // SAFETY: The caller must ensure that this method is not called again.
                 unsafe { ptr::drop_in_place(&mut self.guard) };
@@ -488,6 +490,8 @@ impl<'a> DeferredBatch<'a> {
                 unsafe { garbage_queue.push(self.node_index, &self.guard) };
             }
         }
+
+        self.guard.flush();
 
         if self.drop_guard {
             // SAFETY: The caller must ensure that this method is not called again.
