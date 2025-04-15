@@ -2,10 +2,7 @@ use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::{OnceCache, WeakArcOnceCache},
-    device::{
-        properties::DeviceProperties, DeviceExtensions, DeviceFeatures, DeviceFeaturesFfi,
-        DevicePropertiesFfi,
-    },
+    device::{properties::DeviceProperties, DeviceExtensions, DeviceFeatures, DeviceFeaturesFfi},
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{Format, FormatProperties},
     image::{
@@ -125,9 +122,7 @@ impl PhysicalDevice {
                 unsafe { Self::get_queue_family_properties2(handle, &instance) };
         } else {
             supported_features = unsafe { Self::get_features(handle, &instance) };
-            properties = unsafe {
-                Self::get_properties(handle, &instance, api_version, &supported_extensions)
-            };
+            properties = unsafe { Self::get_properties(handle, &instance) };
             memory_properties = unsafe { Self::get_memory_properties(handle, &instance) };
             queue_family_properties =
                 unsafe { Self::get_queue_family_properties(handle, &instance) };
@@ -247,25 +242,13 @@ impl PhysicalDevice {
         DeviceFeatures::from(&output)
     }
 
-    unsafe fn get_properties(
-        handle: vk::PhysicalDevice,
-        instance: &Instance,
-        api_version: Version,
-        supported_extensions: &DeviceExtensions,
-    ) -> DeviceProperties {
-        let mut output = DevicePropertiesFfi::default();
-        output.make_chain(
-            api_version,
-            supported_extensions,
-            instance.enabled_extensions(),
-        );
+    unsafe fn get_properties(handle: vk::PhysicalDevice, instance: &Instance) -> DeviceProperties {
+        let mut properties_vk = DeviceProperties::to_mut_vk();
 
         let fns = instance.fns();
-        unsafe {
-            (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties)
-        };
+        unsafe { (fns.v1_0.get_physical_device_properties)(handle, &mut properties_vk) };
 
-        DeviceProperties::from(&output)
+        DeviceProperties::from_vk(&properties_vk)
     }
 
     unsafe fn get_properties2(
@@ -274,27 +257,58 @@ impl PhysicalDevice {
         api_version: Version,
         supported_extensions: &DeviceExtensions,
     ) -> DeviceProperties {
-        let mut output = DevicePropertiesFfi::default();
-        output.make_chain(
+        let fns = instance.fns();
+
+        let call = |properties2_vk: &mut vk::PhysicalDeviceProperties2<'_>| {
+            if instance.api_version() >= Version::V1_1 {
+                unsafe { (fns.v1_1.get_physical_device_properties2)(handle, properties2_vk) };
+            } else {
+                unsafe {
+                    (fns.khr_get_physical_device_properties2
+                        .get_physical_device_properties2_khr)(
+                        handle, properties2_vk
+                    )
+                };
+            }
+        };
+
+        let mut properties2_fields1_vk = DeviceProperties::to_mut_vk2_fields1({
+            let mut properties2_extensions_query_count_vk =
+                DeviceProperties::to_mut_vk2_extensions_query_count(
+                    api_version,
+                    supported_extensions,
+                    instance.enabled_extensions(),
+                );
+            let mut properties2_query_count_vk =
+                DeviceProperties::to_mut_vk2(&mut properties2_extensions_query_count_vk);
+
+            call(&mut properties2_query_count_vk);
+
+            properties2_extensions_query_count_vk
+        });
+
+        let mut properties2_extensions_vk = DeviceProperties::to_mut_vk2_extensions(
+            &mut properties2_fields1_vk,
             api_version,
             supported_extensions,
             instance.enabled_extensions(),
         );
+        let mut properties2_vk = DeviceProperties::to_mut_vk2(&mut properties2_extensions_vk);
 
-        let fns = instance.fns();
+        call(&mut properties2_vk);
 
-        if instance.api_version() >= Version::V1_1 {
-            unsafe { (fns.v1_1.get_physical_device_properties2)(handle, output.head_as_mut()) };
-        } else {
-            unsafe {
-                (fns.khr_get_physical_device_properties2
-                    .get_physical_device_properties2_khr)(
-                    handle, output.head_as_mut()
-                )
-            };
-        }
+        // Unborrow
+        let properties2_vk = vk::PhysicalDeviceProperties2 {
+            _marker: PhantomData,
+            ..properties2_vk
+        };
+        let properties2_extensions_vk = properties2_extensions_vk.unborrow();
 
-        DeviceProperties::from(&output)
+        DeviceProperties::from_vk2(
+            &properties2_vk,
+            &properties2_extensions_vk,
+            &properties2_fields1_vk,
+        )
     }
 
     unsafe fn get_memory_properties(

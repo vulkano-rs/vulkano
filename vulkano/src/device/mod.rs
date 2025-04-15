@@ -96,7 +96,6 @@
 //!
 //! TODO: write
 
-pub(crate) use self::properties::DevicePropertiesFfi;
 use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
 pub use self::{
     properties::DeviceProperties,
