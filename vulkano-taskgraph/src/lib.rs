@@ -3,7 +3,7 @@
 //! panics in random places.
 
 use command_buffer::RecordingCommandBuffer;
-use concurrent_slotmap::{epoch, Key, SlotId};
+use concurrent_slotmap::{hyaline, Key, SlotId};
 use graph::{CompileInfo, ExecuteError, ResourceMap, TaskGraph};
 use linear_map::LinearMap;
 use resource::{
@@ -20,6 +20,7 @@ use std::{
     marker::PhantomData,
     mem,
     ops::{Deref, RangeBounds},
+    ptr::NonNull,
     sync::Arc,
 };
 use vulkano::{
@@ -33,6 +34,7 @@ use vulkano::{
     DeviceSize, ValidationError,
 };
 
+pub mod collector;
 pub mod command_buffer;
 pub mod descriptor_set;
 pub mod graph;
@@ -262,8 +264,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.buffer(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().buffer_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.buffer_protected(id, guard)?)
         }
     }
 
@@ -281,8 +285,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.image(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().image_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.image_protected(id, guard)?)
         }
     }
 
@@ -294,8 +300,10 @@ impl<'a> TaskContext<'a> {
             // virtual IDs of the graph exhaustively.
             Ok(unsafe { self.resource_map.swapchain(id) }?)
         } else {
-            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
-            Ok(unsafe { self.resource_map.resources().swapchain_unprotected(id) }?)
+            let resources = self.resource_map.resources();
+            let guard = self.resource_map.guard();
+
+            Ok(resources.swapchain_protected(id, guard)?)
         }
     }
 
@@ -875,10 +883,23 @@ impl<T> Ord for Id<T> {
 /// When you use [`Id`] to retrieve something, you can get back a `Ref` with the same type
 /// parameter, which you can then dereference to get at the underlying data denoted by the type
 /// parameter.
-pub struct Ref<'a, T> {
-    inner: &'a T,
+pub struct Ref<'a, T: 'a> {
+    // We cannot use a reference here because references must remain valid for the duration of a
+    // function call they are passed to. Our reference is only valid until the guard is dropped,
+    // therefore passing `Ref` to a function would be unsound as the reference could get
+    // invalidated in the middle (or even at the end would be unsound).
+    inner: NonNull<T>,
     #[allow(unused)]
-    guard: epoch::Guard<'a>,
+    guard: hyaline::Guard<'a>,
+}
+
+impl<'a, T> Ref<'a, T> {
+    fn new(inner: &'a T, guard: hyaline::Guard<'a>) -> Self {
+        Ref {
+            inner: inner.into(),
+            guard,
+        }
+    }
 }
 
 impl<T> Deref for Ref<'_, T> {
@@ -886,13 +907,14 @@ impl<T> Deref for Ref<'_, T> {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.inner
+        // SAFETY: The pointer was constructured from an existing reference in `Ref::new`.
+        unsafe { self.inner.as_ref() }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.inner, f)
+        fmt::Debug::fmt(&**self, f)
     }
 }
 
@@ -941,6 +963,35 @@ impl fmt::Debug for NonExhaustive<'_> {
 }
 
 const NE: NonExhaustive<'static> = NonExhaustive(PhantomData);
+
+macro_rules! assert_unsafe_precondition {
+    ($condition:expr, $message:expr $(,)?) => {
+        // The nesting is intentional. There is a special path in the compiler for `if false`
+        // facilitating conditional compilation without `#[cfg]` and the problems that come with it.
+        if cfg!(debug_assertions) {
+            if !$condition {
+                crate::panic_nounwind(concat!("unsafe precondition(s) validated: ", $message));
+            }
+        }
+    };
+}
+use assert_unsafe_precondition;
+
+/// Polyfill for `core::panicking::panic_nounwind`.
+#[cold]
+#[inline(never)]
+fn panic_nounwind(message: &'static str) -> ! {
+    struct UnwindGuard;
+
+    impl Drop for UnwindGuard {
+        fn drop(&mut self) {
+            panic!();
+        }
+    }
+
+    let _guard = UnwindGuard;
+    std::panic::panic_any(message);
+}
 
 #[cfg(test)]
 mod tests {

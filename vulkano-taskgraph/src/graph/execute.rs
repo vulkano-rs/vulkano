@@ -3,19 +3,22 @@ use super::{
     RenderPassIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
+    assert_unsafe_precondition,
+    collector::{Deferred, DeferredBatch},
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
     resource::{
-        BufferAccess, BufferState, DeathRow, ImageAccess, ImageState, Resources, SwapchainState,
+        BufferAccess, BufferState, Flight, ImageAccess, ImageState, Resources, SwapchainState,
     },
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
-use concurrent_slotmap::epoch;
+use concurrent_slotmap::hyaline;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
-    fmt, mem,
+    fmt, iter,
+    mem::{self, ManuallyDrop},
     ops::Range,
     ptr,
     sync::{atomic::Ordering, Arc},
@@ -71,24 +74,20 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         let flight_id = self.flight_id;
 
-        // SAFETY: `resource_map` owns an `epoch::Guard`.
-        let flight = unsafe {
-            resource_map
-                .physical_resources
-                .flight_unprotected(flight_id)
-        }
-        .expect("invalid flight");
+        let flight = resource_map
+            .physical_resources
+            .flight_protected(flight_id, &resource_map.guard)
+            .expect("invalid flight ID");
 
-        let mut flight_state = flight.state.try_lock().unwrap_or_else(|| {
+        let _flight_state = flight.state.try_lock().unwrap_or_else(|| {
             panic!(
                 "another thread is already executing a task graph using the flight {flight_id:?}",
             );
         });
 
-        // TODO: This call is quite expensive.
         assert!(
-            flight.current_fence().read().is_signaled()?,
-            "you must wait on the fence for the current frame before submitting more work",
+            flight.is_oldest_frame_complete(),
+            "you must wait on the oldest frame in flight to finish before submitting more work",
         );
 
         for &swapchain_id in &self.swapchains {
@@ -104,12 +103,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         }
 
         let current_frame_index = flight.current_frame_index();
-        let death_row = &mut flight_state.death_rows[current_frame_index as usize];
-
-        for object in death_row.drain(..) {
-            // FIXME:
-            drop(object);
-        }
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.acquire_images_khr(&resource_map, current_frame_index) }?;
@@ -125,12 +118,17 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.create_framebuffers(&resource_map) }?;
 
+        unsafe { flight.start_next_frame() };
+
         let mut state_guard = StateGuard {
             executable: self,
             resource_map: &resource_map,
+            flight,
             current_fence: &mut current_fence,
+            deferred_batch: Some(resource_map.resources().create_deferred_batch()),
             submission_count: 0,
         };
+        let deferreds = state_guard.deferred_batch.as_mut().unwrap().deferreds_mut();
 
         let execute_instructions = if self.device().enabled_features().synchronization2 {
             Self::execute_instructions2
@@ -143,7 +141,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             execute_instructions(
                 self,
                 &resource_map,
-                death_row,
+                deferreds,
                 current_frame_index,
                 state_guard.current_fence,
                 &mut state_guard.submission_count,
@@ -151,11 +149,9 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             )
         }?;
 
-        mem::forget(state_guard);
+        let mut state_guard = ManuallyDrop::new(state_guard);
 
-        for semaphore in self.semaphores.borrow().iter() {
-            death_row.push(semaphore.clone());
-        }
+        self.last_frame.set(Some(flight.current_frame()));
 
         unsafe { flight.next_frame() };
 
@@ -167,11 +163,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
 
-        if resource_map.guard.try_advance_global() {
-            resource_map
-                .physical_resources
-                .try_collect(&resource_map.guard);
-        }
+        let deferred_batch = state_guard.deferred_batch.take().unwrap();
+
+        // SAFETY: We only defer the destruction of objects that are frame-local.
+        unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
 
         res
     }
@@ -273,6 +268,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     }
 
     unsafe fn create_framebuffers(&self, resource_map: &ResourceMap<'_>) -> Result {
+        let mut batch = None;
+
         for render_pass_state in self.render_passes.borrow_mut().iter_mut() {
             // If we're executing this task graph for the first time, there are no framebuffers
             // yet, so we need to create them.
@@ -311,6 +308,14 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 };
 
                 if attachment.image() != image {
+                    let batch = batch.get_or_insert_with(|| {
+                        resource_map.physical_resources.create_deferred_batch()
+                    });
+
+                    for framebuffer in render_pass_state.framebuffers.drain(..) {
+                        batch.destroy_object(framebuffer);
+                    }
+
                     unsafe {
                         create_framebuffers(
                             &render_pass_state.render_pass,
@@ -320,9 +325,18 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                             resource_map,
                         )
                     }?;
+
                     break;
                 }
             }
+        }
+
+        if let Some(batch) = batch {
+            let last_frame = self.last_frame.get().unwrap();
+
+            // SAFETY: We only destroy objects that are graph-local and `last_frame` is the last
+            // frame in which they were used.
+            unsafe { batch.enqueue_with_frames(iter::once((self.flight_id, last_frame))) };
         }
 
         Ok(())
@@ -331,7 +345,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn execute_instructions2(
         &self,
         resource_map: &ResourceMap<'_>,
-        death_row: &mut DeathRow,
+        deferreds: &mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &Fence,
         submission_count: &mut usize,
@@ -340,7 +354,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut state = ExecuteState2::new(
             self,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -434,7 +448,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn execute_instructions(
         &self,
         resource_map: &ResourceMap<'_>,
-        death_row: &mut DeathRow,
+        deferreds: &mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &Fence,
         submission_count: &mut usize,
@@ -443,7 +457,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut state = ExecuteState::new(
             self,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -715,6 +729,8 @@ unsafe fn create_framebuffers(
     swapchains: &[Id<Swapchain>],
     resource_map: &ResourceMap<'_>,
 ) -> Result<()> {
+    debug_assert!(framebuffers.is_empty());
+
     let swapchain_image_counts = swapchains
         .iter()
         .map(|&id| {
@@ -726,7 +742,6 @@ unsafe fn create_framebuffers(
     let mut swapchain_image_indices: SmallVec<[u32; 1]> =
         smallvec![0; swapchain_image_counts.len()];
 
-    framebuffers.clear();
     framebuffers.reserve_exact(swapchain_image_counts.iter().product::<u32>() as usize);
 
     'outer: loop {
@@ -805,7 +820,7 @@ unsafe fn create_framebuffers(
 struct ExecuteState2<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
-    death_row: &'a mut DeathRow,
+    deferreds: &'a mut Vec<Deferred>,
     current_frame_index: u32,
     current_fence: &'a Fence,
     submission_count: &'a mut usize,
@@ -838,7 +853,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
     fn new(
         executable: &'a ExecutableTaskGraph<W>,
         resource_map: &'a ResourceMap<'a>,
-        death_row: &'a mut DeathRow,
+        deferreds: &'a mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &'a Fence,
         submission_count: &'a mut usize,
@@ -858,7 +873,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         Ok(ExecuteState2 {
             executable,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -1051,7 +1066,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 current_command_buffer!(self),
                 &mut self.command_buffer_state,
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
             )
         };
         let mut context = TaskContext {
@@ -1070,7 +1085,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 self.current_per_submit.command_buffer_infos_vk.push(
                     vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()),
                 );
-                self.death_row.push(command_buffer);
+                self.deferreds.push(Deferred::destroy(command_buffer));
             }
         }
 
@@ -1166,7 +1181,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 0,
             )
@@ -1201,8 +1216,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             )
         };
 
-        self.death_row.push(framebuffer.clone());
-
         Ok(())
     }
 
@@ -1216,7 +1229,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 self.current_subpass_index,
             )
@@ -1391,7 +1404,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         self.current_per_submit
             .command_buffer_infos_vk
             .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
-        self.death_row.push(Arc::new(command_buffer));
+        self.deferreds.push(Deferred::destroy(command_buffer));
         self.command_buffer_state.reset();
 
         Ok(())
@@ -1401,7 +1414,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 struct ExecuteState<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
-    death_row: &'a mut DeathRow,
+    deferreds: &'a mut Vec<Deferred>,
     current_frame_index: u32,
     current_fence: &'a Fence,
     submission_count: &'a mut usize,
@@ -1437,7 +1450,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
     fn new(
         executable: &'a ExecutableTaskGraph<W>,
         resource_map: &'a ResourceMap<'a>,
-        death_row: &'a mut DeathRow,
+        deferreds: &'a mut Vec<Deferred>,
         current_frame_index: u32,
         current_fence: &'a Fence,
         submission_count: &'a mut usize,
@@ -1450,7 +1463,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         Ok(ExecuteState {
             executable,
             resource_map,
-            death_row,
+            deferreds,
             current_frame_index,
             current_fence,
             submission_count,
@@ -1650,7 +1663,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 current_command_buffer!(self),
                 &mut self.command_buffer_state,
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
             )
         };
         let mut context = TaskContext {
@@ -1669,7 +1682,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 self.current_per_submit
                     .command_buffers_vk
                     .push(command_buffer.handle());
-                self.death_row.push(command_buffer);
+                self.deferreds.push(Deferred::destroy(command_buffer));
             }
         }
 
@@ -1768,7 +1781,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 0,
             )
@@ -1803,8 +1816,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             )
         };
 
-        self.death_row.push(framebuffer.clone());
-
         Ok(())
     }
 
@@ -1818,7 +1829,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         unsafe {
             self.command_buffer_state.set_local_set(
                 self.resource_map,
-                self.death_row,
+                self.deferreds,
                 framebuffer,
                 self.current_subpass_index,
             )
@@ -2005,7 +2016,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         self.current_per_submit
             .command_buffers_vk
             .push(command_buffer.handle());
-        self.death_row.push(Arc::new(command_buffer));
+        self.deferreds.push(Deferred::destroy(command_buffer));
         self.command_buffer_state.reset();
 
         Ok(())
@@ -2178,13 +2189,18 @@ fn convert_access_mask(mut access_mask: AccessFlags) -> vk::AccessFlags {
 struct StateGuard<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
+    flight: &'a Flight,
     current_fence: &'a mut Fence,
+    deferred_batch: Option<DeferredBatch<'a>>,
     submission_count: usize,
 }
 
 impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
     #[cold]
     fn drop(&mut self) {
+        // Make sure that the started frame cannot outrun the current frame.
+        unsafe { self.flight.undo_start_next_frame() };
+
         let device = self.executable.device();
 
         // SAFETY: The parameters are valid.
@@ -2216,6 +2232,12 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
         }
 
         if self.submission_count == 0 {
+            let deferred_batch = self.deferred_batch.take().unwrap();
+
+            // SAFETY: No submissions were made, so it's safe to collect the deferred batch
+            // immediately.
+            unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
+
             return;
         }
 
@@ -2238,13 +2260,19 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             }
         }
 
+        let deferred_batch = self.deferred_batch.take().unwrap();
+
+        // SAFETY: We waited for idle on all queues that could access any objects being destroyed,
+        // so it's safe to collect the deferred batch immediately.
+        unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
+
         // But even after waiting for idle, the state of the graph is invalid because some
         // semaphores are still signalled, so we have to recreate them.
         for semaphore in self.executable.semaphores.borrow_mut().iter_mut() {
             // SAFETY: The parameters are valid.
             match unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) } {
                 Ok(new_semaphore) => {
-                    *semaphore = Arc::new(new_semaphore);
+                    *semaphore = new_semaphore;
                 }
                 Err(err) => {
                     if err == VulkanError::DeviceLost {
@@ -2307,7 +2335,7 @@ pub struct ResourceMap<'a> {
     physical_resources: Arc<Resources>,
     map: Vec<*const ()>,
     len: u32,
-    guard: epoch::Guard<'a>,
+    guard: hyaline::Guard<'a>,
 }
 
 impl<'a> ResourceMap<'a> {
@@ -2326,22 +2354,17 @@ impl<'a> ResourceMap<'a> {
                 ObjectType::Buffer => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe { physical_resources.buffer_unprotected(physical_id) }?)
+                    <*const _>::cast(physical_resources.buffer_protected(physical_id, &guard)?)
                 }
                 ObjectType::Image => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe { physical_resources.image_unprotected(physical_id) }?)
+                    <*const _>::cast(physical_resources.image_protected(physical_id, &guard)?)
                 }
                 ObjectType::Swapchain => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    // SAFETY: We own an `epoch::Guard`.
-                    <*const _>::cast(unsafe {
-                        physical_resources.swapchain_unprotected(physical_id)
-                    }?)
+                    <*const _>::cast(physical_resources.swapchain_protected(physical_id, &guard)?)
                 }
                 _ => unreachable!(),
             };
@@ -2383,8 +2406,9 @@ impl<'a> ResourceMap<'a> {
     ) -> Result<(), InvalidSlotError> {
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.buffer_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .buffer_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.buffer().sharing().is_exclusive(),
@@ -2427,12 +2451,10 @@ impl<'a> ResourceMap<'a> {
         virtual_id: Id<Buffer>,
         physical_id: Id<Buffer>,
     ) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .buffer_unchecked_unprotected(physical_id)
+                .buffer_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2465,8 +2487,9 @@ impl<'a> ResourceMap<'a> {
 
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.image_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .image_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.image().sharing().is_exclusive(),
@@ -2505,12 +2528,10 @@ impl<'a> ResourceMap<'a> {
     /// - The physical resource must not have a mapping from another virtual resource.
     #[inline]
     pub unsafe fn insert_image_unchecked(&mut self, virtual_id: Id<Image>, physical_id: Id<Image>) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .image_unchecked_unprotected(physical_id)
+                .image_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2540,8 +2561,9 @@ impl<'a> ResourceMap<'a> {
     ) -> Result<(), InvalidSlotError> {
         self.virtual_resources.get(virtual_id.erase())?;
 
-        // SAFETY: We own an `epoch::Guard`.
-        let state = unsafe { self.physical_resources.swapchain_unprotected(physical_id) }?;
+        let state = self
+            .physical_resources
+            .swapchain_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.swapchain().image_sharing().is_exclusive(),
@@ -2584,12 +2606,10 @@ impl<'a> ResourceMap<'a> {
         virtual_id: Id<Swapchain>,
         physical_id: Id<Swapchain>,
     ) {
-        // SAFETY:
-        // * The caller must ensure that `physical_id` is a valid ID.
-        // * We own an `epoch::Guard`.
+        // SAFETY: The caller must ensure that `physical_id` is a valid ID.
         let state = unsafe {
             self.physical_resources
-                .swapchain_unchecked_unprotected(physical_id)
+                .swapchain_unchecked_protected(physical_id, &self.guard)
         };
 
         // SAFETY: The caller must ensure that `virtual_id` is a valid virtual ID, and since we
@@ -2632,6 +2652,10 @@ impl<'a> ResourceMap<'a> {
         self.len() == self.virtual_resources.len()
     }
 
+    pub(crate) fn guard(&self) -> &hyaline::Guard<'_> {
+        &self.guard
+    }
+
     pub(crate) unsafe fn buffer(&self, id: Id<Buffer>) -> Result<&BufferState, InvalidSlotError> {
         self.virtual_resources.get(id.erase())?;
 
@@ -2640,10 +2664,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &BufferState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must be a valid virtual buffer ID",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
@@ -2660,10 +2684,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must be a valid virtual image ID",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
@@ -2683,10 +2707,10 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn swapchain_unchecked(&self, id: Id<Swapchain>) -> &SwapchainState {
-        #[cfg(debug_assertions)]
-        if self.virtual_resources.get(id.erase()).is_err() {
-            std::process::abort();
-        }
+        assert_unsafe_precondition!(
+            self.virtual_resources.get(id.erase()).is_ok(),
+            "`id` must be a valid virtual swapchain ID",
+        );
 
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
