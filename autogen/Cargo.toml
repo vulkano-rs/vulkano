@@ -1,13 +1,7 @@
 [package]
-publish = false
 name = "autogen"
-authors = ["The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano"
-description = "Auto-generation of files for Vulkano"
-readme = "../README.md"
 edition = { workspace = true }
-rust-version = { workspace = true }
-license = { workspace = true }
+publish = false
 
 [dependencies]
 foldhash = { workspace = true }
