@@ -9,13 +9,11 @@ use nom::{
 };
 use std::{
     cmp::min,
-    env,
     fmt::Display,
     fs::File,
     io::{BufWriter, Write},
     ops::BitOrAssign,
     path::Path,
-    process,
 };
 use vk_parse::{
     Command, Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format,
@@ -34,12 +32,17 @@ mod spirv_parse;
 mod spirv_reqs;
 mod version;
 
-pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
+const INPUT_DIR: &str = concat!(std::env!("CARGO_MANIFEST_DIR"), "/../autogen");
+const OUTPUT_DIR: &str = concat!(std::env!("CARGO_MANIFEST_DIR"), "/../vulkano/autogen-out/");
 
-pub fn autogen() {
-    let registry = get_vk_registry("vk.xml");
+pub(crate) type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
+
+fn main() {
+    let input_dir = Path::new(INPUT_DIR);
+
+    let registry = get_vk_registry(&input_dir.join("vk.xml"));
     let vk_data = VkRegistryData::new(&registry);
-    let spirv_grammar = get_spirv_grammar("spirv.core.grammar.json");
+    let spirv_grammar = get_spirv_grammar(&input_dir.join("spirv.core.grammar.json"));
 
     errors::write(&vk_data);
     extensions::write(&vk_data);
@@ -52,8 +55,10 @@ pub fn autogen() {
     version::write(&vk_data);
 }
 
-fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Display) {
-    let path = Path::new(&env::var_os("OUT_DIR").unwrap()).join(file.as_ref());
+fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, contents: impl Display) {
+    let contents = prettyplease::unparse(&syn::parse_file(&contents.to_string()).unwrap());
+
+    let path = Path::new(OUTPUT_DIR).join(file.as_ref());
     let mut writer = BufWriter::new(File::create(&path).unwrap());
 
     write!(
@@ -63,12 +68,9 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
         // It should not be edited manually. Changes should be made by editing autogen.\n\
         \n\n{}",
         source.as_ref(),
-        content,
+        contents,
     )
     .unwrap();
-
-    drop(writer); // Ensure that the file is fully written
-    process::Command::new("rustfmt").arg(&path).status().ok();
 }
 
 fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
