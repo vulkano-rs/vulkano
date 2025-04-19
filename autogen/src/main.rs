@@ -33,7 +33,7 @@ mod spirv_reqs;
 mod version;
 
 const INPUT_DIR: &str = concat!(std::env!("CARGO_MANIFEST_DIR"), "/../autogen");
-const OUTPUT_DIR: &str = concat!(std::env!("CARGO_MANIFEST_DIR"), "/../autogen/output/");
+const OUTPUT_DIR: &str = concat!(std::env!("CARGO_MANIFEST_DIR"), "/../vulkano/autogen-out/");
 
 pub(crate) type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
 

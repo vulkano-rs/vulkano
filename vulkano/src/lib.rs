@@ -166,16 +166,6 @@ pub mod shader;
 pub mod swapchain;
 pub mod sync;
 
-macro_rules! autogen_output {
-    ($file:literal) => {
-        concat!(
-            std::env!("CARGO_MANIFEST_DIR"),
-            "/../autogen/output/",
-            $file
-        )
-    };
-}
-
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
 pub use vk::DeviceSize;
@@ -702,5 +692,11 @@ impl Display for Requires {
 /// syntax from being used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] // add traits as needed
 pub struct NonExhaustive(pub(crate) ());
+
+macro_rules! autogen_output {
+    ($file:literal) => {
+        concat!(std::env!("CARGO_MANIFEST_DIR"), "/autogen-out/", $file)
+    };
+}
 
 pub(crate) use autogen_output;
