@@ -1,4 +1,5 @@
 // This example showcases how you can most effectively update a resource asynchronously, such that
+// your rendering or any other tasks can use the resource without any latency at the same time as
 // it's being updated. The resource being updated asynchronously here is a large texture, which
 // needs to be updated partially at the request of the user.
 //
