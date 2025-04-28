@@ -101,8 +101,8 @@ impl PixelsDrawPipeline {
     fn create_descriptor_set(&self, image: Arc<ImageView>) -> Arc<DescriptorSet> {
         let layout = &self.pipeline.layout().set_layouts()[0];
         let sampler = Sampler::new(
-            self.gfx_queue.device().clone(),
-            SamplerCreateInfo {
+            self.gfx_queue.device(),
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],

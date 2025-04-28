@@ -57,7 +57,7 @@ use self::{sys::RawImage, view::ImageViewType};
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
+    macros::{self_referential, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
         allocator::{AllocationCreateInfo, MemoryAllocator, MemoryAllocatorError},
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
@@ -65,7 +65,7 @@ use crate::{
     },
     range_map::RangeMap,
     swapchain::Swapchain,
-    sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
+    sync::{future::AccessError, AccessConflict, CurrentAccess, OwnedSharing, Sharing},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
@@ -141,16 +141,24 @@ pub enum ImageMemory {
 impl Image {
     /// Creates a new uninitialized `Image`.
     pub fn new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Arc<Self>, Validated<AllocateImageError>> {
+        Self::new_inner(allocator.clone().as_dyn(), create_info, allocation_info)
+    }
+
+    fn new_inner(
         allocator: Arc<dyn MemoryAllocator>,
-        create_info: ImageCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<AllocateImageError>> {
         // TODO: adjust the code below to make this safe
         assert!(!create_info.flags.intersects(ImageCreateFlags::DISJOINT));
 
         let allocation_type = create_info.tiling.into();
         let raw_image =
-            RawImage::new(allocator.device().clone(), create_info).map_err(|err| match err {
+            RawImage::new(allocator.device(), create_info).map_err(|err| match err {
                 Validated::Error(err) => Validated::Error(AllocateImageError::CreateImage(err)),
                 Validated::ValidationError(err) => err.into(),
             })?;
@@ -158,13 +166,13 @@ impl Image {
 
         let allocation = allocator
             .allocate(
-                requirements,
+                &requirements,
                 allocation_type,
                 allocation_info,
                 Some(DedicatedAllocation::Image(&raw_image)),
             )
             .map_err(AllocateImageError::AllocateMemory)?;
-        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
+        let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
 
         // SAFETY: we just created this raw image and hasn't bound any memory to it.
         let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
@@ -200,7 +208,7 @@ impl Image {
 
     pub(crate) unsafe fn from_swapchain(
         handle: vk::Image,
-        swapchain: Arc<Swapchain>,
+        swapchain: &Arc<Swapchain>,
         image_index: u32,
     ) -> Result<Self, VulkanError> {
         // Per https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html#_description
@@ -208,7 +216,7 @@ impl Image {
             flags: swapchain.flags().into(),
             image_type: ImageType::Dim2d,
             format: swapchain.image_format(),
-            view_formats: swapchain.image_view_formats().to_vec(),
+            view_formats: swapchain.image_view_formats(),
             extent: [swapchain.image_extent()[0], swapchain.image_extent()[1], 1],
             array_layers: swapchain.image_array_layers(),
             mip_levels: 1,
@@ -216,28 +224,23 @@ impl Image {
             tiling: ImageTiling::Optimal,
             usage: swapchain.image_usage(),
             stencil_usage: None,
-            sharing: swapchain.image_sharing().clone(),
+            sharing: swapchain.image_sharing(),
             initial_layout: ImageLayout::Undefined,
-            drm_format_modifiers: Vec::new(),
-            drm_format_modifier_plane_layouts: Vec::new(),
+            drm_format_modifiers: &[],
+            drm_format_modifier_plane_layouts: &[],
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         };
 
         let image = unsafe {
-            RawImage::from_handle_with_destruction(
-                swapchain.device().clone(),
-                handle,
-                create_info,
-                false,
-            )
+            RawImage::from_handle_with_destruction(swapchain.device(), handle, &create_info, false)
         }?;
 
         Ok(unsafe {
             Self::from_raw(
                 image,
                 ImageMemory::Swapchain {
-                    swapchain,
+                    swapchain: swapchain.clone(),
                     image_index,
                 },
                 ImageLayout::PresentSrc,
@@ -352,7 +355,7 @@ impl Image {
 
     /// Returns the sharing the image was created with.
     #[inline]
-    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
+    pub fn sharing(&self) -> Sharing<'_> {
         self.inner.sharing()
     }
 
@@ -1674,7 +1677,7 @@ impl SubresourceLayout {
 /// The image configuration to query in
 /// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImageFormatInfo {
+pub struct ImageFormatInfo<'a> {
     /// The `flags` that the image will have.
     ///
     /// The default value is [`ImageCreateFlags::empty()`].
@@ -1693,7 +1696,7 @@ pub struct ImageFormatInfo {
     /// The default value is empty.
     ///
     /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
-    pub view_formats: Vec<Format>,
+    pub view_formats: &'a [Format],
 
     /// The dimension type that the image will have.
     ///
@@ -1726,7 +1729,7 @@ pub struct ImageFormatInfo {
     /// extension must be supported by the physical device.
     ///
     /// The default value is `None`.
-    pub drm_format_modifier_info: Option<ImageDrmFormatModifierInfo>,
+    pub drm_format_modifier_info: Option<&'a ImageDrmFormatModifierInfo<'a>>,
 
     /// An external memory handle type that will be imported to or exported from the image.
     ///
@@ -1750,24 +1753,24 @@ pub struct ImageFormatInfo {
     /// The default value is `None`.
     pub image_view_type: Option<ImageViewType>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageFormatInfo {
+impl Default for ImageFormatInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageFormatInfo {
+impl<'a> ImageFormatInfo<'a> {
     /// Returns a default `ImageFormatInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
             format: Format::UNDEFINED,
-            view_formats: Vec::new(),
+            view_formats: &[],
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
             usage: ImageUsage::empty(),
@@ -1775,7 +1778,7 @@ impl ImageFormatInfo {
             drm_format_modifier_info: None,
             external_memory_handle_type: None,
             image_view_type: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1786,12 +1789,12 @@ impl ImageFormatInfo {
         let &Self {
             flags,
             format,
-            ref view_formats,
+            view_formats,
             image_type,
             tiling,
             usage,
             stencil_usage,
-            ref drm_format_modifier_info,
+            drm_format_modifier_info,
             external_memory_handle_type,
             image_view_type,
             _ne: _,
@@ -2018,7 +2021,7 @@ impl ImageFormatInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         extensions_vk: &'a mut ImageFormatInfo2ExtensionsVk<'_>,
     ) -> vk::PhysicalDeviceImageFormatInfo2<'a> {
@@ -2074,7 +2077,7 @@ impl ImageFormatInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk2_extensions<'a>(
+    pub(crate) fn to_vk2_extensions(
         &'a self,
         fields1_vk: &'a ImageFormatInfo2Fields1Vk,
     ) -> ImageFormatInfo2ExtensionsVk<'a> {
@@ -2087,7 +2090,7 @@ impl ImageFormatInfo {
             stencil_usage,
             external_memory_handle_type,
             image_view_type,
-            ref drm_format_modifier_info,
+            drm_format_modifier_info,
             view_formats: _,
             _ne: _,
         } = self;
@@ -2095,6 +2098,7 @@ impl ImageFormatInfo {
 
         let drm_format_modifier_vk = drm_format_modifier_info
             .as_ref()
+            .copied()
             .map(ImageDrmFormatModifierInfo::to_vk);
 
         let external_vk = external_memory_handle_type.map(|handle_type| {
@@ -2132,6 +2136,34 @@ impl ImageFormatInfo {
 
         ImageFormatInfo2Fields1Vk { view_formats_vk }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedImageFormatInfo {
+        let view_formats = self.view_formats.to_owned();
+        let drm_format_modifier_info =
+            self.drm_format_modifier_info
+                .map(|drm_format_modifier_info| {
+                    let sharing = drm_format_modifier_info.sharing.to_owned();
+
+                    OwnedImageDrmFormatModiferInfo::new(sharing, |sharing| {
+                        ImageDrmFormatModifierInfo {
+                            sharing: sharing.as_ref(),
+                            _ne: crate::NE,
+                            ..*drm_format_modifier_info
+                        }
+                    })
+                });
+
+        OwnedImageFormatInfo::new(
+            view_formats,
+            drm_format_modifier_info,
+            |view_formats, drm_format_modifier_info| ImageFormatInfo {
+                view_formats,
+                drm_format_modifier_info: drm_format_modifier_info.as_ref().map(|x| x.as_ref()),
+                _ne: crate::NE,
+                ..*self
+            },
+        )
+    }
 }
 
 pub(crate) struct ImageFormatInfo2ExtensionsVk<'a> {
@@ -2146,10 +2178,31 @@ pub(crate) struct ImageFormatInfo2Fields1Vk {
     pub(crate) view_formats_vk: Vec<vk::Format>,
 }
 
+self_referential! {
+    mod owned_image_format_info {
+        pub(crate) struct OwnedImageFormatInfo {
+            inner: ImageFormatInfo<'_>,
+            view_formats: Vec<Format>,
+            drm_format_modifier_info: Option<OwnedImageDrmFormatModiferInfo>,
+        }
+
+        impl PartialEq, Eq, Hash
+    }
+}
+
+self_referential! {
+    mod owned_image_drm_format_modifier_info {
+        struct OwnedImageDrmFormatModiferInfo {
+            inner: ImageDrmFormatModifierInfo<'_>,
+            sharing: OwnedSharing,
+        }
+    }
+}
+
 /// The image's DRM format modifier configuration to query in
 /// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImageDrmFormatModifierInfo {
+pub struct ImageDrmFormatModifierInfo<'a> {
     /// The DRM format modifier to query.
     ///
     /// The default value is 0.
@@ -2158,26 +2211,26 @@ pub struct ImageDrmFormatModifierInfo {
     /// Whether the image can be shared across multiple queues, or is limited to a single queue.
     ///
     /// The default value is [`Sharing::Exclusive`].
-    pub sharing: Sharing<SmallVec<[u32; 4]>>,
+    pub sharing: Sharing<'a>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageDrmFormatModifierInfo {
+impl Default for ImageDrmFormatModifierInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageDrmFormatModifierInfo {
+impl ImageDrmFormatModifierInfo<'_> {
     /// Returns a default `ImageDrmFormatModifierInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             drm_format_modifier: 0,
             sharing: Sharing::Exclusive,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2187,7 +2240,7 @@ impl ImageDrmFormatModifierInfo {
     ) -> Result<(), Box<ValidationError>> {
         let &Self {
             drm_format_modifier: _,
-            ref sharing,
+            sharing,
             _ne,
         } = self;
 
@@ -2242,14 +2295,14 @@ impl ImageDrmFormatModifierInfo {
     pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'_> {
         let &Self {
             drm_format_modifier,
-            ref sharing,
+            sharing,
             _ne: _,
         } = self;
 
         let (sharing_mode, queue_family_indices) = match sharing {
             Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
             Sharing::Concurrent(queue_family_indices) => {
-                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+                (vk::SharingMode::CONCURRENT, queue_family_indices)
             }
         };
 
@@ -2318,7 +2371,7 @@ impl ImageFormatProperties {
     }
 
     pub(crate) fn to_mut_vk2_extensions(
-        image_format_info: &ImageFormatInfo,
+        image_format_info: &ImageFormatInfo<'_>,
     ) -> ImageFormatProperties2ExtensionsVk {
         let external_vk = (image_format_info.external_memory_handle_type.is_some())
             .then(vk::ExternalImageFormatProperties::default);
@@ -2405,7 +2458,7 @@ pub(crate) struct ImageFormatProperties2ExtensionsVk {
 /// The image configuration to query in
 /// [`PhysicalDevice::sparse_image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SparseImageFormatInfo {
+pub struct SparseImageFormatInfo<'a> {
     /// The `format` that the image will have.
     ///
     /// The default value is `Format::UNDEFINED`.
@@ -2431,17 +2484,17 @@ pub struct SparseImageFormatInfo {
     /// The default value is [`ImageTiling::Optimal`].
     pub tiling: ImageTiling,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SparseImageFormatInfo {
+impl Default for SparseImageFormatInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SparseImageFormatInfo {
+impl SparseImageFormatInfo<'_> {
     /// Returns a default `SparseImageFormatInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -2451,7 +2504,7 @@ impl SparseImageFormatInfo {
             samples: SampleCount::Sample1,
             usage: ImageUsage::empty(),
             tiling: ImageTiling::Optimal,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2534,6 +2587,13 @@ impl SparseImageFormatInfo {
             .samples(samples.into())
             .usage(usage.into())
             .tiling(tiling.into())
+    }
+
+    pub(crate) fn to_owned(&self) -> SparseImageFormatInfo<'static> {
+        SparseImageFormatInfo {
+            _ne: crate::NE,
+            ..*self
+        }
     }
 }
 

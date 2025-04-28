@@ -430,7 +430,7 @@ pub struct FramebufferCreateInfo {
     /// The default value is `0`.
     pub layers: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for FramebufferCreateInfo {
@@ -449,7 +449,7 @@ impl FramebufferCreateInfo {
             attachments: Vec::new(),
             extent: [0, 0],
             layers: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -708,18 +708,18 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -789,18 +789,18 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -839,18 +839,18 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [600, 600, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -889,18 +889,18 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [512, 700, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -945,33 +945,33 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let a = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [512, 128, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -1019,18 +1019,18 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -1067,33 +1067,33 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let a = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )

@@ -90,7 +90,7 @@ pub struct RasterizationState {
     /// The default value is `None`.
     pub conservative: Option<RasterizationConservativeState>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for RasterizationState {
@@ -115,7 +115,7 @@ impl RasterizationState {
             line_rasterization_mode: LineRasterizationMode::Default,
             line_stipple: None,
             conservative: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -679,8 +679,6 @@ pub struct RasterizationConservativeState {
     ///
     ///  The default value is 0.0.
     pub overestimation_size: f32,
-
-    pub _ne: crate::NonExhaustive,
 }
 
 impl Default for RasterizationConservativeState {
@@ -697,7 +695,6 @@ impl RasterizationConservativeState {
         Self {
             mode: ConservativeRasterizationMode::Disabled,
             overestimation_size: 0.0,
-            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -705,7 +702,6 @@ impl RasterizationConservativeState {
         let &Self {
             mode,
             overestimation_size,
-            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();
@@ -736,7 +732,6 @@ impl RasterizationConservativeState {
         let &Self {
             mode,
             overestimation_size,
-            _ne: _,
         } = self;
 
         vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()

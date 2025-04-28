@@ -284,12 +284,12 @@ impl VulkanLibrary {
     /// Returns the union of the extensions that are supported by the core library and all
     /// the given layers.
     #[inline]
-    pub fn supported_extensions_with_layers<'a>(
+    pub fn supported_extensions_with_layers(
         &self,
-        layers: impl IntoIterator<Item = &'a str>,
+        layers: &[&str],
     ) -> Result<InstanceExtensions, VulkanError> {
         layers
-            .into_iter()
+            .iter()
             .try_fold(self.supported_extensions, |extensions, layer| {
                 self.supported_layer_extensions(layer)
                     .map(|layer_extensions| extensions.union(&layer_extensions))

@@ -88,7 +88,6 @@ use crate::{
 };
 use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
-use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -142,13 +141,13 @@ pub mod view;
 ///
 /// // Create a host-accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = Buffer::from_iter(
-///     memory_allocator.clone(),
-///     BufferCreateInfo {
+///     &memory_allocator,
+///     &BufferCreateInfo {
 ///         // Specify that this buffer will be used as a transfer source.
 ///         usage: BufferUsage::TRANSFER_SRC,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         // Specify use for upload to the device.
 ///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
 ///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
@@ -160,13 +159,13 @@ pub mod view;
 ///
 /// // Create a buffer in device-local memory with enough space for a slice of `10_000` floats.
 /// let device_local_buffer = Buffer::new_slice::<f32>(
-///     memory_allocator.clone(),
-///     BufferCreateInfo {
+///     &memory_allocator,
+///     &BufferCreateInfo {
 ///         // Specify use as a storage buffer and transfer destination.
 ///         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         // Specify use by the device only.
 ///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
 ///         ..Default::default()
@@ -237,9 +236,9 @@ impl Buffer {
     /// - Panics if `create_info.size` is not zero.
     /// - Panics if the chosen memory type is not host-visible.
     pub fn from_data<T>(
-        allocator: Arc<dyn MemoryAllocator>,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         data: T,
     ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
@@ -268,9 +267,9 @@ impl Buffer {
     /// - Panics if the chosen memory type is not host-visible.
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
-        allocator: Arc<dyn MemoryAllocator>,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         iter: I,
     ) -> Result<Subbuffer<[T]>, Validated<AllocateBufferError>>
     where
@@ -304,9 +303,9 @@ impl Buffer {
     ///
     /// - Panics if `create_info.size` is not zero.
     pub fn new_sized<T>(
-        allocator: Arc<dyn MemoryAllocator>,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
     ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
         T: BufferContents,
@@ -330,9 +329,9 @@ impl Buffer {
     /// - Panics if `create_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
-        allocator: Arc<dyn MemoryAllocator>,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         len: DeviceSize,
     ) -> Result<Subbuffer<[T]>, Validated<AllocateBufferError>>
     where
@@ -349,9 +348,9 @@ impl Buffer {
     /// - Panics if `create_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
-        allocator: Arc<dyn MemoryAllocator>,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         len: DeviceSize,
     ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
@@ -374,9 +373,23 @@ impl Buffer {
     ///
     /// - Panics if `create_info.size` is not zero.
     pub fn new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
+        Self::new_inner(
+            allocator.clone().as_dyn(),
+            create_info,
+            allocation_info,
+            layout,
+        )
+    }
+
+    pub(crate) fn new_inner(
         allocator: Arc<dyn MemoryAllocator>,
-        mut create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
         assert!(!create_info
@@ -389,10 +402,13 @@ impl Buffer {
              set it yourself"
         );
 
-        create_info.size = layout.size();
+        let create_info = BufferCreateInfo {
+            size: layout.size(),
+            ..*create_info
+        };
 
         let raw_buffer =
-            RawBuffer::new(allocator.device().clone(), create_info).map_err(|err| match err {
+            RawBuffer::new(allocator.device(), &create_info).map_err(|err| match err {
                 Validated::Error(err) => Validated::Error(AllocateBufferError::CreateBuffer(err)),
                 Validated::ValidationError(err) => err.into(),
             })?;
@@ -401,13 +417,13 @@ impl Buffer {
 
         let allocation = allocator
             .allocate(
-                requirements,
+                &requirements,
                 AllocationType::Linear,
                 allocation_info,
                 Some(DedicatedAllocation::Buffer(&raw_buffer)),
             )
             .map_err(AllocateBufferError::AllocateMemory)?;
-        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
+        let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
 
         let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
             err.map(AllocateBufferError::BindMemory)
@@ -459,7 +475,7 @@ impl Buffer {
 
     /// Returns the sharing the buffer was created with.
     #[inline]
-    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
+    pub fn sharing(&self) -> Sharing<'_> {
         self.inner.sharing()
     }
 
@@ -857,7 +873,7 @@ vulkan_bitflags! {
 
 /// The buffer configuration to query in [`PhysicalDevice::external_buffer_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExternalBufferInfo {
+pub struct ExternalBufferInfo<'a> {
     /// The flags that will be used.
     pub flags: BufferCreateFlags,
 
@@ -867,10 +883,10 @@ pub struct ExternalBufferInfo {
     /// The external handle type that will be used with the buffer.
     pub handle_type: ExternalMemoryHandleType,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ExternalBufferInfo {
+impl ExternalBufferInfo<'_> {
     /// Returns a default `ExternalBufferInfo` with the provided `handle_type`.
     #[inline]
     pub const fn new(handle_type: ExternalMemoryHandleType) -> Self {
@@ -878,7 +894,7 @@ impl ExternalBufferInfo {
             flags: BufferCreateFlags::empty(),
             usage: BufferUsage::empty(),
             handle_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -944,6 +960,13 @@ impl ExternalBufferInfo {
             .flags(flags.into())
             .usage(usage.into())
             .handle_type(handle_type.into())
+    }
+
+    pub(crate) fn to_owned(&self) -> ExternalBufferInfo<'static> {
+        ExternalBufferInfo {
+            _ne: crate::NE,
+            ..*self
+        }
     }
 }
 

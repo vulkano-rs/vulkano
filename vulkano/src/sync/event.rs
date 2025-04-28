@@ -294,7 +294,7 @@ pub struct EventCreateInfo {
     /// The default value is empty.
     pub flags: EventCreateFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for EventCreateInfo {
@@ -310,7 +310,7 @@ impl EventCreateInfo {
     pub const fn new() -> Self {
         Self {
             flags: EventCreateFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

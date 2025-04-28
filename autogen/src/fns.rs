@@ -86,7 +86,7 @@ fn fns_output(
             {
                 #struct_name {
                     #(#load_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
         }

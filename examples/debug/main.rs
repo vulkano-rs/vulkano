@@ -47,15 +47,15 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers
     // list.
-    let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
+    let layers = ["VK_LAYER_KHRONOS_validation"];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance.
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_layers: layers,
-            enabled_extensions: extensions,
+            enabled_layers: &layers,
+            enabled_extensions: &extensions,
             ..Default::default()
         },
     )
@@ -67,8 +67,8 @@ fn main() {
     // providing events.
     let _debug_callback = unsafe {
         DebugUtilsMessenger::new(
-            instance.clone(),
-            DebugUtilsMessengerCreateInfo {
+            &instance,
+            &DebugUtilsMessengerCreateInfo {
                 message_severity: DebugUtilsMessageSeverity::ERROR
                     | DebugUtilsMessageSeverity::WARNING
                     | DebugUtilsMessageSeverity::INFO
@@ -76,7 +76,7 @@ fn main() {
                 message_type: DebugUtilsMessageType::GENERAL
                     | DebugUtilsMessageType::VALIDATION
                     | DebugUtilsMessageType::PERFORMANCE,
-                ..DebugUtilsMessengerCreateInfo::new(DebugUtilsMessengerCallback::new(
+                ..DebugUtilsMessengerCreateInfo::new(&DebugUtilsMessengerCallback::new(
                     |message_severity, message_type, callback_data| {
                         let severity = if message_severity
                             .intersects(DebugUtilsMessageSeverity::ERROR)
@@ -140,10 +140,10 @@ fn main() {
         .expect("no device available");
 
     let (_device, _queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],

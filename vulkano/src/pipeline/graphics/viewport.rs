@@ -82,7 +82,7 @@ pub struct ViewportState {
     /// [`DynamicState::ScissorWithCount`]: crate::pipeline::DynamicState::ScissorWithCount
     pub scissors: SmallVec<[Scissor; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for ViewportState {
@@ -100,7 +100,7 @@ impl ViewportState {
         Self {
             viewports: smallvec![Viewport::default()],
             scissors: smallvec![Scissor::default()],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -113,7 +113,7 @@ impl ViewportState {
         Self {
             viewports,
             scissors,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -126,7 +126,7 @@ impl ViewportState {
         Self {
             viewports,
             scissors,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

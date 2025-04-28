@@ -124,7 +124,7 @@ pub struct VertexInputState {
     /// and the components of that location in the shader.
     pub attributes: HashMap<u32, VertexInputAttributeDescription>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for VertexInputState {
@@ -142,7 +142,7 @@ impl VertexInputState {
         Self {
             bindings: Default::default(),
             attributes: Default::default(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -553,7 +553,7 @@ pub struct VertexInputBindingDescription {
     /// The default value is [`VertexInputRate::Vertex`].
     pub input_rate: VertexInputRate,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for VertexInputBindingDescription {
@@ -570,7 +570,7 @@ impl VertexInputBindingDescription {
         Self {
             stride: 0,
             input_rate: VertexInputRate::Vertex,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -743,7 +743,7 @@ pub struct VertexInputAttributeDescription {
     /// The default value is `0`.
     pub offset: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for VertexInputAttributeDescription {
@@ -761,7 +761,7 @@ impl VertexInputAttributeDescription {
             binding: 0,
             format: Format::UNDEFINED,
             offset: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

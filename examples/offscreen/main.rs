@@ -39,8 +39,8 @@ fn main() {
     let library = VulkanLibrary::new().unwrap();
 
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -74,9 +74,9 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device.clone(),
-        DeviceCreateInfo {
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -87,7 +87,7 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -108,12 +108,12 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -173,18 +173,18 @@ fn main() {
 
     // Create an offscreen image for rendering into.
     let render_output_image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             format,
             usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
             extent: [1920, 1080, 1],
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
 
-    let render_output_image_view = ImageView::new_default(render_output_image.clone()).unwrap();
+    let render_output_image_view = ImageView::new_default(&render_output_image).unwrap();
 
     let framebuffer = Framebuffer::new(
         render_pass.clone(),
@@ -254,18 +254,18 @@ fn main() {
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     // Host-accessible buffer where the offscreen image's contents are copied to after rendering.
     let render_output_buf = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::TRANSFER_DST,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_HOST
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()

@@ -85,7 +85,7 @@ pub struct PipelineRenderingCreateInfo {
     /// The default value is `None`.
     pub stencil_attachment_format: Option<Format>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for PipelineRenderingCreateInfo {
@@ -104,7 +104,7 @@ impl PipelineRenderingCreateInfo {
             color_attachment_formats: Vec::new(),
             depth_attachment_format: None,
             stencil_attachment_format: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -137,7 +137,7 @@ impl PipelineRenderingCreateInfo {
                     rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
                 .filter(|format| format.aspects().intersects(ImageAspects::STENCIL)),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -161,7 +161,7 @@ impl PipelineRenderingCreateInfo {
                 .stencil_attachment
                 .as_ref()
                 .map(|atch_info| atch_info.image_view.format()),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -173,7 +173,7 @@ impl PipelineRenderingCreateInfo {
             color_attachment_formats: info.color_attachment_formats.clone(),
             depth_attachment_format: info.depth_attachment_format,
             stencil_attachment_format: info.stencil_attachment_format,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

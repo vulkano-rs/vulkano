@@ -2938,21 +2938,25 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let sharing = Sharing::Concurrent(&queue_family_indices);
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let buffer2 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image1 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image2 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let compute_node = graph
@@ -3231,21 +3235,25 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let sharing = Sharing::Concurrent(&queue_family_indices);
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let buffer2 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image1 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image2 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let color_image = graph.add_image(&ImageCreateInfo {
@@ -3494,16 +3502,19 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let concurrent_sharing =
-            Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let concurrent_sharing = Sharing::Concurrent(&queue_family_indices);
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo {
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let swapchain3 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let swapchain4 = graph.add_swapchain(&SwapchainCreateInfo {
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let node = graph
@@ -3840,15 +3851,18 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let concurrent_sharing =
-            Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let concurrent_sharing = Sharing::Concurrent(&queue_family_indices);
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo {
             image_format: Format::R8G8B8A8_UNORM,
             ..SwapchainCreateInfo::default()
         });
         let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo {
             image_format: Format::R8G8B8A8_UNORM,
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let depth_image = graph.add_image(&ImageCreateInfo {

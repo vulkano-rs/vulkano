@@ -584,7 +584,7 @@ pub struct DisplayModeCreateInfo {
     /// The default value is 0, which must be overridden.
     pub refresh_rate: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DisplayModeCreateInfo {
@@ -601,7 +601,7 @@ impl DisplayModeCreateInfo {
         Self {
             visible_region: [0; 2],
             refresh_rate: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -672,7 +672,7 @@ impl DisplayModeCreateInfo {
         DisplayModeCreateInfo {
             visible_region: [visible_region.width, visible_region.height],
             refresh_rate,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

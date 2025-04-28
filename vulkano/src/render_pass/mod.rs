@@ -816,7 +816,7 @@ pub struct RenderPassCreateInfo {
     /// The default value is empty.
     pub correlated_view_masks: Vec<u32>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for RenderPassCreateInfo {
@@ -836,7 +836,7 @@ impl RenderPassCreateInfo {
             subpasses: Vec::new(),
             dependencies: Vec::new(),
             correlated_view_masks: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2095,7 +2095,7 @@ pub struct AttachmentDescription {
     /// The default value is `None`.
     pub stencil_final_layout: Option<ImageLayout>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for AttachmentDescription {
@@ -2121,7 +2121,7 @@ impl AttachmentDescription {
             stencil_store_op: None,
             stencil_initial_layout: None,
             stencil_final_layout: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2781,7 +2781,7 @@ pub struct SubpassDescription {
     /// The default value is empty.
     pub preserve_attachments: Vec<u32>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SubpassDescription {
@@ -2806,7 +2806,7 @@ impl SubpassDescription {
             stencil_resolve_mode: None,
             input_attachments: Vec::new(),
             preserve_attachments: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -3949,7 +3949,7 @@ pub struct AttachmentReference {
     /// The default value is [`ImageAspects::empty()`].
     pub aspects: ImageAspects,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for AttachmentReference {
@@ -3968,7 +3968,7 @@ impl AttachmentReference {
             layout: ImageLayout::Undefined,
             stencil_layout: None,
             aspects: ImageAspects::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -4228,7 +4228,7 @@ pub struct SubpassDependency {
     /// [`VIEW_LOCAL`]: DependencyFlags::VIEW_LOCAL
     pub view_offset: i32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SubpassDependency {
@@ -4251,7 +4251,7 @@ impl SubpassDependency {
             dst_access: AccessFlags::empty(),
             dependency_flags: DependencyFlags::empty(),
             view_offset: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

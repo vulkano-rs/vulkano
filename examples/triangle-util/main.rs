@@ -83,8 +83,8 @@ impl App {
         // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command
         // pools underneath and provides a safe interface for them.
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            context.device().clone(),
-            Default::default(),
+            context.device(),
+            &Default::default(),
         ));
 
         // We now create a buffer that will store the shape of our triangle.
@@ -100,12 +100,12 @@ impl App {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            context.memory_allocator().clone(),
-            BufferCreateInfo {
+            context.memory_allocator(),
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()

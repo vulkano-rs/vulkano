@@ -1356,7 +1356,7 @@ pub struct DeviceExtensions {
 - Requires all of:
   - Vulkan API version 1.1 or device extension [`khr_maintenance3`](crate::device::DeviceExtensions::khr_maintenance3)*/
     pub valve_mutable_descriptor_type: bool,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl Default for DeviceExtensions {
     #[inline]
@@ -1699,7 +1699,7 @@ impl DeviceExtensions {
             sec_amigo_profiling: false,
             valve_descriptor_set_host_mapping: false,
             valve_mutable_descriptor_type: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the number of members set in self.
@@ -3554,7 +3554,7 @@ impl DeviceExtensions {
                 || other.valve_descriptor_set_host_mapping,
             valve_mutable_descriptor_type: self.valve_mutable_descriptor_type
                 || other.valve_mutable_descriptor_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the intersection of `self` and `other`.
@@ -4171,7 +4171,7 @@ impl DeviceExtensions {
                 && other.valve_descriptor_set_host_mapping,
             valve_mutable_descriptor_type: self.valve_mutable_descriptor_type
                 && other.valve_mutable_descriptor_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns `self` without the members set in `other`.
@@ -4788,7 +4788,7 @@ impl DeviceExtensions {
                 && !other.valve_descriptor_set_host_mapping,
             valve_mutable_descriptor_type: self.valve_mutable_descriptor_type
                 && !other.valve_mutable_descriptor_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the members set in `self` or `other`, but not both.
@@ -5386,7 +5386,7 @@ impl DeviceExtensions {
                 ^ other.valve_descriptor_set_host_mapping,
             valve_mutable_descriptor_type: self.valve_mutable_descriptor_type
                 ^ other.valve_mutable_descriptor_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

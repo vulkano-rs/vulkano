@@ -91,8 +91,8 @@ const MAX_ARENAS: usize = 32;
 /// #
 /// // Create the buffer allocator.
 /// let buffer_allocator = SubbufferAllocator::new(
-///     memory_allocator.clone(),
-///     SubbufferAllocatorCreateInfo {
+///     &memory_allocator,
+///     &SubbufferAllocatorCreateInfo {
 ///         buffer_usage: BufferUsage::TRANSFER_SRC,
 ///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
 ///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
@@ -135,8 +135,8 @@ where
     A: MemoryAllocator,
 {
     /// Creates a new `SubbufferAllocator`.
-    pub fn new(memory_allocator: Arc<A>, create_info: SubbufferAllocatorCreateInfo) -> Self {
-        let SubbufferAllocatorCreateInfo {
+    pub fn new(memory_allocator: &Arc<A>, create_info: &SubbufferAllocatorCreateInfo<'_>) -> Self {
+        let &SubbufferAllocatorCreateInfo {
             arena_size,
             buffer_usage,
             memory_type_filter,
@@ -162,7 +162,7 @@ where
 
         SubbufferAllocator {
             state: UnsafeCell::new(SubbufferAllocatorState {
-                memory_allocator,
+                memory_allocator: memory_allocator.clone(),
                 buffer_usage,
                 memory_type_filter,
                 buffer_alignment,
@@ -347,12 +347,12 @@ where
 
     fn create_arena(&self) -> Result<Arc<Buffer>, MemoryAllocatorError> {
         Buffer::new(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
+            &self.memory_allocator,
+            &BufferCreateInfo {
                 usage: self.buffer_usage,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: self.memory_type_filter,
                 ..Default::default()
             },
@@ -402,7 +402,8 @@ impl Hash for Arena {
 }
 
 /// Parameters to create a new [`SubbufferAllocator`].
-pub struct SubbufferAllocatorCreateInfo {
+#[derive(Clone, Debug)]
+pub struct SubbufferAllocatorCreateInfo<'a> {
     /// Initial size of an arena in bytes.
     ///
     /// Ideally this should fit all the data you need to update per frame. So for example, if you
@@ -422,17 +423,17 @@ pub struct SubbufferAllocatorCreateInfo {
     /// The default value is [`MemoryTypeFilter::PREFER_DEVICE`].
     pub memory_type_filter: MemoryTypeFilter,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubbufferAllocatorCreateInfo {
+impl Default for SubbufferAllocatorCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubbufferAllocatorCreateInfo {
+impl SubbufferAllocatorCreateInfo<'_> {
     /// Returns a default `SubbufferAllocatorCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -440,7 +441,7 @@ impl SubbufferAllocatorCreateInfo {
             arena_size: 0,
             buffer_usage: BufferUsage::empty(),
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -452,11 +453,11 @@ mod tests {
     #[test]
     fn reserve() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let buffer_allocator = SubbufferAllocator::new(
-            memory_allocator,
-            SubbufferAllocatorCreateInfo {
+            &memory_allocator,
+            &SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
@@ -470,11 +471,11 @@ mod tests {
     #[test]
     fn capacity_increase() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let buffer_allocator = SubbufferAllocator::new(
-            memory_allocator,
-            SubbufferAllocatorCreateInfo {
+            &memory_allocator,
+            &SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },

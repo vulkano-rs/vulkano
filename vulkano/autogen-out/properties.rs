@@ -1059,7 +1059,7 @@ pub struct DeviceProperties {
     pub wavefront_size: Option<u32>,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceShaderCorePropertiesAMD.html#limits-wavefrontsPerSimd)
     pub wavefronts_per_simd: Option<u32>,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl DeviceProperties {
     pub(crate) fn to_mut_vk() -> ash::vk::PhysicalDeviceProperties {
@@ -2774,7 +2774,7 @@ impl DeviceProperties {
                 .unwrap(),
             wavefront_size: None,
             wavefronts_per_simd: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     pub(crate) fn from_vk2(
@@ -3736,7 +3736,7 @@ impl DeviceProperties {
                 .unwrap(),
             wavefront_size: None,
             wavefronts_per_simd: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         };
         if let Some(val_vk) = vulkan11_properties_vk {
             let &ash::vk::PhysicalDeviceVulkan11Properties {
@@ -7776,7 +7776,7 @@ impl Default for DeviceProperties {
             viewport_sub_pixel_bits: Default::default(),
             wavefront_size: Default::default(),
             wavefronts_per_simd: Default::default(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

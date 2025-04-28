@@ -210,19 +210,19 @@ impl<W: ?Sized> TaskGraph<W> {
 
     /// Add a [virtual buffer resource] to the task graph.
     #[must_use]
-    pub fn add_buffer(&mut self, create_info: &BufferCreateInfo) -> Id<Buffer> {
+    pub fn add_buffer(&mut self, create_info: &BufferCreateInfo<'_>) -> Id<Buffer> {
         self.resources.add_buffer(create_info)
     }
 
     /// Add a [virtual image resource] to the task graph.
     #[must_use]
-    pub fn add_image(&mut self, create_info: &ImageCreateInfo) -> Id<Image> {
+    pub fn add_image(&mut self, create_info: &ImageCreateInfo<'_>) -> Id<Image> {
         self.resources.add_image(create_info)
     }
 
     /// Add a [virtual swapchain resource] to the task graph.
     #[must_use]
-    pub fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo) -> Id<Swapchain> {
+    pub fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo<'_>) -> Id<Swapchain> {
         self.resources.add_swapchain(create_info)
     }
 
@@ -367,7 +367,7 @@ impl<W: ?Sized> Nodes<W> {
 }
 
 impl Resources {
-    fn add_buffer(&mut self, create_info: &BufferCreateInfo) -> Id<Buffer> {
+    fn add_buffer(&mut self, create_info: &BufferCreateInfo<'_>) -> Id<Buffer> {
         let mut tag = Buffer::TAG | Id::VIRTUAL_BIT;
 
         if create_info.sharing.is_exclusive() {
@@ -385,7 +385,7 @@ impl Resources {
         unsafe { id.parametrize() }
     }
 
-    fn add_image(&mut self, create_info: &ImageCreateInfo) -> Id<Image> {
+    fn add_image(&mut self, create_info: &ImageCreateInfo<'_>) -> Id<Image> {
         let mut tag = Image::TAG | Id::VIRTUAL_BIT;
 
         if create_info.sharing.is_exclusive() {
@@ -403,7 +403,7 @@ impl Resources {
         unsafe { id.parametrize() }
     }
 
-    fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo) -> Id<Swapchain> {
+    fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo<'_>) -> Id<Swapchain> {
         let mut tag = Swapchain::TAG | Id::VIRTUAL_BIT;
 
         if create_info.image_sharing.is_exclusive() {
@@ -429,7 +429,7 @@ impl Resources {
         let buffer_state = physical_resources.buffer(physical_id)?;
         let buffer = buffer_state.buffer();
         let virtual_id = self.add_buffer(&BufferCreateInfo {
-            sharing: buffer.sharing().clone(),
+            sharing: buffer.sharing(),
             ..Default::default()
         });
         self.physical_map
@@ -446,7 +446,7 @@ impl Resources {
         let image_state = physical_resources.image(physical_id)?;
         let image = image_state.image();
         let virtual_id = self.add_image(&ImageCreateInfo {
-            sharing: image.sharing().clone(),
+            sharing: image.sharing(),
             ..Default::default()
         });
         self.physical_map
@@ -463,7 +463,7 @@ impl Resources {
         let swapchain_state = physical_resources.swapchain(id)?;
         let swapchain = swapchain_state.swapchain();
         let virtual_id = self.add_swapchain(&SwapchainCreateInfo {
-            image_sharing: swapchain.image_sharing().clone(),
+            image_sharing: swapchain.image_sharing(),
             ..Default::default()
         });
         self.physical_map.insert(id.erase(), virtual_id.erase());
@@ -955,7 +955,7 @@ impl TaskNodeBuilder<'_> {
             AttachmentInfo {
                 format,
                 _ne: crate::NE,
-                ..attachment_info.clone()
+                ..*attachment_info
             },
         );
 
@@ -1040,7 +1040,7 @@ impl TaskNodeBuilder<'_> {
             AttachmentInfo {
                 format,
                 _ne: crate::NE,
-                ..attachment_info.clone()
+                ..*attachment_info
             },
         );
 
@@ -1115,7 +1115,7 @@ impl TaskNodeBuilder<'_> {
             AttachmentInfo {
                 format,
                 _ne: crate::NE,
-                ..attachment_info.clone()
+                ..*attachment_info
             },
         ));
 

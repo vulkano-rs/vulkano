@@ -768,7 +768,7 @@ pub struct FenceCreateInfo {
     /// The handle types that can be exported from the fence.
     pub export_handle_types: ExternalFenceHandleTypes,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for FenceCreateInfo {
@@ -785,7 +785,7 @@ impl FenceCreateInfo {
         Self {
             flags: FenceCreateFlags::empty(),
             export_handle_types: ExternalFenceHandleTypes::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -994,7 +994,7 @@ pub struct ImportFenceFdInfo {
     /// `ExternalFenceHandleType::SyncFd`.
     pub file: Option<File>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImportFenceFdInfo {
@@ -1005,7 +1005,7 @@ impl ImportFenceFdInfo {
             flags: FenceImportFlags::empty(),
             handle_type,
             file: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1110,7 +1110,7 @@ pub struct ImportFenceWin32HandleInfo {
     /// The default value is `0`, which must be overridden.
     pub handle: vk::HANDLE,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImportFenceWin32HandleInfo {
@@ -1121,7 +1121,7 @@ impl ImportFenceWin32HandleInfo {
             flags: FenceImportFlags::empty(),
             handle_type,
             handle: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1203,7 +1203,7 @@ pub struct ExternalFenceInfo {
     /// The external handle type that will be used with the fence.
     pub handle_type: ExternalFenceHandleType,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ExternalFenceInfo {
@@ -1212,7 +1212,7 @@ impl ExternalFenceInfo {
     pub const fn new(handle_type: ExternalFenceHandleType) -> Self {
         Self {
             handle_type,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

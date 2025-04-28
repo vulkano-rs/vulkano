@@ -407,7 +407,7 @@ pub struct PipelineLayoutCreateInfo {
     /// The default value is empty.
     pub push_constant_ranges: Vec<PushConstantRange>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for PipelineLayoutCreateInfo {
@@ -425,7 +425,7 @@ impl PipelineLayoutCreateInfo {
             flags: PipelineLayoutCreateFlags::empty(),
             set_layouts: Vec::new(),
             push_constant_ranges: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1222,7 +1222,7 @@ impl PipelineDescriptorSetLayoutCreateInfo {
             flags,
             set_layouts,
             push_constant_ranges,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         })
     }
 }

@@ -133,7 +133,7 @@ impl DescriptorSet {
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
     ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
         let mut set = DescriptorSet {
-            inner: RawDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
+            inner: RawDescriptorSet::new(&allocator, &layout, variable_descriptor_count)?,
             resources: RwLock::new(DescriptorSetResources::new(
                 &layout,
                 variable_descriptor_count,

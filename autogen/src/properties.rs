@@ -224,7 +224,7 @@ impl DeviceProperties {
 
                     Self {
                         #(#device_properties_members_iter)*
-                        _ne: crate::NonExhaustive(()),
+                        _ne: crate::NE,
                     }
                 }
             }
@@ -269,7 +269,7 @@ impl DeviceProperties {
 
                     let mut val = Self {
                         #(#device_properties_members_iter)*
-                        _ne: crate::NonExhaustive(()),
+                        _ne: crate::NE,
                     };
 
                     #(#extension_structs_iter)*
@@ -287,7 +287,7 @@ impl DeviceProperties {
                     fn default() -> Self {
                         DeviceProperties {
                             #(#iter)*
-                            _ne: crate::NonExhaustive(()),
+                            _ne: crate::NE,
                         }
                     }
                 }

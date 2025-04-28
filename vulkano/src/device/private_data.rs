@@ -35,17 +35,17 @@ impl PrivateDataSlot {
     /// The `private_data` feature must be enabled on the device.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: PrivateDataSlotCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PrivateDataSlotCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &PrivateDataSlotCreateInfo,
+        create_info: &PrivateDataSlotCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().private_data {
             return Err(Box::new(ValidationError {
@@ -66,8 +66,8 @@ impl PrivateDataSlot {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: PrivateDataSlotCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PrivateDataSlotCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -111,12 +111,12 @@ impl PrivateDataSlot {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::PrivateDataSlot,
-        _create_info: PrivateDataSlotCreateInfo,
+        _create_info: &PrivateDataSlotCreateInfo<'_>,
     ) -> Self {
         Self {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             handle,
         }
     }
@@ -249,24 +249,22 @@ unsafe impl DeviceOwned for PrivateDataSlot {
 
 /// Parameters to create a new `PrivateDataSlot`.
 #[derive(Clone, Debug)]
-pub struct PrivateDataSlotCreateInfo {
-    pub _ne: crate::NonExhaustive,
+pub struct PrivateDataSlotCreateInfo<'a> {
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for PrivateDataSlotCreateInfo {
+impl Default for PrivateDataSlotCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PrivateDataSlotCreateInfo {
+impl PrivateDataSlotCreateInfo<'_> {
     /// Returns a default `PrivateDataSlotCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self { _ne: crate::NE }
     }
 
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {

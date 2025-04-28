@@ -54,37 +54,48 @@
 //!
 //! let instance = {
 //!     let library = VulkanLibrary::new()
-//!         .unwrap_or_else(|err| panic!("Couldn't load Vulkan library: {:?}", err));
+//!         .unwrap_or_else(|err| panic!("couldn't load Vulkan library: {:?}", err));
 //!
 //!     let extensions = InstanceExtensions {
 //!         khr_surface: true,
-//!         khr_win32_surface: true, // If you don't enable this, `from_hwnd` will fail.
+//!         khr_win32_surface: true, // If you don't enable this, `from_win32` will fail.
 //!         ..InstanceExtensions::empty()
 //!     };
 //!
 //!     Instance::new(
-//!         library,
-//!         InstanceCreateInfo {
-//!             enabled_extensions: extensions,
+//!         &library,
+//!         &InstanceCreateInfo {
+//!             enabled_extensions: &extensions,
 //!             ..Default::default()
 //!         },
 //!     )
-//!     .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err))
+//!     .unwrap_or_else(|err| panic!("couldn't create instance: {:?}", err))
 //! };
 //!
 //! # use ash::vk;
 //! # use std::sync::Arc;
+//! #
 //! # struct Window(*const u32);
-//! # impl Window { fn hwnd(&self) -> *const u32 { self.0 } }
+//! #
+//! # impl Window {
+//! #     fn hwnd(&self) -> *const u32 {
+//! #         self.0
+//! #     }
+//! # }
+//! #
 //! # unsafe impl Send for Window {}
 //! # unsafe impl Sync for Window {}
-//! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
+//! #
+//! # fn build_window() -> Arc<Window> {
+//! #     Arc::new(Window(ptr::null()))
+//! # }
+//! #
 //! let window = build_window(); // Third-party function, not provided by vulkano
 //! let _surface = {
 //!     let hinstance: vk::HINSTANCE = 0; // Windows-specific object
 //!     unsafe {
 //!         Surface::from_win32(
-//!             instance.clone(),
+//!             &instance,
 //!             hinstance,
 //!             window.hwnd() as vk::HWND,
 //!             Some(window),
@@ -123,6 +134,7 @@
 //!
 //! ```no_run
 //! # use vulkano::device::DeviceExtensions;
+//! #
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
 //!     ..DeviceExtensions::empty()
@@ -136,14 +148,13 @@
 //! and choose which values you are going to use.
 //!
 //! ```no_run
-//! # use std::{error::Error, sync::Arc};
-//! # use vulkano::device::Device;
-//! # use vulkano::swapchain::Surface;
-//! # use std::cmp::{max, min};
+//! # use std::{cmp::{max, min}, error::Error, sync::Arc};
+//! # use vulkano::{device::Device, swapchain::Surface};
+//! #
 //! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface>) -> Result<(), Box<dyn Error>> {
 //! let surface_capabilities = device
 //!     .physical_device()
-//!     .surface_capabilities(&surface, Default::default())?;
+//!     .surface_capabilities(&surface, &Default::default())?;
 //!
 //! // Use the current window size or some fixed resolution.
 //! let image_extent = surface_capabilities.current_extent.unwrap_or([640, 480]);
@@ -160,7 +171,8 @@
 //! // Use the first available format.
 //! let (image_format, color_space) = device
 //!     .physical_device()
-//!     .surface_formats(&surface, Default::default())?[0];
+//!     .surface_formats(&surface, &Default::default())?[0];
+//! #
 //! # Ok(())
 //! # }
 //! ```
@@ -169,25 +181,35 @@
 //!
 //! ```no_run
 //! # use std::{error::Error, sync::Arc};
-//! # use vulkano::device::{Device, Queue};
-//! # use vulkano::image::ImageUsage;
-//! # use vulkano::sync::SharingMode;
-//! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullScreenExclusive, SwapchainCreateInfo};
+//! # use vulkano::{
+//! #     device::Device,
+//! #     format::Format,
+//! #     image::ImageUsage,
+//! #     swapchain::{
+//! #         CompositeAlpha, ColorSpace, FullScreenExclusive, PresentMode, Surface,
+//! #         SurfaceTransform, Swapchain, SwapchainCreateInfo,
+//! #     },
+//! # };
+//! #
 //! # fn create_swapchain(
-//! #     device: Arc<Device>, surface: Arc<Surface>,
-//! #     min_image_count: u32, image_format: Format, image_extent: [u32; 2],
-//! #     pre_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
-//! #     present_mode: PresentMode, full_screen_exclusive: FullScreenExclusive
+//! #     device: Arc<Device>,
+//! #     surface: Arc<Surface>,
+//! #     min_image_count: u32,
+//! #     image_format: Format,
+//! #     image_extent: [u32; 2],
+//! #     pre_transform: SurfaceTransform,
+//! #     composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode,
+//! #     full_screen_exclusive: FullScreenExclusive,
 //! # ) -> Result<(), Box<dyn Error>> {
 //! // Create the swapchain and its images.
 //! let (swapchain, images) = Swapchain::new(
 //!     // Create the swapchain in this `device`'s memory.
-//!     device,
+//!     &device,
 //!     // The surface where the images will be presented.
-//!     surface,
+//!     &surface,
 //!     // The creation parameters.
-//!     SwapchainCreateInfo {
+//!     &SwapchainCreateInfo {
 //!         // How many images to use in the swapchain.
 //!         min_image_count,
 //!         // The format of the images.
@@ -205,9 +227,9 @@
 //!         // How to handle full-screen exclusivity
 //!         full_screen_exclusive,
 //!         ..Default::default()
-//!     }
+//!     },
 //! )?;
-//!
+//! #
 //! # Ok(())
 //! # }
 //! ```
@@ -233,8 +255,10 @@
 //! ```
 //! use vulkano::swapchain::{self, SwapchainPresentInfo};
 //! use vulkano::sync::GpuFuture;
+//!
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain> = return;
+//! #
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
 //!     # let mut command_buffer: ::std::sync::Arc<::vulkano::command_buffer::PrimaryAutoCommandBuffer> = return;
@@ -282,7 +306,7 @@
 //! loop {
 //!     if recreate_swapchain {
 //!         let (new_swapchain, new_images) = swapchain
-//!             .recreate(SwapchainCreateInfo {
+//!             .recreate(&SwapchainCreateInfo {
 //!                 image_extent: [1024, 768],
 //!                 ..swapchain.create_info()
 //!             })
@@ -327,7 +351,7 @@ use crate::{
     image::{Image, ImageCreateFlags, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
-    sync::Sharing,
+    sync::{OwnedSharing, Sharing},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -365,7 +389,7 @@ pub struct Swapchain {
     image_extent: [u32; 2],
     image_array_layers: u32,
     image_usage: ImageUsage,
-    image_sharing: Sharing<SmallVec<[u32; 4]>>,
+    image_sharing: OwnedSharing,
     pre_transform: SurfaceTransform,
     composite_alpha: CompositeAlpha,
     present_mode: PresentMode,
@@ -412,11 +436,11 @@ impl Swapchain {
     /// - Panics if `create_info.usage` is empty.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        surface: Arc<Surface>,
-        create_info: SwapchainCreateInfo,
+        device: &Arc<Device>,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
-        Self::validate_new_inner(&device, &surface, &create_info)?;
+        Self::validate_new_inner(device, surface, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, surface, create_info) }?)
     }
@@ -424,12 +448,12 @@ impl Swapchain {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        surface: Arc<Surface>,
-        create_info: SwapchainCreateInfo,
+        device: &Arc<Device>,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         let (handle, image_handles) =
-            unsafe { Self::new_inner_unchecked(&device, &surface, &create_info, None) }?;
+            unsafe { Self::new_inner_unchecked(device, surface, create_info, None) }?;
 
         unsafe { Self::from_handle(device, handle, image_handles, surface, create_info) }
     }
@@ -443,9 +467,9 @@ impl Swapchain {
     /// - Panics if `create_info.usage` is empty.
     pub fn recreate(
         self: &Arc<Self>,
-        create_info: SwapchainCreateInfo,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
-        Self::validate_new_inner(&self.device, &self.surface, &create_info)?;
+        Self::validate_new_inner(&self.device, &self.surface, create_info)?;
 
         {
             let mut is_retired = self.is_retired.lock();
@@ -477,7 +501,7 @@ impl Swapchain {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn recreate_unchecked(
         self: &Arc<Self>,
-        create_info: SwapchainCreateInfo,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         // According to the documentation of VkSwapchainCreateInfoKHR:
         //
@@ -490,15 +514,15 @@ impl Swapchain {
         *self.is_retired.lock() = true;
 
         let (handle, image_handles) = unsafe {
-            Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))
+            Self::new_inner_unchecked(&self.device, &self.surface, create_info, Some(self))
         }?;
 
         let (swapchain, swapchain_images) = unsafe {
             Self::from_handle(
-                self.device.clone(),
+                &self.device,
                 handle,
                 image_handles,
-                self.surface.clone(),
+                &self.surface,
                 create_info,
             )
         }?;
@@ -516,7 +540,7 @@ impl Swapchain {
     fn validate_new_inner(
         device: &Device,
         surface: &Surface,
-        create_info: &SwapchainCreateInfo,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_extensions().khr_swapchain {
             return Err(Box::new(ValidationError {
@@ -544,7 +568,7 @@ impl Swapchain {
             pre_transform,
             composite_alpha,
             present_mode,
-            ref present_modes,
+            present_modes,
             clipped: _,
             scaling_behavior,
             present_gravity,
@@ -598,7 +622,7 @@ impl Swapchain {
         let surface_capabilities = unsafe {
             device.physical_device().surface_capabilities_unchecked(
                 surface,
-                SurfaceInfo {
+                &SurfaceInfo {
                     present_mode: device
                         .enabled_extensions()
                         .ext_swapchain_maintenance1
@@ -620,7 +644,7 @@ impl Swapchain {
         let surface_formats = unsafe {
             device.physical_device().surface_formats_unchecked(
                 surface,
-                SurfaceInfo {
+                &SurfaceInfo {
                     present_mode: device
                         .enabled_extensions()
                         .ext_swapchain_maintenance1
@@ -642,7 +666,7 @@ impl Swapchain {
         let surface_present_modes = unsafe {
             device.physical_device().surface_present_modes_unchecked(
                 surface,
-                SurfaceInfo {
+                &SurfaceInfo {
                     full_screen_exclusive,
                     win32_monitor,
                     ..Default::default()
@@ -837,7 +861,7 @@ impl Swapchain {
                     let surface_capabilities = unsafe {
                         device.physical_device().surface_capabilities_unchecked(
                             surface,
-                            SurfaceInfo {
+                            &SurfaceInfo {
                                 present_mode: Some(present_mode),
                                 full_screen_exclusive,
                                 win32_monitor,
@@ -983,7 +1007,7 @@ impl Swapchain {
     unsafe fn new_inner_unchecked(
         device: &Device,
         surface: &Surface,
-        create_info: &SwapchainCreateInfo,
+        create_info: &SwapchainCreateInfo<'_>,
         old_swapchain: Option<&Swapchain>,
     ) -> Result<(vk::SwapchainKHR, Vec<vk::Image>), VulkanError> {
         let create_info_fields1_vk = create_info.to_vk_fields1();
@@ -1057,13 +1081,13 @@ impl Swapchain {
     ///   were returned by `vkGetSwapchainImagesKHR`.
     /// - `surface` and `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::SwapchainKHR,
         image_handles: impl IntoIterator<Item = vk::Image>,
-        surface: Arc<Surface>,
-        create_info: SwapchainCreateInfo,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
-        let SwapchainCreateInfo {
+        let &SwapchainCreateInfo {
             flags,
             min_image_count,
             image_format,
@@ -1087,23 +1111,23 @@ impl Swapchain {
 
         let swapchain = Arc::new(Swapchain {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
-            surface: InstanceOwnedDebugWrapper(surface),
+            device: InstanceOwnedDebugWrapper(device.clone()),
+            surface: InstanceOwnedDebugWrapper(surface.clone()),
             id: Self::next_id(),
 
             flags,
             min_image_count,
             image_format,
-            image_view_formats,
+            image_view_formats: image_view_formats.to_owned(),
             image_color_space,
             image_extent,
             image_array_layers,
             image_usage,
-            image_sharing,
+            image_sharing: image_sharing.to_owned(),
             pre_transform,
             composite_alpha,
             present_mode,
-            present_modes,
+            present_modes: present_modes.iter().copied().collect(),
             clipped,
             scaling_behavior,
             present_gravity,
@@ -1128,7 +1152,7 @@ impl Swapchain {
             .enumerate()
             .map(|(image_index, entry)| {
                 Ok(Arc::new(unsafe {
-                    Image::from_swapchain(entry.handle, swapchain.clone(), image_index as u32)
+                    Image::from_swapchain(entry.handle, &swapchain, image_index as u32)
                 }?))
             })
             .collect::<Result<_, VulkanError>>()?;
@@ -1138,27 +1162,27 @@ impl Swapchain {
 
     /// Returns the creation parameters of the swapchain.
     #[inline]
-    pub fn create_info(&self) -> SwapchainCreateInfo {
+    pub fn create_info(&self) -> SwapchainCreateInfo<'_> {
         SwapchainCreateInfo {
             flags: self.flags,
             min_image_count: self.min_image_count,
             image_format: self.image_format,
-            image_view_formats: self.image_view_formats.clone(),
+            image_view_formats: &self.image_view_formats,
             image_color_space: self.image_color_space,
             image_extent: self.image_extent,
             image_array_layers: self.image_array_layers,
             image_usage: self.image_usage,
-            image_sharing: self.image_sharing.clone(),
+            image_sharing: self.image_sharing.as_ref(),
             pre_transform: self.pre_transform,
             composite_alpha: self.composite_alpha,
             present_mode: self.present_mode,
-            present_modes: self.present_modes.clone(),
+            present_modes: &self.present_modes,
             clipped: self.clipped,
             scaling_behavior: self.scaling_behavior,
             present_gravity: self.present_gravity,
             full_screen_exclusive: self.full_screen_exclusive,
             win32_monitor: self.win32_monitor,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1227,8 +1251,8 @@ impl Swapchain {
 
     /// Returns the sharing of the images of the swapchain.
     #[inline]
-    pub fn image_sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
-        &self.image_sharing
+    pub fn image_sharing(&self) -> Sharing<'_> {
+        self.image_sharing.as_ref()
     }
 
     /// Returns the pre-transform that was passed when creating the swapchain.
@@ -1309,7 +1333,7 @@ impl Swapchain {
     #[inline]
     pub unsafe fn acquire_next_image(
         &self,
-        acquire_info: &AcquireNextImageInfo,
+        acquire_info: &AcquireNextImageInfo<'_>,
     ) -> Result<AcquiredImage, Validated<VulkanError>> {
         let is_retired_lock = self.is_retired.lock();
         self.validate_acquire_next_image(acquire_info, *is_retired_lock)?;
@@ -1319,7 +1343,7 @@ impl Swapchain {
 
     fn validate_acquire_next_image(
         &self,
-        acquire_info: &AcquireNextImageInfo,
+        acquire_info: &AcquireNextImageInfo<'_>,
         is_retired: bool,
     ) -> Result<(), Box<ValidationError>> {
         acquire_info
@@ -1346,7 +1370,7 @@ impl Swapchain {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn acquire_next_image_unchecked(
         &self,
-        acquire_info: &AcquireNextImageInfo,
+        acquire_info: &AcquireNextImageInfo<'_>,
     ) -> Result<AcquiredImage, VulkanError> {
         let acquire_info_vk = acquire_info.to_vk(self.handle(), self.device.device_mask());
 
@@ -1695,7 +1719,7 @@ impl_id_counter!(Swapchain);
 /// [`PhysicalDevice`](crate::device::physical::PhysicalDevice) has several
 /// methods to query what is supported.
 #[derive(Clone, Debug)]
-pub struct SwapchainCreateInfo {
+pub struct SwapchainCreateInfo<'a> {
     /// Additional properties of the swapchain.
     ///
     /// The default value is empty.
@@ -1730,7 +1754,7 @@ pub struct SwapchainCreateInfo {
     /// The default value is empty.
     ///
     /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
-    pub image_view_formats: Vec<Format>,
+    pub image_view_formats: &'a [Format],
 
     /// The color space of the created images.
     ///
@@ -1760,7 +1784,7 @@ pub struct SwapchainCreateInfo {
     /// queue.
     ///
     /// The default value is [`Sharing::Exclusive`].
-    pub image_sharing: Sharing<SmallVec<[u32; 4]>>,
+    pub image_sharing: Sharing<'a>,
 
     /// The transform that should be applied to an image before it is presented.
     ///
@@ -1788,7 +1812,7 @@ pub struct SwapchainCreateInfo {
     /// It must always contain the mode specified in `present_mode`.
     ///
     /// The default value is empty.
-    pub present_modes: SmallVec<[PresentMode; PresentMode::COUNT]>,
+    pub present_modes: &'a [PresentMode],
 
     /// Whether the implementation is allowed to discard rendering operations that affect regions
     /// of the surface which aren't visible. This is important to take into account if your
@@ -1842,26 +1866,25 @@ pub struct SwapchainCreateInfo {
     /// The default value is `None`.
     pub win32_monitor: Option<Win32Monitor>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SwapchainCreateInfo {
+impl Default for SwapchainCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SwapchainCreateInfo {
+impl<'a> SwapchainCreateInfo<'a> {
     /// Returns a default `SwapchainCreateInfo`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             flags: SwapchainCreateFlags::empty(),
             min_image_count: 2,
             image_format: Format::UNDEFINED,
-            image_view_formats: Vec::new(),
+            image_view_formats: &[],
             image_color_space: ColorSpace::SrgbNonLinear,
             image_extent: [0, 0],
             image_array_layers: 1,
@@ -1870,13 +1893,13 @@ impl SwapchainCreateInfo {
             pre_transform: SurfaceTransform::Identity,
             composite_alpha: CompositeAlpha::Opaque,
             present_mode: PresentMode::Fifo,
-            present_modes: SmallVec::new(),
+            present_modes: &[],
             clipped: true,
             scaling_behavior: None,
             present_gravity: None,
             full_screen_exclusive: FullScreenExclusive::Default,
             win32_monitor: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1885,16 +1908,16 @@ impl SwapchainCreateInfo {
             flags,
             min_image_count: _,
             image_format,
-            ref image_view_formats,
+            image_view_formats,
             image_color_space,
             image_extent,
             image_array_layers,
             image_usage,
-            ref image_sharing,
+            image_sharing,
             pre_transform,
             composite_alpha,
             present_mode,
-            ref present_modes,
+            present_modes,
             clipped: _,
             scaling_behavior,
             present_gravity,
@@ -2014,7 +2037,7 @@ impl SwapchainCreateInfo {
         let image_format_properties = unsafe {
             device
                 .physical_device()
-                .image_format_properties_unchecked(ImageFormatInfo {
+                .image_format_properties_unchecked(&ImageFormatInfo {
                     format: image_format,
                     image_type: ImageType::Dim2d,
                     tiling: ImageTiling::Optimal,
@@ -2215,7 +2238,7 @@ impl SwapchainCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &'a self,
         surface_vk: vk::SurfaceKHR,
         old_swapchain_vk: vk::SwapchainKHR,
@@ -2230,7 +2253,7 @@ impl SwapchainCreateInfo {
             image_extent,
             image_array_layers,
             image_usage,
-            ref image_sharing,
+            image_sharing,
             pre_transform,
             composite_alpha,
             present_mode,
@@ -2245,7 +2268,7 @@ impl SwapchainCreateInfo {
 
         let (image_sharing_mode_vk, queue_family_indices_vk) = match image_sharing {
             Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
-            Sharing::Concurrent(ids) => (vk::SharingMode::CONCURRENT, ids.as_slice()),
+            Sharing::Concurrent(ids) => (vk::SharingMode::CONCURRENT, ids),
         };
 
         let mut val_vk = vk::SwapchainCreateInfoKHR::default()
@@ -2299,7 +2322,7 @@ impl SwapchainCreateInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &self,
         fields1_vk: &'a SwapchainCreateInfoFields1Vk,
     ) -> SwapchainCreateInfoExtensionsVk<'a> {

@@ -9,7 +9,7 @@ To use these, you need to include the Ash crate, using the same version Vulkano 
 pub struct EntryFunctions {
     pub v1_0: ash::EntryFnV1_0,
     pub v1_1: ash::EntryFnV1_1,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl EntryFunctions {
     pub(crate) fn load<F>(mut load_fn: F) -> EntryFunctions
@@ -19,7 +19,7 @@ impl EntryFunctions {
         EntryFunctions {
             v1_0: ash::EntryFnV1_0::load(&mut load_fn),
             v1_1: ash::EntryFnV1_1::load(&mut load_fn),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -83,7 +83,7 @@ pub struct InstanceFunctions {
     pub nv_external_memory_capabilities: ash::nv::external_memory_capabilities::InstanceFn,
     pub nv_optical_flow: ash::nv::optical_flow::InstanceFn,
     pub qnx_screen_surface: ash::qnx::screen_surface::InstanceFn,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl InstanceFunctions {
     pub(crate) fn load<F>(mut load_fn: F) -> InstanceFunctions
@@ -198,7 +198,7 @@ impl InstanceFunctions {
             ),
             nv_optical_flow: ash::nv::optical_flow::InstanceFn::load(&mut load_fn),
             qnx_screen_surface: ash::qnx::screen_surface::InstanceFn::load(&mut load_fn),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -331,7 +331,7 @@ pub struct DeviceFunctions {
     pub qcom_tile_properties: ash::qcom::tile_properties::DeviceFn,
     pub qnx_external_memory_screen_buffer: ash::qnx::external_memory_screen_buffer::DeviceFn,
     pub valve_descriptor_set_host_mapping: ash::valve::descriptor_set_host_mapping::DeviceFn,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl DeviceFunctions {
     pub(crate) fn load<F>(mut load_fn: F) -> DeviceFunctions
@@ -621,7 +621,7 @@ impl DeviceFunctions {
             valve_descriptor_set_host_mapping: ash::valve::descriptor_set_host_mapping::DeviceFn::load(
                 &mut load_fn,
             ),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

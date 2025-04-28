@@ -62,10 +62,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: InstanceExtensions {
+                enabled_extensions: &InstanceExtensions {
                     ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
@@ -127,11 +127,11 @@ impl App {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                enabled_features: device_features,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                enabled_features: &device_features,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -171,25 +171,25 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         let swapchain_id = {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             let (image_format, image_color_space) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()
                 .into_iter()
                 .find(|(format, _)| {
                     self.device
                         .physical_device()
-                        .image_format_properties(ImageFormatInfo {
+                        .image_format_properties(&ImageFormatInfo {
                             format: *format,
                             usage: ImageUsage::STORAGE,
                             ..Default::default()
@@ -202,8 +202,8 @@ impl ApplicationHandler for App {
             self.resources
                 .create_swapchain(
                     self.flight_id,
-                    surface,
-                    SwapchainCreateInfo {
+                    &surface,
+                    &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
@@ -228,10 +228,13 @@ impl ApplicationHandler for App {
         let swapchain_storage_image_ids =
             window_size_dependent_setup(&self.resources, swapchain_id);
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(
+            &self.device,
+            &Default::default(),
+        ));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            self.device.clone(),
-            Default::default(),
+            &self.device,
+            &Default::default(),
         ));
 
         let mut task_graph = TaskGraph::new(&self.resources);
@@ -245,8 +248,8 @@ impl ApplicationHandler for App {
                 SceneTask::new(
                     self,
                     virtual_swapchain_id,
-                    memory_allocator,
-                    command_buffer_allocator,
+                    &memory_allocator,
+                    &command_buffer_allocator,
                 ),
             )
             .image_access(
@@ -304,7 +307,7 @@ impl ApplicationHandler for App {
                         .resources
                         .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
                             image_extent: window_size.into(),
-                            ..create_info
+                            ..*create_info
                         })
                         .expect("failed to recreate swapchain");
 
@@ -368,7 +371,7 @@ fn window_size_dependent_setup(
     let swapchain_storage_image_ids = images
         .iter()
         .map(|image| {
-            let image_view = ImageView::new_default(image.clone()).unwrap();
+            let image_view = ImageView::new_default(image).unwrap();
 
             bcx.global_set()
                 .add_storage_image(image_view, ImageLayout::General)

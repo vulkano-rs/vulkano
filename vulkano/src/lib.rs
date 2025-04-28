@@ -128,6 +128,7 @@ use std::{
     borrow::Cow,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    marker::PhantomData,
     num::NonZero,
     ops::Deref,
     sync::Arc,
@@ -137,21 +138,19 @@ pub use vk::Handle;
 
 #[macro_use]
 mod tests;
-#[macro_use]
-mod extensions;
+
 pub mod acceleration_structure;
+mod aliasable_box;
 pub mod buffer;
+mod cache;
 pub mod command_buffer;
 pub mod deferred;
 pub mod descriptor_set;
 pub mod device;
 pub mod display;
-pub mod format;
-mod version;
-#[macro_use]
-pub mod render_pass;
-mod cache;
+mod extensions;
 mod fns;
+pub mod format;
 pub mod image;
 pub mod instance;
 pub mod library;
@@ -162,9 +161,11 @@ pub mod pipeline;
 pub mod query;
 mod range_map;
 pub mod range_set;
+pub mod render_pass;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;
+mod version;
 
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
@@ -691,7 +692,9 @@ impl Display for Requires {
 /// to the standard Rust `#[non_exhaustive]` attribute, except that it does not prevent update
 /// syntax from being used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] // add traits as needed
-pub struct NonExhaustive(pub(crate) ());
+pub struct NonExhaustive<'a>(PhantomData<&'a ()>);
+
+const NE: NonExhaustive<'_> = NonExhaustive(PhantomData);
 
 macro_rules! autogen_output {
     ($file:literal) => {

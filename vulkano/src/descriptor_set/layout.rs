@@ -239,7 +239,7 @@ pub struct DescriptorSetLayoutCreateInfo {
     /// The default value is empty.
     pub bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DescriptorSetLayoutCreateInfo {
@@ -256,7 +256,7 @@ impl DescriptorSetLayoutCreateInfo {
         Self {
             flags: DescriptorSetLayoutCreateFlags::empty(),
             bindings: BTreeMap::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -627,7 +627,7 @@ pub struct DescriptorSetLayoutBinding {
     /// The default value is empty.
     pub immutable_samplers: Vec<Arc<Sampler>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl DescriptorSetLayoutBinding {
@@ -640,7 +640,7 @@ impl DescriptorSetLayoutBinding {
             descriptor_count: 1,
             stages: ShaderStages::empty(),
             immutable_samplers: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1121,7 +1121,7 @@ impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
             descriptor_count: reqs.descriptor_count.unwrap_or(0),
             stages: reqs.stages,
             immutable_samplers: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

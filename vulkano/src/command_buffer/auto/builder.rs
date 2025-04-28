@@ -84,10 +84,10 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Primary,
-                CommandBufferBeginInfo {
+                &CommandBufferBeginInfo {
                     usage,
                     inheritance_info: None,
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 },
             )
         }
@@ -105,10 +105,10 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Primary,
-                CommandBufferBeginInfo {
+                &CommandBufferBeginInfo {
                     usage,
                     inheritance_info: None,
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 },
             )
         }
@@ -143,10 +143,10 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
+                &CommandBufferBeginInfo {
                     usage,
-                    inheritance_info: Some(inheritance_info),
-                    _ne: crate::NonExhaustive(()),
+                    inheritance_info: Some(&inheritance_info),
+                    _ne: crate::NE,
                 },
             )
         }
@@ -165,10 +165,10 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
+                &CommandBufferBeginInfo {
                     usage,
-                    inheritance_info: Some(inheritance_info),
-                    _ne: crate::NonExhaustive(()),
+                    inheritance_info: Some(&inheritance_info),
+                    _ne: crate::NE,
                 },
             )
         }
@@ -204,9 +204,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        Self::validate_new(allocator.device(), queue_family_index, level, &begin_info)?;
+        Self::validate_new(allocator.device(), queue_family_index, level, begin_info)?;
 
         unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
     }
@@ -215,7 +215,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         device: &Device,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: &CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         RecordingCommandBuffer::validate_new(device, queue_family_index, level, begin_info)?;
 
@@ -226,19 +226,19 @@ impl<L> AutoCommandBufferBuilder<L> {
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
         let &CommandBufferBeginInfo {
             usage: _,
-            ref inheritance_info,
+            inheritance_info,
             _ne: _,
-        } = &begin_info;
+        } = begin_info;
 
         let mut builder_state: CommandBufferBuilderState = Default::default();
 
         if let Some(inheritance_info) = &inheritance_info {
             let &CommandBufferInheritanceInfo {
-                ref render_pass,
+                render_pass,
                 occlusion_query: _,
                 pipeline_statistics: _,
                 _ne: _,
@@ -250,7 +250,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
 
         let inner = unsafe {
-            RecordingCommandBuffer::new_unchecked(allocator, queue_family_index, level, begin_info)
+            RecordingCommandBuffer::new_unchecked(&allocator, queue_family_index, level, begin_info)
         }?;
 
         Ok(AutoCommandBufferBuilder {

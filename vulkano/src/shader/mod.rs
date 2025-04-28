@@ -710,7 +710,7 @@ pub struct ShaderModuleCreateInfo<'a> {
     /// There is no default value.
     pub code: &'a [u32],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl<'a> ShaderModuleCreateInfo<'a> {
@@ -719,7 +719,7 @@ impl<'a> ShaderModuleCreateInfo<'a> {
     pub const fn new(code: &'a [u32]) -> Self {
         Self {
             code,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

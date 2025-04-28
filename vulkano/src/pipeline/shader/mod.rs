@@ -41,7 +41,7 @@ pub struct PipelineShaderStageCreateInfo {
     /// The default value is None.
     pub required_subgroup_size: Option<u32>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl PipelineShaderStageCreateInfo {
@@ -52,7 +52,7 @@ impl PipelineShaderStageCreateInfo {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,
             required_subgroup_size: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

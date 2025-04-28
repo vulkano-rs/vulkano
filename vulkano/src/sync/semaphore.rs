@@ -1083,7 +1083,7 @@ pub struct SemaphoreCreateInfo {
     /// The default value is [`ExternalSemaphoreHandleTypes::empty()`].
     pub export_handle_types: ExternalSemaphoreHandleTypes,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SemaphoreCreateInfo {
@@ -1101,7 +1101,7 @@ impl SemaphoreCreateInfo {
             semaphore_type: SemaphoreType::Binary,
             initial_value: 0,
             export_handle_types: ExternalSemaphoreHandleTypes::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1356,7 +1356,7 @@ pub struct SemaphoreSignalInfo {
     /// The default value is `0`.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SemaphoreSignalInfo {
@@ -1372,7 +1372,7 @@ impl SemaphoreSignalInfo {
     pub const fn new() -> Self {
         Self {
             value: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1409,7 +1409,7 @@ pub struct SemaphoreWaitInfo {
     /// The default value is `0`.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SemaphoreWaitInfo {
@@ -1426,7 +1426,7 @@ impl SemaphoreWaitInfo {
         Self {
             flags: SemaphoreWaitFlags::empty(),
             value: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1475,7 +1475,7 @@ pub struct SemaphoreWaitMultipleInfo {
     /// The default value is empty.
     pub semaphores: Vec<SemaphoreWaitValueInfo>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SemaphoreWaitMultipleInfo {
@@ -1492,7 +1492,7 @@ impl SemaphoreWaitMultipleInfo {
         Self {
             flags: SemaphoreWaitFlags::empty(),
             semaphores: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1594,7 +1594,7 @@ pub struct SemaphoreWaitValueInfo {
     /// There is no default value.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SemaphoreWaitValueInfo {
@@ -1604,7 +1604,7 @@ impl SemaphoreWaitValueInfo {
         Self {
             semaphore,
             value,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1665,7 +1665,7 @@ pub struct ImportSemaphoreFdInfo {
     /// `ExternalSemaphoreHandleType::SyncFd`.
     pub file: Option<File>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImportSemaphoreFdInfo {
@@ -1676,7 +1676,7 @@ impl ImportSemaphoreFdInfo {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             file: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1786,7 +1786,7 @@ pub struct ImportSemaphoreWin32HandleInfo {
     /// The default value is `0`, which must be overridden.
     pub handle: vk::HANDLE,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImportSemaphoreWin32HandleInfo {
@@ -1797,7 +1797,7 @@ impl ImportSemaphoreWin32HandleInfo {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             handle: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1898,7 +1898,7 @@ pub struct ImportSemaphoreZirconHandleInfo {
     /// The default value is `ZX_HANDLE_INVALID`, which must be overridden.
     pub zircon_handle: vk::zx_handle_t,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImportSemaphoreZirconHandleInfo {
@@ -1909,7 +1909,7 @@ impl ImportSemaphoreZirconHandleInfo {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
             zircon_handle: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2002,7 +2002,7 @@ pub struct ExternalSemaphoreInfo {
     /// The default value is `0`.
     pub initial_value: u64,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ExternalSemaphoreInfo {
@@ -2013,7 +2013,7 @@ impl ExternalSemaphoreInfo {
             handle_type,
             semaphore_type: SemaphoreType::Binary,
             initial_value: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2211,9 +2211,9 @@ mod tests {
         };
 
         let instance = match Instance::new(
-            library,
-            InstanceCreateInfo {
-                enabled_extensions: InstanceExtensions {
+            &library,
+            &InstanceCreateInfo {
+                enabled_extensions: &InstanceExtensions {
                     khr_get_physical_device_properties2: true,
                     khr_external_semaphore_capabilities: true,
                     ..InstanceExtensions::empty()
@@ -2231,13 +2231,13 @@ mod tests {
         };
 
         let (device, _) = match Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index: 0,
                     ..Default::default()
                 }],
-                enabled_extensions: DeviceExtensions {
+                enabled_extensions: &DeviceExtensions {
                     khr_external_semaphore: true,
                     khr_external_semaphore_fd: true,
                     ..DeviceExtensions::empty()

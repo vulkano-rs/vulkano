@@ -83,10 +83,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -127,10 +127,10 @@ impl App {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -141,10 +141,10 @@ impl App {
 
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         let vertices = [
@@ -159,12 +159,12 @@ impl App {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -188,7 +188,7 @@ impl App {
 
     fn create_rcx(&self, window: Window) -> RenderContext {
         let window = Arc::new(window);
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         // The swapchain and framebuffer images for this particular window.
@@ -196,18 +196,18 @@ impl App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             let (image_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             Swapchain::new(
-                self.device.clone(),
-                surface.clone(),
-                SwapchainCreateInfo {
+                &self.device,
+                &surface,
+                &SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
                     image_format,
                     image_extent: window_size.into(),
@@ -396,7 +396,7 @@ impl ApplicationHandler for App {
                 if rcx.recreate_swapchain {
                     let (new_swapchain, new_images) = rcx
                         .swapchain
-                        .recreate(SwapchainCreateInfo {
+                        .recreate(&SwapchainCreateInfo {
                             image_extent: window_size.into(),
                             ..rcx.swapchain.create_info()
                         })
@@ -505,7 +505,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
+            let view = ImageView::new_default(image).unwrap();
 
             Framebuffer::new(
                 render_pass.clone(),

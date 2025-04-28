@@ -887,7 +887,7 @@ pub struct DeviceFeatures {
     pub ycbcr_degamma: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceYcbcrImageArraysFeaturesEXT.html#features-ycbcrImageArrays)
     pub ycbcr_image_arrays: bool,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl Default for DeviceFeatures {
     #[inline]
@@ -7119,7 +7119,7 @@ impl DeviceFeatures {
             ycbcr2plane444_formats: false,
             ycbcr_degamma: false,
             ycbcr_image_arrays: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns a `DeviceFeatures` with all of the members set.
@@ -7545,7 +7545,7 @@ impl DeviceFeatures {
             ycbcr2plane444_formats: true,
             ycbcr_degamma: true,
             ycbcr_image_arrays: true,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns whether any members are set in both `self` and `other`.
@@ -9600,7 +9600,7 @@ impl DeviceFeatures {
                 || other.ycbcr2plane444_formats,
             ycbcr_degamma: self.ycbcr_degamma || other.ycbcr_degamma,
             ycbcr_image_arrays: self.ycbcr_image_arrays || other.ycbcr_image_arrays,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the intersection of `self` and `other`.
@@ -10453,7 +10453,7 @@ impl DeviceFeatures {
                 && other.ycbcr2plane444_formats,
             ycbcr_degamma: self.ycbcr_degamma && other.ycbcr_degamma,
             ycbcr_image_arrays: self.ycbcr_image_arrays && other.ycbcr_image_arrays,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns `self` without the members set in `other`.
@@ -11306,7 +11306,7 @@ impl DeviceFeatures {
                 && !other.ycbcr2plane444_formats,
             ycbcr_degamma: self.ycbcr_degamma && !other.ycbcr_degamma,
             ycbcr_image_arrays: self.ycbcr_image_arrays && !other.ycbcr_image_arrays,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the members set in `self` or `other`, but not both.
@@ -12138,7 +12138,7 @@ impl DeviceFeatures {
                 ^ other.ycbcr2plane444_formats,
             ycbcr_degamma: self.ycbcr_degamma ^ other.ycbcr_degamma,
             ycbcr_image_arrays: self.ycbcr_image_arrays ^ other.ycbcr_image_arrays,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -23955,7 +23955,7 @@ impl From<&DeviceFeaturesFfi> for DeviceFeatures {
                 .flatten()
                 .next()
                 .unwrap_or(0) != 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

@@ -39,12 +39,12 @@ pub struct GameOfLifeComputePipeline {
 
 fn rand_grid(memory_allocator: Arc<StandardMemoryAllocator>, size: [u32; 2]) -> Subbuffer<[u32]> {
     Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -84,16 +84,16 @@ impl GameOfLifeComputePipeline {
         };
 
         let image = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [size[0], size[1], 1],
                     usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED | ImageUsage::STORAGE,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )

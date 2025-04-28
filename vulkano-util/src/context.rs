@@ -19,12 +19,12 @@ use vulkano::{
 ///
 /// Instance extensions that are required for surface creation will be appended to the config when
 /// creating [`VulkanoContext`].
-pub struct VulkanoConfig {
-    pub instance_create_info: InstanceCreateInfo,
+pub struct VulkanoConfig<'a> {
+    pub instance_create_info: InstanceCreateInfo<'a>,
 
     /// Pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
     /// for printing debug information at runtime.
-    pub debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
+    pub debug_create_info: Option<DebugUtilsMessengerCreateInfo<'a>>,
 
     /// Pass filter function for your physical device selection. See default for example.
     pub device_filter_fn: Arc<dyn Fn(&PhysicalDevice) -> bool>,
@@ -40,7 +40,7 @@ pub struct VulkanoConfig {
     pub print_device_name: bool,
 }
 
-impl Default for VulkanoConfig {
+impl Default for VulkanoConfig<'_> {
     #[inline]
     fn default() -> Self {
         let device_extensions = DeviceExtensions {
@@ -110,7 +110,7 @@ impl VulkanoContext {
     /// # Panics
     ///
     /// - Panics where the underlying Vulkano struct creations fail
-    pub fn new(mut config: VulkanoConfig) -> Self {
+    pub fn new(config: VulkanoConfig<'_>) -> Self {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
             #[cfg(target_vendor = "apple")]
@@ -124,7 +124,7 @@ impl VulkanoContext {
         // Append required extensions
         // HACK: This should be replaced with `Surface::required_extensions`, but will need to
         // happen in the next minor version bump. It should have been done before releasing 0.34.
-        config.instance_create_info.enabled_extensions = library
+        let instance_extensions = library
             .supported_extensions()
             .intersection(&InstanceExtensions {
                 khr_surface: true,
@@ -136,15 +136,21 @@ impl VulkanoContext {
                 ext_metal_surface: true,
                 ..InstanceExtensions::empty()
             })
-            .union(&config.instance_create_info.enabled_extensions);
+            .union(config.instance_create_info.enabled_extensions);
 
         // Create instance
-        let instance =
-            Instance::new(library, config.instance_create_info).expect("failed to create instance");
+        let instance = Instance::new(
+            &library,
+            &InstanceCreateInfo {
+                enabled_extensions: &instance_extensions,
+                ..config.instance_create_info
+            },
+        )
+        .expect("failed to create instance");
 
         // Create debug callback
-        let _debug_utils_messenger = config.debug_create_info.take().map(|dbg_create_info| {
-            DebugUtilsMessenger::new(instance.clone(), dbg_create_info)
+        let _debug_utils_messenger = config.debug_create_info.as_ref().map(|dbg_create_info| {
+            DebugUtilsMessenger::new(&instance, dbg_create_info)
                 .expect("failed to create debug callback")
         });
 
@@ -166,11 +172,11 @@ impl VulkanoContext {
 
         // Create device
         let (device, queues) = Self::create_device(
-            physical_device,
-            config.device_extensions,
-            config.device_features,
+            &physical_device,
+            &config.device_extensions,
+            &config.device_features,
         );
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         Self {
             instance,
@@ -184,9 +190,9 @@ impl VulkanoContext {
     /// Creates vulkano device with required queue families and required extensions. Creates a
     /// separate queue for compute if possible. If not, same queue as graphics is used.
     fn create_device(
-        physical_device: Arc<PhysicalDevice>,
-        device_extensions: DeviceExtensions,
-        device_features: DeviceFeatures,
+        physical_device: &Arc<PhysicalDevice>,
+        device_extensions: &DeviceExtensions,
+        device_features: &DeviceFeatures,
     ) -> (Arc<Device>, Queues) {
         let queue_family_graphics = physical_device
             .queue_family_properties()
@@ -241,8 +247,8 @@ impl VulkanoContext {
         let (device, mut queues) = {
             Device::new(
                 physical_device,
-                DeviceCreateInfo {
-                    queue_create_infos,
+                &DeviceCreateInfo {
+                    queue_create_infos: &queue_create_infos,
                     enabled_extensions: device_extensions,
                     enabled_features: device_features,
                     ..Default::default()

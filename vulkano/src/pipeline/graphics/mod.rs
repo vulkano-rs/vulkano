@@ -745,7 +745,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     pub fragment_shading_rate_state: Option<FragmentShadingRateState>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl GraphicsPipelineCreateInfo {
@@ -774,7 +774,7 @@ impl GraphicsPipelineCreateInfo {
             discard_rectangle_state: None,
             fragment_shading_rate_state: None,
 
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

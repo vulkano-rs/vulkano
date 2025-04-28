@@ -29,7 +29,7 @@ use crate::{
         allocator::AllocationType, is_aligned, DedicatedTo, ExternalMemoryHandleTypes,
         MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
-    sync::Sharing,
+    sync::{OwnedSharing, Sharing},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -64,7 +64,7 @@ pub struct RawImage {
     tiling: ImageTiling,
     usage: ImageUsage,
     stencil_usage: Option<ImageUsage>,
-    sharing: Sharing<SmallVec<[u32; 4]>>,
+    sharing: OwnedSharing,
     initial_layout: ImageLayout,
     drm_format_modifier: Option<(u64, u32)>,
     external_memory_handle_types: ExternalMemoryHandleTypes,
@@ -79,17 +79,17 @@ impl RawImage {
     /// Creates a new `RawImage`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: ImageCreateInfo,
+        device: &Arc<Device>,
+        create_info: &ImageCreateInfo<'_>,
     ) -> Result<RawImage, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { RawImage::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &ImageCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -106,8 +106,8 @@ impl RawImage {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: ImageCreateInfo,
+        device: &Arc<Device>,
+        create_info: &ImageCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         let create_info_fields1_vk = create_info.to_vk_fields1();
         let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields1_vk);
@@ -142,9 +142,9 @@ impl RawImage {
     ///   `RawImage`.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Image,
-        create_info: ImageCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
     }
@@ -162,20 +162,20 @@ impl RawImage {
     ///   `RawImage`.
     #[inline]
     pub unsafe fn from_handle_borrowed(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Image,
-        create_info: ImageCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
     }
 
     pub(super) unsafe fn from_handle_with_destruction(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Image,
-        create_info: ImageCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
         needs_destruction: bool,
     ) -> Result<Self, VulkanError> {
-        let ImageCreateInfo {
+        let &ImageCreateInfo {
             flags,
             image_type,
             format,
@@ -200,7 +200,7 @@ impl RawImage {
 
         let drm_format_modifier = if tiling == ImageTiling::DrmFormatModifier {
             let drm_format_modifier =
-                unsafe { Self::get_drm_format_modifier_properties(&device, handle) }?;
+                unsafe { Self::get_drm_format_modifier_properties(device, handle) }?;
             let drm_format_modifier_plane_count = format_properties
                 .drm_format_modifier_properties
                 .iter()
@@ -229,12 +229,12 @@ impl RawImage {
 
                 (0..plane_count)
                     .map(|plane| unsafe {
-                        Self::get_memory_requirements(&device, handle, Some((plane, tiling)))
+                        Self::get_memory_requirements(device, handle, Some((plane, tiling)))
                     })
                     .collect()
             } else {
                 // VUID-VkImageMemoryRequirementsInfo2-image-01590
-                smallvec![unsafe { Self::get_memory_requirements(&device, handle, None) }]
+                smallvec![unsafe { Self::get_memory_requirements(device, handle, None) }]
             }
         } else {
             smallvec![]
@@ -243,21 +243,21 @@ impl RawImage {
         let sparse_memory_requirements = if flags
             .contains(ImageCreateFlags::SPARSE_BINDING | ImageCreateFlags::SPARSE_RESIDENCY)
         {
-            unsafe { Self::get_sparse_memory_requirements(&device, handle) }
+            unsafe { Self::get_sparse_memory_requirements(device, handle) }
         } else {
             Vec::new()
         };
 
         Ok(RawImage {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
             image_type,
             format,
             format_features,
-            view_formats,
+            view_formats: view_formats.to_owned(),
             extent,
             array_layers,
             mip_levels,
@@ -266,7 +266,7 @@ impl RawImage {
             tiling,
             usage,
             stencil_usage,
-            sharing,
+            sharing: sharing.to_owned(),
             drm_format_modifier,
             external_memory_handle_types,
 
@@ -751,24 +751,25 @@ impl RawImage {
 
                 for handle_type in memory.export_handle_types() {
                     let image_format_properties = unsafe {
-                        physical_device.image_format_properties_unchecked(ImageFormatInfo {
+                        physical_device.image_format_properties_unchecked(&ImageFormatInfo {
                             flags: self.flags,
                             format: self.format,
-                            view_formats: self.view_formats.clone(),
+                            view_formats: &self.view_formats,
                             image_type: self.image_type,
                             tiling: self.tiling,
                             usage: self.usage,
                             stencil_usage: self.stencil_usage,
-                            drm_format_modifier_info: self.drm_format_modifier().map(
-                                |(drm_format_modifier, _)| ImageDrmFormatModifierInfo {
+                            drm_format_modifier_info: self
+                                .drm_format_modifier()
+                                .map(|(drm_format_modifier, _)| ImageDrmFormatModifierInfo {
                                     drm_format_modifier,
-                                    sharing: self.sharing.clone(),
-                                    _ne: crate::NonExhaustive(()),
-                                },
-                            ),
+                                    sharing: self.sharing.as_ref(),
+                                    _ne: crate::NE,
+                                })
+                                .as_ref(),
                             external_memory_handle_type: Some(handle_type),
                             image_view_type: None,
-                            _ne: crate::NonExhaustive(()),
+                            _ne: crate::NE,
                         })
                     }
                     .map_err(|_| {
@@ -1141,8 +1142,8 @@ impl RawImage {
 
     /// Returns the sharing the image was created with.
     #[inline]
-    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
-        &self.sharing
+    pub fn sharing(&self) -> Sharing<'_> {
+        self.sharing.as_ref()
     }
 
     /// If `self.tiling()` is `ImageTiling::DrmFormatModifier`, returns the DRM format modifier
@@ -1500,7 +1501,7 @@ impl_id_counter!(RawImage);
 
 /// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]
-pub struct ImageCreateInfo {
+pub struct ImageCreateInfo<'a> {
     /// Additional properties of the image.
     ///
     /// The default value is empty.
@@ -1536,7 +1537,7 @@ pub struct ImageCreateInfo {
     /// The default value is empty.
     ///
     /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
-    pub view_formats: Vec<Format>,
+    pub view_formats: &'a [Format],
 
     /// The width, height and depth of the image.
     ///
@@ -1596,7 +1597,7 @@ pub struct ImageCreateInfo {
     /// Whether the image can be shared across multiple queues, or is limited to a single queue.
     ///
     /// The default value is [`Sharing::Exclusive`].
-    pub sharing: Sharing<SmallVec<[u32; 4]>>,
+    pub sharing: Sharing<'a>,
 
     /// The image layout that the image will have when it is created.
     ///
@@ -1616,7 +1617,7 @@ pub struct ImageCreateInfo {
     /// the `drm_format_modifier_plane_layouts` field.
     ///
     /// The default value is empty.
-    pub drm_format_modifiers: Vec<u64>,
+    pub drm_format_modifiers: &'a [u64],
 
     /// If `drm_format_modifiers` contains exactly one element, optionally specifies an explicit
     /// subresource layout for each memory plane of the image.
@@ -1633,7 +1634,7 @@ pub struct ImageCreateInfo {
     /// If `drm_format_modifiers` does not contain exactly one element, then this must be empty.
     ///
     /// The default value is empty.
-    pub drm_format_modifier_plane_layouts: Vec<SubresourceLayout>,
+    pub drm_format_modifier_plane_layouts: &'a [SubresourceLayout],
 
     /// The external memory handle types that are going to be used with the image.
     ///
@@ -1645,17 +1646,17 @@ pub struct ImageCreateInfo {
     /// The default value is empty.
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageCreateInfo {
+impl Default for ImageCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageCreateInfo {
+impl<'a> ImageCreateInfo<'a> {
     /// Returns a default `ImageCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1663,7 +1664,7 @@ impl ImageCreateInfo {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
             format: Format::UNDEFINED,
-            view_formats: Vec::new(),
+            view_formats: &[],
             extent: [0; 3],
             array_layers: 1,
             mip_levels: 1,
@@ -1674,9 +1675,9 @@ impl ImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            drm_format_modifiers: Vec::new(),
-            drm_format_modifier_plane_layouts: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            drm_format_modifiers: &[],
+            drm_format_modifier_plane_layouts: &[],
+            _ne: crate::NE,
         }
     }
 
@@ -1685,7 +1686,7 @@ impl ImageCreateInfo {
             flags,
             image_type,
             format,
-            ref view_formats,
+            view_formats,
             extent,
             array_layers,
             mip_levels,
@@ -1693,10 +1694,10 @@ impl ImageCreateInfo {
             tiling,
             usage,
             stencil_usage,
-            ref sharing,
+            sharing,
             initial_layout,
-            ref drm_format_modifiers,
-            ref drm_format_modifier_plane_layouts,
+            drm_format_modifiers,
+            drm_format_modifier_plane_layouts,
             external_memory_handle_types,
             _ne: _,
         } = self;
@@ -2826,7 +2827,7 @@ impl ImageCreateInfo {
         for drm_format_modifier in iter_or_none(drm_format_modifiers.iter().copied()) {
             for external_memory_handle_type in iter_or_none(external_memory_handle_types) {
                 let image_format_properties = unsafe {
-                    physical_device.image_format_properties_unchecked(ImageFormatInfo {
+                    physical_device.image_format_properties_unchecked(&ImageFormatInfo {
                         flags,
                         format,
                         image_type,
@@ -2834,13 +2835,13 @@ impl ImageCreateInfo {
                         usage,
                         stencil_usage,
                         external_memory_handle_type,
-                        drm_format_modifier_info: drm_format_modifier.map(|drm_format_modifier| {
-                            ImageDrmFormatModifierInfo {
+                        drm_format_modifier_info: drm_format_modifier
+                            .map(|drm_format_modifier| ImageDrmFormatModifierInfo {
                                 drm_format_modifier,
-                                sharing: sharing.clone(),
+                                sharing,
                                 ..Default::default()
-                            }
-                        }),
+                            })
+                            .as_ref(),
                         ..Default::default()
                     })
                 }
@@ -2962,7 +2963,7 @@ impl ImageCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &'a self,
         extensions_vk: &'a mut ImageCreateInfoExtensionsVk<'_>,
     ) -> vk::ImageCreateInfo<'a> {
@@ -2978,7 +2979,7 @@ impl ImageCreateInfo {
             tiling,
             usage,
             stencil_usage: _,
-            ref sharing,
+            sharing,
             initial_layout,
             drm_format_modifiers: _,
             drm_format_modifier_plane_layouts: _,
@@ -2989,7 +2990,7 @@ impl ImageCreateInfo {
         let (sharing_mode, queue_family_indices_vk) = match sharing {
             Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
             Sharing::Concurrent(queue_family_indices) => {
-                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+                (vk::SharingMode::CONCURRENT, queue_family_indices)
             }
         };
 
@@ -3042,7 +3043,7 @@ impl ImageCreateInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &'a self,
         fields1_vk: &'a ImageCreateInfoFields1Vk,
     ) -> ImageCreateInfoExtensionsVk<'a> {
@@ -3060,7 +3061,7 @@ impl ImageCreateInfo {
         let drm_format_modifier_list_vk = (!self.drm_format_modifier_plane_layouts.is_empty())
             .then(|| {
                 vk::ImageDrmFormatModifierListCreateInfoEXT::default()
-                    .drm_format_modifiers(&self.drm_format_modifiers)
+                    .drm_format_modifiers(self.drm_format_modifiers)
             });
 
         let external_memory_vk = (!self.external_memory_handle_types.is_empty()).then(|| {
@@ -3137,8 +3138,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let _ = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
@@ -3154,8 +3155,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let _ = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
@@ -3172,8 +3173,8 @@ mod tests {
 
         assert!(matches!(
             RawImage::new(
-                device,
-                ImageCreateInfo {
+                &device,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [32, 32, 1],
@@ -3191,8 +3192,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let res = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
@@ -3213,8 +3214,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let res = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
@@ -3245,8 +3246,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let res = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::ASTC_5x4_UNORM_BLOCK,
                 extent: [32, 32, 1],
@@ -3267,8 +3268,8 @@ mod tests {
 
         assert!(matches!(
             RawImage::new(
-                device,
-                ImageCreateInfo {
+                &device,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [32, 32, 1],
@@ -3285,8 +3286,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let res = RawImage::new(
-            device,
-            ImageCreateInfo {
+            &device,
+            &ImageCreateInfo {
                 flags: ImageCreateFlags::CUBE_COMPATIBLE,
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,

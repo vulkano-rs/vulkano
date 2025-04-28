@@ -152,7 +152,7 @@ pub struct InstanceExtensions {
 - Requires all of:
   - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
     pub qnx_screen_surface: bool,
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 impl Default for InstanceExtensions {
     #[inline]
@@ -204,7 +204,7 @@ impl InstanceExtensions {
             nn_vi_surface: false,
             nv_external_memory_capabilities: false,
             qnx_screen_surface: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the number of members set in self.
@@ -430,7 +430,7 @@ impl InstanceExtensions {
             nv_external_memory_capabilities: self.nv_external_memory_capabilities
                 || other.nv_external_memory_capabilities,
             qnx_screen_surface: self.qnx_screen_surface || other.qnx_screen_surface,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the intersection of `self` and `other`.
@@ -500,7 +500,7 @@ impl InstanceExtensions {
             nv_external_memory_capabilities: self.nv_external_memory_capabilities
                 && other.nv_external_memory_capabilities,
             qnx_screen_surface: self.qnx_screen_surface && other.qnx_screen_surface,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns `self` without the members set in `other`.
@@ -570,7 +570,7 @@ impl InstanceExtensions {
             nv_external_memory_capabilities: self.nv_external_memory_capabilities
                 && !other.nv_external_memory_capabilities,
             qnx_screen_surface: self.qnx_screen_surface && !other.qnx_screen_surface,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
     /// Returns the members set in `self` or `other`, but not both.
@@ -637,7 +637,7 @@ impl InstanceExtensions {
             nv_external_memory_capabilities: self.nv_external_memory_capabilities
                 ^ other.nv_external_memory_capabilities,
             qnx_screen_surface: self.qnx_screen_surface ^ other.qnx_screen_surface,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

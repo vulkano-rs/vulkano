@@ -52,7 +52,7 @@ pub struct DepthStencilState {
     /// The default value is `None`.
     pub stencil: Option<StencilState>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DepthStencilState {
@@ -71,7 +71,7 @@ impl DepthStencilState {
             depth: None,
             depth_bounds: None,
             stencil: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -92,7 +92,7 @@ impl DepthStencilState {
             depth: Some(DepthState::simple()),
             depth_bounds: Default::default(),
             stencil: Default::default(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

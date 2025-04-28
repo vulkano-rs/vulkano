@@ -57,7 +57,7 @@ pub struct MultisampleState {
     /// The default value is `false`.
     pub alpha_to_one_enable: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for MultisampleState {
@@ -77,7 +77,7 @@ impl MultisampleState {
             sample_mask: [u32::MAX; 2],
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

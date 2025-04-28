@@ -34,10 +34,10 @@ use vulkano::{
 fn main() {
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: InstanceExtensions {
+            enabled_extensions: &InstanceExtensions {
                 // This extension is required to obtain physical device metadata about the device
                 // workgroup size limits.
                 khr_get_physical_device_properties2: true,
@@ -78,10 +78,10 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -201,29 +201,29 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
     let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     let image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
             extent: [1024, 1024, 1],
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::STORAGE,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
-    let view = ImageView::new_default(image.clone()).unwrap();
+    let view = ImageView::new_default(&image).unwrap();
 
     let layout = &pipeline.layout().set_layouts()[0];
     let set = DescriptorSet::new(
@@ -235,12 +235,12 @@ fn main() {
     .unwrap();
 
     let buf = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::TRANSFER_DST,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_HOST
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()

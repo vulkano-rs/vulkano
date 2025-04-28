@@ -781,6 +781,7 @@ impl From<(f32, u32)> for ClearDepthStencilValue {
 
 /// The properties of a format that are supported by a physical device.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct FormatProperties {
     /// Features available for images with linear tiling.
     pub linear_tiling_features: FormatFeatures,
@@ -798,8 +799,6 @@ pub struct FormatProperties {
     ///
     /// [`ext_image_drm_format_modifier`]: crate::device::DeviceExtensions::ext_image_drm_format_modifier
     pub drm_format_modifier_properties: Vec<DrmFormatModifierProperties>,
-
-    pub _ne: crate::NonExhaustive,
 }
 
 impl FormatProperties {
@@ -996,7 +995,6 @@ impl FormatProperties {
                     optimal_tiling_features: optimal_tiling_features.into(),
                     buffer_features: buffer_features.into(),
                     drm_format_modifier_properties: Vec::new(),
-                    _ne: crate::NonExhaustive(()),
                 }
             },
             |val_vk| {
@@ -1012,7 +1010,6 @@ impl FormatProperties {
                     optimal_tiling_features: optimal_tiling_features.into(),
                     buffer_features: buffer_features.into(),
                     drm_format_modifier_properties: Vec::new(),
-                    _ne: crate::NonExhaustive(()),
                 }
             },
         );

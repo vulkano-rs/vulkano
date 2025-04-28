@@ -51,17 +51,17 @@ impl ImageView {
     /// Creates a new `ImageView`.
     #[inline]
     pub fn new(
-        image: Arc<Image>,
-        create_info: ImageViewCreateInfo,
+        image: &Arc<Image>,
+        create_info: &ImageViewCreateInfo<'_>,
     ) -> Result<Arc<ImageView>, Validated<VulkanError>> {
-        Self::validate_new(&image, &create_info)?;
+        Self::validate_new(image, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(image, create_info) }?)
     }
 
     fn validate_new(
         image: &Image,
-        create_info: &ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let device = image.device();
 
@@ -565,11 +565,11 @@ impl ImageView {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        image: Arc<Image>,
-        create_info: ImageViewCreateInfo,
+        image: &Arc<Image>,
+        create_info: &ImageViewCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let implicit_default_usage =
-            get_implicit_default_usage(create_info.subresource_range.aspects, &image);
+            get_implicit_default_usage(create_info.subresource_range.aspects, image);
         let mut create_info_extensions_vk = create_info.to_vk_extensions(implicit_default_usage);
         let create_info_vk = create_info.to_vk(image.handle(), &mut create_info_extensions_vk);
 
@@ -595,10 +595,10 @@ impl ImageView {
 
     /// Creates a default `ImageView`. Equivalent to
     /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
-    pub fn new_default(image: Arc<Image>) -> Result<Arc<ImageView>, Validated<VulkanError>> {
-        let create_info = ImageViewCreateInfo::from_image(&image);
+    pub fn new_default(image: &Arc<Image>) -> Result<Arc<ImageView>, Validated<VulkanError>> {
+        let create_info = ImageViewCreateInfo::from_image(image);
 
-        Self::new(image, create_info)
+        Self::new(image, &create_info)
     }
 
     /// Creates a new `ImageView` from a raw object handle.
@@ -608,15 +608,15 @@ impl ImageView {
     /// - `handle` must be a valid Vulkan object handle created from `image`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        image: Arc<Image>,
+        image: &Arc<Image>,
         handle: vk::ImageView,
-        create_info: ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let ImageViewCreateInfo {
+        let &ImageViewCreateInfo {
             view_type,
             format,
             component_mapping,
-            subresource_range,
+            ref subresource_range,
             mut usage,
             sampler_ycbcr_conversion,
             _ne: _,
@@ -625,10 +625,10 @@ impl ImageView {
         let device = image.device();
 
         if usage.is_empty() {
-            usage = get_implicit_default_usage(subresource_range.aspects, &image);
+            usage = get_implicit_default_usage(subresource_range.aspects, image);
         }
 
-        let format_features = unsafe { get_format_features(format, &image) };
+        let format_features = unsafe { get_format_features(format, image) };
 
         let mut filter_cubic = false;
         let mut filter_cubic_minmax = false;
@@ -643,7 +643,7 @@ impl ImageView {
             let properties = unsafe {
                 device
                     .physical_device()
-                    .image_format_properties_unchecked(ImageFormatInfo {
+                    .image_format_properties_unchecked(&ImageFormatInfo {
                         flags: image.flags(),
                         format: image.format(),
                         image_type: image.image_type(),
@@ -662,14 +662,14 @@ impl ImageView {
 
         Ok(Arc::new(ImageView {
             handle,
-            image: DeviceOwnedDebugWrapper(image),
+            image: DeviceOwnedDebugWrapper(image.clone()),
             id: Self::next_id(),
             view_type,
             format,
             component_mapping,
-            subresource_range,
+            subresource_range: subresource_range.clone(),
             usage,
-            sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion: sampler_ycbcr_conversion.cloned(),
             format_features,
             filter_cubic,
             filter_cubic_minmax,
@@ -769,8 +769,8 @@ unsafe impl DeviceOwned for ImageView {
 impl_id_counter!(ImageView);
 
 /// Parameters to create a new `ImageView`.
-#[derive(Debug)]
-pub struct ImageViewCreateInfo {
+#[derive(Clone, Debug)]
+pub struct ImageViewCreateInfo<'a> {
     /// The image view type.
     ///
     /// The view type must be compatible with the dimensions of the image and the selected array
@@ -836,19 +836,19 @@ pub struct ImageViewCreateInfo {
     ///   created one, and must be used as an immutable sampler within a descriptor set layout.
     ///
     /// The default value is `None`.
-    pub sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+    pub sampler_ycbcr_conversion: Option<&'a Arc<SamplerYcbcrConversion>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageViewCreateInfo {
+impl Default for ImageViewCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageViewCreateInfo {
+impl<'a> ImageViewCreateInfo<'a> {
     /// Returns a default `ImageViewCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -863,7 +863,7 @@ impl ImageViewCreateInfo {
             },
             usage: ImageUsage::empty(),
             sampler_ycbcr_conversion: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -903,7 +903,7 @@ impl ImageViewCreateInfo {
             component_mapping,
             ref subresource_range,
             usage,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             _ne: _,
         } = self;
 
@@ -1014,7 +1014,7 @@ impl ImageViewCreateInfo {
 
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
-        if let Some(conversion) = &sampler_ycbcr_conversion {
+        if let Some(conversion) = sampler_ycbcr_conversion {
             assert_eq!(device, conversion.device().as_ref());
 
             if !component_mapping.is_identity() {
@@ -1041,7 +1041,7 @@ impl ImageViewCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         image_vk: vk::Image,
         extensions_vk: &'a mut ImageViewCreateInfoExtensionsVk,

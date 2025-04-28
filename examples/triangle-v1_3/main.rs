@@ -95,12 +95,12 @@ impl App {
 
         // Now creating the instance.
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 // Enable enumerating devices that use non-conformant Vulkan implementations.
                 // (e.g. MoltenVK)
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -201,11 +201,11 @@ impl App {
         // An iterator of created queues is returned by the function alongside the device.
         let (device, mut queues) = Device::new(
             // Which physical device to connect to.
-            physical_device,
-            DeviceCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
                 // The list of queues that we are going to use. Here we only use one queue, from
                 // the previously chosen queue family.
-                queue_create_infos: vec![QueueCreateInfo {
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -215,14 +215,14 @@ impl App {
                 // manually at device creation. In this example the only things we are going to
                 // need are the `khr_swapchain` extension that allows us to draw to a window, and
                 // `khr_dynamic_rendering` if we don't have Vulkan 1.3 available.
-                enabled_extensions: device_extensions,
+                enabled_extensions: &device_extensions,
 
                 // In order to render with Vulkan 1.3's dynamic rendering, we need to enable it
                 // here. Otherwise, we are only allowed to render with a render pass object, as in
                 // the standard triangle example. The feature is required to be supported by the
                 // device if it supports Vulkan 1.3 and higher, or if the `khr_dynamic_rendering`
                 // extension is available, so we don't need to check for support.
-                enabled_features: DeviceFeatures {
+                enabled_features: &DeviceFeatures {
                     dynamic_rendering: true,
                     ..DeviceFeatures::empty()
                 },
@@ -237,14 +237,14 @@ impl App {
         // the iterator.
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         // Before we can start creating and recording command buffers, we need a way of allocating
         // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command
         // pools underneath and provides a safe interface for them.
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         // We now create a buffer that will store the shape of our triangle.
@@ -260,12 +260,12 @@ impl App {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -298,7 +298,7 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         // Before we can draw on the surface, we have to create what is called a swapchain.
@@ -310,21 +310,21 @@ impl ApplicationHandler for App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
 
             // Choosing the internal format that the images will have.
             let (image_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             // Please take a look at the docs for the meaning of the parameters we didn't mention.
             Swapchain::new(
-                self.device.clone(),
-                surface,
-                SwapchainCreateInfo {
+                &self.device,
+                &surface,
+                &SwapchainCreateInfo {
                     // Some drivers report an `min_image_count` of 1, but fullscreen mode requires
                     // at least 2. Therefore we must ensure the count is at least 2, otherwise the
                     // program would crash when entering fullscreen mode on those drivers.
@@ -589,7 +589,7 @@ impl ApplicationHandler for App {
                 if rcx.recreate_swapchain {
                     let (new_swapchain, new_images) = rcx
                         .swapchain
-                        .recreate(SwapchainCreateInfo {
+                        .recreate(&SwapchainCreateInfo {
                             image_extent: window_size.into(),
                             ..rcx.swapchain.create_info()
                         })
@@ -759,6 +759,6 @@ struct MyVertex {
 fn window_size_dependent_setup(images: &[Arc<Image>]) -> Vec<Arc<ImageView>> {
     images
         .iter()
-        .map(|image| ImageView::new_default(image.clone()).unwrap())
+        .map(|image| ImageView::new_default(image).unwrap())
         .collect::<Vec<_>>()
 }

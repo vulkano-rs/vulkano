@@ -52,7 +52,7 @@ pub struct BindSparseInfo {
     /// The default value is empty.
     pub signal_semaphores: Vec<Arc<Semaphore>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for BindSparseInfo {
@@ -72,7 +72,7 @@ impl BindSparseInfo {
             image_opaque_binds: Vec::new(),
             image_binds: Vec::new(),
             signal_semaphores: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -251,7 +251,7 @@ pub struct SparseBufferMemoryBindInfo {
     /// The default value is empty.
     pub binds: Vec<SparseBufferMemoryBind>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SparseBufferMemoryBindInfo {
@@ -261,7 +261,7 @@ impl SparseBufferMemoryBindInfo {
         Self {
             buffer,
             binds: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -474,7 +474,7 @@ pub struct SparseBufferMemoryBind {
     /// The default value is `None`.
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SparseBufferMemoryBind {
@@ -491,7 +491,7 @@ impl SparseBufferMemoryBind {
             offset: 0,
             size: 0,
             memory: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -591,7 +591,7 @@ pub struct SparseImageOpaqueMemoryBindInfo {
     /// The default value is empty.
     pub binds: Vec<SparseImageOpaqueMemoryBind>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SparseImageOpaqueMemoryBindInfo {
@@ -601,7 +601,7 @@ impl SparseImageOpaqueMemoryBindInfo {
         Self {
             image,
             binds: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -609,7 +609,7 @@ impl SparseImageOpaqueMemoryBindInfo {
         let &Self {
             ref image,
             ref binds,
-            _ne: crate::NonExhaustive(()),
+            _ne: _,
         } = self;
 
         assert_eq!(device, image.device().as_ref());
@@ -941,7 +941,7 @@ pub struct SparseImageOpaqueMemoryBind {
     /// The default value is `false`.
     pub metadata: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SparseImageOpaqueMemoryBind {
@@ -959,7 +959,7 @@ impl SparseImageOpaqueMemoryBind {
             size: 0,
             memory: None,
             metadata: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1066,7 +1066,7 @@ pub struct SparseImageMemoryBindInfo {
     /// The default value is empty.
     pub binds: Vec<SparseImageMemoryBind>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SparseImageMemoryBindInfo {
@@ -1076,7 +1076,7 @@ impl SparseImageMemoryBindInfo {
         Self {
             image,
             binds: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1512,7 +1512,7 @@ pub struct SparseImageMemoryBind {
     /// The default value is `None`.
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SparseImageMemoryBind {
@@ -1532,7 +1532,7 @@ impl SparseImageMemoryBind {
             offset: [0; 3],
             extent: [0; 3],
             memory: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

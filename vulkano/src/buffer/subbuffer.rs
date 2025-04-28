@@ -357,7 +357,7 @@ where
             let memory_range = MappedMemoryRange {
                 offset: range.start,
                 size: range.end - range.start,
-                _ne: crate::NonExhaustive(()),
+                _ne: crate::NE,
             };
 
             // If there are other read locks being held at this point, they also called
@@ -372,7 +372,7 @@ where
             // - We ensure that memory mappings are always aligned to the non-coherent atom size for
             //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
-            unsafe { allocation.invalidate_range_unchecked(memory_range) }
+            unsafe { allocation.invalidate_range_unchecked(&memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
         }
 
@@ -451,7 +451,7 @@ where
             let memory_range = MappedMemoryRange {
                 offset: range.start,
                 size: range.end - range.start,
-                _ne: crate::NonExhaustive(()),
+                _ne: crate::NE,
             };
 
             // SAFETY:
@@ -460,7 +460,7 @@ where
             // - We ensure that memory mappings are always aligned to the non-coherent atom size for
             //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
-            unsafe { allocation.invalidate_range_unchecked(memory_range) }
+            unsafe { allocation.invalidate_range_unchecked(&memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
         }
 
@@ -708,10 +708,10 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
             let memory_range = MappedMemoryRange {
                 offset: self.range.start,
                 size: self.range.end - self.range.start,
-                _ne: crate::NonExhaustive(()),
+                _ne: crate::NE,
             };
 
-            unsafe { allocation.flush_range_unchecked(memory_range) }.unwrap();
+            unsafe { allocation.flush_range_unchecked(&memory_range) }.unwrap();
         }
 
         let mut state = self.subbuffer.buffer().state();
@@ -1223,15 +1223,15 @@ mod tests {
     #[test]
     fn split_at() {
         let (device, _) = gfx_dev_and_queue!();
-        let allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let buffer = Buffer::new_slice::<u32>(
-            allocator,
-            BufferCreateInfo {
+            &allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
             6,
         )
         .unwrap();
@@ -1260,11 +1260,11 @@ mod tests {
     #[test]
     fn cast_aligned() {
         let (device, _) = gfx_dev_and_queue!();
-        let allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let raw_buffer = RawBuffer::new(
-            device,
-            BufferCreateInfo {
+            &device,
+            &BufferCreateInfo {
                 size: 32,
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
@@ -1282,25 +1282,25 @@ mod tests {
         // Allocate some junk in the same block as the buffer.
         let _junk = allocator
             .allocate(
-                MemoryRequirements {
+                &MemoryRequirements {
                     layout: DeviceLayout::from_size_alignment(17, 1).unwrap(),
                     ..requirements
                 },
                 AllocationType::Linear,
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
                 None,
             )
             .unwrap();
 
         let allocation = allocator
             .allocate(
-                requirements,
+                &requirements,
                 AllocationType::Linear,
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
                 None,
             )
             .unwrap();
-        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
+        let allocation = unsafe { ResourceMemory::from_allocation(&allocator, allocation) };
 
         let buffer = Buffer::from_raw(raw_buffer, BufferMemory::Normal(allocation));
         let buffer = Subbuffer::from(Arc::new(buffer));

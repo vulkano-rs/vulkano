@@ -193,7 +193,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 swapchain_state
                     .swapchain()
                     .acquire_next_image(&AcquireNextImageInfo {
-                        semaphore: Some(semaphore.clone()),
+                        semaphore: Some(semaphore),
                         ..Default::default()
                     })
             };
@@ -770,8 +770,8 @@ unsafe fn create_framebuffers(
                         };
 
                         ImageView::new(
-                            image.clone(),
-                            ImageViewCreateInfo {
+                            image,
+                            &ImageViewCreateInfo {
                                 format: attachment.format,
                                 component_mapping: attachment.component_mapping,
                                 subresource_range: ImageSubresourceRange {
@@ -787,7 +787,7 @@ unsafe fn create_framebuffers(
                         // FIXME:
                         .map_err(Validated::unwrap)
                     })
-                    .collect::<Result<_, _>>()?,
+                    .collect::<Result<Vec<_>, _>>()?,
                 ..Default::default()
             },
         )
@@ -2053,10 +2053,10 @@ fn create_command_buffer(
     // SAFETY: The parameters are valid.
     unsafe {
         raw::RecordingCommandBuffer::new_unchecked(
-            allocator.clone(),
+            allocator,
             queue.queue_family_index(),
             raw::CommandBufferLevel::Primary,
-            raw::CommandBufferBeginInfo {
+            &raw::CommandBufferBeginInfo {
                 usage: raw::CommandBufferUsage::OneTimeSubmit,
                 inheritance_info: None,
                 ..Default::default()

@@ -43,8 +43,8 @@
 //! # let descriptor_set_allocator: std::sync::Arc<vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator> = return;
 //! #
 //! let conversion = SamplerYcbcrConversion::new(
-//!     device.clone(),
-//!     SamplerYcbcrConversionCreateInfo {
+//!     &device,
+//!     &SamplerYcbcrConversionCreateInfo {
 //!         format: Format::G8_B8_R8_3PLANE_420_UNORM,
 //!         ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
 //!         ..Default::default()
@@ -53,9 +53,9 @@
 //! .unwrap();
 //!
 //! let sampler = Sampler::new(
-//!     device.clone(),
-//!     SamplerCreateInfo {
-//!         sampler_ycbcr_conversion: Some(conversion.clone()),
+//!     &device,
+//!     &SamplerCreateInfo {
+//!         sampler_ycbcr_conversion: Some(&conversion),
 //!         ..Default::default()
 //!     },
 //! )
@@ -81,23 +81,26 @@
 //! .unwrap();
 //!
 //! let image = Image::new(
-//!     memory_allocator.clone(),
-//!     ImageCreateInfo {
+//!     &memory_allocator,
+//!     &ImageCreateInfo {
 //!         image_type: ImageType::Dim2d,
 //!         format: Format::G8_B8_R8_3PLANE_420_UNORM,
 //!         extent: [1920, 1080, 1],
 //!         usage: ImageUsage::SAMPLED,
 //!         ..Default::default()
 //!     },
-//!     AllocationCreateInfo::default(),
+//!     &AllocationCreateInfo::default(),
 //! )
 //! .unwrap();
 //!
-//! let create_info = ImageViewCreateInfo {
-//!     sampler_ycbcr_conversion: Some(conversion.clone()),
-//!     ..ImageViewCreateInfo::from_image(&image)
-//! };
-//! let image_view = ImageView::new(image, create_info).unwrap();
+//! let image_view = ImageView::new(
+//!     &image,
+//!     &ImageViewCreateInfo {
+//!         sampler_ycbcr_conversion: Some(&conversion),
+//!         ..ImageViewCreateInfo::from_image(&image)
+//!     },
+//! )
+//! .unwrap();
 //!
 //! let descriptor_set = DescriptorSet::new(
 //!     descriptor_set_allocator.clone(),
@@ -143,17 +146,17 @@ impl SamplerYcbcrConversion {
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: SamplerYcbcrConversionCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SamplerYcbcrConversionCreateInfo<'_>,
     ) -> Result<Arc<SamplerYcbcrConversion>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &SamplerYcbcrConversionCreateInfo,
+        create_info: &SamplerYcbcrConversionCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(Box::new(ValidationError {
@@ -174,8 +177,8 @@ impl SamplerYcbcrConversion {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: SamplerYcbcrConversionCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SamplerYcbcrConversionCreateInfo<'_>,
     ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -213,11 +216,11 @@ impl SamplerYcbcrConversion {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::SamplerYcbcrConversion,
-        create_info: SamplerYcbcrConversionCreateInfo,
+        create_info: &SamplerYcbcrConversionCreateInfo<'_>,
     ) -> Arc<SamplerYcbcrConversion> {
-        let SamplerYcbcrConversionCreateInfo {
+        let &SamplerYcbcrConversionCreateInfo {
             format,
             ycbcr_model,
             ycbcr_range,
@@ -230,7 +233,7 @@ impl SamplerYcbcrConversion {
 
         Arc::new(SamplerYcbcrConversion {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             format,
             ycbcr_model,
@@ -347,7 +350,7 @@ impl_id_counter!(SamplerYcbcrConversion);
 
 /// Parameters to create a new `SamplerYcbcrConversion`.
 #[derive(Clone, Debug)]
-pub struct SamplerYcbcrConversionCreateInfo {
+pub struct SamplerYcbcrConversionCreateInfo<'a> {
     /// The image view format that this conversion will read data from. The conversion cannot be
     /// used with image views of any other format.
     ///
@@ -415,17 +418,17 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// The default value is `false`.
     pub force_explicit_reconstruction: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SamplerYcbcrConversionCreateInfo {
+impl Default for SamplerYcbcrConversionCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SamplerYcbcrConversionCreateInfo {
+impl SamplerYcbcrConversionCreateInfo<'_> {
     /// Returns a default `SamplerYcbcrConversionCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -437,7 +440,7 @@ impl SamplerYcbcrConversionCreateInfo {
             chroma_offset: [ChromaLocation::CositedEven; 2],
             chroma_filter: Filter::Nearest,
             force_explicit_reconstruction: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -905,20 +908,19 @@ mod tests {
     fn feature_not_enabled() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = SamplerYcbcrConversion::new(device, Default::default());
+        let r = SamplerYcbcrConversion::new(&device, &Default::default());
 
-        match r {
-            Err(Validated::ValidationError(err))
-                if matches!(
-                    *err,
-                    ValidationError {
-                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
-                            "sampler_ycbcr_conversion"
-                        )])]),
-                        ..
-                    }
-                ) => {}
-            _ => panic!(),
-        }
+        assert!(matches!(
+            r,
+            Err(Validated::ValidationError(err)) if matches!(
+                *err,
+                ValidationError {
+                    requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
+                        "sampler_ycbcr_conversion",
+                    )])]),
+                    ..
+                },
+            ),
+        ));
     }
 }

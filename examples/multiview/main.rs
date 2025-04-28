@@ -46,10 +46,10 @@ use vulkano::{
 fn main() {
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: InstanceExtensions {
+            enabled_extensions: &InstanceExtensions {
                 // Required to get multiview limits.
                 khr_get_physical_device_properties2: true,
                 ..InstanceExtensions::empty()
@@ -62,7 +62,7 @@ fn main() {
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::empty()
     };
-    let features = DeviceFeatures {
+    let device_features = DeviceFeatures {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on Vulkan 1.0
         // and the device feature on Vulkan 1.1+.
         multiview: true,
@@ -72,7 +72,7 @@ fn main() {
         .enumerate_physical_devices()
         .unwrap()
         .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter(|p| p.supported_features().contains(&features))
+        .filter(|p| p.supported_features().contains(&device_features))
         .filter(|p| {
             // This example renders to two layers of the framebuffer using the multiview extension
             // so we check that at least two views are supported by the device. Not checking this
@@ -110,14 +110,14 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
-            enabled_extensions: device_extensions,
-            enabled_features: features,
+            enabled_extensions: &device_extensions,
+            enabled_features: &device_features,
             ..Default::default()
         },
     )
@@ -125,11 +125,11 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
     let image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::B8G8R8A8_SRGB,
             extent: [512, 512, 1],
@@ -137,11 +137,11 @@ fn main() {
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
 
-    let image_view = ImageView::new_default(image.clone()).unwrap();
+    let image_view = ImageView::new_default(&image).unwrap();
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -162,12 +162,12 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -304,18 +304,18 @@ fn main() {
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     let create_buffer = || {
         Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()

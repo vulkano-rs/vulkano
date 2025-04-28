@@ -1728,7 +1728,7 @@ pub struct RenderPassBeginInfo {
     /// The default value is empty, which must be overridden if the framebuffer has attachments.
     pub clear_values: Vec<Option<ClearValue>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl RenderPassBeginInfo {
@@ -1742,7 +1742,7 @@ impl RenderPassBeginInfo {
             render_area_offset: [0, 0],
             render_area_extent,
             clear_values: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1929,7 +1929,7 @@ pub struct SubpassBeginInfo {
     /// The default value is [`SubpassContents::Inline`].
     pub contents: SubpassContents,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SubpassBeginInfo {
@@ -1945,7 +1945,7 @@ impl SubpassBeginInfo {
     pub const fn new() -> Self {
         Self {
             contents: SubpassContents::Inline,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1970,7 +1970,7 @@ impl SubpassBeginInfo {
 /// Parameters to end the current subpass within a render pass.
 #[derive(Clone, Debug)]
 pub struct SubpassEndInfo {
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SubpassEndInfo {
@@ -1984,9 +1984,7 @@ impl SubpassEndInfo {
     /// Returns a default `SubpassEndInfo`.
     #[inline]
     pub const fn new() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self { _ne: crate::NE }
     }
 
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
@@ -2078,7 +2076,7 @@ pub struct RenderingInfo {
     /// The default value is [`SubpassContents::Inline`].
     pub contents: SubpassContents,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for RenderingInfo {
@@ -2101,7 +2099,7 @@ impl RenderingInfo {
             depth_attachment: None,
             stencil_attachment: None,
             contents: SubpassContents::Inline,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2905,7 +2903,7 @@ pub struct RenderingAttachmentInfo {
     /// The default value is `None`.
     pub clear_value: Option<ClearValue>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl RenderingAttachmentInfo {
@@ -2927,7 +2925,7 @@ impl RenderingAttachmentInfo {
             load_op: AttachmentLoadOp::DontCare,
             store_op: AttachmentStoreOp::DontCare,
             clear_value: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

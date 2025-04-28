@@ -24,7 +24,7 @@ pub struct TessellationState {
     /// The default value is [`TessellationDomainOrigin::UpperLeft`].
     pub domain_origin: TessellationDomainOrigin,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for TessellationState {
@@ -41,7 +41,7 @@ impl TessellationState {
         Self {
             patch_control_points: 3,
             domain_origin: TessellationDomainOrigin::UpperLeft,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

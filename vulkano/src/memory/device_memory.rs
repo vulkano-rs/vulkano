@@ -11,8 +11,7 @@ use crate::{
 };
 use ash::vk;
 use std::{
-    ffi::c_void,
-    fs::File,
+    ffi::{c_int, c_void},
     mem::MaybeUninit,
     num::NonZero,
     ops::Range,
@@ -35,8 +34,8 @@ use std::{
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
-///     device.clone(),
-///     MemoryAllocateInfo {
+///     &device,
+///     &MemoryAllocateInfo {
 ///         allocation_size: 1024,
 ///         memory_type_index,
 ///         ..Default::default()
@@ -74,17 +73,10 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     #[inline]
     pub fn allocate(
-        device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo<'_>,
+        device: &Arc<Device>,
+        allocate_info: &MemoryAllocateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        if !(device.api_version() >= Version::V1_1
-            || device.enabled_extensions().khr_dedicated_allocation)
-        {
-            // Fall back instead of erroring out.
-            allocate_info.dedicated_allocation = None;
-        }
-
-        Self::validate_allocate(&device, &allocate_info, None)?;
+        Self::validate_allocate(device, allocate_info, None)?;
 
         Ok(unsafe { Self::allocate_unchecked(device, allocate_info, None) }?)
     }
@@ -101,18 +93,11 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     #[inline]
     pub unsafe fn import(
-        device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo<'_>,
-        import_info: MemoryImportInfo,
+        device: &Arc<Device>,
+        allocate_info: &MemoryAllocateInfo<'_>,
+        import_info: &MemoryImportInfo,
     ) -> Result<Self, Validated<VulkanError>> {
-        if !(device.api_version() >= Version::V1_1
-            || device.enabled_extensions().khr_dedicated_allocation)
-        {
-            // Fall back instead of erroring out.
-            allocate_info.dedicated_allocation = None;
-        }
-
-        Self::validate_allocate(&device, &allocate_info, Some(&import_info))?;
+        Self::validate_allocate(device, allocate_info, Some(import_info))?;
 
         Ok(unsafe { Self::allocate_unchecked(device, allocate_info, Some(import_info)) }?)
     }
@@ -139,22 +124,15 @@ impl DeviceMemory {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline(never)]
     pub unsafe fn allocate_unchecked(
-        device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo<'_>,
-        import_info: Option<MemoryImportInfo>,
+        device: &Arc<Device>,
+        allocate_info: &MemoryAllocateInfo<'_>,
+        import_info: Option<&MemoryImportInfo>,
     ) -> Result<Self, VulkanError> {
-        if !(device.api_version() >= Version::V1_1
-            || device.enabled_extensions().khr_dedicated_allocation)
-        {
-            // Fall back instead of erroring out
-            allocate_info.dedicated_allocation = None;
-        }
-
-        let imported_handle_type = import_info.as_ref().map(MemoryImportInfo::handle_type);
+        let imported_handle_type = import_info.map(MemoryImportInfo::handle_type);
 
         let handle = {
-            let import_vk = import_info.map(MemoryImportInfo::into_vk);
-            let mut allocate_info_extensions_vk = allocate_info.to_vk_extensions(import_vk);
+            let import_vk = import_info.map(MemoryImportInfo::to_vk);
+            let mut allocate_info_extensions_vk = allocate_info.to_vk_extensions(device, import_vk);
             let allocate_info_vk = allocate_info.to_vk(&mut allocate_info_extensions_vk);
 
             // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
@@ -188,7 +166,7 @@ impl DeviceMemory {
             unsafe { output.assume_init() }
         };
 
-        let MemoryAllocateInfo {
+        let &MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
             dedicated_allocation,
@@ -206,7 +184,7 @@ impl DeviceMemory {
 
         Ok(DeviceMemory {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             allocation_size,
@@ -230,11 +208,11 @@ impl DeviceMemory {
     /// - `allocate_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::DeviceMemory,
-        allocate_info: MemoryAllocateInfo<'_>,
+        allocate_info: &MemoryAllocateInfo<'_>,
     ) -> Self {
-        let MemoryAllocateInfo {
+        let &MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
             dedicated_allocation,
@@ -252,7 +230,7 @@ impl DeviceMemory {
 
         DeviceMemory {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             allocation_size,
@@ -328,15 +306,18 @@ impl DeviceMemory {
     ///
     /// `self` must not be host-mapped already and must be allocated from host-visible memory.
     #[inline]
-    pub fn map(&mut self, map_info: MemoryMapInfo) -> Result<(), Validated<VulkanError>> {
-        self.validate_map(&map_info, None)?;
+    pub fn map(&mut self, map_info: &MemoryMapInfo<'_>) -> Result<(), Validated<VulkanError>> {
+        self.validate_map(map_info, None)?;
 
         Ok(unsafe { self.map_unchecked(map_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
+    pub unsafe fn map_unchecked(
+        &mut self,
+        map_info: &MemoryMapInfo<'_>,
+    ) -> Result<(), VulkanError> {
         unsafe { self.map_unchecked_inner(map_info, None) }
     }
 
@@ -361,10 +342,10 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn map_placed(
         &mut self,
-        map_info: MemoryMapInfo,
+        map_info: &MemoryMapInfo<'_>,
         placed_address: NonNull<c_void>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_map(&map_info, Some(placed_address))?;
+        self.validate_map(map_info, Some(placed_address))?;
 
         Ok(unsafe { self.map_placed_unchecked(map_info, placed_address) }?)
     }
@@ -373,7 +354,7 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn map_placed_unchecked(
         &mut self,
-        map_info: MemoryMapInfo,
+        map_info: &MemoryMapInfo<'_>,
         placed_address: NonNull<c_void>,
     ) -> Result<(), VulkanError> {
         unsafe { self.map_unchecked_inner(map_info, Some(placed_address)) }
@@ -381,7 +362,7 @@ impl DeviceMemory {
 
     fn validate_map(
         &self,
-        map_info: &MemoryMapInfo,
+        map_info: &MemoryMapInfo<'_>,
         placed_address: Option<NonNull<c_void>>,
     ) -> Result<(), Box<ValidationError>> {
         if self.mapping_state.is_some() {
@@ -420,7 +401,7 @@ impl DeviceMemory {
 
     unsafe fn map_unchecked_inner(
         &mut self,
-        map_info: MemoryMapInfo,
+        map_info: &MemoryMapInfo<'_>,
         placed_address: Option<NonNull<c_void>>,
     ) -> Result<(), VulkanError> {
         let device = self.device();
@@ -460,7 +441,7 @@ impl DeviceMemory {
             unsafe { output.assume_init() }
         };
 
-        let MemoryMapInfo {
+        let &MemoryMapInfo {
             flags: _,
             offset,
             size,
@@ -484,15 +465,18 @@ impl DeviceMemory {
     // that's currently being read or written by the host elsewhere, requiring even more locking on
     // each host access.
     #[inline]
-    pub fn unmap(&mut self, unmap_info: MemoryUnmapInfo) -> Result<(), Validated<VulkanError>> {
-        self.validate_unmap(&unmap_info)?;
+    pub fn unmap(
+        &mut self,
+        unmap_info: &MemoryUnmapInfo<'_>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_unmap(unmap_info)?;
 
         unsafe { self.unmap_unchecked(unmap_info) }?;
 
         Ok(())
     }
 
-    fn validate_unmap(&self, unmap_info: &MemoryUnmapInfo) -> Result<(), Box<ValidationError>> {
+    fn validate_unmap(&self, unmap_info: &MemoryUnmapInfo<'_>) -> Result<(), Box<ValidationError>> {
         if self.mapping_state.is_none() {
             return Err(Box::new(ValidationError {
                 problem: "this device memory is not currently host-mapped".into(),
@@ -511,7 +495,7 @@ impl DeviceMemory {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn unmap_unchecked(
         &mut self,
-        unmap_info: MemoryUnmapInfo,
+        unmap_info: &MemoryUnmapInfo<'_>,
     ) -> Result<(), VulkanError> {
         let unmap_info_vk = unmap_info.to_vk(self.handle());
 
@@ -549,9 +533,9 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn invalidate_range(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_memory_range(&memory_range)?;
+        self.validate_memory_range(memory_range)?;
 
         Ok(unsafe { self.invalidate_range_unchecked(memory_range) }?)
     }
@@ -560,7 +544,7 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn invalidate_range_unchecked(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), VulkanError> {
         if self.is_coherent {
             return Ok(());
@@ -595,9 +579,9 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn flush_range(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_memory_range(&memory_range)?;
+        self.validate_memory_range(memory_range)?;
 
         Ok(unsafe { self.flush_range_unchecked(memory_range) }?)
     }
@@ -606,7 +590,7 @@ impl DeviceMemory {
     #[inline]
     pub unsafe fn flush_range_unchecked(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), VulkanError> {
         if self.is_coherent {
             return Ok(());
@@ -629,7 +613,7 @@ impl DeviceMemory {
     // such hardware.
     fn validate_memory_range(
         &self,
-        memory_range: &MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Box<ValidationError>> {
         memory_range
             .validate(self)
@@ -691,7 +675,8 @@ impl DeviceMemory {
         output
     }
 
-    /// Exports the device memory into a Unix file descriptor. The caller owns the returned `File`.
+    /// Exports the device memory into a Unix file descriptor. The caller owns the returned file
+    /// descriptor.
     ///
     /// # Panics
     ///
@@ -700,7 +685,7 @@ impl DeviceMemory {
     pub fn export_fd(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<File, Validated<VulkanError>> {
+    ) -> Result<c_int, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
         Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
@@ -745,35 +730,28 @@ impl DeviceMemory {
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<File, VulkanError> {
+    ) -> Result<c_int, VulkanError> {
         let info_vk = vk::MemoryGetFdInfoKHR::default()
             .memory(self.handle)
             .handle_type(handle_type.into());
 
-        let fns = self.device.fns();
-        let mut output = MaybeUninit::uninit();
-        unsafe {
-            (fns.khr_external_memory_fd.get_memory_fd_khr)(
-                self.device.handle(),
-                &info_vk,
-                output.as_mut_ptr(),
-            )
-        }
-        .result()
-        .map_err(VulkanError::from)?;
+        let fd = {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.khr_external_memory_fd.get_memory_fd_khr)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::io::FromRawFd;
-            let raw_fd = unsafe { output.assume_init() };
-            Ok(unsafe { File::from_raw_fd(raw_fd) })
-        }
+            unsafe { output.assume_init() }
+        };
 
-        #[cfg(not(unix))]
-        {
-            let _ = output;
-            unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
-        }
+        Ok(fd)
     }
 }
 
@@ -806,7 +784,7 @@ impl_id_counter!(DeviceMemory);
 
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]
-pub struct MemoryAllocateInfo<'d> {
+pub struct MemoryAllocateInfo<'a> {
     /// The number of bytes to allocate.
     ///
     /// The default value is `0`, which must be overridden.
@@ -823,7 +801,7 @@ pub struct MemoryAllocateInfo<'d> {
     /// 1.1 and the
     /// [`khr_dedicated_allocation`](crate::device::DeviceExtensions::khr_dedicated_allocation)
     /// extension is not enabled on the device.
-    pub dedicated_allocation: Option<DedicatedAllocation<'d>>,
+    pub dedicated_allocation: Option<DedicatedAllocation<'a>>,
 
     /// The handle types that can be exported from the allocated memory.
     pub export_handle_types: ExternalMemoryHandleTypes,
@@ -837,17 +815,17 @@ pub struct MemoryAllocateInfo<'d> {
     /// The default value is [`MemoryAllocateFlags::empty()`].
     pub flags: MemoryAllocateFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for MemoryAllocateInfo<'static> {
+impl Default for MemoryAllocateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'d> MemoryAllocateInfo<'d> {
+impl<'a> MemoryAllocateInfo<'a> {
     /// Returns a default `MemoryAllocateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -857,13 +835,13 @@ impl<'d> MemoryAllocateInfo<'d> {
             dedicated_allocation: None,
             export_handle_types: ExternalMemoryHandleTypes::empty(),
             flags: MemoryAllocateFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
     #[deprecated(since = "0.36.0")]
     #[inline]
-    pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
+    pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'a>) -> Self {
         Self {
             dedicated_allocation: Some(dedicated_allocation),
             ..Self::new()
@@ -874,7 +852,7 @@ impl<'d> MemoryAllocateInfo<'d> {
         let &Self {
             allocation_size,
             memory_type_index,
-            ref dedicated_allocation,
+            dedicated_allocation,
             export_handle_types,
             flags,
             _ne: _,
@@ -1069,7 +1047,7 @@ impl<'d> MemoryAllocateInfo<'d> {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut MemoryAllocateInfoExtensionsVk,
     ) -> vk::MemoryAllocateInfo<'a> {
@@ -1117,16 +1095,24 @@ impl<'d> MemoryAllocateInfo<'d> {
 
     pub(crate) fn to_vk_extensions(
         &self,
+        device: &Device,
         import_vk: Option<MemoryImportInfoVk>,
     ) -> MemoryAllocateInfoExtensionsVk {
         let &Self {
             allocation_size: _,
             memory_type_index: _,
-            dedicated_allocation,
+            mut dedicated_allocation,
             export_handle_types,
             flags,
             _ne: _,
         } = self;
+
+        if !(device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_dedicated_allocation)
+        {
+            // Fall back instead of erroring out.
+            dedicated_allocation = None;
+        }
 
         let dedicated_vk =
             dedicated_allocation
@@ -1174,22 +1160,21 @@ pub enum MemoryImportInfo {
     ///
     /// # Safety
     ///
-    /// - `file` must be a valid Unix file descriptor.
-    /// - Vulkan will take ownership of `file`, and once the memory is imported, you must not
-    ///   perform any operations on `file` nor on any of its clones/duplicates.
-    /// - If `file` was created by the Vulkan API, and `handle_type` is
+    /// - `fd` must be a valid Unix file descriptor.
+    /// - Vulkan will take ownership of `fd`, and once the memory is imported, you must not perform
+    ///   any operations on `fd` nor on any of its clones/duplicates.
+    /// - If `fd` was created by the Vulkan API, and `handle_type` is
     ///   [`ExternalMemoryHandleType::OpaqueFd`]:
     ///   - [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
     ///     must match those of the original memory allocation.
     ///   - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`],
     ///     the imported one must also use it, and the associated buffer or image must be defined
     ///     identically to the original.
-    /// - If `file` was not created by the Vulkan API, then
-    ///   [`MemoryAllocateInfo::memory_type_index`] must be one of the memory types returned by
-    ///   [`Device::memory_fd_properties`].
+    /// - If `fd` was not created by the Vulkan API, then [`MemoryAllocateInfo::memory_type_index`]
+    ///   must be one of the memory types returned by [`Device::memory_fd_properties`].
     Fd {
         handle_type: ExternalMemoryHandleType,
-        file: File,
+        fd: c_int,
     },
 
     /// Import memory from a Windows handle.
@@ -1220,10 +1205,7 @@ pub enum MemoryImportInfo {
 impl MemoryImportInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         match self {
-            MemoryImportInfo::Fd {
-                handle_type,
-                file: _,
-            } => {
+            MemoryImportInfo::Fd { handle_type, fd: _ } => {
                 if !device.enabled_extensions().khr_external_memory_fd {
                     return Err(Box::new(ValidationError {
                         problem: "is `MemoryImportInfo::Fd`".into(),
@@ -1324,27 +1306,13 @@ impl MemoryImportInfo {
         }
     }
 
-    pub(crate) fn into_vk(self) -> MemoryImportInfoVk {
-        match self {
-            MemoryImportInfo::Fd { handle_type, file } => {
-                #[cfg(unix)]
-                let fd = {
-                    use std::os::fd::IntoRawFd;
-                    file.into_raw_fd()
-                };
-
-                #[cfg(not(unix))]
-                let fd = {
-                    let _ = file;
-                    -1
-                };
-
-                MemoryImportInfoVk::Fd(
-                    vk::ImportMemoryFdInfoKHR::default()
-                        .handle_type(handle_type.into())
-                        .fd(fd),
-                )
-            }
+    pub(crate) fn to_vk(&self) -> MemoryImportInfoVk {
+        match *self {
+            MemoryImportInfo::Fd { handle_type, fd } => MemoryImportInfoVk::Fd(
+                vk::ImportMemoryFdInfoKHR::default()
+                    .handle_type(handle_type.into())
+                    .fd(fd),
+            ),
             MemoryImportInfo::Win32 {
                 handle_type,
                 handle,
@@ -1456,7 +1424,7 @@ vulkan_bitflags! {
 
 /// Parameters of a memory map operation.
 #[derive(Debug)]
-pub struct MemoryMapInfo {
+pub struct MemoryMapInfo<'a> {
     pub flags: MemoryMapFlags,
 
     /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
@@ -1484,17 +1452,17 @@ pub struct MemoryMapInfo {
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for MemoryMapInfo {
+impl Default for MemoryMapInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MemoryMapInfo {
+impl<'a> MemoryMapInfo<'a> {
     /// Returns a default `MemoryMapInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1502,7 +1470,7 @@ impl MemoryMapInfo {
             flags: MemoryMapFlags::empty(),
             offset: 0,
             size: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1697,7 +1665,7 @@ impl MemoryMapInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         memory_vk: vk::DeviceMemory,
         extensions_vk: &'a mut MemoryMapInfoExtensionsVk,
@@ -1752,24 +1720,22 @@ vulkan_bitflags! {
 
 /// Parameters of a memory unmap operation.
 #[derive(Debug)]
-pub struct MemoryUnmapInfo {
-    pub _ne: crate::NonExhaustive,
+pub struct MemoryUnmapInfo<'a> {
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for MemoryUnmapInfo {
+impl Default for MemoryUnmapInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MemoryUnmapInfo {
+impl MemoryUnmapInfo<'_> {
     /// Returns a default `MemoryUnmapInfo`.
     #[inline]
     pub const fn new() -> Self {
-        Self {
-            _ne: crate::NonExhaustive(()),
-        }
+        Self { _ne: crate::NE }
     }
 
     pub(crate) fn validate(&self, _memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
@@ -1876,7 +1842,7 @@ impl MappingState {
 ///
 /// Must be contained within the currently mapped range of the device memory.
 #[derive(Debug)]
-pub struct MappedMemoryRange {
+pub struct MappedMemoryRange<'a> {
     /// The offset (in bytes) from the beginning of the allocation, where the range starts.
     ///
     /// Must be a multiple of the [`non_coherent_atom_size`] device property.
@@ -1896,24 +1862,24 @@ pub struct MappedMemoryRange {
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for MappedMemoryRange {
+impl Default for MappedMemoryRange<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MappedMemoryRange {
+impl MappedMemoryRange<'_> {
     /// Returns a default `MappedMemoryRange`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             offset: 0,
             size: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1991,6 +1957,7 @@ impl MappedMemoryRange {
 /// };
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// #
 /// // The memory type must be mappable.
 /// let memory_type_index = device
 ///     .physical_device()
@@ -2006,8 +1973,8 @@ impl MappedMemoryRange {
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
-///     device.clone(),
-///     MemoryAllocateInfo {
+///     &device,
+///     &MemoryAllocateInfo {
 ///         allocation_size: 1024,
 ///         memory_type_index,
 ///         ..Default::default()
@@ -2477,8 +2444,8 @@ mod tests {
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let _ = DeviceMemory::allocate(
-            device,
-            MemoryAllocateInfo {
+            &device,
+            &MemoryAllocateInfo {
                 allocation_size: 256,
                 memory_type_index: 0,
                 ..Default::default()
@@ -2492,8 +2459,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         assert_should_panic!({
             let _ = DeviceMemory::allocate(
-                device.clone(),
-                MemoryAllocateInfo {
+                &device,
+                &MemoryAllocateInfo {
                     allocation_size: 0,
                     memory_type_index: 0,
                     ..Default::default()
@@ -2520,17 +2487,15 @@ mod tests {
             })
             .unwrap();
 
-        match DeviceMemory::allocate(
-            device,
-            MemoryAllocateInfo {
+        DeviceMemory::allocate(
+            &device,
+            &MemoryAllocateInfo {
                 allocation_size: 0xffffffffffffffff,
                 memory_type_index,
                 ..Default::default()
             },
-        ) {
-            Err(_) => (),
-            Ok(_) => panic!(),
-        }
+        )
+        .unwrap_err();
     }
 
     #[test]
@@ -2557,8 +2522,8 @@ mod tests {
 
         for _ in 0..4 {
             match DeviceMemory::allocate(
-                device.clone(),
-                MemoryAllocateInfo {
+                &device,
+                &MemoryAllocateInfo {
                     allocation_size: heap_size / 3,
                     memory_type_index,
                     ..Default::default()
@@ -2569,7 +2534,7 @@ mod tests {
             }
         }
 
-        panic!()
+        panic!();
     }
 
     #[test]
@@ -2577,8 +2542,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         assert_eq!(device.allocation_count(), 0);
         let _mem1 = DeviceMemory::allocate(
-            device.clone(),
-            MemoryAllocateInfo {
+            &device,
+            &MemoryAllocateInfo {
                 allocation_size: 256,
                 memory_type_index: 0,
                 ..Default::default()
@@ -2588,8 +2553,8 @@ mod tests {
         assert_eq!(device.allocation_count(), 1);
         {
             let _mem2 = DeviceMemory::allocate(
-                device.clone(),
-                MemoryAllocateInfo {
+                &device,
+                &MemoryAllocateInfo {
                     allocation_size: 256,
                     memory_type_index: 0,
                     ..Default::default()
@@ -2628,8 +2593,8 @@ mod tests {
         };
 
         let mut memory = DeviceMemory::allocate(
-            device.clone(),
-            MemoryAllocateInfo {
+            &device,
+            &MemoryAllocateInfo {
                 allocation_size: 16 * 1024,
                 memory_type_index,
                 ..Default::default()
@@ -2654,7 +2619,7 @@ mod tests {
 
         unsafe {
             memory.map_placed(
-                MemoryMapInfo {
+                &MemoryMapInfo {
                     flags: MemoryMapFlags::PLACED,
                     size: memory.allocation_size,
                     ..Default::default()

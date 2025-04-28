@@ -92,9 +92,9 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
-                enabled_extensions: required_extensions,
+            &library,
+            &InstanceCreateInfo {
+                enabled_extensions: &required_extensions,
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 ..Default::default()
             },
@@ -136,10 +136,10 @@ impl App {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -150,14 +150,14 @@ impl App {
 
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         // Apply scoped logic to create `DeviceLocalBuffer` initialized with vertex data.
@@ -173,13 +173,13 @@ impl App {
 
             // Create a CPU-accessible buffer initialized with the vertex data.
             let temporary_accessible_buffer = Buffer::from_iter(
-                memory_allocator.clone(),
-                BufferCreateInfo {
+                &memory_allocator,
+                &BufferCreateInfo {
                     // Specify this buffer will be used as a transfer source.
                     usage: BufferUsage::TRANSFER_SRC,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     // Specify this buffer will be used for uploading to the GPU.
                     memory_type_filter: MemoryTypeFilter::PREFER_HOST
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
@@ -192,15 +192,15 @@ impl App {
             // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT`
             // number of `Vertex`.
             let device_local_buffer = Buffer::new_slice::<MyVertex>(
-                memory_allocator,
-                BufferCreateInfo {
+                &memory_allocator,
+                &BufferCreateInfo {
                     // Specify use as a storage buffer, vertex buffer, and transfer destination.
                     usage: BufferUsage::STORAGE_BUFFER
                         | BufferUsage::TRANSFER_DST
                         | BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     // Specify this buffer will only be used by the device.
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                     ..Default::default()
@@ -296,24 +296,24 @@ impl ApplicationHandler for App {
                 )
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
 
         let (swapchain, images) = {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             let (image_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             Swapchain::new(
-                self.device.clone(),
-                surface,
-                SwapchainCreateInfo {
+                &self.device,
+                &surface,
+                &SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
                     image_format,
                     image_extent: [WINDOW_WIDTH, WINDOW_HEIGHT],
@@ -348,9 +348,10 @@ impl ApplicationHandler for App {
         .unwrap();
 
         let framebuffers = images
-            .into_iter()
-            .map(|img| {
-                let view = ImageView::new_default(img).unwrap();
+            .iter()
+            .map(|image| {
+                let view = ImageView::new_default(image).unwrap();
+
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {

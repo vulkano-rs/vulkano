@@ -1625,7 +1625,7 @@ pub struct CopyDescriptorSet {
     /// The default value is 1.
     pub descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyDescriptorSet {
@@ -1639,7 +1639,7 @@ impl CopyDescriptorSet {
             dst_binding: 0,
             dst_first_array_element: 0,
             descriptor_count: 1,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1897,7 +1897,7 @@ pub struct InvalidateDescriptorSet {
     /// The default value is 1.
     pub descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl InvalidateDescriptorSet {
@@ -1910,7 +1910,7 @@ impl InvalidateDescriptorSet {
             binding,
             first_array_element,
             descriptor_count,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

@@ -39,8 +39,8 @@ fn main() {
     // As with other examples, the first step is to create an instance.
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -80,10 +80,10 @@ fn main() {
 
     // Now initializing the device.
     let (device, _) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
