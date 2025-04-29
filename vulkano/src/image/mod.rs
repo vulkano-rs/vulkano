@@ -2144,7 +2144,7 @@ impl<'a> ImageFormatInfo<'a> {
                 .map(|drm_format_modifier_info| {
                     let sharing = drm_format_modifier_info.sharing.to_owned();
 
-                    OwnedImageDrmFormatModiferInfo::new(sharing, |sharing| {
+                    OwnedImageDrmFormatModifierInfo::new(sharing, |sharing| {
                         ImageDrmFormatModifierInfo {
                             sharing: sharing.as_ref(),
                             _ne: crate::NE,
@@ -2183,7 +2183,7 @@ self_referential! {
         pub(crate) struct OwnedImageFormatInfo {
             inner: ImageFormatInfo<'_>,
             view_formats: Vec<Format>,
-            drm_format_modifier_info: Option<OwnedImageDrmFormatModiferInfo>,
+            drm_format_modifier_info: Option<OwnedImageDrmFormatModifierInfo>,
         }
 
         impl PartialEq, Eq, Hash
@@ -2192,7 +2192,7 @@ self_referential! {
 
 self_referential! {
     mod owned_image_drm_format_modifier_info {
-        struct OwnedImageDrmFormatModiferInfo {
+        struct OwnedImageDrmFormatModifierInfo {
             inner: ImageDrmFormatModifierInfo<'_>,
             sharing: OwnedSharing,
         }
