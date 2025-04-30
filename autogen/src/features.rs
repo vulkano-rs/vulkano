@@ -267,7 +267,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct DeviceFeatures {
             #(#struct_items)*
-            pub _ne: crate::NonExhaustive,
+            pub _ne: crate::NonExhaustive<'static>,
         }
 
         impl Default for DeviceFeatures {

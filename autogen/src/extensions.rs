@@ -589,7 +589,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         pub struct #struct_name {
             #(#struct_items)*
 
-            pub _ne: crate::NonExhaustive,
+            pub _ne: crate::NonExhaustive<'static>,
         }
 
         impl Default for #struct_name {

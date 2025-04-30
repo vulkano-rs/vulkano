@@ -102,7 +102,7 @@ impl DeviceProperties {
                 #[derive(Clone, Debug)]
                 pub struct DeviceProperties {
                     #(#iter)*
-                    pub _ne: crate::NonExhaustive,
+                    pub _ne: crate::NonExhaustive<'static>,
                 }
             }
         };
