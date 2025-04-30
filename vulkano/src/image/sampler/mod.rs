@@ -749,7 +749,7 @@ impl<'a> SamplerCreateInfo<'a> {
             border_color,
             unnormalized_coordinates,
             reduction_mode,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             _ne: _,
         } = self;
 
@@ -1133,7 +1133,7 @@ impl<'a> SamplerCreateInfo<'a> {
     pub(crate) fn to_vk_extensions(&self) -> SamplerCreateInfoExtensionsVk {
         let &Self {
             reduction_mode,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             ..
         } = self;
 

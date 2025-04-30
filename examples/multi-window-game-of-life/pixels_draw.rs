@@ -23,7 +23,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
@@ -40,54 +39,48 @@ pub struct PixelsDrawPipeline {
 }
 
 impl PixelsDrawPipeline {
-    pub fn new(app: &App, gfx_queue: Arc<Queue>, subpass: Subpass) -> PixelsDrawPipeline {
+    pub fn new(app: &App, gfx_queue: &Arc<Queue>, subpass: &Subpass) -> PixelsDrawPipeline {
         let pipeline = {
             let device = gfx_queue.device();
-            let vs = vs::load(device.clone())
+            let vs = vs::load(device)
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let fs = fs::load(device.clone())
+            let fs = fs::load(device)
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let layout = PipelineLayout::from_stages(device, &stages).unwrap();
 
             GraphicsPipeline::new(
-                device.clone(),
+                device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(VertexInputState::default()),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&VertexInputState::default()),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
         };
 
         PixelsDrawPipeline {
-            gfx_queue,
-            subpass,
+            gfx_queue: gfx_queue.clone(),
+            subpass: subpass.clone(),
             pipeline,
             command_buffer_allocator: app.command_buffer_allocator.clone(),
             descriptor_set_allocator: app.descriptor_set_allocator.clone(),

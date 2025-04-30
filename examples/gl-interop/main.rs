@@ -60,7 +60,6 @@ mod linux {
                 viewport::{Viewport, ViewportState},
                 GraphicsPipelineCreateInfo,
             },
-            layout::PipelineDescriptorSetLayoutCreateInfo,
             DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
             PipelineShaderStageCreateInfo,
         },
@@ -150,7 +149,7 @@ mod linux {
                 &library,
                 &InstanceCreateInfo {
                     flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                    enabled_extensions: InstanceExtensions {
+                    enabled_extensions: &InstanceExtensions {
                         khr_get_physical_device_properties2: true,
                         khr_external_memory_capabilities: true,
                         khr_external_semaphore_capabilities: true,
@@ -165,18 +164,20 @@ mod linux {
 
             let _debug_callback = unsafe {
                 DebugUtilsMessenger::new(
-                    instance.clone(),
-                    DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
-                        |message_severity, message_type, callback_data| {
-                            println!(
-                                "{} {:?} {:?}: {}",
-                                callback_data.message_id_name.unwrap_or("unknown"),
-                                message_type,
-                                message_severity,
-                                callback_data.message,
-                            );
-                        },
-                    )),
+                    &instance,
+                    &DebugUtilsMessengerCreateInfo::user_callback(
+                        &DebugUtilsMessengerCallback::new(
+                            |message_severity, message_type, callback_data| {
+                                println!(
+                                    "{} {:?} {:?}: {}",
+                                    callback_data.message_id_name.unwrap_or("unknown"),
+                                    message_type,
+                                    message_severity,
+                                    callback_data.message,
+                                );
+                            },
+                        ),
+                    ),
                 )
             }
             .unwrap();
@@ -191,7 +192,6 @@ mod linux {
                 khr_swapchain: true,
                 ..DeviceExtensions::empty()
             };
-
             let (physical_device, queue_family_index) = instance
                 .enumerate_physical_devices()
                 .unwrap()
@@ -246,14 +246,15 @@ mod linux {
 
             let queue = queues.next().unwrap();
 
-            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+            let memory_allocator =
+                Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
             let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-                device.clone(),
-                Default::default(),
+                &device,
+                &Default::default(),
             ));
             let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-                device.clone(),
-                Default::default(),
+                &device,
+                &Default::default(),
             ));
 
             let vertices = [
@@ -271,7 +272,7 @@ mod linux {
                 },
             ];
             let vertex_buffer = Buffer::from_iter(
-                memory_allocator.clone(),
+                &memory_allocator,
                 &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
@@ -286,7 +287,7 @@ mod linux {
             .unwrap();
 
             let raw_image = RawImage::new(
-                device.clone(),
+                &device,
                 &ImageCreateInfo {
                     flags: ImageCreateFlags::MUTABLE_FORMAT,
                     image_type: ImageType::Dim2d,
@@ -304,8 +305,8 @@ mod linux {
             let image_requirements = raw_image.memory_requirements()[0];
 
             let image_memory = DeviceMemory::allocate(
-                device.clone(),
-                MemoryAllocateInfo {
+                &device,
+                &MemoryAllocateInfo {
                     allocation_size: image_requirements.layout.size(),
                     memory_type_index: memory_allocator
                         .find_memory_type_index(
@@ -332,10 +333,10 @@ mod linux {
                     .unwrap(),
             );
 
-            let image_view = ImageView::new_default(image).unwrap();
+            let image_view = ImageView::new_default(&image).unwrap();
 
             let sampler = Sampler::new(
-                device.clone(),
+                &device,
                 &SamplerCreateInfo {
                     mag_filter: Filter::Linear,
                     min_filter: Filter::Linear,
@@ -350,8 +351,8 @@ mod linux {
 
             let acquire_sem = Arc::new(
                 Semaphore::new(
-                    device.clone(),
-                    SemaphoreCreateInfo {
+                    &device,
+                    &SemaphoreCreateInfo {
                         export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                         ..Default::default()
                     },
@@ -360,8 +361,8 @@ mod linux {
             );
             let release_sem = Arc::new(
                 Semaphore::new(
-                    device.clone(),
-                    SemaphoreCreateInfo {
+                    &device,
+                    &SemaphoreCreateInfo {
                         export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                         ..Default::default()
                     },
@@ -476,16 +477,16 @@ mod linux {
                 let surface_capabilities = self
                     .device
                     .physical_device()
-                    .surface_capabilities(&surface, Default::default())
+                    .surface_capabilities(&surface, &Default::default())
                     .unwrap();
                 let (image_format, _) = self
                     .device
                     .physical_device()
-                    .surface_formats(&surface, Default::default())
+                    .surface_formats(&surface, &Default::default())
                     .unwrap()[0];
 
                 Swapchain::new(
-                    self.device.clone(),
+                    &self.device,
                     &surface,
                     &SwapchainCreateInfo {
                         min_image_count: surface_capabilities.min_image_count.max(2),
@@ -504,7 +505,7 @@ mod linux {
             };
 
             let render_pass = vulkano::single_pass_renderpass!(
-                self.device.clone(),
+                &self.device,
                 attachments: {
                     color: {
                         format: swapchain.image_format(),
@@ -523,51 +524,39 @@ mod linux {
             let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
             let pipeline = {
-                let vs = vs::load(self.device.clone())
-                    .unwrap()
-                    .entry_point("main")
-                    .unwrap();
-                let fs = fs::load(self.device.clone())
-                    .unwrap()
-                    .entry_point("main")
-                    .unwrap();
+                let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+                let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
                 let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
                 let stages = [
-                    PipelineShaderStageCreateInfo::new(vs),
-                    PipelineShaderStageCreateInfo::new(fs),
+                    PipelineShaderStageCreateInfo::new(&vs),
+                    PipelineShaderStageCreateInfo::new(&fs),
                 ];
-                let layout = PipelineLayout::new(
-                    self.device.clone(),
-                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                        .into_pipeline_layout_create_info(self.device.clone())
-                        .unwrap(),
-                )
-                .unwrap();
-                let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+                let layout = PipelineLayout::from_stages(&self.device, &stages).unwrap();
+                let subpass = Subpass::new(&render_pass, 0).unwrap();
 
                 GraphicsPipeline::new(
-                    self.device.clone(),
+                    &self.device,
                     None,
-                    GraphicsPipelineCreateInfo {
-                        stages: stages.into_iter().collect(),
-                        vertex_input_state: Some(vertex_input_state),
-                        input_assembly_state: Some(InputAssemblyState {
+                    &GraphicsPipelineCreateInfo {
+                        stages: &stages,
+                        vertex_input_state: Some(&vertex_input_state),
+                        input_assembly_state: Some(&InputAssemblyState {
                             topology: PrimitiveTopology::TriangleStrip,
                             ..Default::default()
                         }),
-                        viewport_state: Some(ViewportState::default()),
-                        rasterization_state: Some(RasterizationState::default()),
-                        multisample_state: Some(MultisampleState::default()),
-                        color_blend_state: Some(ColorBlendState::with_attachment_states(
-                            subpass.num_color_attachments(),
-                            ColorBlendAttachmentState {
+                        viewport_state: Some(&ViewportState::default()),
+                        rasterization_state: Some(&RasterizationState::default()),
+                        multisample_state: Some(&MultisampleState::default()),
+                        color_blend_state: Some(&ColorBlendState {
+                            attachments: &[ColorBlendAttachmentState {
                                 blend: Some(AttachmentBlend::alpha()),
                                 ..Default::default()
-                            },
-                        )),
-                        dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                        subpass: Some(subpass.into()),
-                        ..GraphicsPipelineCreateInfo::new(layout)
+                            }],
+                            ..Default::default()
+                        }),
+                        dynamic_state: &[DynamicState::Viewport],
+                        subpass: Some((&subpass).into()),
+                        ..GraphicsPipelineCreateInfo::new(&layout)
                     },
                 )
                 .unwrap()
@@ -801,12 +790,12 @@ mod linux {
         images
             .iter()
             .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
+                let view = ImageView::new_default(image).unwrap();
 
                 Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![view],
+                    render_pass,
+                    &FramebufferCreateInfo {
+                        attachments: &[&view],
                         ..Default::default()
                     },
                 )

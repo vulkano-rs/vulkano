@@ -48,16 +48,15 @@ impl PipelineCache {
     /// # use vulkano::device::Device;
     /// use std::{fs::File, io::Read};
     /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData};
-    /// # let device: Arc<Device> = return;
     ///
+    /// # let device: Arc<Device> = return;
+    /// #
     /// let initial_data = {
     ///     let file = File::open("pipeline_cache.bin");
     ///     if let Ok(mut file) = file {
     ///         let mut data = Vec::new();
     ///         if file.read_to_end(&mut data).is_ok() {
-    ///             // This is unsafe because there is no way to be sure that the file contains
-    ///             // valid data.
-    ///             Some(unsafe { PipelineCacheData::new(data) })
+    ///             Some(data)
     ///         } else {
     ///             None
     ///         }
@@ -67,9 +66,13 @@ impl PipelineCache {
     /// };
     ///
     /// let cache = PipelineCache::new(
-    ///     device.clone(),
-    ///     PipelineCacheCreateInfo {
-    ///         initial_data,
+    ///     &device,
+    ///     &PipelineCacheCreateInfo {
+    ///         // This is unsafe because there is no way to be sure that the file contains valid
+    ///         // data.
+    ///         initial_data: initial_data
+    ///             .as_deref()
+    ///             .map(|data| unsafe { PipelineCacheData::new(data) }),
     ///         ..Default::default()
     ///     },
     /// )
@@ -77,17 +80,17 @@ impl PipelineCache {
     /// ```
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: PipelineCacheCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PipelineCacheCreateInfo<'_>,
     ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &PipelineCacheCreateInfo,
+        create_info: &PipelineCacheCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -98,8 +101,8 @@ impl PipelineCache {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: PipelineCacheCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PipelineCacheCreateInfo<'_>,
     ) -> Result<Arc<PipelineCache>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -129,18 +132,18 @@ impl PipelineCache {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::PipelineCache,
-        create_info: PipelineCacheCreateInfo,
+        create_info: &PipelineCacheCreateInfo<'_>,
     ) -> Arc<PipelineCache> {
-        let PipelineCacheCreateInfo {
+        let &PipelineCacheCreateInfo {
             flags,
             initial_data: _,
             _ne: _,
         } = create_info;
 
         Arc::new(PipelineCache {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             handle,
             id: Self::next_id(),
 
@@ -230,10 +233,11 @@ impl PipelineCache {
     /// # use vulkano::device::Device;
     /// use std::{fs::File, io::Read};
     /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData};
-    /// # let device: Arc<Device> = return;
     ///
+    /// # let device: Arc<Device> = return;
+    /// #
     /// // Imagine this is an existing cache that got modified at runtime.
-    /// let current_cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+    /// let current_cache = PipelineCache::new(&device, &Default::default()).unwrap();
     ///
     /// // Load a new pipeline cache from the disk
     /// let new_data = {
@@ -241,9 +245,7 @@ impl PipelineCache {
     ///     if let Ok(mut file) = file {
     ///         let mut data = Vec::new();
     ///         if file.read_to_end(&mut data).is_ok() {
-    ///             // This is unsafe because there is no way to be sure that the file contains
-    ///             // valid data.
-    ///             Some(unsafe { PipelineCacheData::new(data) })
+    ///             Some(data)
     ///         } else {
     ///             None
     ///         }
@@ -253,9 +255,13 @@ impl PipelineCache {
     /// };
     ///
     /// let new_cache = PipelineCache::new(
-    ///     device.clone(),
-    ///     PipelineCacheCreateInfo {
-    ///         initial_data: new_data,
+    ///     &device,
+    ///     &PipelineCacheCreateInfo {
+    ///         // This is unsafe because there is no way to be sure that the file contains valid
+    ///         // data.
+    ///         initial_data: new_data
+    ///             .as_deref()
+    ///             .map(|data| unsafe { PipelineCacheData::new(data) }),
     ///         ..Default::default()
     ///     },
     /// )
@@ -344,7 +350,7 @@ impl_id_counter!(PipelineCache);
 
 /// Parameters to create a new `PipelineCache`.
 #[derive(Clone, Debug)]
-pub struct PipelineCacheCreateInfo {
+pub struct PipelineCacheCreateInfo<'a> {
     /// Additional properties of the pipeline cache.
     ///
     /// The default value is empty.
@@ -356,19 +362,19 @@ pub struct PipelineCacheCreateInfo {
     /// [`PipelineCache::get_data`].
     ///
     /// The default value is `None`.
-    pub initial_data: Option<PipelineCacheData>,
+    pub initial_data: Option<PipelineCacheData<'a>>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for PipelineCacheCreateInfo {
+impl Default for PipelineCacheCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PipelineCacheCreateInfo {
+impl PipelineCacheCreateInfo<'_> {
     /// Returns a default `PipelineCacheCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -397,14 +403,14 @@ impl PipelineCacheCreateInfo {
     pub(crate) fn to_vk(&self) -> vk::PipelineCacheCreateInfo<'_> {
         let &Self {
             flags,
-            ref initial_data,
+            initial_data,
             _ne: _,
         } = self;
 
         let mut val_vk = vk::PipelineCacheCreateInfo::default().flags(flags.into());
 
         if let Some(initial_data) = initial_data {
-            val_vk = val_vk.initial_data(initial_data.as_ref());
+            val_vk = val_vk.initial_data(initial_data.data());
         }
 
         val_vk
@@ -427,10 +433,11 @@ vulkan_bitflags! {
 }
 
 /// Represents the data of a **valid** Vulkan pipeline cache binary.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct PipelineCacheData(Vec<u8>);
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct PipelineCacheData<'a>(&'a [u8]);
 
-impl PipelineCacheData {
+impl<'a> PipelineCacheData<'a> {
     /// Creates new pipeline cache data from the given bytes.
     ///
     /// # Safety
@@ -439,18 +446,18 @@ impl PipelineCacheData {
     ///   implementation. Therefore you can easily crash your application or the system by passing
     ///   wrong data and using it for creating a pipeline cache.
     #[inline]
-    pub unsafe fn new(data: Vec<u8>) -> Self {
+    pub unsafe fn new(data: &'a [u8]) -> Self {
         Self(data)
     }
 
     /// Returns a slice of bytes of the pipeline cache data.
     #[inline]
-    pub fn data(&self) -> &[u8] {
-        &self.0
+    pub fn data(&self) -> &'a [u8] {
+        self.0
     }
 }
 
-impl AsRef<[u8]> for PipelineCacheData {
+impl AsRef<[u8]> for PipelineCacheData<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.data()
@@ -461,28 +468,25 @@ impl AsRef<[u8]> for PipelineCacheData {
 mod tests {
     use crate::{
         pipeline::{
-            cache::PipelineCache, compute::ComputePipelineCreateInfo,
-            layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
-            PipelineShaderStageCreateInfo,
+            cache::PipelineCache, compute::ComputePipelineCreateInfo, ComputePipeline,
+            PipelineLayout, PipelineShaderStageCreateInfo,
         },
         shader::{ShaderModule, ShaderModuleCreateInfo},
     };
+    use std::slice;
 
     #[test]
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let pipeline = PipelineCache::new(device, Default::default()).unwrap();
-        match pipeline.merge([pipeline.as_ref()]) {
-            Err(_) => (),
-            Ok(_) => panic!(),
-        }
+        let pipeline = PipelineCache::new(&device, &Default::default()).unwrap();
+        assert!(pipeline.merge([pipeline.as_ref()]).is_err());
     }
 
     #[test]
     fn cache_returns_same_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+        let cache = PipelineCache::new(&device, &Default::default()).unwrap();
 
         let cs = {
             /*
@@ -497,24 +501,19 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
                     .unwrap();
             module.entry_point("main").unwrap()
         };
 
         let _pipeline = {
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device,
-                Some(cache.clone()),
-                ComputePipelineCreateInfo::new(stage, layout),
+                &device,
+                Some(&cache),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
@@ -529,7 +528,7 @@ mod tests {
     fn cache_returns_different_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+        let cache = PipelineCache::new(&device, &Default::default()).unwrap();
 
         let _first_pipeline = {
             let cs = {
@@ -544,25 +543,19 @@ mod tests {
                     1, 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734,
                     2, 4, 0, 3, 131320, 5, 65789, 65592,
                 ];
-                let module = unsafe {
-                    ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                }
-                .unwrap();
+                let module =
+                    unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
+                        .unwrap();
                 module.entry_point("main").unwrap()
             };
 
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device.clone(),
-                Some(cache.clone()),
-                ComputePipelineCreateInfo::new(stage, layout),
+                &device,
+                Some(&cache),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
@@ -588,25 +581,19 @@ mod tests {
                     327734, 2, 4, 0, 3, 131320, 5, 262203, 7, 8, 7, 327745, 13, 14, 11, 12, 262205,
                     6, 15, 14, 196670, 8, 15, 65789, 65592,
                 ];
-                let module = unsafe {
-                    ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                }
-                .unwrap();
+                let module =
+                    unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
+                        .unwrap();
                 module.entry_point("main").unwrap()
             };
 
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device,
-                Some(cache.clone()),
-                ComputePipelineCreateInfo::new(stage, layout),
+                &device,
+                Some(&cache),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
@@ -624,7 +611,7 @@ mod tests {
     fn cache_data_does_not_change() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+        let cache = PipelineCache::new(&device, &Default::default()).unwrap();
 
         let cs = {
             /*
@@ -639,24 +626,19 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
                     .unwrap();
             module.entry_point("main").unwrap()
         };
 
         let _first_pipeline = {
-            let stage = PipelineShaderStageCreateInfo::new(cs.clone());
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device.clone(),
-                Some(cache.clone()),
-                ComputePipelineCreateInfo::new(stage, layout),
+                &device,
+                Some(&cache),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
@@ -664,18 +646,13 @@ mod tests {
         let cache_data = cache.get_data().unwrap();
 
         let _second_pipeline = {
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device,
-                Some(cache.clone()),
-                ComputePipelineCreateInfo::new(stage, layout),
+                &device,
+                Some(&cache),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };

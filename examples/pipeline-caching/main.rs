@@ -19,6 +19,7 @@ use std::{
     fs::{remove_file, rename, File},
     io::{Read, Write},
     path::{Path, PathBuf},
+    slice,
 };
 use vulkano::{
     device::{
@@ -29,7 +30,6 @@ use vulkano::{
     pipeline::{
         cache::{PipelineCache, PipelineCacheCreateInfo, PipelineCacheData},
         compute::ComputePipelineCreateInfo,
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     VulkanLibrary,
@@ -93,7 +93,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = PipelineCache::new(device.clone(), Default::default()).unwrap();
+    let pipeline_cache = PipelineCache::new(&device, &Default::default()).unwrap();
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
@@ -124,22 +124,14 @@ fn main() {
                 ",
             }
         }
-        let cs = cs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let cs = cs::load(&device).unwrap().entry_point("main").unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(&cs);
+        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
         ComputePipeline::new(
-            device.clone(),
-            Some(pipeline_cache.clone()),
-            ComputePipelineCreateInfo::new(stage, layout),
+            &device,
+            Some(&pipeline_cache),
+            &ComputePipelineCreateInfo::new(stage, &layout),
         )
         .unwrap()
     };
@@ -175,9 +167,7 @@ fn main() {
         if let Ok(mut file) = File::open(relpath("pipeline_cache.bin")) {
             let mut data = Vec::new();
             if file.read_to_end(&mut data).is_ok() {
-                // This is unsafe because there is no way to be sure that the file contains valid
-                // data.
-                Some(unsafe { PipelineCacheData::new(data) })
+                Some(data)
             } else {
                 None
             }
@@ -187,9 +177,12 @@ fn main() {
     };
 
     let second_cache = PipelineCache::new(
-        device,
-        PipelineCacheCreateInfo {
-            initial_data,
+        &device,
+        &PipelineCacheCreateInfo {
+            // This is unsafe because there is no way to be sure that the file contains valid data.
+            initial_data: initial_data
+                .as_deref()
+                .map(|data| unsafe { PipelineCacheData::new(data) }),
             ..Default::default()
         },
     )

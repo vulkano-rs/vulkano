@@ -5,7 +5,8 @@ use crate::{
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use concurrent_slotmap::{hyaline, SlotMap};
-use std::{collections::BTreeMap, iter, mem, slice, sync::Arc};
+use smallvec::{smallvec, SmallVec};
+use std::{iter, mem, slice, sync::Arc};
 use vulkano::{
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, Subbuffer},
@@ -30,7 +31,7 @@ use vulkano::{
     },
     instance::Instance,
     pipeline::{
-        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
         PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::Framebuffer,
@@ -143,71 +144,26 @@ impl BindlessContext {
     /// It is recommended that you share the same pipeline layout object with as many pipelines as
     /// possible in order to reduce the amount of descriptor set (re)binding that is needed.
     ///
-    /// See also [`pipeline_layout_create_info_from_stages`].
-    ///
     /// [global descriptor set layout]: Self::global_set_layout
     /// [local descriptor set layout]: Self::local_set_layout
-    /// [`pipeline_layout_create_info_from_stages`]: Self::pipeline_layout_create_info_from_stages
-    pub fn pipeline_layout_from_stages<'a>(
+    pub fn pipeline_layout_from_stages(
         &self,
-        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
+        stages: &[PipelineShaderStageCreateInfo<'_>],
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
-        PipelineLayout::new(
-            self.device().clone(),
-            self.pipeline_layout_create_info_from_stages(stages),
-        )
-    }
-
-    /// Creates a new bindless pipeline layout create info from the union of the push constant
-    /// requirements of each stage in `stages` for push constant ranges and the [global descriptor
-    /// set layout] and optionally the [local descriptor set layout] for set layouts.
-    ///
-    /// All pipelines that you bind must have been created with a layout created like this or with
-    /// a compatible layout for the bindless system to be able to bind its descriptor sets.
-    ///
-    /// It is recommended that you share the same pipeline layout object with as many pipelines as
-    /// possible in order to reduce the amount of descriptor set (re)binding that is needed.
-    ///
-    /// See also [`pipeline_layout_from_stages`].
-    ///
-    /// [global descriptor set layout]: Self::global_set_layout
-    /// [local descriptor set layout]: Self::local_set_layout
-    /// [`pipeline_layout_from_stages`]: Self::pipeline_layout_from_stages
-    pub fn pipeline_layout_create_info_from_stages<'a>(
-        &self,
-        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
-    ) -> PipelineLayoutCreateInfo {
-        let mut push_constant_ranges = Vec::<PushConstantRange>::new();
-
-        for stage in stages {
-            let entry_point_info = stage.entry_point.info();
-
-            if let Some(range) = &entry_point_info.push_constant_requirements {
-                if let Some(existing_range) =
-                    push_constant_ranges.iter_mut().find(|existing_range| {
-                        existing_range.offset == range.offset && existing_range.size == range.size
-                    })
-                {
-                    // If this range was already used before, add our stage to it.
-                    existing_range.stages |= range.stages;
-                } else {
-                    // If this range is new, insert it.
-                    push_constant_ranges.push(*range);
-                }
-            }
-        }
-
-        let mut set_layouts = vec![self.global_set_layout().clone()];
+        let mut set_layouts: SmallVec<[_; 2]> = smallvec![self.global_set_layout()];
 
         if let Some(local_set_layout) = &self.local_set_layout {
-            set_layouts.push(local_set_layout.clone());
+            set_layouts.push(local_set_layout);
         }
 
-        PipelineLayoutCreateInfo {
-            set_layouts,
-            push_constant_ranges,
-            ..Default::default()
-        }
+        PipelineLayout::new(
+            self.device(),
+            &PipelineLayoutCreateInfo {
+                set_layouts: &set_layouts,
+                push_constant_ranges: &push_constant_ranges_from_stages(stages),
+                ..Default::default()
+            },
+        )
     }
 
     /// Returns the `GlobalDescriptorSet`.
@@ -314,7 +270,7 @@ impl GlobalDescriptorSet {
 
         let hyaline_collector = resources.hyaline_collector();
 
-        let descriptor_count = |n| layout.bindings().get(&n).map_or(0, |b| b.descriptor_count);
+        let descriptor_count = |n| layout.binding(n).map_or(0, |b| b.descriptor_count);
         let max_samplers = descriptor_count(SAMPLER_BINDING);
         let max_sampled_images = descriptor_count(SAMPLED_IMAGE_BINDING);
         let max_storage_images = descriptor_count(STORAGE_IMAGE_BINDING);
@@ -363,62 +319,52 @@ impl GlobalDescriptorSet {
 
         let stages = get_all_supported_shader_stages(device);
 
-        let mut bindings = BTreeMap::from([
-            (
-                SAMPLER_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_samplers,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
-                },
-            ),
-            (
-                SAMPLED_IMAGE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_sampled_images,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
-                },
-            ),
-            (
-                STORAGE_IMAGE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_storage_images,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
-                },
-            ),
-            (
-                STORAGE_BUFFER_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_storage_buffers,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageBuffer)
-                },
-            ),
-        ]);
+        let mut bindings: SmallVec<[_; 5]> = smallvec![
+            DescriptorSetLayoutBinding {
+                binding: SAMPLER_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_samplers,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+            },
+            DescriptorSetLayoutBinding {
+                binding: SAMPLED_IMAGE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_sampled_images,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
+            },
+            DescriptorSetLayoutBinding {
+                binding: STORAGE_IMAGE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_storage_images,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
+            },
+            DescriptorSetLayoutBinding {
+                binding: STORAGE_BUFFER_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_storage_buffers,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::StorageBuffer)
+            },
+        ];
 
         if device.enabled_features().acceleration_structure {
-            bindings.insert(
-                ACCELERATION_STRUCTURE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_acceleration_structures,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::AccelerationStructure)
-                },
-            );
+            bindings.push(DescriptorSetLayoutBinding {
+                binding: ACCELERATION_STRUCTURE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_acceleration_structures,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::AccelerationStructure)
+            });
         }
 
         let layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
+            device,
+            &DescriptorSetLayoutCreateInfo {
                 flags: DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
-                bindings,
+                bindings: &bindings,
                 ..Default::default()
             },
         )?;
@@ -967,7 +913,7 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
     ) -> Result<DescriptorSetAlloc, Validated<VulkanError>> {
         let pool_sizes = layout
             .bindings()
-            .values()
+            .iter()
             .map(|binding| (binding.descriptor_type, binding.descriptor_count))
             .collect::<Vec<_>>();
 
@@ -1055,17 +1001,15 @@ impl LocalDescriptorSet {
         let device = resources.device();
 
         let layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: BTreeMap::from([(
-                    INPUT_ATTACHMENT_BINDING,
-                    DescriptorSetLayoutBinding {
-                        binding_flags: DescriptorBindingFlags::PARTIALLY_BOUND,
-                        descriptor_count: create_info.max_input_attachments,
-                        stages: ShaderStages::FRAGMENT,
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::InputAttachment)
-                    },
-                )]),
+            device,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    binding: INPUT_ATTACHMENT_BINDING,
+                    binding_flags: DescriptorBindingFlags::PARTIALLY_BOUND,
+                    descriptor_count: create_info.max_input_attachments,
+                    stages: ShaderStages::FRAGMENT,
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::InputAttachment)
+                }],
                 ..Default::default()
             },
         )?;

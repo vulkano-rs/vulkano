@@ -811,16 +811,12 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let set_layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    0,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
-                    },
-                )]
-                .into(),
+            &device,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    stages: ShaderStages::all_graphics(),
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
+                }],
                 ..Default::default()
             },
         )
@@ -848,16 +844,12 @@ mod tests {
         let (device2, _) = gfx_dev_and_queue!();
 
         let set_layout = DescriptorSetLayout::new(
-            device1,
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    0,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
-                    },
-                )]
-                .into(),
+            &device1,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    stages: ShaderStages::all_graphics(),
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
+                }],
                 ..Default::default()
             },
         )

@@ -10,7 +10,7 @@ use crate::{
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, NumericType},
     image::{view::ImageView, ImageAspects, ImageLayout, ImageUsage, SampleCount},
-    pipeline::graphics::subpass::PipelineRenderingCreateInfo,
+    pipeline::graphics::subpass::OwnedPipelineRenderingCreateInfo,
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
         ResolveMode, SubpassDescription,
@@ -91,13 +91,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             _ne: _,
         } = &render_pass_begin_info;
 
-        let subpass = render_pass.clone().first_subpass();
+        let subpass = render_pass.first_subpass();
         self.builder_state.render_pass = Some(RenderPassState {
             contents: subpass_begin_info.contents,
             render_area_offset,
             render_area_extent,
 
-            rendering_info: PipelineRenderingCreateInfo::from_subpass(&subpass),
+            rendering_info: OwnedPipelineRenderingCreateInfo::from_subpass(&subpass),
             attachments: Some(RenderPassStateAttachments::from_subpass(
                 &subpass,
                 framebuffer,
@@ -226,13 +226,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         begin_render_pass_state.subpass.next_subpass();
         render_pass_state.contents = subpass_begin_info.contents;
         render_pass_state.rendering_info =
-            PipelineRenderingCreateInfo::from_subpass(&begin_render_pass_state.subpass);
+            OwnedPipelineRenderingCreateInfo::from_subpass(&begin_render_pass_state.subpass);
         render_pass_state.attachments = Some(RenderPassStateAttachments::from_subpass(
             &begin_render_pass_state.subpass,
             begin_render_pass_state.framebuffer.as_ref().unwrap(),
         ));
 
-        if render_pass_state.rendering_info.view_mask != 0 {
+        if render_pass_state.rendering_info.as_ref().view_mask != 0 {
             // When multiview is enabled, at the beginning of each subpass, all
             // non-render pass state is undefined.
             self.builder_state.reset_non_render_pass_states();
@@ -388,7 +388,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             render_area_offset,
             render_area_extent,
 
-            rendering_info: PipelineRenderingCreateInfo::from_rendering_info(&rendering_info),
+            rendering_info: OwnedPipelineRenderingCreateInfo::from_rendering_info(&rendering_info),
             attachments: Some(RenderPassStateAttachments::from_rendering_info(
                 &rendering_info,
             )),
@@ -695,6 +695,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 } => {
                     let attachment_format = *render_pass_state
                         .rendering_info
+                        .as_ref()
                         .color_attachment_formats
                         .get(color_attachment as usize)
                         .ok_or_else(|| {
@@ -753,6 +754,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         ClearAttachment::Depth(_) | ClearAttachment::DepthStencil(_)
                     ) && render_pass_state
                         .rendering_info
+                        .as_ref()
                         .depth_attachment_format
                         .is_none()
                     {
@@ -774,6 +776,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         ClearAttachment::Stencil(_) | ClearAttachment::DepthStencil(_)
                     ) && render_pass_state
                         .rendering_info
+                        .as_ref()
                         .stencil_attachment_format
                         .is_none()
                     {
@@ -855,7 +858,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }));
             }
 
-            if render_pass_state.rendering_info.view_mask != 0 && rect.array_layers != (0..1) {
+            if render_pass_state.rendering_info.as_ref().view_mask != 0
+                && rect.array_layers != (0..1)
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "the current render pass instance has a non-zero `view_mask`, but \
@@ -1084,7 +1089,7 @@ impl RecordingCommandBuffer {
         }
 
         for subpass_desc in render_pass.subpasses() {
-            let SubpassDescription {
+            let &SubpassDescription {
                 flags: _,
                 view_mask: _,
                 input_attachments,
@@ -1100,11 +1105,11 @@ impl RecordingCommandBuffer {
 
             for atch_ref in input_attachments
                 .iter()
+                .chain(color_attachments.iter())
+                .chain(color_resolve_attachments.iter())
+                .chain(depth_stencil_attachment.into_iter())
+                .chain(depth_stencil_resolve_attachment.into_iter())
                 .flatten()
-                .chain(color_attachments.iter().flatten())
-                .chain(color_resolve_attachments.iter().flatten())
-                .chain(depth_stencil_attachment.iter())
-                .chain(depth_stencil_resolve_attachment.iter())
             {
                 let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
 

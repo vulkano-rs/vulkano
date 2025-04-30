@@ -57,9 +57,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            if query + render_pass_state.rendering_info.view_mask.count_ones()
-                > query_pool.query_count()
-            {
+            let view_mask = render_pass_state.rendering_info.as_ref().view_mask;
+
+            if query + view_mask.count_ones() > query_pool.query_count() {
                 return Err(Box::new(ValidationError {
                     problem: "a render subpass with a non-zero `view_mask` is active, but \
                         `query` + the number of views in `view_mask` is greater than \
@@ -139,9 +139,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            if query + render_pass_state.rendering_info.view_mask.count_ones()
-                > query_pool.query_count()
-            {
+            let view_mask = render_pass_state.rendering_info.as_ref().view_mask;
+
+            if query + view_mask.count_ones() > query_pool.query_count() {
                 return Err(Box::new(ValidationError {
                     problem: "a render subpass with a non-zero `view_mask` is active, but \
                         `query` + the number of views in `view_mask` is greater than \
@@ -202,9 +202,9 @@ impl<L> AutoCommandBufferBuilder<L> {
             .validate_write_timestamp(query_pool, query, stage)?;
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            if query + render_pass_state.rendering_info.view_mask.count_ones()
-                > query_pool.query_count()
-            {
+            let view_mask = render_pass_state.rendering_info.as_ref().view_mask;
+
+            if query + view_mask.count_ones() > query_pool.query_count() {
                 return Err(Box::new(ValidationError {
                     problem: "a render subpass with a non-zero `view_mask` is active, but \
                         `query` + the number of views in `view_mask` is greater than \

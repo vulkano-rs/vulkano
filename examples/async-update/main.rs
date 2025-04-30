@@ -431,18 +431,12 @@ impl ApplicationHandler for App {
                 .unwrap()
         };
 
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
         let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
@@ -531,25 +525,25 @@ impl ApplicationHandler for App {
         let subpass = node.subpass().unwrap().clone();
 
         let pipeline = GraphicsPipeline::new(
-            self.device.clone(),
+            &self.device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState {
                     topology: PrimitiveTopology::TriangleStrip,
                     ..Default::default()
                 }),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                viewport_state: Some(&ViewportState::default()),
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                dynamic_state: &[DynamicState::Viewport],
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap();

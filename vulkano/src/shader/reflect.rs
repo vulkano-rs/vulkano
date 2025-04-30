@@ -958,7 +958,7 @@ fn push_constant_requirements(
 }
 
 /// Extracts the `SpecializationConstant` map from `spirv`.
-pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, SpecializationConstant> {
+pub(super) fn specialization_constants(spirv: &Spirv) -> Vec<(u32, SpecializationConstant)> {
     let get_constant_id = |result_id| {
         spirv
             .id(result_id)

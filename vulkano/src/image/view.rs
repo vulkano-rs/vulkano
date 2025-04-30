@@ -1086,7 +1086,7 @@ impl<'a> ImageViewCreateInfo<'a> {
     ) -> ImageViewCreateInfoExtensionsVk {
         let &Self {
             usage,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             ..
         } = self;
 

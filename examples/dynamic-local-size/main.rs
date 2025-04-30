@@ -4,7 +4,7 @@
 // Workgroup parallelism capabilities vary between GPUs and setting them properly is important to
 // achieve the maximal performance that particular device can provide.
 
-use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
+use std::{fs::File, io::BufWriter, path::Path, slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -23,9 +23,8 @@ use vulkano::{
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout, PipelineShaderStageCreateInfo,
     },
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -169,34 +168,25 @@ fn main() {
     println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
     let pipeline = {
-        let cs = cs::load(device.clone())
+        let cs = cs::load(&device)
             .unwrap()
-            .specialize(
-                [
-                    (0, 0.2f32.into()),
-                    (1, local_size_x.into()),
-                    (2, local_size_y.into()),
-                    (3, 0.5f32.into()),
-                    (4, 1.0f32.into()),
-                ]
-                .into_iter()
-                .collect(),
-            )
+            .specialize(&[
+                (0, 0.2f32.into()),
+                (1, local_size_x.into()),
+                (2, local_size_y.into()),
+                (3, 0.5f32.into()),
+                (4, 1.0f32.into()),
+            ])
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(&cs);
+        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
         ComputePipeline::new(
-            device.clone(),
+            &device,
             None,
-            ComputePipelineCreateInfo::new(stage, layout),
+            &ComputePipelineCreateInfo::new(stage, &layout),
         )
         .unwrap()
     };

@@ -253,8 +253,8 @@ impl<W: ?Sized> TaskGraph<W> {
                 if let Some(subpass) = nodes[id.index() as usize].subpass {
                     let render_pass = &render_passes[subpass.render_pass_index].render_pass;
                     task_node.subpass = Some(
-                        vulkano::render_pass::Subpass::from(
-                            render_pass.clone(),
+                        vulkano::render_pass::Subpass::new(
+                            render_pass,
                             subpass.subpass_index as u32,
                         )
                         .unwrap(),
@@ -265,7 +265,7 @@ impl<W: ?Sized> TaskGraph<W> {
 
         let semaphores = match (0..semaphore_count)
             // SAFETY: The parameters are valid.
-            .map(|_| unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) })
+            .map(|_| unsafe { Semaphore::new_unchecked(device, &Default::default()) })
             .collect::<Result<_, _>>()
         {
             Ok(semaphores) => semaphores,
@@ -1255,47 +1255,61 @@ fn create_render_pass(
                 ..Default::default()
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let subpasses = render_pass_state
         .subpasses
         .iter()
-        .map(|subpass_state| SubpassDescription {
-            // FIXME:
-            view_mask: 0,
-            input_attachments: convert_attachments(
-                &render_pass_state,
-                &subpass_state.input_attachments,
-            ),
-            color_attachments: convert_attachments(
-                &render_pass_state,
-                &subpass_state.color_attachments,
-            ),
-            depth_stencil_attachment: subpass_state.depth_stencil_attachment.map(|(id, layout)| {
-                AttachmentReference {
-                    attachment: render_pass_state.attachments.index_of(&id).unwrap() as u32,
-                    layout,
+        .map(|subpass_state| {
+            (
+                convert_attachments(&render_pass_state, &subpass_state.input_attachments),
+                convert_attachments(&render_pass_state, &subpass_state.color_attachments),
+                subpass_state
+                    .depth_stencil_attachment
+                    .map(|(id, layout)| AttachmentReference {
+                        attachment: render_pass_state.attachments.index_of(&id).unwrap() as u32,
+                        layout,
+                        ..Default::default()
+                    }),
+                render_pass_state
+                    .attachments
+                    .keys()
+                    .enumerate()
+                    .filter_map(|(attachment, &id)| {
+                        (!subpass_state.input_attachments.contains_key(&id)
+                            && !subpass_state.color_attachments.contains_key(&id)
+                            && !subpass_state
+                                .depth_stencil_attachment
+                                .is_some_and(|(x, _)| x == id))
+                        .then_some(attachment as u32)
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let subpasses = subpasses
+        .iter()
+        .map(
+            |(
+                input_attachments,
+                color_attachments,
+                depth_stencil_attachment,
+                preserve_attachments,
+            )| {
+                SubpassDescription {
+                    // FIXME:
+                    view_mask: 0,
+                    input_attachments,
+                    color_attachments,
+                    depth_stencil_attachment: Some(depth_stencil_attachment),
+                    preserve_attachments,
                     ..Default::default()
                 }
-            }),
-            preserve_attachments: render_pass_state
-                .attachments
-                .keys()
-                .enumerate()
-                .filter_map(|(attachment, &id)| {
-                    (!subpass_state.input_attachments.contains_key(&id)
-                        && !subpass_state.color_attachments.contains_key(&id)
-                        && !subpass_state
-                            .depth_stencil_attachment
-                            .is_some_and(|(x, _)| x == id))
-                    .then_some(attachment as u32)
-                })
-                .collect(),
-            ..Default::default()
-        })
-        .collect();
+            },
+        )
+        .collect::<Vec<_>>();
 
-    let mut dependencies = Vec::<SubpassDependency>::new();
+    let mut dependencies = Vec::<SubpassDependency<'static>>::new();
 
     // FIXME: subpass dependency chains
     for (src_subpass_index, src_subpass_state) in render_pass_state.subpasses.iter().enumerate() {
@@ -1373,11 +1387,11 @@ fn create_render_pass(
     }
 
     let render_pass = RenderPass::new(
-        resources.physical_resources.device().clone(),
-        RenderPassCreateInfo {
-            attachments,
-            subpasses,
-            dependencies,
+        resources.physical_resources.device(),
+        &RenderPassCreateInfo {
+            attachments: &attachments,
+            subpasses: &subpasses,
+            dependencies: &dependencies,
             ..Default::default()
         },
     )
@@ -1412,7 +1426,7 @@ fn create_render_pass(
 fn convert_attachments(
     render_pass_state: &RenderPassState,
     attachments: &LinearMap<Id, (u32, ImageLayout)>,
-) -> Vec<Option<AttachmentReference>> {
+) -> Vec<Option<AttachmentReference<'static>>> {
     let len = attachments.values().map(|(i, _)| *i + 1).max().unwrap_or(0);
     let mut attachments_out = vec![None; len as usize];
 
@@ -1431,11 +1445,11 @@ fn convert_attachments(
     attachments_out
 }
 
-fn get_or_insert_subpass_dependency(
-    dependencies: &mut Vec<SubpassDependency>,
+fn get_or_insert_subpass_dependency<'a>(
+    dependencies: &'a mut Vec<SubpassDependency<'static>>,
     src_subpass: u32,
     dst_subpass: u32,
-) -> &mut SubpassDependency {
+) -> &'a mut SubpassDependency<'static> {
     let dependency_index = dependencies
         .iter_mut()
         .position(|dependency| {

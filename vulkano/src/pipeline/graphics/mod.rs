@@ -78,9 +78,14 @@
 //! command.
 
 use self::{
-    color_blend::{ColorBlendState, ColorBlendStateExtensionsVk, ColorBlendStateFields1Vk},
+    color_blend::{
+        ColorBlendState, ColorBlendStateExtensionsVk, ColorBlendStateFields1Vk,
+        OwnedColorBlendState,
+    },
     depth_stencil::DepthStencilState,
-    discard_rectangle::{DiscardRectangleState, DiscardRectangleStateFields1Vk},
+    discard_rectangle::{
+        DiscardRectangleState, DiscardRectangleStateFields1Vk, OwnedDiscardRectangleState,
+    },
     input_assembly::{InputAssemblyState, PrimitiveTopology},
     multisample::MultisampleState,
     rasterization::{RasterizationState, RasterizationStateExtensionsVk},
@@ -90,7 +95,7 @@ use self::{
         RequiredVertexInputsVUIDs, VertexInputState, VertexInputStateExtensionsVk,
         VertexInputStateFields1Vk,
     },
-    viewport::{ViewportState, ViewportStateFields1Vk},
+    viewport::{OwnedViewportState, ViewportState, ViewportStateFields1Vk},
 };
 use super::{
     cache::PipelineCache,
@@ -114,12 +119,13 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
-use foldhash::{HashMap, HashSet};
+use foldhash::HashMap;
 use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZero, ptr, sync::Arc,
 };
+use subpass::OwnedPipelineSubpassType;
 
 pub mod color_blend;
 pub mod depth_stencil;
@@ -148,23 +154,23 @@ pub struct GraphicsPipeline {
     flags: PipelineCreateFlags,
     shader_stages: ShaderStages,
     vertex_input_state: Option<VertexInputState>,
-    input_assembly_state: Option<InputAssemblyState>,
-    tessellation_state: Option<TessellationState>,
-    viewport_state: Option<ViewportState>,
-    rasterization_state: RasterizationState,
-    multisample_state: Option<MultisampleState>,
-    depth_stencil_state: Option<DepthStencilState>,
-    color_blend_state: Option<ColorBlendState>,
-    dynamic_state: HashSet<DynamicState>,
+    input_assembly_state: Option<InputAssemblyState<'static>>,
+    tessellation_state: Option<TessellationState<'static>>,
+    viewport_state: Option<OwnedViewportState>,
+    rasterization_state: RasterizationState<'static>,
+    multisample_state: Option<MultisampleState<'static>>,
+    depth_stencil_state: Option<DepthStencilState<'static>>,
+    color_blend_state: Option<OwnedColorBlendState>,
+    dynamic_state: Vec<DynamicState>,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
-    subpass: PipelineSubpassType,
+    subpass: OwnedPipelineSubpassType,
 
-    discard_rectangle_state: Option<DiscardRectangleState>,
+    discard_rectangle_state: Option<OwnedDiscardRectangleState>,
     fragment_shading_rate_state: Option<FragmentShadingRateState>,
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
-    fixed_state: HashSet<DynamicState>,
+    fixed_state: Vec<DynamicState>,
     fragment_tests_stages: Option<FragmentTestsStages>,
     mesh_is_nv: bool,
     // Note: this is only `Some` if `vertex_input_state` is `None`.
@@ -175,11 +181,11 @@ impl GraphicsPipeline {
     /// Creates a new `GraphicsPipeline`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: GraphicsPipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &GraphicsPipelineCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_deref(), &create_info)?;
+        Self::validate_new(device, cache.map(|c| &**c), create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }
@@ -187,19 +193,20 @@ impl GraphicsPipeline {
     fn validate_new(
         device: &Device,
         _cache: Option<&PipelineCache>,
-        create_info: &GraphicsPipelineCreateInfo,
+        create_info: &GraphicsPipelineCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
+
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: GraphicsPipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &GraphicsPipelineCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let handle = {
             let create_info_fields3_vk = create_info.to_vk_fields3();
@@ -254,11 +261,11 @@ impl GraphicsPipeline {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Pipeline,
-        create_info: GraphicsPipelineCreateInfo,
+        create_info: &GraphicsPipelineCreateInfo<'_>,
     ) -> Arc<Self> {
-        let GraphicsPipelineCreateInfo {
+        let &GraphicsPipelineCreateInfo {
             flags,
             stages,
 
@@ -292,10 +299,8 @@ impl GraphicsPipeline {
         let mut fragment_tests_stages = None;
         let mut required_vertex_inputs = None;
 
-        for stage in &stages {
-            let &PipelineShaderStageCreateInfo {
-                ref entry_point, ..
-            } = stage;
+        for stage in stages {
+            let &PipelineShaderStageCreateInfo { entry_point, .. } = stage;
 
             let entry_point_info = entry_point.info();
             let stage = ShaderStage::from(entry_point_info.execution_model);
@@ -354,21 +359,21 @@ impl GraphicsPipeline {
             .map(|x| x + 1)
             .unwrap_or(0);
 
-        let mut fixed_state: HashSet<DynamicState> = Default::default();
+        let mut fixed_state = Vec::new();
 
         if input_assembly_state.is_some() {
-            fixed_state.extend([
+            fixed_state.extend(&[
                 DynamicState::PrimitiveTopology,
                 DynamicState::PrimitiveRestartEnable,
             ]);
         }
 
         if tessellation_state.is_some() {
-            fixed_state.extend([DynamicState::PatchControlPoints]);
+            fixed_state.extend(&[DynamicState::PatchControlPoints]);
         }
 
         if viewport_state.is_some() {
-            fixed_state.extend([
+            fixed_state.extend(&[
                 DynamicState::Viewport,
                 DynamicState::ViewportWithCount,
                 DynamicState::Scissor,
@@ -377,7 +382,7 @@ impl GraphicsPipeline {
         }
 
         if rasterization_state.is_some() {
-            fixed_state.extend([
+            fixed_state.extend(&[
                 DynamicState::RasterizerDiscardEnable,
                 DynamicState::CullMode,
                 DynamicState::FrontFace,
@@ -391,7 +396,7 @@ impl GraphicsPipeline {
         }
 
         if depth_stencil_state.is_some() {
-            fixed_state.extend([
+            fixed_state.extend(&[
                 DynamicState::DepthTestEnable,
                 DynamicState::DepthWriteEnable,
                 DynamicState::DepthCompareOp,
@@ -406,7 +411,7 @@ impl GraphicsPipeline {
         }
 
         if color_blend_state.is_some() {
-            fixed_state.extend([
+            fixed_state.extend(&[
                 DynamicState::LogicOp,
                 DynamicState::BlendConstants,
                 DynamicState::ColorWriteEnable,
@@ -414,37 +419,39 @@ impl GraphicsPipeline {
         }
 
         if discard_rectangle_state.is_some() {
-            fixed_state.extend([DynamicState::DiscardRectangle]);
+            fixed_state.extend(&[DynamicState::DiscardRectangle]);
         }
 
         if fragment_shading_rate_state.is_some() {
-            fixed_state.extend([DynamicState::FragmentShadingRate]);
+            fixed_state.extend(&[DynamicState::FragmentShadingRate]);
         }
 
         fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
             shader_stages,
-            vertex_input_state,
-            input_assembly_state,
-            tessellation_state,
-            viewport_state,
+            vertex_input_state: vertex_input_state.cloned(),
+            input_assembly_state: input_assembly_state.map(InputAssemblyState::to_owned),
+            tessellation_state: tessellation_state.map(TessellationState::to_owned),
+            viewport_state: viewport_state.map(ViewportState::to_owned),
             // Can be None for pipeline libraries, but we don't support that yet
-            rasterization_state: rasterization_state.unwrap(),
-            multisample_state,
-            depth_stencil_state,
-            color_blend_state,
-            dynamic_state,
-            layout: DeviceOwnedDebugWrapper(layout),
-            subpass: subpass.unwrap(),
+            rasterization_state: rasterization_state
+                .map(RasterizationState::to_owned)
+                .unwrap(),
+            multisample_state: multisample_state.map(MultisampleState::to_owned),
+            depth_stencil_state: depth_stencil_state.map(DepthStencilState::to_owned),
+            color_blend_state: color_blend_state.map(ColorBlendState::to_owned),
+            dynamic_state: dynamic_state.to_owned(),
+            layout: DeviceOwnedDebugWrapper(layout.clone()),
+            subpass: subpass.unwrap().to_owned(),
 
-            discard_rectangle_state,
-            fragment_shading_rate_state,
+            discard_rectangle_state: discard_rectangle_state.map(DiscardRectangleState::to_owned),
+            fragment_shading_rate_state: fragment_shading_rate_state.cloned(),
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -486,62 +493,62 @@ impl GraphicsPipeline {
 
     /// Returns the input assembly state used to create this pipeline.
     #[inline]
-    pub fn input_assembly_state(&self) -> Option<&InputAssemblyState> {
+    pub fn input_assembly_state(&self) -> Option<&InputAssemblyState<'_>> {
         self.input_assembly_state.as_ref()
     }
 
     /// Returns the tessellation state used to create this pipeline.
     #[inline]
-    pub fn tessellation_state(&self) -> Option<&TessellationState> {
+    pub fn tessellation_state(&self) -> Option<&TessellationState<'_>> {
         self.tessellation_state.as_ref()
     }
 
     /// Returns the viewport state used to create this pipeline.
     #[inline]
-    pub fn viewport_state(&self) -> Option<&ViewportState> {
-        self.viewport_state.as_ref()
+    pub fn viewport_state(&self) -> Option<&ViewportState<'_>> {
+        self.viewport_state.as_ref().map(|x| x.as_ref())
     }
 
     /// Returns the rasterization state used to create this pipeline.
     #[inline]
-    pub fn rasterization_state(&self) -> &RasterizationState {
+    pub fn rasterization_state(&self) -> &RasterizationState<'_> {
         &self.rasterization_state
     }
 
     /// Returns the multisample state used to create this pipeline.
     #[inline]
-    pub fn multisample_state(&self) -> Option<&MultisampleState> {
+    pub fn multisample_state(&self) -> Option<&MultisampleState<'_>> {
         self.multisample_state.as_ref()
     }
 
     /// Returns the depth/stencil state used to create this pipeline.
     #[inline]
-    pub fn depth_stencil_state(&self) -> Option<&DepthStencilState> {
+    pub fn depth_stencil_state(&self) -> Option<&DepthStencilState<'_>> {
         self.depth_stencil_state.as_ref()
     }
 
     /// Returns the color blend state used to create this pipeline.
     #[inline]
-    pub fn color_blend_state(&self) -> Option<&ColorBlendState> {
-        self.color_blend_state.as_ref()
+    pub fn color_blend_state(&self) -> Option<&ColorBlendState<'_>> {
+        self.color_blend_state.as_ref().map(|x| x.as_ref())
     }
 
     /// Returns the subpass this graphics pipeline is rendering to.
     #[inline]
-    pub fn subpass(&self) -> &PipelineSubpassType {
-        &self.subpass
+    pub fn subpass(&self) -> PipelineSubpassType<'_> {
+        self.subpass.as_ref()
     }
 
     /// Returns the dynamic states of the pipeline.
     #[inline]
-    pub fn dynamic_state(&self) -> &HashSet<DynamicState> {
+    pub fn dynamic_state(&self) -> &[DynamicState] {
         &self.dynamic_state
     }
 
     /// Returns the discard rectangle state used to create this pipeline.
     #[inline]
-    pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
-        self.discard_rectangle_state.as_ref()
+    pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState<'_>> {
+        self.discard_rectangle_state.as_ref().map(|x| x.as_ref())
     }
 
     /// Returns the fragment shading rate state used to create this pipeline.
@@ -558,7 +565,7 @@ impl GraphicsPipeline {
 
     /// Returns the dynamic states that are not dynamic in this pipeline.
     #[inline]
-    pub(crate) fn fixed_state(&self) -> &HashSet<DynamicState> {
+    pub(crate) fn fixed_state(&self) -> &[DynamicState] {
         &self.fixed_state
     }
 
@@ -623,7 +630,7 @@ impl_id_counter!(GraphicsPipeline);
 
 /// Parameters to create a new `GraphicsPipeline`.
 #[derive(Clone, Debug)]
-pub struct GraphicsPipelineCreateInfo {
+pub struct GraphicsPipelineCreateInfo<'a> {
     /// Additional properties of the pipeline.
     ///
     /// The default value is empty.
@@ -634,7 +641,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// Either a vertex shader or mesh shader must always be included. Other stages are optional.
     ///
     /// The default value is empty.
-    pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
+    pub stages: &'a [PipelineShaderStageCreateInfo<'a>],
 
     /// The vertex input state.
     ///
@@ -642,7 +649,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
-    pub vertex_input_state: Option<VertexInputState>,
+    pub vertex_input_state: Option<&'a VertexInputState>,
 
     /// The input assembly state.
     ///
@@ -650,7 +657,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
-    pub input_assembly_state: Option<InputAssemblyState>,
+    pub input_assembly_state: Option<&'a InputAssemblyState<'a>>,
 
     /// The tessellation state.
     ///
@@ -658,7 +665,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
-    pub tessellation_state: Option<TessellationState>,
+    pub tessellation_state: Option<&'a TessellationState<'a>>,
 
     /// The viewport state.
     ///
@@ -668,14 +675,14 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     ///
     /// [rasterizer discarding]: RasterizationState::rasterizer_discard_enable
-    pub viewport_state: Option<ViewportState>,
+    pub viewport_state: Option<&'a ViewportState<'a>>,
 
     /// The rasterization state.
     ///
     /// This must always be `Some`.
     ///
     /// The default value is `None`.
-    pub rasterization_state: Option<RasterizationState>,
+    pub rasterization_state: Option<&'a RasterizationState<'a>>,
 
     /// The multisample state.
     ///
@@ -685,7 +692,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     ///
     /// [rasterizer discarding]: RasterizationState::rasterizer_discard_enable
-    pub multisample_state: Option<MultisampleState>,
+    pub multisample_state: Option<&'a MultisampleState<'a>>,
 
     /// The depth/stencil state.
     ///
@@ -696,7 +703,7 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     ///
     /// [rasterizer discarding]: RasterizationState::rasterizer_discard_enable
-    pub depth_stencil_state: Option<DepthStencilState>,
+    pub depth_stencil_state: Option<&'a DepthStencilState<'a>>,
 
     /// The color blend state.
     ///
@@ -707,24 +714,24 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     ///
     /// [rasterizer discarding]: RasterizationState::rasterizer_discard_enable
-    pub color_blend_state: Option<ColorBlendState>,
+    pub color_blend_state: Option<&'a ColorBlendState<'a>>,
 
     /// The state(s) that will be set dynamically when recording a command buffer.
     ///
     /// The default value is empty.
-    pub dynamic_state: HashSet<DynamicState>,
+    pub dynamic_state: &'a [DynamicState],
 
     /// The pipeline layout to use for the pipeline.
     ///
     /// There is no default value.
-    pub layout: Arc<PipelineLayout>,
+    pub layout: &'a Arc<PipelineLayout>,
 
     /// The render subpass to use.
     ///
     /// This state is always used, and must be provided.
     ///
     /// The default value is `None`.
-    pub subpass: Option<PipelineSubpassType>,
+    pub subpass: Option<PipelineSubpassType<'a>>,
 
     /// The pipeline to use as a base when creating this pipeline.
     ///
@@ -733,29 +740,28 @@ pub struct GraphicsPipelineCreateInfo {
     /// [`PipelineCreateFlags::ALLOW_DERIVATIVES`].
     ///
     /// The default value is `None`.
-    pub base_pipeline: Option<Arc<GraphicsPipeline>>,
+    pub base_pipeline: Option<&'a Arc<GraphicsPipeline>>,
 
     /// The discard rectangle state.
     ///
     /// The default value is `None`.
-    pub discard_rectangle_state: Option<DiscardRectangleState>,
+    pub discard_rectangle_state: Option<&'a DiscardRectangleState<'a>>,
 
     /// The fragment shading rate state.
     ///
     /// The default value is `None`.
-    pub fragment_shading_rate_state: Option<FragmentShadingRateState>,
+    pub fragment_shading_rate_state: Option<&'a FragmentShadingRateState>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl GraphicsPipelineCreateInfo {
+impl<'a> GraphicsPipelineCreateInfo<'a> {
     /// Returns a default `GraphicsPipelineCreateInfo` with the provided `layout`.
-    // TODO: make const
     #[inline]
-    pub fn new(layout: Arc<PipelineLayout>) -> Self {
+    pub const fn new(layout: &'a Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
-            stages: SmallVec::new(),
+            stages: &[],
 
             vertex_input_state: None,
             input_assembly_state: None,
@@ -765,7 +771,7 @@ impl GraphicsPipelineCreateInfo {
             multisample_state: None,
             depth_stencil_state: None,
             color_blend_state: None,
-            dynamic_state: Default::default(),
+            dynamic_state: &[],
 
             layout,
             subpass: None,
@@ -778,35 +784,29 @@ impl GraphicsPipelineCreateInfo {
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
-        Self::new(layout)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let properties = device.physical_device().properties();
 
         let &Self {
             flags,
-            ref stages,
+            stages,
 
-            ref vertex_input_state,
-            ref input_assembly_state,
-            ref tessellation_state,
-            ref viewport_state,
-            ref rasterization_state,
-            ref multisample_state,
-            ref depth_stencil_state,
-            ref color_blend_state,
-            ref dynamic_state,
+            vertex_input_state,
+            input_assembly_state,
+            tessellation_state,
+            viewport_state,
+            rasterization_state,
+            multisample_state,
+            depth_stencil_state,
+            color_blend_state,
+            dynamic_state,
 
-            ref layout,
-            ref subpass,
-            ref base_pipeline,
+            layout,
+            subpass,
+            base_pipeline,
 
-            ref discard_rectangle_state,
-            ref fragment_shading_rate_state,
+            discard_rectangle_state,
+            fragment_shading_rate_state,
 
             _ne: _,
         } = self;
@@ -1290,7 +1290,7 @@ impl GraphicsPipelineCreateInfo {
 
             let &PipelineShaderStageCreateInfo {
                 flags: _,
-                ref entry_point,
+                entry_point,
                 required_subgroup_size: _vk,
                 _ne: _,
             } = stage;
@@ -1566,11 +1566,27 @@ impl GraphicsPipelineCreateInfo {
                 .map_err(|err| err.add_context("fragment_shading_rate_state"))?;
         }
 
-        for dynamic_state in dynamic_state.iter().copied() {
-            dynamic_state.validate_device(device).map_err(|err| {
+        for (state_index, &state) in dynamic_state.iter().enumerate() {
+            state.validate_device(device).map_err(|err| {
                 err.add_context("dynamic_state")
                     .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
             })?;
+
+            for (other_state_index, &other_state) in
+                dynamic_state.iter().enumerate().skip(state_index + 1)
+            {
+                if state == other_state {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`dynamic_state[{}]` and `dynamic_state[{}]` have the same value",
+                            state_index, other_state_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-01442"],
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         /*
@@ -2118,7 +2134,7 @@ impl GraphicsPipelineCreateInfo {
                     PipelineSubpassType::BeginRenderPass(subpass) => subpass
                         .subpass_desc()
                         .depth_stencil_attachment
-                        .as_ref()
+                        .and_then(|x| x.as_ref())
                         .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
@@ -2149,7 +2165,7 @@ impl GraphicsPipelineCreateInfo {
                             if !subpass
                                 .subpass_desc()
                                 .depth_stencil_attachment
-                                .as_ref()
+                                .and_then(|x| x.as_ref())
                                 .filter(|depth_stencil_attachment| {
                                     depth_stencil_attachment
                                         .layout
@@ -2185,7 +2201,7 @@ impl GraphicsPipelineCreateInfo {
                     PipelineSubpassType::BeginRenderPass(subpass) => subpass
                         .subpass_desc()
                         .depth_stencil_attachment
-                        .as_ref()
+                        .and_then(|x| x.as_ref())
                         .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
@@ -2344,7 +2360,7 @@ impl GraphicsPipelineCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a GraphicsPipelineCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut GraphicsPipelineCreateInfoExtensionsVk<'_>,
@@ -2363,9 +2379,9 @@ impl GraphicsPipelineCreateInfo {
             color_blend_state: _,
             dynamic_state: _,
 
-            ref layout,
-            ref subpass,
-            ref base_pipeline,
+            layout,
+            subpass,
+            base_pipeline,
 
             discard_rectangle_state: _,
             fragment_shading_rate_state: _,
@@ -2461,7 +2477,7 @@ impl GraphicsPipelineCreateInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &self,
         fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
     ) -> GraphicsPipelineCreateInfoExtensionsVk<'a> {
@@ -2492,12 +2508,12 @@ impl GraphicsPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &'a self,
         fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
         extensions_vk: &'a mut GraphicsPipelineCreateInfoFields1ExtensionsVk<'_>,
     ) -> GraphicsPipelineCreateInfoFields1Vk<'a> {
-        let Self {
+        let &Self {
             stages,
 
             vertex_input_state,
@@ -2540,7 +2556,7 @@ impl GraphicsPipelineCreateInfo {
             .map(|((vertex_input_state, fields1_vk), extensions_vk)| {
                 vertex_input_state.to_vk(fields1_vk, extensions_vk)
             });
-        let input_assembly_state_vk = input_assembly_state.as_ref().map(InputAssemblyState::to_vk);
+        let input_assembly_state_vk = input_assembly_state.map(InputAssemblyState::to_vk);
         let tessellation_state_vk = tessellation_state
             .as_ref()
             .zip(tessellation_state_extensions_vk.as_mut())
@@ -2553,8 +2569,8 @@ impl GraphicsPipelineCreateInfo {
             .as_ref()
             .zip(rasterization_state_extensions_vk.as_mut())
             .map(|(rasterization_state, extensions_vk)| rasterization_state.to_vk(extensions_vk));
-        let multisample_state_vk = multisample_state.as_ref().map(MultisampleState::to_vk);
-        let depth_stencil_state_vk = depth_stencil_state.as_ref().map(DepthStencilState::to_vk);
+        let multisample_state_vk = multisample_state.map(MultisampleState::to_vk);
+        let depth_stencil_state_vk = depth_stencil_state.map(DepthStencilState::to_vk);
         let color_blend_state_vk = color_blend_state
             .as_ref()
             .zip(color_blend_state_fields1_vk.as_ref())
@@ -2582,11 +2598,11 @@ impl GraphicsPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1_extensions<'a>(
+    pub(crate) fn to_vk_fields1_extensions(
         &self,
         fields2_vk: &'a GraphicsPipelineCreateInfoFields2Vk<'_>,
     ) -> GraphicsPipelineCreateInfoFields1ExtensionsVk<'a> {
-        let Self {
+        let &Self {
             stages,
 
             vertex_input_state,
@@ -2616,14 +2632,11 @@ impl GraphicsPipelineCreateInfo {
             .map(|(vertex_input_state, fields1_vk)| {
                 vertex_input_state.to_vk_extensions(fields1_vk)
             });
-        let tessellation_state_extensions_vk = tessellation_state
-            .as_ref()
-            .map(TessellationState::to_vk_extensions);
-        let rasterization_state_extensions_vk = rasterization_state
-            .as_ref()
-            .map(RasterizationState::to_vk_extensions);
+        let tessellation_state_extensions_vk =
+            tessellation_state.map(TessellationState::to_vk_extensions);
+        let rasterization_state_extensions_vk =
+            rasterization_state.map(RasterizationState::to_vk_extensions);
         let color_blend_state_extensions_vk = color_blend_state
-            .as_ref()
             .zip(color_blend_state_fields1_vk.as_ref())
             .map(|(color_blend_state, fields1_vk)| color_blend_state.to_vk_extensions(fields1_vk));
 
@@ -2636,11 +2649,11 @@ impl GraphicsPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields2<'a>(
+    pub(crate) fn to_vk_fields2(
         &self,
         fields3_vk: &'a GraphicsPipelineCreateInfoFields3Vk,
     ) -> GraphicsPipelineCreateInfoFields2Vk<'a> {
-        let Self {
+        let &Self {
             stages,
 
             vertex_input_state,
@@ -2660,17 +2673,12 @@ impl GraphicsPipelineCreateInfo {
             .zip(stages_fields2_vk)
             .map(|(stage, fields2_vk)| stage.to_vk_fields1(fields2_vk))
             .collect();
-        let vertex_input_state_fields1_vk = vertex_input_state
-            .as_ref()
-            .map(VertexInputState::to_vk_fields1);
-        let viewport_state_fields1_vk = viewport_state.as_ref().map(ViewportState::to_vk_fields1);
-        let color_blend_state_fields1_vk = color_blend_state
-            .as_ref()
-            .map(ColorBlendState::to_vk_fields1);
+        let vertex_input_state_fields1_vk = vertex_input_state.map(VertexInputState::to_vk_fields1);
+        let viewport_state_fields1_vk = viewport_state.map(ViewportState::to_vk_fields1);
+        let color_blend_state_fields1_vk = color_blend_state.map(ColorBlendState::to_vk_fields1);
         let dynamic_states_vk = dynamic_state.iter().copied().map(Into::into).collect();
-        let discard_rectangle_state_fields1_vk = discard_rectangle_state
-            .as_ref()
-            .map(DiscardRectangleState::to_vk_fields1);
+        let discard_rectangle_state_fields1_vk =
+            discard_rectangle_state.map(DiscardRectangleState::to_vk_fields1);
         let rendering_fields1_vk = subpass
             .as_ref()
             .and_then(PipelineSubpassType::to_vk_rendering_fields1);

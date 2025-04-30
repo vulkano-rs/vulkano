@@ -781,24 +781,20 @@ mod tests {
         )
         .unwrap();
         let set_layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    0,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
-                    },
-                )]
-                .into(),
+            &device,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    stages: ShaderStages::all_graphics(),
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+                }],
                 ..Default::default()
             },
         )
         .unwrap();
         let pipeline_layout = PipelineLayout::new(
-            device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts: [set_layout.clone(), set_layout.clone()].into(),
+            &device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &[&set_layout, &set_layout],
                 ..Default::default()
             },
         )
@@ -871,13 +867,12 @@ mod tests {
             .is_some_and(|state| state.descriptor_sets.contains_key(&1)));
 
         let pipeline_layout = PipelineLayout::new(
-            device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts: [
-                    DescriptorSetLayout::new(device.clone(), Default::default()).unwrap(),
-                    set_layout.clone(),
-                ]
-                .into(),
+            &device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &[
+                    &DescriptorSetLayout::new(&device, &Default::default()).unwrap(),
+                    &set_layout,
+                ],
                 ..Default::default()
             },
         )

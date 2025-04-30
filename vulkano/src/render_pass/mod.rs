@@ -22,7 +22,10 @@ use crate::{
     format::{ClearValueType, Format, FormatFeatures, NumericType},
     image::{ImageAspects, ImageLayout, SampleCount},
     instance::InstanceOwnedDebugWrapper,
-    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
+    macros::{
+        impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum,
+    },
+    self_referential::self_referential,
     sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
@@ -58,9 +61,9 @@ mod framebuffer;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let render_pass = RenderPass::new(
-///     device.clone(),
-///     RenderPassCreateInfo {
-///         subpasses: vec![SubpassDescription::default()],
+///     &device,
+///     &RenderPassCreateInfo {
+///         subpasses: &[SubpassDescription::default()],
 ///         ..Default::default()
 ///     },
 /// )
@@ -79,7 +82,7 @@ mod framebuffer;
 /// use vulkano::format::Format;
 ///
 /// let render_pass = single_pass_renderpass!(
-///     device.clone(),
+///     &device,
 ///     attachments: {
 ///         // `foo` is a custom name we give to the first and only attachment.
 ///         foo: {
@@ -106,14 +109,24 @@ pub struct RenderPass {
     id: NonZero<u64>,
 
     flags: RenderPassCreateFlags,
-    attachments: Vec<AttachmentDescription>,
-    subpasses: Vec<SubpassDescription>,
-    dependencies: Vec<SubpassDependency>,
+    attachments: Vec<AttachmentDescription<'static>>,
+    subpasses: OwnedSubpassDescriptions,
+    dependencies: Vec<SubpassDependency<'static>>,
     correlated_view_masks: Vec<u32>,
 
     attachment_use: Vec<AttachmentUse>,
     granularity: [u32; 2],
     views_used: u32,
+}
+
+self_referential! {
+    mod owned_subpass_descriptions {
+        struct OwnedSubpassDescriptions {
+            inner: Vec<SubpassDescription<'_>>,
+            attachment_references: Vec<Option<AttachmentReference<'static>>>,
+            preserve_attachments: Vec<u32>,
+        }
+    }
 }
 
 impl RenderPass {
@@ -124,30 +137,17 @@ impl RenderPass {
     /// - Panics if `create_info.subpasses` is empty.
     /// - Panics if any element of `create_info.attachments` has a `format` of `None`.
     pub fn new(
-        device: Arc<Device>,
-        mut create_info: RenderPassCreateInfo,
+        device: &Arc<Device>,
+        create_info: &RenderPassCreateInfo<'_>,
     ) -> Result<Arc<RenderPass>, Validated<VulkanError>> {
-        for subpass in create_info.subpasses.iter_mut() {
-            for input_attachment in subpass.input_attachments.iter_mut().flatten() {
-                if input_attachment.aspects.is_empty() {
-                    if let Some(attachment_desc) = create_info
-                        .attachments
-                        .get(input_attachment.attachment as usize)
-                    {
-                        input_attachment.aspects = attachment_desc.format.aspects();
-                    }
-                }
-            }
-        }
-
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &RenderPassCreateInfo,
+        create_info: &RenderPassCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateRenderPass2-pCreateInfo-parameter
         create_info
@@ -159,22 +159,9 @@ impl RenderPass {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        mut create_info: RenderPassCreateInfo,
+        device: &Arc<Device>,
+        create_info: &RenderPassCreateInfo<'_>,
     ) -> Result<Arc<RenderPass>, VulkanError> {
-        for subpass in create_info.subpasses.iter_mut() {
-            for input_attachment in subpass.input_attachments.iter_mut().flatten() {
-                if input_attachment.aspects.is_empty() {
-                    if let Some(attachment_desc) = create_info
-                        .attachments
-                        .get(input_attachment.attachment as usize)
-                    {
-                        input_attachment.aspects = attachment_desc.format.aspects();
-                    }
-                }
-            }
-        }
-
         let handle = if device.api_version() >= Version::V1_2
             || device.enabled_extensions().khr_create_renderpass2
         {
@@ -248,11 +235,11 @@ impl RenderPass {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::RenderPass,
-        create_info: RenderPassCreateInfo,
+        create_info: &RenderPassCreateInfo<'_>,
     ) -> Arc<RenderPass> {
-        let RenderPassCreateInfo {
+        let &RenderPassCreateInfo {
             flags,
             attachments,
             subpasses,
@@ -262,18 +249,18 @@ impl RenderPass {
         } = create_info;
 
         let mut attachment_use = vec![AttachmentUse::default(); attachments.len()];
-        let granularity = unsafe { Self::get_granularity(&device, handle) };
+        let granularity = unsafe { Self::get_granularity(device, handle) };
         let mut views_used = 0;
 
-        for subpass_desc in &subpasses {
+        for subpass_desc in subpasses {
             let &SubpassDescription {
                 flags: _,
                 view_mask,
-                ref input_attachments,
-                ref color_attachments,
-                ref color_resolve_attachments,
-                ref depth_stencil_attachment,
-                ref depth_stencil_resolve_attachment,
+                input_attachments,
+                color_attachments,
+                color_resolve_attachments,
+                depth_stencil_attachment,
+                depth_stencil_resolve_attachment,
                 depth_resolve_mode: _,
                 stencil_resolve_mode: _,
                 preserve_attachments: _,
@@ -289,12 +276,12 @@ impl RenderPass {
                     true;
             }
 
-            if let Some(depth_stencil_attachment) = depth_stencil_attachment {
+            if let Some(Some(depth_stencil_attachment)) = depth_stencil_attachment {
                 attachment_use[depth_stencil_attachment.attachment as usize]
                     .depth_stencil_attachment = true;
             }
 
-            if let Some(depth_stencil_resolve_attachment) = depth_stencil_resolve_attachment {
+            if let Some(Some(depth_stencil_resolve_attachment)) = depth_stencil_resolve_attachment {
                 attachment_use[depth_stencil_resolve_attachment.attachment as usize]
                     .depth_stencil_attachment = true;
             }
@@ -306,16 +293,146 @@ impl RenderPass {
             views_used = max(views_used, u32::BITS - view_mask.leading_zeros());
         }
 
+        let attachments = attachments
+            .iter()
+            .map(AttachmentDescription::to_owned)
+            .collect::<Vec<_>>();
+
+        let attachment_references = subpasses
+            .iter()
+            .flat_map(|subpass_desc| {
+                let to_owned = |attachment_ref: &Option<AttachmentReference<'_>>| {
+                    attachment_ref.as_ref().map(AttachmentReference::to_owned)
+                };
+
+                subpass_desc
+                    .input_attachments
+                    .iter()
+                    .map(to_owned)
+                    .map(|mut attachment_ref| {
+                        if let Some(attachment_ref) = attachment_ref.as_mut() {
+                            if attachment_ref.aspects.is_empty() {
+                                let attachment_desc =
+                                    &attachments[attachment_ref.attachment as usize];
+                                attachment_ref.aspects = attachment_desc.format.aspects();
+                            }
+                        }
+
+                        attachment_ref
+                    })
+                    .chain(subpass_desc.color_attachments.iter().map(to_owned))
+                    .chain(subpass_desc.color_resolve_attachments.iter().map(to_owned))
+                    .chain(
+                        subpass_desc
+                            .depth_stencil_attachment
+                            .into_iter()
+                            .map(to_owned),
+                    )
+                    .chain(
+                        subpass_desc
+                            .depth_stencil_resolve_attachment
+                            .into_iter()
+                            .map(to_owned),
+                    )
+            })
+            .collect();
+        let preserve_attachments = subpasses
+            .iter()
+            .flat_map(|subpass_desc| subpass_desc.preserve_attachments.iter().copied())
+            .collect();
+        let subpasses = OwnedSubpassDescriptions::new(
+            attachment_references,
+            preserve_attachments,
+            |attachment_references, preserve_attachment_indices| {
+                let mut references_end = 0;
+                let mut indices_end = 0;
+                let mut subpasses_out = Vec::with_capacity(subpasses.len());
+
+                for subpass_desc in subpasses {
+                    let &SubpassDescription {
+                        flags,
+                        view_mask,
+                        input_attachments,
+                        color_attachments,
+                        color_resolve_attachments,
+                        depth_stencil_attachment,
+                        depth_stencil_resolve_attachment,
+                        depth_resolve_mode,
+                        stencil_resolve_mode,
+                        preserve_attachments,
+                        _ne: _,
+                    } = subpass_desc;
+
+                    subpasses_out.push(SubpassDescription {
+                        flags,
+                        view_mask,
+                        input_attachments: {
+                            let attachment_refs = &attachment_references
+                                [references_end..references_end + input_attachments.len()];
+                            references_end += input_attachments.len();
+
+                            attachment_refs
+                        },
+                        color_attachments: {
+                            let attachment_refs = &attachment_references
+                                [references_end..references_end + color_attachments.len()];
+                            references_end += color_attachments.len();
+
+                            attachment_refs
+                        },
+                        color_resolve_attachments: {
+                            let attachment_refs = &attachment_references
+                                [references_end..references_end + color_resolve_attachments.len()];
+                            references_end += color_resolve_attachments.len();
+
+                            attachment_refs
+                        },
+                        depth_stencil_attachment: depth_stencil_attachment.is_some().then(|| {
+                            let attachment_ref = &attachment_references[references_end];
+                            references_end += 1;
+
+                            attachment_ref
+                        }),
+                        depth_stencil_resolve_attachment: depth_stencil_resolve_attachment
+                            .is_some()
+                            .then(|| {
+                                let attachment_ref = &attachment_references[references_end];
+                                references_end += 1;
+
+                                attachment_ref
+                            }),
+                        depth_resolve_mode,
+                        stencil_resolve_mode,
+                        preserve_attachments: {
+                            let indices = &preserve_attachment_indices
+                                [indices_end..indices_end + preserve_attachments.len()];
+                            indices_end += preserve_attachments.len();
+
+                            indices
+                        },
+                        _ne: crate::NE,
+                    });
+                }
+
+                subpasses_out
+            },
+        );
+
+        let dependencies = dependencies
+            .iter()
+            .map(SubpassDependency::to_owned)
+            .collect();
+
         Arc::new(RenderPass {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
             attachments,
             subpasses,
             dependencies,
-            correlated_view_masks,
+            correlated_view_masks: correlated_view_masks.to_owned(),
 
             attachment_use,
             granularity,
@@ -347,19 +464,19 @@ impl RenderPass {
 
     /// Returns the attachments of the render pass.
     #[inline]
-    pub fn attachments(&self) -> &[AttachmentDescription] {
+    pub fn attachments(&self) -> &[AttachmentDescription<'_>] {
         &self.attachments
     }
 
     /// Returns the subpasses of the render pass.
     #[inline]
-    pub fn subpasses(&self) -> &[SubpassDescription] {
-        &self.subpasses
+    pub fn subpasses(&self) -> &[SubpassDescription<'_>] {
+        self.subpasses.as_ref()
     }
 
     /// Returns the dependencies of the render pass.
     #[inline]
-    pub fn dependencies(&self) -> &[SubpassDependency] {
+    pub fn dependencies(&self) -> &[SubpassDependency<'_>] {
         &self.dependencies
     }
 
@@ -388,9 +505,9 @@ impl RenderPass {
 
     /// Returns the first subpass of the render pass.
     #[inline]
-    pub fn first_subpass(self: Arc<Self>) -> Subpass {
+    pub fn first_subpass(self: &Arc<Self>) -> Subpass {
         Subpass {
-            render_pass: self,
+            render_pass: self.clone(),
             subpass_id: 0, // Guaranteed to exist
         }
     }
@@ -535,6 +652,9 @@ impl RenderPass {
             _ => false,
         };
 
+        let subpasses1 = subpasses1.as_ref();
+        let subpasses2 = subpasses2.as_ref();
+
         if subpasses1.len() != subpasses2.len() {
             return false;
         }
@@ -543,7 +663,7 @@ impl RenderPass {
             .iter()
             .zip(subpasses2.iter())
             .all(|(subpass1, subpass2)| {
-                let SubpassDescription {
+                let &SubpassDescription {
                     flags: flags1,
                     view_mask: view_mask1,
                     input_attachments: input_attachments1,
@@ -556,7 +676,7 @@ impl RenderPass {
                     preserve_attachments: _,
                     _ne: _,
                 } = subpass1;
-                let SubpassDescription {
+                let &SubpassDescription {
                     flags: flags2,
                     view_mask: view_mask2,
                     input_attachments: input_attachments2,
@@ -608,16 +728,16 @@ impl RenderPass {
                 }
 
                 if !are_atch_refs_compatible(
-                    depth_stencil_attachment1.as_ref(),
-                    depth_stencil_attachment2.as_ref(),
+                    depth_stencil_attachment1.and_then(|x| x.as_ref()),
+                    depth_stencil_attachment2.and_then(|x| x.as_ref()),
                 ) {
                     return false;
                 }
 
                 if subpasses1.len() > 1 {
                     if !are_atch_refs_compatible(
-                        depth_stencil_resolve_attachment1.as_ref(),
-                        depth_stencil_resolve_attachment2.as_ref(),
+                        depth_stencil_resolve_attachment1.and_then(|x| x.as_ref()),
+                        depth_stencil_resolve_attachment2.and_then(|x| x.as_ref()),
                     ) {
                         return false;
                     }
@@ -694,10 +814,10 @@ pub struct Subpass {
 impl Subpass {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: Arc<RenderPass>, id: u32) -> Option<Subpass> {
+    pub fn new(render_pass: &Arc<RenderPass>, id: u32) -> Option<Subpass> {
         if (id as usize) < render_pass.subpasses().len() {
             Some(Subpass {
-                render_pass,
+                render_pass: render_pass.clone(),
                 subpass_id: id,
             })
         } else {
@@ -719,7 +839,7 @@ impl Subpass {
 
     /// Returns the subpass description for this subpass.
     #[inline]
-    pub fn subpass_desc(&self) -> &SubpassDescription {
+    pub fn subpass_desc(&self) -> &SubpassDescription<'_> {
         &self.render_pass.subpasses()[self.subpass_id as usize]
     }
 
@@ -758,8 +878,8 @@ impl Subpass {
         subpass_desc
             .color_attachments
             .iter()
+            .chain(subpass_desc.depth_stencil_attachment)
             .flatten()
-            .chain(subpass_desc.depth_stencil_attachment.iter())
             .filter_map(|attachment_ref| {
                 self.render_pass
                     .attachments()
@@ -779,7 +899,7 @@ impl From<Subpass> for (Arc<RenderPass>, u32) {
 
 /// Parameters to create a new `RenderPass`.
 #[derive(Clone, Debug)]
-pub struct RenderPassCreateInfo {
+pub struct RenderPassCreateInfo<'a> {
     /// Additional properties of the render pass.
     ///
     /// The default value is empty.
@@ -788,19 +908,19 @@ pub struct RenderPassCreateInfo {
     /// The attachments available for the render pass.
     ///
     /// The default value is empty.
-    pub attachments: Vec<AttachmentDescription>,
+    pub attachments: &'a [AttachmentDescription<'a>],
 
     /// The subpasses that make up this render pass.
     ///
     /// A render pass must contain at least one subpass.
     ///
     /// The default value is empty, which must be overridden.
-    pub subpasses: Vec<SubpassDescription>,
+    pub subpasses: &'a [SubpassDescription<'a>],
 
     /// The dependencies between subpasses.
     ///
     /// The default value is empty.
-    pub dependencies: Vec<SubpassDependency>,
+    pub dependencies: &'a [SubpassDependency<'a>],
 
     /// If multiview rendering is being used (the subpasses have a nonzero `view_mask`),
     /// this specifies sets of views that may be more efficient to render concurrently, for example
@@ -814,28 +934,28 @@ pub struct RenderPassCreateInfo {
     /// If multiview rendering is not being used, the value must be empty.
     ///
     /// The default value is empty.
-    pub correlated_view_masks: Vec<u32>,
+    pub correlated_view_masks: &'a [u32],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for RenderPassCreateInfo {
+impl Default for RenderPassCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RenderPassCreateInfo {
+impl<'a> RenderPassCreateInfo<'a> {
     /// Returns a default `RenderPassCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: RenderPassCreateFlags::empty(),
-            attachments: Vec::new(),
-            subpasses: Vec::new(),
-            dependencies: Vec::new(),
-            correlated_view_masks: Vec::new(),
+            attachments: &[],
+            subpasses: &[],
+            dependencies: &[],
+            correlated_view_masks: &[],
             _ne: crate::NE,
         }
     }
@@ -843,10 +963,10 @@ impl RenderPassCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref attachments,
-            ref subpasses,
-            ref dependencies,
-            ref correlated_view_masks,
+            attachments,
+            subpasses,
+            dependencies,
+            correlated_view_masks,
             _ne: _,
         } = self;
 
@@ -906,14 +1026,14 @@ impl RenderPassCreateInfo {
             let &SubpassDescription {
                 flags: _,
                 view_mask,
-                ref input_attachments,
-                ref color_attachments,
-                ref color_resolve_attachments,
-                ref depth_stencil_attachment,
-                ref depth_stencil_resolve_attachment,
+                input_attachments,
+                color_attachments,
+                color_resolve_attachments,
+                depth_stencil_attachment,
+                depth_stencil_resolve_attachment,
                 depth_resolve_mode: _,
                 stencil_resolve_mode: _,
-                ref preserve_attachments,
+                preserve_attachments,
                 _ne: _,
             } = subpass_desc;
 
@@ -1138,7 +1258,7 @@ impl RenderPassCreateInfo {
                 }
             }
 
-            if let Some(depth_stencil_attachment) = depth_stencil_attachment.as_ref() {
+            if let Some(Some(depth_stencil_attachment)) = depth_stencil_attachment {
                 let &AttachmentReference {
                     attachment,
                     layout,
@@ -1247,7 +1367,9 @@ impl RenderPassCreateInfo {
                     }
                 }
 
-                if let Some(depth_stencil_resolve_attachment) = depth_stencil_resolve_attachment {
+                if let Some(Some(depth_stencil_resolve_attachment)) =
+                    depth_stencil_resolve_attachment
+                {
                     let &AttachmentReference {
                         attachment: resolve_attachment,
                         layout: _,
@@ -1451,7 +1573,7 @@ impl RenderPassCreateInfo {
                     }));
                 }
 
-                if aspects != format_aspects {
+                if !aspects.is_empty() && aspects != format_aspects {
                     if !(device.api_version() >= Version::V1_1
                         || device.enabled_extensions().khr_create_renderpass2
                         || device.enabled_extensions().khr_maintenance2)
@@ -1641,7 +1763,7 @@ impl RenderPassCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &'a self,
         fields1_vk: &'a RenderPassCreateInfo2Fields1Vk<'_>,
     ) -> vk::RenderPassCreateInfo2<'a> {
@@ -1650,7 +1772,7 @@ impl RenderPassCreateInfo {
             attachments: _,
             subpasses: _,
             dependencies: _,
-            ref correlated_view_masks,
+            correlated_view_masks,
             _ne: _,
         } = self;
         let RenderPassCreateInfo2Fields1Vk {
@@ -1667,16 +1789,16 @@ impl RenderPassCreateInfo {
             .correlated_view_masks(correlated_view_masks)
     }
 
-    pub(crate) fn to_vk2_fields1<'a>(
+    pub(crate) fn to_vk2_fields1(
         &'a self,
         fields2_vk: &'a RenderPassCreateInfo2Fields2Vk<'_>,
         extensions_vk: &'a mut RenderPassCreateInfo2Fields1ExtensionsVk<'_>,
     ) -> RenderPassCreateInfo2Fields1Vk<'a> {
         let &Self {
             flags: _,
-            ref attachments,
-            ref subpasses,
-            ref dependencies,
+            attachments,
+            subpasses,
+            dependencies,
             correlated_view_masks: _,
             _ne: _,
         } = self;
@@ -1713,15 +1835,15 @@ impl RenderPassCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk2_fields1_extensions<'a>(
+    pub(crate) fn to_vk2_fields1_extensions(
         &self,
         fields2_vk: &'a RenderPassCreateInfo2Fields2Vk<'_>,
     ) -> RenderPassCreateInfo2Fields1ExtensionsVk<'a> {
         let &Self {
             flags: _,
-            ref attachments,
-            ref subpasses,
-            ref dependencies,
+            attachments,
+            subpasses,
+            dependencies,
             correlated_view_masks: _,
             _ne: _,
         } = self;
@@ -1750,7 +1872,7 @@ impl RenderPassCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk2_fields2<'a>(
+    pub(crate) fn to_vk2_fields2(
         &self,
         extensions_vk: &'a mut RenderPassCreateInfo2Fields2ExtensionsVk,
     ) -> RenderPassCreateInfo2Fields2Vk<'a> {
@@ -1761,7 +1883,9 @@ impl RenderPassCreateInfo {
             .subpasses
             .iter()
             .zip(subpasses_fields1_extensions_vk)
-            .map(|(subpass, fields1_extensions_vk)| subpass.to_vk2_fields1(fields1_extensions_vk))
+            .map(|(subpass, fields1_extensions_vk)| {
+                subpass.to_vk2_fields1(self.attachments, fields1_extensions_vk)
+            })
             .collect();
 
         RenderPassCreateInfo2Fields2Vk {
@@ -1781,7 +1905,7 @@ impl RenderPassCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a RenderPassCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut RenderPassCreateInfoExtensionsVk<'_>,
@@ -1825,7 +1949,7 @@ impl RenderPassCreateInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &'a self,
         fields1_vk: &'a RenderPassCreateInfoFields1Vk<'_>,
     ) -> RenderPassCreateInfoExtensionsVk<'a> {
@@ -1834,7 +1958,7 @@ impl RenderPassCreateInfo {
             attachments: _,
             subpasses: _,
             dependencies: _,
-            ref correlated_view_masks,
+            correlated_view_masks,
             _ne: _,
         } = self;
         let RenderPassCreateInfoFields1Vk {
@@ -1866,15 +1990,15 @@ impl RenderPassCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &'a self,
         fields2_vk: &'a RenderPassCreateInfoFields2Vk,
     ) -> RenderPassCreateInfoFields1Vk<'a> {
         let &Self {
             flags: _,
-            ref attachments,
-            ref subpasses,
-            ref dependencies,
+            attachments,
+            subpasses,
+            dependencies,
             correlated_view_masks: _,
             _ne: _,
         } = self;
@@ -2023,7 +2147,7 @@ vulkan_bitflags! {
 
 /// Describes an attachment that will be used in a render pass.
 #[derive(Clone, Debug)]
-pub struct AttachmentDescription {
+pub struct AttachmentDescription<'a> {
     /// Additional properties of the attachment.
     ///
     /// The default value is empty.
@@ -2095,17 +2219,17 @@ pub struct AttachmentDescription {
     /// The default value is `None`.
     pub stencil_final_layout: Option<ImageLayout>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for AttachmentDescription {
+impl Default for AttachmentDescription<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AttachmentDescription {
+impl AttachmentDescription<'_> {
     /// Returns a default `AttachmentDescription`.
     #[inline]
     pub const fn new() -> Self {
@@ -2650,6 +2774,13 @@ impl AttachmentDescription {
             final_layout: final_layout.into(),
         }
     }
+
+    pub(crate) fn to_owned(&self) -> AttachmentDescription<'static> {
+        AttachmentDescription {
+            _ne: crate::NE,
+            ..*self
+        }
+    }
 }
 
 pub(crate) struct AttachmentDescription2ExtensionsVk {
@@ -2680,7 +2811,7 @@ vulkan_bitflags! {
 /// more than once in the `SubpassDescription`, then their `AttachmentReference::layout` must be
 /// the same as well.
 #[derive(Debug, Clone)]
-pub struct SubpassDescription {
+pub struct SubpassDescription<'a> {
     /// Additional properties of the subpass.
     ///
     /// The default value is empty.
@@ -2705,7 +2836,7 @@ pub struct SubpassDescription {
     /// `load_op` must not be [`AttachmentLoadOp::Clear`].
     ///
     /// The default value is empty.
-    pub input_attachments: Vec<Option<AttachmentReference>>,
+    pub input_attachments: &'a [Option<AttachmentReference<'a>>],
 
     /// The attachments of the render pass that are to be used as color attachments in this
     /// subpass.
@@ -2715,7 +2846,7 @@ pub struct SubpassDescription {
     /// the physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
-    pub color_attachments: Vec<Option<AttachmentReference>>,
+    pub color_attachments: &'a [Option<AttachmentReference<'a>>],
 
     /// The attachments of the render pass that are to be used as color resolve attachments in this
     /// subpass.
@@ -2729,7 +2860,7 @@ pub struct SubpassDescription {
     /// color attachment must have a `samples` value other than [`SampleCount::Sample1`].
     ///
     /// The default value is empty.
-    pub color_resolve_attachments: Vec<Option<AttachmentReference>>,
+    pub color_resolve_attachments: &'a [Option<AttachmentReference<'a>>],
 
     /// The single attachment of the render pass that is to be used as depth/stencil attachment in
     /// this subpass.
@@ -2738,7 +2869,7 @@ pub struct SubpassDescription {
     /// `color_attachments`.
     ///
     /// The default value is `None`.
-    pub depth_stencil_attachment: Option<AttachmentReference>,
+    pub depth_stencil_attachment: Option<&'a Option<AttachmentReference<'a>>>,
 
     /// The single attachment of the render pass that is to be used as depth/stencil resolve
     /// attachment in this subpass.
@@ -2756,7 +2887,7 @@ pub struct SubpassDescription {
     /// extension must be enabled on the device.
     ///
     /// The default value is `None`.
-    pub depth_stencil_resolve_attachment: Option<AttachmentReference>,
+    pub depth_stencil_resolve_attachment: Option<&'a Option<AttachmentReference<'a>>>,
 
     /// How the resolve operation should be performed for the depth aspect. If set to `None`,
     /// no resolve is performed for the depth aspect.
@@ -2779,33 +2910,33 @@ pub struct SubpassDescription {
     /// The referenced attachments must not be used as any other attachment type in the subpass.
     ///
     /// The default value is empty.
-    pub preserve_attachments: Vec<u32>,
+    pub preserve_attachments: &'a [u32],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubpassDescription {
+impl Default for SubpassDescription<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubpassDescription {
+impl<'a> SubpassDescription<'a> {
     /// Returns a default `SubpassDescription`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: SubpassDescriptionFlags::empty(),
             view_mask: 0,
-            color_attachments: Vec::new(),
-            color_resolve_attachments: Vec::new(),
+            color_attachments: &[],
+            color_resolve_attachments: &[],
             depth_stencil_attachment: None,
             depth_stencil_resolve_attachment: None,
             depth_resolve_mode: None,
             stencil_resolve_mode: None,
-            input_attachments: Vec::new(),
-            preserve_attachments: Vec::new(),
+            input_attachments: &[],
+            preserve_attachments: &[],
             _ne: crate::NE,
         }
     }
@@ -2816,14 +2947,14 @@ impl SubpassDescription {
         let &Self {
             flags,
             view_mask,
-            ref input_attachments,
-            ref color_attachments,
-            ref color_resolve_attachments,
-            ref depth_stencil_attachment,
-            ref depth_stencil_resolve_attachment,
+            input_attachments,
+            color_attachments,
+            color_resolve_attachments,
+            depth_stencil_attachment,
+            depth_stencil_resolve_attachment,
             depth_resolve_mode,
             stencil_resolve_mode,
-            ref preserve_attachments,
+            preserve_attachments,
             _ne: _,
         } = self;
 
@@ -3075,7 +3206,7 @@ impl SubpassDescription {
             }
         }
 
-        if let Some(depth_stencil_attachment) = depth_stencil_attachment {
+        if let Some(Some(depth_stencil_attachment)) = depth_stencil_attachment {
             // VUID-VkSubpassDescription2-pDepthStencilAttachment-parameter
             depth_stencil_attachment
                 .validate(device)
@@ -3174,7 +3305,7 @@ impl SubpassDescription {
                 }));
             }
 
-            if let Some(depth_stencil_resolve_attachment) = depth_stencil_resolve_attachment {
+            if let Some(Some(depth_stencil_resolve_attachment)) = depth_stencil_resolve_attachment {
                 if !(device.api_version() >= Version::V1_2
                     || device.enabled_extensions().khr_depth_stencil_resolve)
                 {
@@ -3428,15 +3559,6 @@ impl SubpassDescription {
                 }
             }
 
-            if aspects.is_empty() {
-                return Err(Box::new(ValidationError {
-                    context: format!("input_attachments[{}].aspects", ref_index).into(),
-                    problem: "is empty for an input attachment".into(),
-                    vuids: &["VUID-VkSubpassDescription2-attachment-02800"],
-                    ..Default::default()
-                }));
-            }
-
             if aspects.intersects(ImageAspects::METADATA) {
                 return Err(Box::new(ValidationError {
                     context: format!("input_attachments[{}].aspects", ref_index).into(),
@@ -3491,7 +3613,7 @@ impl SubpassDescription {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &'a self,
         fields1_vk: &'a SubpassDescription2Fields1Vk<'_>,
         extensions_vk: &'a mut SubpassDescription2ExtensionsVk<'_>,
@@ -3499,7 +3621,7 @@ impl SubpassDescription {
         let &Self {
             flags,
             view_mask,
-            ref preserve_attachments,
+            preserve_attachments,
             ..
         } = self;
         let SubpassDescription2Fields1Vk {
@@ -3546,7 +3668,7 @@ impl SubpassDescription {
         val_vk
     }
 
-    pub(crate) fn to_vk2_extensions<'a>(
+    pub(crate) fn to_vk2_extensions(
         &self,
         fields1_vk: &'a SubpassDescription2Fields1Vk<'_>,
     ) -> SubpassDescription2ExtensionsVk<'a> {
@@ -3578,11 +3700,12 @@ impl SubpassDescription {
         }
     }
 
-    pub(crate) fn to_vk2_fields1<'a>(
+    pub(crate) fn to_vk2_fields1(
         &self,
+        attachments: &[AttachmentDescription<'_>],
         extensions_vk: &'a mut SubpassDescription2Fields1ExtensionsVk,
     ) -> SubpassDescription2Fields1Vk<'a> {
-        let Self {
+        let &Self {
             input_attachments,
             color_attachments,
             color_resolve_attachments,
@@ -3608,7 +3731,7 @@ impl SubpassDescription {
                     .as_ref()
                     .zip(extensions_vk.as_mut())
                     .map_or(unused_vk, |(attachment, extensions_vk)| {
-                        attachment.to_vk2(extensions_vk)
+                        attachment.to_vk2(attachments, extensions_vk)
                     })
             })
             .collect();
@@ -3621,7 +3744,7 @@ impl SubpassDescription {
                     .as_ref()
                     .zip(extensions_vk.as_mut())
                     .map_or(unused_vk, |(attachment, extensions_vk)| {
-                        attachment.to_vk2(extensions_vk)
+                        attachment.to_vk2(attachments, extensions_vk)
                     })
             })
             .collect();
@@ -3634,20 +3757,20 @@ impl SubpassDescription {
                     .as_ref()
                     .zip(extensions_vk.as_mut())
                     .map_or(unused_vk, |(attachment, extensions_vk)| {
-                        attachment.to_vk2(extensions_vk)
+                        attachment.to_vk2(attachments, extensions_vk)
                     })
             })
             .collect();
 
         let depth_stencil_attachment_vk = depth_stencil_attachment
-            .as_ref()
+            .and_then(|x| x.as_ref())
             .zip(depth_stencil_attachment_extensions_vk.as_mut())
-            .map(|(attachment, extensions_vk)| attachment.to_vk2(extensions_vk));
+            .map(|(attachment, extensions_vk)| attachment.to_vk2(attachments, extensions_vk));
 
         let depth_stencil_resolve_attachment_vk = depth_stencil_resolve_attachment
-            .as_ref()
+            .and_then(|x| x.as_ref())
             .zip(depth_stencil_resolve_attachment_extensions_vk.as_mut())
-            .map(|(attachment, extensions_vk)| attachment.to_vk2(extensions_vk));
+            .map(|(attachment, extensions_vk)| attachment.to_vk2(attachments, extensions_vk));
 
         SubpassDescription2Fields1Vk {
             input_attachments_vk,
@@ -3659,7 +3782,7 @@ impl SubpassDescription {
     }
 
     pub(crate) fn to_vk2_fields1_extensions(&self) -> SubpassDescription2Fields1ExtensionsVk {
-        let Self {
+        let &Self {
             input_attachments,
             color_attachments,
             color_resolve_attachments,
@@ -3696,11 +3819,11 @@ impl SubpassDescription {
             .collect();
 
         let depth_stencil_attachment_extensions_vk = depth_stencil_attachment
-            .as_ref()
+            .and_then(|x| x.as_ref())
             .map(AttachmentReference::to_vk2_extensions);
 
         let depth_stencil_resolve_attachment_extensions_vk = depth_stencil_resolve_attachment
-            .as_ref()
+            .and_then(|x| x.as_ref())
             .map(AttachmentReference::to_vk2_extensions);
 
         SubpassDescription2Fields1ExtensionsVk {
@@ -3712,7 +3835,7 @@ impl SubpassDescription {
         }
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &'a self,
         fields1_vk: &'a SubpassDescriptionFields1Vk,
     ) -> vk::SubpassDescription<'a> {
@@ -3726,7 +3849,7 @@ impl SubpassDescription {
             depth_stencil_resolve_attachment: _,
             depth_resolve_mode: _,
             stencil_resolve_mode: _,
-            ref preserve_attachments,
+            preserve_attachments,
             _ne: _,
         } = self;
         let SubpassDescriptionFields1Vk {
@@ -3764,7 +3887,7 @@ impl SubpassDescription {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SubpassDescriptionFields1Vk {
-        let Self {
+        let &Self {
             input_attachments,
             color_attachments,
             color_resolve_attachments,
@@ -3805,7 +3928,7 @@ impl SubpassDescription {
             .collect();
 
         let depth_stencil_attachment_vk = depth_stencil_attachment
-            .as_ref()
+            .and_then(|x| x.as_ref())
             .map(|attachment| attachment.to_vk());
 
         SubpassDescriptionFields1Vk {
@@ -3905,7 +4028,7 @@ vulkan_bitflags! {
 
 /// A reference to an attachment in a subpass description of a render pass.
 #[derive(Clone, Debug)]
-pub struct AttachmentReference {
+pub struct AttachmentReference<'a> {
     /// The number of the attachment being referred to.
     ///
     /// The default value is `0`.
@@ -3949,17 +4072,17 @@ pub struct AttachmentReference {
     /// The default value is [`ImageAspects::empty()`].
     pub aspects: ImageAspects,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for AttachmentReference {
+impl Default for AttachmentReference<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AttachmentReference {
+impl AttachmentReference<'_> {
     /// Returns a default `AttachmentReference`.
     #[inline]
     pub const fn new() -> Self {
@@ -4089,15 +4212,21 @@ impl AttachmentReference {
 
     fn to_vk2<'a>(
         &self,
+        attachments: &[AttachmentDescription<'_>],
         extensions_vk: &'a mut AttachmentReference2ExtensionsVk,
     ) -> vk::AttachmentReference2<'a> {
         let &Self {
             attachment,
             layout,
             stencil_layout: _,
-            aspects,
+            mut aspects,
             _ne: _,
         } = self;
+
+        if aspects.is_empty() {
+            let attachment_desc = &attachments[attachment as usize];
+            aspects = attachment_desc.format.aspects();
+        }
 
         let mut val_vk = vk::AttachmentReference2::default()
             .attachment(attachment)
@@ -4135,6 +4264,13 @@ impl AttachmentReference {
             layout: layout.into(),
         }
     }
+
+    fn to_owned(&self) -> AttachmentReference<'static> {
+        AttachmentReference {
+            _ne: crate::NE,
+            ..*self
+        }
+    }
 }
 
 #[derive(Default)]
@@ -4163,7 +4299,7 @@ pub(crate) struct AttachmentReference2ExtensionsVk {
 /// submitted after the render pass instance ends (for `dst_subpass`). The values must not both be
 /// `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SubpassDependency {
+pub struct SubpassDependency<'a> {
     /// The index of the subpass that writes the data that `dst_subpass` is going to use.
     ///
     /// `None` specifies an external dependency.
@@ -4228,17 +4364,17 @@ pub struct SubpassDependency {
     /// [`VIEW_LOCAL`]: DependencyFlags::VIEW_LOCAL
     pub view_offset: i32,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubpassDependency {
+impl Default for SubpassDependency<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubpassDependency {
+impl SubpassDependency<'_> {
     /// Returns a default `SubpassDependency`.
     #[inline]
     pub const fn new() -> Self {
@@ -4536,6 +4672,13 @@ impl SubpassDependency {
             dependency_flags: dependency_flags.into(),
         }
     }
+
+    pub(crate) fn to_owned(&self) -> SubpassDependency<'static> {
+        SubpassDependency {
+            _ne: crate::NE,
+            ..*self
+        }
+    }
 }
 
 pub(crate) struct SubpassDependency2ExtensionsVk {
@@ -4658,9 +4801,9 @@ mod tests {
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
         let _ = RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
+            &device,
+            &RenderPassCreateInfo {
+                subpasses: &[SubpassDescription::default()],
                 ..Default::default()
             },
         )
@@ -4676,7 +4819,7 @@ mod tests {
         }
 
         single_pass_renderpass!(
-            device,
+            &device,
             attachments: {
                 a1: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
                 a2: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
@@ -4702,7 +4845,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = single_pass_renderpass!(
-            device,
+            &device,
             attachments: {
                 a: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
             },
