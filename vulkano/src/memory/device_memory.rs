@@ -1380,14 +1380,12 @@ impl MemoryImportInfo {
                 // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
                 let memory_type_bits = device
                     .memory_win32_handle_properties(*handle_type, *handle)
-                    .map_err(|e| match e {
-                        Validated::Error(vulkan_error) => Box::new(ValidationError {
-                            context: "memory_win32_handle_properties".into(),
-                            problem: format!("Vulkan error {:?}", vulkan_error).into(),
+                    .map_err(|_| {
+                        Box::new(ValidationError {
+                            problem: "`Device::memory_win32_handle_properties` returned an error"
+                                .into(),
                             ..Default::default()
-                        }),
-                        Validated::ValidationError(err) => err,
-                    })?
+                        })
                     .memory_type_bits;
 
                 if (memory_type_bits & (1u32 << memory_type_index)) == 0 {
