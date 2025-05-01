@@ -1326,6 +1326,7 @@ impl Device {
         handle: vk::HANDLE,
     ) -> Result<MemoryWin32HandleProperties, Validated<VulkanError>> {
         self.validate_memory_win32_handle_properties(handle_type)?;
+
         Ok(unsafe { self.memory_win32_handle_properties_unchecked(handle_type, handle)? })
     }
 
