@@ -1367,7 +1367,7 @@ impl Device {
         handle: vk::HANDLE,
     ) -> Result<MemoryWin32HandleProperties, VulkanError> {
         let fns = self.fns();
-        let mut properties = ash::vk::MemoryWin32HandlePropertiesKHR::default();
+        let mut properties = vk::MemoryWin32HandlePropertiesKHR::default();
         debug_assert!(self.enabled_extensions().khr_external_memory_win32);
         unsafe {
             (fns.khr_external_memory_win32
