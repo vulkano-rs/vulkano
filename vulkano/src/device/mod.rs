@@ -1298,7 +1298,6 @@ impl Device {
         Ok(MemoryFdProperties::from_vk(&memory_fd_properties))
     }
 
-    #[inline]
     /// Retrieves the memory properties of a Windows handle.
     ///
     /// This function retrieves the Vulkan memory properties associated with a Windows handle,
@@ -1320,6 +1319,7 @@ impl Device {
     /// * The `khr_external_memory_win32` extension must be enabled on the device.
     /// * `handleType` must not be one of the handle types defined as opaque.
     /// * `handle` must be a valid handle of type `handle_type`.
+    #[inline]
     pub fn memory_win32_handle_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
