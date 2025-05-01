@@ -6,12 +6,12 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    DeviceSize, RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use ash::vk;
 use std::{
-    ffi::{c_int, c_void},
+    ffi::c_void,
     mem::MaybeUninit,
     num::NonZero,
     ops::Range,
@@ -685,7 +685,7 @@ impl DeviceMemory {
     pub fn export_fd(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<c_int, Validated<VulkanError>> {
+    ) -> Result<RawFd, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
         Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
@@ -730,7 +730,7 @@ impl DeviceMemory {
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<c_int, VulkanError> {
+    ) -> Result<RawFd, VulkanError> {
         let info_vk = vk::MemoryGetFdInfoKHR::default()
             .memory(self.handle)
             .handle_type(handle_type.into());
@@ -1174,7 +1174,7 @@ pub enum MemoryImportInfo {
     ///   must be one of the memory types returned by [`Device::memory_fd_properties`].
     Fd {
         handle_type: ExternalMemoryHandleType,
-        fd: c_int,
+        fd: RawFd,
     },
 
     /// Import memory from a Windows handle.

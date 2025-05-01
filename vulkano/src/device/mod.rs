@@ -113,14 +113,14 @@ use crate::{
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::{ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements},
-    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
-    VulkanObject,
+    RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk::{self, Handle};
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    ffi::{c_char, c_int, CString},
+    ffi::{c_char, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     marker::PhantomData,
     mem::MaybeUninit,
@@ -1230,7 +1230,7 @@ impl Device {
     pub unsafe fn memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
-        fd: c_int,
+        fd: RawFd,
     ) -> Result<MemoryFdProperties, Validated<VulkanError>> {
         self.validate_memory_fd_properties(handle_type, fd)?;
 
@@ -1240,7 +1240,7 @@ impl Device {
     fn validate_memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
-        _fd: c_int,
+        _fd: RawFd,
     ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_external_memory_fd {
             return Err(Box::new(ValidationError {
@@ -1272,7 +1272,7 @@ impl Device {
     pub unsafe fn memory_fd_properties_unchecked(
         &self,
         handle_type: ExternalMemoryHandleType,
-        fd: c_int,
+        fd: RawFd,
     ) -> Result<MemoryFdProperties, VulkanError> {
         let mut memory_fd_properties = MemoryFdProperties::to_mut_vk();
 

@@ -180,6 +180,12 @@ pub use vk::DeviceAddress;
 /// A [`DeviceAddress`] that is known not to equal zero.
 pub type NonNullDeviceAddress = NonZero<DeviceAddress>;
 
+/// Raw file descriptors.
+///
+/// This is the same type alias as [`std::os::fd::RawFd`] except that it isn't gated with
+/// conditional compilation.
+pub type RawFd = std::ffi::c_int;
+
 /// Represents a region of device addresses with a stride.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct StridedDeviceAddressRegion {
