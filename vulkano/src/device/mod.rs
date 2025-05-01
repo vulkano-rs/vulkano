@@ -1338,11 +1338,10 @@ impl Device {
 
         if !enabled_extensions.khr_external_memory_win32 {
             return Err(Box::new(ValidationError {
-                problem: "The `khr_external_memory_win32` extension must be enabled.".into(),
-                vuids: &["VUID-vkGetMemoryWin32HandlePropertiesKHR-device-parameter"],
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_memory_win32",
                 )])]),
+                vuids: &["VUID-vkGetMemoryWin32HandlePropertiesKHR-device-parameter"],
                 ..Default::default()
             }));
         }
