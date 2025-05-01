@@ -1356,6 +1356,7 @@ impl Device {
                 ..Default::default()
             }));
         }
+
         Ok(())
     }
 
