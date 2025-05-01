@@ -1391,8 +1391,12 @@ impl MemoryImportInfo {
                 if (memory_type_bits & (1u32 << memory_type_index)) == 0 {
                     return Err(Box::new(ValidationError {
                         context: "memory_type_index".into(),
-                        problem: "is not among the valid memory types for the given D3D handle"
-                            .into(),
+                        problem: format!(
+                            "the memory type index `{}` is not importable, as returned by \
+                            `Device::memory_win32_handle_properties`",
+                            memory_type_index,
+                        )
+                        .into(),
                         vuids: &["VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645"],
                         ..Default::default()
                     }));
