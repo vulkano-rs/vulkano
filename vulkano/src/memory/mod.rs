@@ -836,6 +836,17 @@ impl MemoryRequirements {
     }
 }
 
+/// Returned via
+/// [`khr_external_memory_win32::get_memory_win32_handle_properties_khr`] when querying
+/// the properties of a memory object's external Win32 handle.
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryWin32HandleProperties {
+    /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
+    /// type whose index is the same as the position of the bit can be used.
+    /// Corresponds to `memory_type_bits` in the original Vulkan struct.
+    pub memory_type_bits: u32,
+}
+
 pub(crate) struct MemoryRequirements2ExtensionsVk {
     pub(crate) dedicated_vk: Option<vk::MemoryDedicatedRequirements<'static>>,
 }
