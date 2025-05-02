@@ -140,7 +140,6 @@ pub use vk::Handle;
 mod tests;
 
 pub mod acceleration_structure;
-mod aliasable_box;
 pub mod buffer;
 mod cache;
 pub mod command_buffer;
@@ -162,6 +161,7 @@ pub mod query;
 mod range_map;
 pub mod range_set;
 pub mod render_pass;
+mod self_referential;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;

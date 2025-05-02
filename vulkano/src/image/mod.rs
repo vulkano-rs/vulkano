@@ -57,13 +57,14 @@ use self::{sys::RawImage, view::ImageViewType};
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    macros::{self_referential, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
         allocator::{AllocationCreateInfo, MemoryAllocator, MemoryAllocatorError},
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
+    self_referential::self_referential,
     swapchain::Swapchain,
     sync::{future::AccessError, AccessConflict, CurrentAccess, OwnedSharing, Sharing},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
