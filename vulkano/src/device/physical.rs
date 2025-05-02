@@ -940,7 +940,7 @@ impl PhysicalDevice {
         info: &ExternalBufferInfo<'_>,
     ) -> ExternalBufferProperties {
         self.external_buffer_properties
-            .get_or_insert(info.to_owned(), |info| {
+            .get_or_insert(info.wrap(), || {
                 /* Input */
 
                 let info_vk = info.to_vk();
@@ -972,7 +972,10 @@ impl PhysicalDevice {
                     };
                 }
 
-                ExternalBufferProperties::from_vk(&properties_vk)
+                (
+                    info.to_owned(),
+                    ExternalBufferProperties::from_vk(&properties_vk),
+                )
             })
     }
 
@@ -1028,7 +1031,7 @@ impl PhysicalDevice {
         &self,
         info: ExternalFenceInfo,
     ) -> ExternalFenceProperties {
-        self.external_fence_properties.get_or_insert(info, |info| {
+        self.external_fence_properties.get_or_insert(&info, || {
             /* Input */
 
             let info_vk = info.to_vk();
@@ -1060,7 +1063,10 @@ impl PhysicalDevice {
                 };
             }
 
-            ExternalFenceProperties::from_vk(&properties_vk)
+            (
+                info.clone(),
+                ExternalFenceProperties::from_vk(&properties_vk),
+            )
         })
     }
 
@@ -1116,42 +1122,44 @@ impl PhysicalDevice {
         &self,
         info: ExternalSemaphoreInfo,
     ) -> ExternalSemaphoreProperties {
-        self.external_semaphore_properties
-            .get_or_insert(info, |info| {
-                /* Input */
+        self.external_semaphore_properties.get_or_insert(&info, || {
+            /* Input */
 
-                let mut info_extensions_vk = info.to_vk_extensions();
-                let info_vk = info.to_vk(&mut info_extensions_vk);
+            let mut info_extensions_vk = info.to_vk_extensions();
+            let info_vk = info.to_vk(&mut info_extensions_vk);
 
-                /* Output */
+            /* Output */
 
-                let mut properties_vk = ExternalSemaphoreProperties::to_mut_vk();
+            let mut properties_vk = ExternalSemaphoreProperties::to_mut_vk();
 
-                /* Call */
+            /* Call */
 
-                let fns = self.instance.fns();
+            let fns = self.instance.fns();
 
-                if self.instance.api_version() >= Version::V1_1 {
-                    unsafe {
-                        (fns.v1_1.get_physical_device_external_semaphore_properties)(
-                            self.handle,
-                            &info_vk,
-                            &mut properties_vk,
-                        )
-                    }
-                } else {
-                    unsafe {
-                        (fns.khr_external_semaphore_capabilities
-                            .get_physical_device_external_semaphore_properties_khr)(
-                            self.handle,
-                            &info_vk,
-                            &mut properties_vk,
-                        )
-                    };
+            if self.instance.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.get_physical_device_external_semaphore_properties)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
                 }
+            } else {
+                unsafe {
+                    (fns.khr_external_semaphore_capabilities
+                        .get_physical_device_external_semaphore_properties_khr)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
+                };
+            }
 
-                ExternalSemaphoreProperties::from_vk(&properties_vk)
-            })
+            (
+                info.clone(),
+                ExternalSemaphoreProperties::from_vk(&properties_vk),
+            )
+        })
     }
 
     /// Retrieves the properties of a format when used by this physical device.
@@ -1180,7 +1188,7 @@ impl PhysicalDevice {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
-        self.format_properties.get_or_insert(format, |&format| {
+        self.format_properties.get_or_insert(&format, || {
             let fns = self.instance.fns();
             let call = |format_properties2_vk: &mut vk::FormatProperties2<'_>| {
                 if self.api_version() >= Version::V1_1 {
@@ -1241,10 +1249,13 @@ impl PhysicalDevice {
             };
             let properties2_extensions_vk = properties2_extensions_vk.unborrow();
 
-            FormatProperties::from_vk2(
-                &properties2_vk,
-                &properties2_fields1_vk,
-                &properties2_extensions_vk,
+            (
+                format,
+                FormatProperties::from_vk2(
+                    &properties2_vk,
+                    &properties2_fields1_vk,
+                    &properties2_extensions_vk,
+                ),
             )
         })
     }
@@ -1286,11 +1297,8 @@ impl PhysicalDevice {
         &self,
         image_format_info: &ImageFormatInfo<'_>,
     ) -> Result<Option<ImageFormatProperties>, VulkanError> {
-        self.image_format_properties.get_or_try_insert(
-            image_format_info.to_owned(),
-            |image_format_info| {
-                let image_format_info = image_format_info.as_ref();
-
+        self.image_format_properties
+            .get_or_try_insert(image_format_info.wrap(), || {
                 /* Input */
                 let info2_fields1_vk = image_format_info.to_vk2_fields1();
                 let mut info2_extensions_vk =
@@ -1331,14 +1339,14 @@ impl PhysicalDevice {
                     } else {
                         // Can't query this, return unsupported
                         if !info2_vk.p_next.is_null() {
-                            return Ok(None);
+                            return Ok((image_format_info.to_owned(), None));
                         }
                         if let Some(ExternalMemoryHandleType::DmaBuf) =
                             image_format_info.external_memory_handle_type
                         {
                             // VUID-vkGetPhysicalDeviceImageFormatProperties-tiling-02248
                             // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249
-                            return Ok(None);
+                            return Ok((image_format_info.to_owned(), None));
                         }
 
                         unsafe {
@@ -1364,15 +1372,19 @@ impl PhysicalDevice {
                 };
 
                 match result {
-                    Ok(_) => Ok(Some(ImageFormatProperties::from_vk2(
-                        &properties2_vk,
-                        &properties2_extensions_vk,
-                    ))),
-                    Err(VulkanError::FormatNotSupported) => Ok(None),
+                    Ok(_) => Ok((
+                        image_format_info.to_owned(),
+                        Some(ImageFormatProperties::from_vk2(
+                            &properties2_vk,
+                            &properties2_extensions_vk,
+                        )),
+                    )),
+                    Err(VulkanError::FormatNotSupported) => {
+                        Ok((image_format_info.to_owned(), None))
+                    }
                     Err(err) => Err(err),
                 }
-            },
-        )
+            })
     }
 
     /// Returns the properties of sparse images with a given image configuration.
@@ -1411,7 +1423,7 @@ impl PhysicalDevice {
         format_info: &SparseImageFormatInfo<'_>,
     ) -> Vec<SparseImageFormatProperties> {
         self.sparse_image_format_properties
-            .get_or_insert(format_info.to_owned(), |format_info| {
+            .get_or_insert(format_info.wrap(), || {
                 let format_info2_vk = format_info.to_vk();
 
                 let fns = self.instance.fns();
@@ -1471,12 +1483,15 @@ impl PhysicalDevice {
 
                     unsafe { sparse_image_format_properties2.set_len(count as usize) };
 
-                    sparse_image_format_properties2
-                        .into_iter()
-                        .map(|properties2_vk| {
-                            SparseImageFormatProperties::from_vk(&properties2_vk.properties)
-                        })
-                        .collect()
+                    (
+                        format_info.to_owned(),
+                        sparse_image_format_properties2
+                            .into_iter()
+                            .map(|properties2_vk| {
+                                SparseImageFormatProperties::from_vk(&properties2_vk.properties)
+                            })
+                            .collect(),
+                    )
                 } else {
                     let mut count = 0;
 
@@ -1511,10 +1526,15 @@ impl PhysicalDevice {
 
                     unsafe { sparse_image_format_properties.set_len(count as usize) };
 
-                    sparse_image_format_properties
-                        .into_iter()
-                        .map(|properties_vk| SparseImageFormatProperties::from_vk(&properties_vk))
-                        .collect()
+                    (
+                        format_info.to_owned(),
+                        sparse_image_format_properties
+                            .into_iter()
+                            .map(|properties_vk| {
+                                SparseImageFormatProperties::from_vk(&properties_vk)
+                            })
+                            .collect(),
+                    )
                 }
             })
     }
@@ -1824,9 +1844,9 @@ impl PhysicalDevice {
         surface: &Surface,
         surface_info: &SurfaceInfo<'_>,
     ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
-        surface.surface_formats.get_or_try_insert(
-            (self.handle, surface_info.to_owned()),
-            |(_, surface_info)| {
+        surface
+            .surface_formats
+            .get_or_try_insert(&(self.handle, surface_info.to_owned()), || {
                 let mut info2_extensions_vk = surface_info.to_vk2_extensions();
                 let info2_vk = surface_info.to_vk2(surface.handle(), &mut info2_extensions_vk);
 
@@ -1873,21 +1893,24 @@ impl PhysicalDevice {
                         }
                     };
 
-                    Ok(surface_format2s_vk
-                        .iter()
-                        .filter_map(|surface_format2_vk| {
-                            let &vk::SurfaceFormat2KHR {
-                                surface_format:
-                                    vk::SurfaceFormatKHR {
-                                        format,
-                                        color_space,
-                                    },
-                                ..
-                            } = surface_format2_vk;
+                    Ok((
+                        (self.handle, surface_info.to_owned()),
+                        surface_format2s_vk
+                            .iter()
+                            .filter_map(|surface_format2_vk| {
+                                let &vk::SurfaceFormat2KHR {
+                                    surface_format:
+                                        vk::SurfaceFormatKHR {
+                                            format,
+                                            color_space,
+                                        },
+                                    ..
+                                } = surface_format2_vk;
 
-                            format.try_into().ok().zip(color_space.try_into().ok())
-                        })
-                        .collect())
+                                format.try_into().ok().zip(color_space.try_into().ok())
+                            })
+                            .collect(),
+                    ))
                 } else {
                     let surface_formats = loop {
                         let mut count = 0;
@@ -1922,20 +1945,22 @@ impl PhysicalDevice {
                         }
                     };
 
-                    Ok(surface_formats
-                        .iter()
-                        .filter_map(|surface_format_vk| {
-                            let &vk::SurfaceFormatKHR {
-                                format,
-                                color_space,
-                            } = surface_format_vk;
+                    Ok((
+                        (self.handle, surface_info.to_owned()),
+                        surface_formats
+                            .iter()
+                            .filter_map(|surface_format_vk| {
+                                let &vk::SurfaceFormatKHR {
+                                    format,
+                                    color_space,
+                                } = surface_format_vk;
 
-                            format.try_into().ok().zip(color_space.try_into().ok())
-                        })
-                        .collect())
+                                format.try_into().ok().zip(color_space.try_into().ok())
+                            })
+                            .collect(),
+                    ))
                 }
-            },
-        )
+            })
     }
 
     /// Returns the present modes that are supported by the physical device for the given surface.
@@ -2038,8 +2063,8 @@ impl PhysicalDevice {
         surface_info: &SurfaceInfo<'_>,
     ) -> Result<Vec<PresentMode>, VulkanError> {
         surface.surface_present_modes.get_or_try_insert(
-            (self.handle, surface_info.to_owned()),
-            |(_, surface_info)| {
+            &(self.handle, surface_info.to_owned()),
+            || {
                 let mut info2_extensions_vk = SurfaceInfo2ExtensionsVk {
                     present_mode_vk: None,
                     ..surface_info.to_vk2_extensions()
@@ -2084,10 +2109,13 @@ impl PhysicalDevice {
                         }
                     };
 
-                    Ok(modes
-                        .into_iter()
-                        .filter_map(|mode_vk| mode_vk.try_into().ok())
-                        .collect())
+                    Ok((
+                        (self.handle, surface_info.to_owned()),
+                        modes
+                            .into_iter()
+                            .filter_map(|mode_vk| mode_vk.try_into().ok())
+                            .collect(),
+                    ))
                 } else {
                     let modes = loop {
                         let mut count = 0;
@@ -2124,10 +2152,13 @@ impl PhysicalDevice {
                         }
                     };
 
-                    Ok(modes
-                        .into_iter()
-                        .filter_map(|mode_vk| mode_vk.try_into().ok())
-                        .collect())
+                    Ok((
+                        (self.handle, surface_info.to_owned()),
+                        modes
+                            .into_iter()
+                            .filter_map(|mode_vk| mode_vk.try_into().ok())
+                            .collect(),
+                    ))
                 }
             },
         )
@@ -2189,7 +2220,7 @@ impl PhysicalDevice {
     ) -> Result<bool, VulkanError> {
         surface
             .surface_support
-            .get_or_try_insert((self.handle, queue_family_index), |_| {
+            .get_or_try_insert(&(self.handle, queue_family_index), || {
                 let support = {
                     let fns = self.instance.fns();
                     let mut output = MaybeUninit::uninit();
@@ -2207,7 +2238,7 @@ impl PhysicalDevice {
                     unsafe { output.assume_init() }
                 };
 
-                Ok(support != 0)
+                Ok(((self.handle, queue_family_index), support != 0))
             })
     }
 

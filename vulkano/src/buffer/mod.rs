@@ -82,6 +82,7 @@ use crate::{
         ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
+    self_referential::borrow_wrapper_impls,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
     DeviceAddress, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
     Version, VulkanError, VulkanObject,
@@ -969,6 +970,8 @@ impl ExternalBufferInfo<'_> {
         }
     }
 }
+
+borrow_wrapper_impls!(ExternalBufferInfo<'_>, PartialEq, Eq, Hash);
 
 /// The external memory properties supported for buffers with a given configuration.
 #[derive(Clone, Debug)]

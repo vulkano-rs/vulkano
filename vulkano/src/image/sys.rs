@@ -1428,9 +1428,8 @@ impl RawImage {
         mip_level: u32,
         array_layer: u32,
     ) -> SubresourceLayout {
-        self.subresource_layout.get_or_insert(
-            (aspect, mip_level, array_layer),
-            |&(aspect, mip_level, array_layer)| {
+        self.subresource_layout
+            .get_or_insert(&(aspect, mip_level, array_layer), || {
                 let subresource_vk = vk::ImageSubresource {
                     aspect_mask: aspect.into(),
                     mip_level,
@@ -1457,15 +1456,18 @@ impl RawImage {
                     unsafe { output.assume_init() }
                 };
 
-                SubresourceLayout {
-                    offset,
-                    size,
-                    row_pitch,
-                    array_pitch: (self.array_layers > 1).then_some(array_pitch),
-                    depth_pitch: matches!(self.image_type, ImageType::Dim3d).then_some(depth_pitch),
-                }
-            },
-        )
+                (
+                    (aspect, mip_level, array_layer),
+                    SubresourceLayout {
+                        offset,
+                        size,
+                        row_pitch,
+                        array_pitch: (self.array_layers > 1).then_some(array_pitch),
+                        depth_pitch: matches!(self.image_type, ImageType::Dim3d)
+                            .then_some(depth_pitch),
+                    },
+                )
+            })
     }
 }
 

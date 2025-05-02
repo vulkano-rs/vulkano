@@ -64,7 +64,7 @@ use crate::{
         ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
-    self_referential::self_referential,
+    self_referential::{borrow_wrapper_impls, self_referential},
     swapchain::Swapchain,
     sync::{future::AccessError, AccessConflict, CurrentAccess, OwnedSharing, Sharing},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
@@ -2167,6 +2167,8 @@ impl<'a> ImageFormatInfo<'a> {
     }
 }
 
+borrow_wrapper_impls!(ImageFormatInfo<'_>, PartialEq, Eq, Hash);
+
 pub(crate) struct ImageFormatInfo2ExtensionsVk<'a> {
     pub(crate) drm_format_modifier_vk: Option<vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'a>>,
     pub(crate) external_vk: Option<vk::PhysicalDeviceExternalImageFormatInfo<'static>>,
@@ -2597,6 +2599,8 @@ impl SparseImageFormatInfo<'_> {
         }
     }
 }
+
+borrow_wrapper_impls!(SparseImageFormatInfo<'_>, PartialEq, Eq, Hash);
 
 /// The properties that are supported by a physical device for sparse images of a certain type.
 #[derive(Clone, Debug)]

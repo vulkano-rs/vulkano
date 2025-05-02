@@ -1,6 +1,7 @@
 use foldhash::HashMap;
 use parking_lot::RwLock;
 use std::{
+    borrow::Borrow,
     collections::hash_map::Entry,
     hash::Hash,
     sync::{Arc, Weak},
@@ -37,56 +38,59 @@ where
     V: Clone,
 {
     /// Returns the value for the specified `key`, if it exists.
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
+    pub(crate) fn get<Q>(&self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
         self.inner.read().get(key).cloned()
     }
 
-    /// Returns the value for the specified `key`. The entry gets written to with the value
-    /// returned by `f` if it doesn't exist.
-    pub(crate) fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> V) -> V {
-        if let Some(value) = self.get(&key) {
+    /// Returns the value for the specified `key`. The entry gets written to with the key-value
+    /// pair returned by `f` if it doesn't exist.
+    pub(crate) fn get_or_insert<Q>(&self, key: &Q, f: impl FnOnce() -> (K, V)) -> V
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
+        if let Some(value) = self.get(key) {
             return value;
         }
 
-        match self.inner.write().entry(key) {
-            Entry::Occupied(entry) => {
-                // This can happen if someone else inserted an entry between when we released
-                // the read lock and acquired the write lock.
-                entry.get().clone()
-            }
-            Entry::Vacant(entry) => {
-                let value = f(entry.key());
-                entry.insert(value.clone());
-                value
-            }
-        }
+        let (key, value) = f();
+
+        self.inner
+            .write()
+            .entry(key)
+            .or_insert_with(|| value.clone());
+
+        value
     }
 
-    /// Returns the value for the specified `key`. The entry gets written to with the value
-    /// returned by `f` if it doesn't exist. If `f` returns [`Err`], the error is propagated and
-    /// the entry isn't written to.
-    pub(crate) fn get_or_try_insert<E>(
+    /// Returns the value for the specified `key`. The entry gets written to with the key-value
+    /// pair returned by `f` if it doesn't exist. If `f` returns [`Err`], the error is
+    /// propagated and the entry isn't written to.
+    pub(crate) fn get_or_try_insert<Q, E>(
         &self,
-        key: K,
-        f: impl FnOnce(&K) -> Result<V, E>,
-    ) -> Result<V, E> {
-        if let Some(value) = self.get(&key) {
+        key: &Q,
+        f: impl FnOnce() -> Result<(K, V), E>,
+    ) -> Result<V, E>
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
+        if let Some(value) = self.get(key) {
             return Ok(value.clone());
         }
 
-        match self.inner.write().entry(key) {
-            Entry::Occupied(entry) => {
-                // This can happen if someone else inserted an entry between when we released
-                // the read lock and acquired the write lock.
-                Ok(entry.get().clone())
-            }
-            Entry::Vacant(entry) => {
-                let value = f(entry.key())?;
-                entry.insert(value.clone());
+        let (key, value) = f()?;
 
-                Ok(value)
-            }
-        }
+        self.inner
+            .write()
+            .entry(key)
+            .or_insert_with(|| value.clone());
+
+        Ok(value)
     }
 }
 
