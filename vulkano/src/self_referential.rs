@@ -5,6 +5,34 @@ use std::{
     ptr::NonNull,
 };
 
+/// Creates a self-referential struct while encapsulating all the unsafety.
+///
+/// The macro is given a single module with a single struct. This struct must have one `inner`
+/// field followed by one or more "owner" fields. The `inner` field is the type with internal
+/// borrows and where the lifetime goes is given by wherever the `'_` lifetime is used in the type.
+/// The owner fields can be of any type. It's additionally possible to provide an `impl` keyword
+/// followed by a comma-separated list of traits to automatically implement. These traits forward
+/// to the `inner` field's implementation. This is because for use as map keys, the comparison and
+/// hash implementations must match between the owned and borrowed structs (and it's also
+/// unnecessary to use the other fields when they are borrowed in the `inner` field anyway).
+///
+/// What the macro does under the hood is that it generates the given module containing the given
+/// struct. The module is used in order to prevent the parent module at looking at the struct
+/// fields which would be unsound. However, is is meant to "look" like it's generating the struct
+/// inline, which is achieved by reexporting the generated struct. The struct with its visibility
+/// will therefore be available in the containing module with that visibility. The struct has a
+/// `new` method which safely constructs the self-referential struct: it allocates the owners in an
+/// [`AliasableBox`] to allow the owners to be stored alongside the `inner` field and calls the
+/// provided closure with borrows to these heap-allocated owners. Then it extends the lifetime of
+/// the `inner` field to `'static` in order to allow it to be stored in an owned manner and the box
+/// to be moved. This is why it would be unsound to allow looking at the generated fields: you
+/// could observe the fake static lifetime and/or drop or otherwise mutate the owners. The only way
+/// to access the `inner` field must be using the generated `as_ref` method, which ensures that the
+/// fake static lifetime is not observable, and the owner fields must be inaccessible.
+///
+/// We need self-referential structs in order to implement APIs that return the same info structs
+/// that are used when creating the object, and these all have a lifetime. If the struct holds
+/// references to some other structs/vectors, these have to be stored somewhere.
 macro_rules! self_referential {
     (
         mod $module_name:ident {
@@ -16,6 +44,7 @@ macro_rules! self_referential {
             $(impl $($auto_impl:ident),+)?
         }
     ) => {
+        // SAFETY: The `$referent_ty` doesn't expose the static lifetime.
         crate::self_referential::self_referential!(
             @unsafe
             $module_name,
@@ -39,6 +68,7 @@ macro_rules! self_referential {
             $(impl $($auto_impl:ident),+)?
         }
     ) => {
+        // SAFETY: The `$referent_ty` doesn't expose the static lifetime.
         crate::self_referential::self_referential!(
             @unsafe
             $module_name,
@@ -62,6 +92,7 @@ macro_rules! self_referential {
             $(impl $($auto_impl:ident),+)?
         }
     ) => {
+        // SAFETY: The `$referent_ty` doesn't expose the static lifetime.
         crate::self_referential::self_referential!(
             @unsafe
             $module_name,
@@ -85,6 +116,7 @@ macro_rules! self_referential {
             $(impl $($auto_impl:ident),+)?
         }
     ) => {
+        // SAFETY: The `$referent_ty` doesn't expose the static lifetime.
         crate::self_referential::self_referential!(
             @unsafe
             $module_name,
@@ -190,6 +222,10 @@ macro_rules! self_referential {
 }
 pub(crate) use self_referential;
 
+/// At the time of writing, using the standard library [`Box`], moving a `Box` invalidated pointers
+/// to its contents. This is why using this type for unsafe code is very ill-advised; our case is
+/// no different. If we used a struct like `(Inner<'static>, Box<Owners>)` for our self-referential
+/// structs, moving this struct would invalidate `Inner`'s internal borrows of `Owners`.
 #[repr(transparent)]
 pub struct AliasableBox<T> {
     ptr: NonNull<T>,
