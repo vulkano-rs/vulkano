@@ -13,9 +13,23 @@
 
 ### Breaking changes
 
+Changes to parameters:
+- Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
+
+Changes to memory allocation:
+- `StandardMemoryAllocator::new_default` was removed in favor of `StandardMemoryAllocator::new(&device, &Default::default())` fulfilling the same function instead.
+- `MemoryRequirements` is now marked `#[non_exhaustive]`.
+
 Changes to `GraphicsPipeline`:
 - `ColorBlendState::new` and `ViewportState::new` (previously deprecated, now undeprecated) now return the same as `Default::default()`.
 - `PipelineCacheCreateInfo::initial_data` now takes `Option<PipelineCacheData>` instead of `Vec<u8>` in order to make `PipelineCache::new` safe.
+- `RasterizationConservativeState` no longer has a `_ne` field.
+
+Changes to images:
+- `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
+
+Changes to external memory and external sync:
+- Where `File`s were previously taken as arguments for importing and returned for exporting, the raw descriptor is now used instead.
 
 ### Additions
 
