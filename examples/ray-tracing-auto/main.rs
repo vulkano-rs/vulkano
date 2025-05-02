@@ -63,10 +63,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: InstanceExtensions {
+                enabled_extensions: &InstanceExtensions {
                     ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
@@ -127,14 +127,14 @@ impl App {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
-                enabled_features: device_features,
+                enabled_features: &device_features,
                 ..Default::default()
             },
         )
@@ -143,8 +143,8 @@ impl App {
         let queue = queues.next().unwrap();
 
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         App {
@@ -164,25 +164,25 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         let (swapchain, images) = {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             let (image_format, image_color_space) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()
                 .into_iter()
                 .find(|(format, _)| {
                     self.device
                         .physical_device()
-                        .image_format_properties(ImageFormatInfo {
+                        .image_format_properties(&ImageFormatInfo {
                             format: *format,
                             usage: ImageUsage::STORAGE,
                             ..Default::default()
@@ -193,9 +193,9 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             Swapchain::new(
-                self.device.clone(),
-                surface.clone(),
-                SwapchainCreateInfo {
+                &self.device,
+                &surface,
+                &SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
                     image_format,
                     image_color_space,
@@ -269,19 +269,22 @@ impl ApplicationHandler for App {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(
+            &self.device,
+            &Default::default(),
+        ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            self.device.clone(),
-            Default::default(),
+            &self.device,
+            &Default::default(),
         ));
 
         let scene = Scene::new(
             self,
             &images,
-            pipeline_layout,
-            descriptor_set_allocator.clone(),
-            memory_allocator.clone(),
-            self.command_buffer_allocator.clone(),
+            &pipeline_layout,
+            &descriptor_set_allocator,
+            &memory_allocator,
+            &self.command_buffer_allocator,
         );
 
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
@@ -322,7 +325,7 @@ impl ApplicationHandler for App {
                 if rcx.recreate_swapchain {
                     let (new_swapchain, new_images) = rcx
                         .swapchain
-                        .recreate(SwapchainCreateInfo {
+                        .recreate(&SwapchainCreateInfo {
                             image_extent: window_size.into(),
                             ..rcx.swapchain.create_info()
                         })

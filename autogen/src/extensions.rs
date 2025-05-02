@@ -589,7 +589,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         pub struct #struct_name {
             #(#struct_items)*
 
-            pub _ne: crate::NonExhaustive,
+            pub _ne: crate::NonExhaustive<'static>,
         }
 
         impl Default for #struct_name {
@@ -605,7 +605,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn empty() -> Self {
                 Self {
                     #(#empty_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -638,7 +638,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
                     #(#union_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -647,7 +647,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
                     #(#intersection_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -656,7 +656,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     #(#difference_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -665,7 +665,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn symmetric_difference(&self, other: &Self) -> Self {
                 Self {
                     #(#symmetric_difference_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
         }

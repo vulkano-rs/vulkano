@@ -99,17 +99,17 @@ pub struct ImageAccess {
 pub struct SwapchainState {
     swapchain: Arc<Swapchain>,
     images: SmallVec<[Arc<Image>; 3]>,
-    pub(crate) semaphores: SmallVec<[SwapchainSemaphoreState; 3]>,
+    pub(crate) semaphores: Arc<[SwapchainSemaphoreState]>,
     flight_id: Id<Flight>,
     pub(crate) current_image_index: AtomicU32,
     last_access: Mutex<ImageAccess>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct SwapchainSemaphoreState {
-    pub(crate) image_available_semaphore: Arc<Semaphore>,
-    pub(crate) pre_present_complete_semaphore: Arc<Semaphore>,
-    pub(crate) tasks_complete_semaphore: Arc<Semaphore>,
+    pub(crate) image_available_semaphore: Semaphore,
+    pub(crate) pre_present_complete_semaphore: Semaphore,
+    pub(crate) tasks_complete_semaphore: Semaphore,
 }
 
 // FIXME: imported/exported fences
@@ -156,14 +156,14 @@ impl Resources {
         registered_devices.push(device_addr);
         drop(registered_devices);
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(device, &Default::default()));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            device,
+            &Default::default(),
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            device,
+            &Default::default(),
         ));
 
         let hyaline_collector = hyaline::CollectorHandle::new();
@@ -242,12 +242,12 @@ impl Resources {
     /// - Returns an error when [`Buffer::new`] returns an error.
     pub fn create_buffer(
         &self,
-        create_info: BufferCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
         layout: DeviceLayout,
     ) -> Result<Id<Buffer>, Validated<AllocateBufferError>> {
         let buffer = Buffer::new(
-            self.storage.memory_allocator.clone(),
+            &self.storage.memory_allocator,
             create_info,
             allocation_info,
             layout,
@@ -264,14 +264,10 @@ impl Resources {
     /// - Returns an error when [`Image::new`] returns an error.
     pub fn create_image(
         &self,
-        create_info: ImageCreateInfo,
-        allocation_info: AllocationCreateInfo,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
     ) -> Result<Id<Image>, Validated<AllocateImageError>> {
-        let image = Image::new(
-            self.storage.memory_allocator.clone(),
-            create_info,
-            allocation_info,
-        )?;
+        let image = Image::new(&self.storage.memory_allocator, create_info, allocation_info)?;
 
         // SAFETY: We just created the image.
         Ok(unsafe { self.add_image_unchecked(image) })
@@ -296,14 +292,14 @@ impl Resources {
     pub fn create_swapchain(
         &self,
         flight_id: Id<Flight>,
-        surface: Arc<Surface>,
-        create_info: SwapchainCreateInfo,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
         let frames_in_flight = self.flight(flight_id).unwrap().frame_count();
 
         assert!(create_info.min_image_count >= frames_in_flight);
 
-        let (swapchain, images) = Swapchain::new(self.device().clone(), surface, create_info)?;
+        let (swapchain, images) = Swapchain::new(self.device(), surface, create_info)?;
 
         // SAFETY: We just created the swapchain.
         Ok(unsafe { self.add_swapchain_unchecked(flight_id, swapchain, images) }?)
@@ -511,17 +507,17 @@ impl Resources {
             .map(|_| {
                 Ok(SwapchainSemaphoreState {
                     // SAFETY: The parameters are valid.
-                    image_available_semaphore: Arc::new(unsafe {
+                    image_available_semaphore: unsafe {
                         Semaphore::new_unchecked(self.device().clone(), Default::default())
-                    }?),
+                    }?,
                     // SAFETY: The parameters are valid.
-                    pre_present_complete_semaphore: Arc::new(unsafe {
+                    pre_present_complete_semaphore: unsafe {
                         Semaphore::new_unchecked(self.device().clone(), Default::default())
-                    }?),
+                    }?,
                     // SAFETY: The parameters are valid.
-                    tasks_complete_semaphore: Arc::new(unsafe {
+                    tasks_complete_semaphore: unsafe {
                         Semaphore::new_unchecked(self.device().clone(), Default::default())
-                    }?),
+                    }?,
                 })
             })
             .collect::<Result<_, VulkanError>>()?;
@@ -559,7 +555,7 @@ impl Resources {
     pub fn recreate_swapchain(
         &self,
         id: Id<Swapchain>,
-        f: impl FnOnce(SwapchainCreateInfo) -> SwapchainCreateInfo,
+        f: impl for<'a> FnOnce(&SwapchainCreateInfo<'a>) -> SwapchainCreateInfo<'a>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
         let guard = &self.storage.pin();
 
@@ -568,7 +564,7 @@ impl Resources {
         let flight_id = state.flight_id;
         let flight = unsafe { self.storage.flight_unchecked_protected(flight_id, guard) };
 
-        let (new_swapchain, new_images) = swapchain.recreate(f(swapchain.create_info()))?;
+        let (new_swapchain, new_images) = swapchain.recreate(&f(&swapchain.create_info()))?;
 
         let frames_in_flight = flight.frame_count();
 
@@ -1432,7 +1428,7 @@ impl Flight {
 }
 
 /// Parameters to create a new [`Resources`] collection.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ResourcesCreateInfo<'a> {
     /// The maximum number of [`Buffer`]s that the collection can hold at once.
     ///

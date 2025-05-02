@@ -60,7 +60,7 @@ pub struct ColorBlendState {
     /// The default value is `[0.0; 4]`.
     pub blend_constants: [f32; 4],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for ColorBlendState {
@@ -80,7 +80,7 @@ impl ColorBlendState {
             logic_op: None,
             attachments: Vec::new(),
             blend_constants: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

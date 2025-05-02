@@ -495,7 +495,7 @@ impl DisplayMode {
         plane_index: u32,
     ) -> Result<DisplayPlaneCapabilities, VulkanError> {
         self.display_plane_capabilities
-            .get_or_try_insert(plane_index, |&plane_index| {
+            .get_or_try_insert(&plane_index, || {
                 let fns = self.display.physical_device.instance().fns();
 
                 let mut capabilities_vk = DisplayPlaneCapabilities::to_mut_vk2();
@@ -532,7 +532,10 @@ impl DisplayMode {
                     .map_err(VulkanError::from)?;
                 }
 
-                Ok(DisplayPlaneCapabilities::from_vk2(&capabilities_vk))
+                Ok((
+                    plane_index,
+                    DisplayPlaneCapabilities::from_vk2(&capabilities_vk),
+                ))
             })
     }
 }
@@ -584,7 +587,7 @@ pub struct DisplayModeCreateInfo {
     /// The default value is 0, which must be overridden.
     pub refresh_rate: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DisplayModeCreateInfo {
@@ -601,7 +604,7 @@ impl DisplayModeCreateInfo {
         Self {
             visible_region: [0; 2],
             refresh_rate: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -672,7 +675,7 @@ impl DisplayModeCreateInfo {
         DisplayModeCreateInfo {
             visible_region: [visible_region.width, visible_region.height],
             refresh_rate,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

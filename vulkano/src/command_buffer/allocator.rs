@@ -69,6 +69,9 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned + Send + Sync + 'static {
     ///
     /// - `allocation` must refer to a **currently allocated** allocation of `self`.
     unsafe fn deallocate(&self, allocation: CommandBufferAlloc);
+
+    /// Coerces a reference to the allocator to a reference to a trait object.
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn CommandBufferAllocator>;
 }
 
 impl Debug for dyn CommandBufferAllocator {
@@ -184,13 +187,16 @@ pub struct StandardCommandBufferAllocator {
 impl StandardCommandBufferAllocator {
     /// Creates a new `StandardCommandBufferAllocator`.
     #[inline]
-    pub fn new(device: Arc<Device>, create_info: StandardCommandBufferAllocatorCreateInfo) -> Self {
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &StandardCommandBufferAllocatorCreateInfo<'_>,
+    ) -> Self {
         let mut buffer_count = [0, 0];
         buffer_count[CommandBufferLevel::Primary as usize] = create_info.primary_buffer_count;
         buffer_count[CommandBufferLevel::Secondary as usize] = create_info.secondary_buffer_count;
 
         StandardCommandBufferAllocator {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             pools: ThreadLocal::new(),
             buffer_count,
         }
@@ -279,7 +285,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
         if entry.is_none() {
             *entry = Some(Entry::new(
-                self.device.clone(),
+                &self.device,
                 queue_family_index,
                 &self.buffer_count,
                 Arc::new(ArrayQueue::new(MAX_POOLS)),
@@ -329,9 +335,14 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
             }
         }
     }
+
+    #[inline]
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn CommandBufferAllocator> {
+        self
+    }
 }
 
-unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
+unsafe impl<T: CommandBufferAllocator + ?Sized> CommandBufferAllocator for Arc<T> {
     #[inline]
     fn allocate(
         &self,
@@ -344,6 +355,11 @@ unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
     #[inline]
     unsafe fn deallocate(&self, allocation: CommandBufferAlloc) {
         unsafe { (**self).deallocate(allocation) }
+    }
+
+    #[inline]
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn CommandBufferAllocator> {
+        self
     }
 }
 
@@ -371,7 +387,7 @@ unsafe impl Send for Entry {}
 
 impl Entry {
     fn new(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         queue_family_index: u32,
         buffer_count: &[usize; 2],
         pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
@@ -422,7 +438,7 @@ impl Entry {
                     self.allocations = [0; 2];
                 } else {
                     *self = Entry::new(
-                        self.pool.inner.device().clone(),
+                        self.pool.inner.device(),
                         queue_family_index,
                         buffer_count,
                         self.pool_reserve.clone(),
@@ -480,14 +496,14 @@ struct Pool {
 
 impl Pool {
     fn new(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         queue_family_index: u32,
         buffer_counts: &[usize; 2],
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let inner = CommandPool::new(
             device,
-            CommandPoolCreateInfo {
+            &CommandPoolCreateInfo {
                 queue_family_index,
                 ..Default::default()
             },
@@ -504,7 +520,7 @@ impl Pool {
 
             let pool = ArrayQueue::new(buffer_count);
 
-            for allocation in inner.allocate_command_buffers(CommandBufferAllocateInfo {
+            for allocation in inner.allocate_command_buffers(&CommandBufferAllocateInfo {
                 level,
                 command_buffer_count: buffer_count.try_into().unwrap(),
                 ..Default::default()
@@ -524,8 +540,8 @@ impl Pool {
 }
 
 /// Parameters to create a new [`StandardCommandBufferAllocator`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StandardCommandBufferAllocatorCreateInfo {
+#[derive(Clone, Debug)]
+pub struct StandardCommandBufferAllocatorCreateInfo<'a> {
     /// How many primary command buffers should be allocated per pool.
     ///
     /// Each time a thread allocates using some queue family index, and either no pools were
@@ -546,24 +562,24 @@ pub struct StandardCommandBufferAllocatorCreateInfo {
     /// The default value is `0`.
     pub secondary_buffer_count: usize,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for StandardCommandBufferAllocatorCreateInfo {
+impl Default for StandardCommandBufferAllocatorCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl StandardCommandBufferAllocatorCreateInfo {
+impl StandardCommandBufferAllocatorCreateInfo<'_> {
     /// Returns a default `StandardCommandBufferAllocatorCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         StandardCommandBufferAllocatorCreateInfo {
             primary_buffer_count: 32,
             secondary_buffer_count: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

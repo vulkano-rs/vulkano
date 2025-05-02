@@ -33,7 +33,7 @@ pub struct InputAssemblyState {
     /// The default value is `false`.
     pub primitive_restart_enable: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for InputAssemblyState {
@@ -51,7 +51,7 @@ impl InputAssemblyState {
         Self {
             topology: PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

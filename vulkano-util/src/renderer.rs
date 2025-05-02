@@ -46,13 +46,13 @@ impl VulkanoWindowRenderer {
         vulkano_context: &VulkanoContext,
         window: Window,
         descriptor: &WindowDescriptor,
-        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo<'_>),
     ) -> VulkanoWindowRenderer {
         let window = Arc::new(window);
 
         // Create swap chain & frame(s) to which we'll render
         let (swap_chain, final_views) = Self::create_swapchain(
-            vulkano_context.device().clone(),
+            vulkano_context.device(),
             &window,
             descriptor,
             swapchain_create_info_modify,
@@ -78,42 +78,39 @@ impl VulkanoWindowRenderer {
     /// Creates the swapchain and its images based on [`WindowDescriptor`]. The swapchain creation
     /// can be modified with the `swapchain_create_info_modify` function passed as an input.
     fn create_swapchain(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         window: &Arc<Window>,
         window_descriptor: &WindowDescriptor,
-        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo<'_>),
     ) -> (Arc<Swapchain>, Vec<Arc<ImageView>>) {
-        let surface = Surface::from_window(device.instance().clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(device.instance(), window).unwrap();
         let surface_capabilities = device
             .physical_device()
-            .surface_capabilities(&surface, Default::default())
+            .surface_capabilities(&surface, &Default::default())
             .unwrap();
         let image_format = device
             .physical_device()
-            .surface_formats(&surface, Default::default())
+            .surface_formats(&surface, &Default::default())
             .unwrap()[0]
             .0;
-        let (swapchain, images) = Swapchain::new(device, surface, {
-            let mut create_info = SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window.inner_size().into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                ..Default::default()
-            };
-            // Get present mode from window descriptor
-            create_info.present_mode = window_descriptor.present_mode;
-            swapchain_create_info_modify(&mut create_info);
-            create_info
-        })
-        .unwrap();
+        let mut create_info = SwapchainCreateInfo {
+            min_image_count: surface_capabilities.min_image_count.max(2),
+            image_format,
+            image_extent: window.inner_size().into(),
+            image_usage: ImageUsage::COLOR_ATTACHMENT,
+            composite_alpha: surface_capabilities
+                .supported_composite_alpha
+                .into_iter()
+                .next()
+                .unwrap(),
+            ..Default::default()
+        };
+        // Get present mode from window descriptor
+        create_info.present_mode = window_descriptor.present_mode;
+        swapchain_create_info_modify(&mut create_info);
+        let (swapchain, images) = Swapchain::new(device, &surface, &create_info).unwrap();
         let images = images
-            .into_iter()
+            .iter()
             .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
 
@@ -225,16 +222,16 @@ impl VulkanoWindowRenderer {
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
         let final_view_image = self.final_views[0].image();
         let image = ImageView::new_default(
-            Image::new(
-                self.memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                &self.memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format,
                     extent: final_view_image.extent(),
                     usage,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -344,7 +341,7 @@ impl VulkanoWindowRenderer {
 
         let (new_swapchain, new_images) = self
             .swapchain
-            .recreate(SwapchainCreateInfo {
+            .recreate(&SwapchainCreateInfo {
                 image_extent,
                 // Use present mode from current state
                 present_mode: self.present_mode,
@@ -354,7 +351,7 @@ impl VulkanoWindowRenderer {
 
         self.swapchain = new_swapchain;
         let new_images = new_images
-            .into_iter()
+            .iter()
             .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         self.final_views = new_images;

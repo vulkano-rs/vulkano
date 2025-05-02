@@ -90,8 +90,8 @@ fn main() {
     // The usual Vulkan initialization.
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -128,10 +128,10 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -142,16 +142,16 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
     // Creating our intermediate multisampled image.
     //
     // As explained in the introduction, we pass the same extent and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
-        Image::new(
-            memory_allocator.clone(),
-            ImageCreateInfo {
+        &Image::new(
+            &memory_allocator,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [1024, 1024, 1],
@@ -159,7 +159,7 @@ fn main() {
                 samples: SampleCount::Sample4,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
         )
         .unwrap(),
     )
@@ -167,8 +167,8 @@ fn main() {
 
     // This is the final image that will receive the anti-aliased triangle.
     let image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
             extent: [1024, 1024, 1],
@@ -178,11 +178,11 @@ fn main() {
                 | ImageUsage::STORAGE,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
 
-    let view = ImageView::new_default(image.clone()).unwrap();
+    let view = ImageView::new_default(&image).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
@@ -291,12 +291,12 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -360,17 +360,17 @@ fn main() {
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device,
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     let buf = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::TRANSFER_DST,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_HOST
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()

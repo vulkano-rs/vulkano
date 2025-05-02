@@ -267,7 +267,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct DeviceFeatures {
             #(#struct_items)*
-            pub _ne: crate::NonExhaustive,
+            pub _ne: crate::NonExhaustive<'static>,
         }
 
         impl Default for DeviceFeatures {
@@ -292,7 +292,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn empty() -> Self {
                 Self {
                     #(#empty_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -301,7 +301,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub(crate) const fn all() -> DeviceFeatures {
                 Self {
                     #(#all_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -322,7 +322,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
                     #(#union_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -331,7 +331,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
                     #(#intersection_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -340,7 +340,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     #(#difference_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
 
@@ -349,7 +349,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn symmetric_difference(&self, other: &Self) -> Self {
                 Self {
                     #(#symmetric_difference_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
         }
@@ -440,7 +440,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             fn from(features_ffi: &DeviceFeaturesFfi) -> Self {
                 DeviceFeatures {
                     #(#from_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
         }

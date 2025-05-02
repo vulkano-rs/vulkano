@@ -76,12 +76,12 @@ impl App {
         let context = VulkanoContext::new(VulkanoConfig::default());
         let windows = VulkanoWindows::default();
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            context.device().clone(),
-            Default::default(),
+            context.device(),
+            &Default::default(),
         ));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            context.device().clone(),
-            StandardCommandBufferAllocatorCreateInfo {
+            context.device(),
+            &StandardCommandBufferAllocatorCreateInfo {
                 secondary_buffer_count: 32,
                 ..Default::default()
             },

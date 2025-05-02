@@ -248,7 +248,7 @@ pub struct ComputePipelineCreateInfo {
     /// The default value is `None`.
     pub base_pipeline: Option<Arc<ComputePipeline>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ComputePipelineCreateInfo {
@@ -260,7 +260,7 @@ impl ComputePipelineCreateInfo {
             stage,
             layout,
             base_pipeline: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -520,14 +520,14 @@ mod tests {
             .unwrap()
         };
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let data_buffer = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -537,8 +537,8 @@ mod tests {
         .unwrap();
 
         let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let set = DescriptorSet::new(
             ds_allocator,
@@ -549,8 +549,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -669,14 +669,14 @@ mod tests {
             .unwrap()
         };
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let data_buffer = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -686,8 +686,8 @@ mod tests {
         .unwrap();
 
         let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let set = DescriptorSet::new(
             ds_allocator,
@@ -698,8 +698,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,

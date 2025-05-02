@@ -10,7 +10,6 @@ use crate::{
     VulkanObject,
 };
 use ash::vk;
-use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
@@ -26,7 +25,7 @@ pub struct DescriptorPool {
 
     flags: DescriptorPoolCreateFlags,
     max_sets: u32,
-    pool_sizes: HashMap<DescriptorType, u32>,
+    pool_sizes: Vec<(DescriptorType, u32)>,
     max_inline_uniform_block_bindings: u32,
 
     // Unimplement `Sync`, as Vulkan descriptor pools are not thread safe.
@@ -37,17 +36,17 @@ impl DescriptorPool {
     /// Creates a new `DescriptorPool`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: DescriptorPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &DescriptorPoolCreateInfo<'_>,
     ) -> Result<DescriptorPool, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &DescriptorPoolCreateInfo,
+        create_info: &DescriptorPoolCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
         create_info
@@ -59,8 +58,8 @@ impl DescriptorPool {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: DescriptorPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &DescriptorPoolCreateInfo<'_>,
     ) -> Result<DescriptorPool, VulkanError> {
         let create_info_fields1_vk = create_info.to_vk_fields1();
         let mut create_info_extensions_vk = create_info.to_vk_extensions();
@@ -94,11 +93,11 @@ impl DescriptorPool {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::DescriptorPool,
-        create_info: DescriptorPoolCreateInfo,
+        create_info: &DescriptorPoolCreateInfo<'_>,
     ) -> DescriptorPool {
-        let DescriptorPoolCreateInfo {
+        let &DescriptorPoolCreateInfo {
             flags,
             max_sets,
             pool_sizes,
@@ -106,9 +105,19 @@ impl DescriptorPool {
             _ne: _,
         } = create_info;
 
+        let mut pool_sizes = Vec::with_capacity(pool_sizes.len());
+
+        for &(descriptor_type, pool_size) in create_info.pool_sizes {
+            if let Some(entry) = pool_sizes.iter_mut().find(|(ty, _)| *ty == descriptor_type) {
+                entry.1 += pool_size;
+            } else {
+                pool_sizes.push((descriptor_type, pool_size));
+            }
+        }
+
         DescriptorPool {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
@@ -133,8 +142,11 @@ impl DescriptorPool {
     }
 
     /// Returns the number of descriptors of each type that the pool was created with.
+    ///
+    /// Each `DescriptorType` is unique even if the pool was created with duplicate
+    /// `DescriptorType`s for its pool sizes. The elements are in no particular order.
     #[inline]
-    pub fn pool_sizes(&self) -> &HashMap<DescriptorType, u32> {
+    pub fn pool_sizes(&self) -> &[(DescriptorType, u32)] {
         &self.pool_sizes
     }
 
@@ -165,24 +177,23 @@ impl DescriptorPool {
     #[inline]
     pub unsafe fn allocate_descriptor_sets(
         &self,
-        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
     ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, Validated<VulkanError>> {
-        let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
-        self.validate_allocate_descriptor_sets(&allocate_infos)?;
+        self.validate_allocate_descriptor_sets(allocate_infos)?;
 
         Ok(unsafe { self.allocate_descriptor_sets_unchecked(allocate_infos) }?)
     }
 
     fn validate_allocate_descriptor_sets(
         &self,
-        allocate_infos: &[DescriptorSetAllocateInfo],
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
     ) -> Result<(), Box<ValidationError>> {
         for (index, info) in allocate_infos.iter().enumerate() {
             info.validate(self.device())
                 .map_err(|err| err.add_context(format!("allocate_infos[{}]", index)))?;
 
             let &DescriptorSetAllocateInfo {
-                ref layout,
+                layout,
                 variable_descriptor_count: _,
                 _ne: _,
             } = info;
@@ -215,18 +226,15 @@ impl DescriptorPool {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn allocate_descriptor_sets_unchecked(
         &self,
-        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
     ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, VulkanError> {
-        let allocate_infos = allocate_infos.into_iter();
-
-        let (lower_size_bound, _) = allocate_infos.size_hint();
-        let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
+        let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(allocate_infos.len());
         let mut variable_descriptor_counts: SmallVec<[_; 1]> =
-            SmallVec::with_capacity(lower_size_bound);
-        let mut layouts: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
+            SmallVec::with_capacity(allocate_infos.len());
+        let mut layouts: SmallVec<[_; 1]> = SmallVec::with_capacity(allocate_infos.len());
 
         for info in allocate_infos {
-            let DescriptorSetAllocateInfo {
+            let &DescriptorSetAllocateInfo {
                 layout,
                 variable_descriptor_count,
                 _ne: _,
@@ -234,7 +242,7 @@ impl DescriptorPool {
 
             layouts_vk.push(layout.handle());
             variable_descriptor_counts.push(variable_descriptor_count);
-            layouts.push(layout);
+            layouts.push(layout.clone());
         }
 
         let mut output: SmallVec<[_; 1]> = SmallVec::new();
@@ -410,7 +418,7 @@ impl_id_counter!(DescriptorPool);
 
 /// Parameters to create a new `DescriptorPool`.
 #[derive(Clone, Debug)]
-pub struct DescriptorPoolCreateInfo {
+pub struct DescriptorPoolCreateInfo<'a> {
     /// Additional properties of the descriptor pool.
     ///
     /// The default value is empty.
@@ -427,7 +435,7 @@ pub struct DescriptorPoolCreateInfo {
     /// number of bytes to allocate for such descriptors. The value must then be a multiple of 4.
     ///
     /// The default value is empty, which must be overridden.
-    pub pool_sizes: HashMap<DescriptorType, u32>,
+    pub pool_sizes: &'a [(DescriptorType, u32)],
 
     /// The maximum number of [`DescriptorType::InlineUniformBlock`] bindings that can be allocated
     /// from the descriptor pool.
@@ -439,27 +447,26 @@ pub struct DescriptorPoolCreateInfo {
     /// The default value is 0.
     pub max_inline_uniform_block_bindings: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DescriptorPoolCreateInfo {
+impl Default for DescriptorPoolCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DescriptorPoolCreateInfo {
+impl<'a> DescriptorPoolCreateInfo<'a> {
     /// Returns a default `DescriptorPoolCreateInfo`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             flags: DescriptorPoolCreateFlags::empty(),
             max_sets: 0,
-            pool_sizes: HashMap::default(),
+            pool_sizes: &[],
             max_inline_uniform_block_bindings: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -467,7 +474,7 @@ impl DescriptorPoolCreateInfo {
         let &Self {
             flags,
             max_sets,
-            ref pool_sizes,
+            pool_sizes,
             max_inline_uniform_block_bindings,
             _ne: _,
         } = self;
@@ -496,7 +503,7 @@ impl DescriptorPoolCreateInfo {
         }
 
         // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
-        for (&descriptor_type, &pool_size) in pool_sizes.iter() {
+        for &(descriptor_type, pool_size) in pool_sizes {
             flags.validate_device(device).map_err(|err| {
                 err.add_context("pool_sizes")
                     .set_vuids(&["VUID-VkDescriptorPoolSize-type-parameter"])
@@ -540,7 +547,7 @@ impl DescriptorPoolCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a DescriptorPoolCreateInfoFields1Vk,
         extensions_vk: &'a mut DescriptorPoolCreateInfoExtensionsVk,
@@ -574,7 +581,7 @@ impl DescriptorPoolCreateInfo {
         let pool_sizes_vk = self
             .pool_sizes
             .iter()
-            .map(|(&ty, &descriptor_count)| vk::DescriptorPoolSize {
+            .map(|&(ty, descriptor_count)| vk::DescriptorPoolSize {
                 ty: ty.into(),
                 descriptor_count,
             })
@@ -638,11 +645,11 @@ vulkan_bitflags! {
 
 /// Parameters to allocate a new `DescriptorPoolAlloc` from a `DescriptorPool`.
 #[derive(Clone, Debug)]
-pub struct DescriptorSetAllocateInfo {
+pub struct DescriptorSetAllocateInfo<'a> {
     /// The descriptor set layout to create the set for.
     ///
     /// There is no default value.
-    pub layout: Arc<DescriptorSetLayout>,
+    pub layout: &'a Arc<DescriptorSetLayout>,
 
     /// For layouts with a variable-count binding, the number of descriptors to allocate for that
     /// binding. This should be 0 for layouts that don't have a variable-count binding.
@@ -650,23 +657,23 @@ pub struct DescriptorSetAllocateInfo {
     /// The default value is 0.
     pub variable_descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl DescriptorSetAllocateInfo {
+impl<'a> DescriptorSetAllocateInfo<'a> {
     /// Returns a default `DescriptorSetAllocateInfo` with the provided `layout`.
     #[inline]
-    pub const fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+    pub const fn new(layout: &'a Arc<DescriptorSetLayout>) -> Self {
         Self {
             layout,
             variable_descriptor_count: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref layout,
+            layout,
             variable_descriptor_count,
             _ne,
         } = self;
@@ -760,10 +767,10 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let _ = DescriptorPool::new(
-            device,
-            DescriptorPoolCreateInfo {
+            &device,
+            &DescriptorPoolCreateInfo {
                 max_sets: 10,
-                pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
+                pool_sizes: &[(DescriptorType::UniformBuffer, 1)],
                 ..Default::default()
             },
         )
@@ -775,10 +782,10 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         DescriptorPool::new(
-            device,
-            DescriptorPoolCreateInfo {
+            &device,
+            &DescriptorPoolCreateInfo {
                 max_sets: 0,
-                pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
+                pool_sizes: &[(DescriptorType::UniformBuffer, 1)],
                 ..Default::default()
             },
         )
@@ -790,8 +797,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         DescriptorPool::new(
-            device,
-            DescriptorPoolCreateInfo {
+            &device,
+            &DescriptorPoolCreateInfo {
                 max_sets: 10,
                 ..Default::default()
             },
@@ -820,18 +827,19 @@ mod tests {
         .unwrap();
 
         let pool = DescriptorPool::new(
-            device,
-            DescriptorPoolCreateInfo {
+            &device,
+            &DescriptorPoolCreateInfo {
                 max_sets: 10,
-                pool_sizes: [(DescriptorType::UniformBuffer, 10)].into_iter().collect(),
+                pool_sizes: &[(DescriptorType::UniformBuffer, 10)],
                 ..Default::default()
             },
         )
         .unwrap();
-        let sets =
-            unsafe { pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]) }
-                .unwrap();
-        assert_eq!(sets.count(), 1);
+        let sets = unsafe {
+            pool.allocate_descriptor_sets(&[DescriptorSetAllocateInfo::new(&set_layout)])
+        }
+        .unwrap();
+        assert_eq!(sets.len(), 1);
     }
 
     #[test]
@@ -857,17 +865,17 @@ mod tests {
 
         assert_should_panic!({
             let pool = DescriptorPool::new(
-                device2,
-                DescriptorPoolCreateInfo {
+                &device2,
+                &DescriptorPoolCreateInfo {
                     max_sets: 10,
-                    pool_sizes: [(DescriptorType::UniformBuffer, 10)].into_iter().collect(),
+                    pool_sizes: &[(DescriptorType::UniformBuffer, 10)],
                     ..Default::default()
                 },
             )
             .unwrap();
 
             let _ = unsafe {
-                pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
+                pool.allocate_descriptor_sets(&[DescriptorSetAllocateInfo::new(&set_layout)])
             };
         });
     }
@@ -877,15 +885,15 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let pool = DescriptorPool::new(
-            device,
-            DescriptorPoolCreateInfo {
+            &device,
+            &DescriptorPoolCreateInfo {
                 max_sets: 1,
-                pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
+                pool_sizes: &[(DescriptorType::UniformBuffer, 1)],
                 ..Default::default()
             },
         )
         .unwrap();
-        let sets = unsafe { pool.allocate_descriptor_sets([]) }.unwrap();
-        assert_eq!(sets.count(), 0);
+        let sets = unsafe { pool.allocate_descriptor_sets(&[]) }.unwrap();
+        assert_eq!(sets.len(), 0);
     }
 }

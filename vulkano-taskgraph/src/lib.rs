@@ -1000,7 +1000,8 @@ mod tests {
             let Ok(library) = vulkano::VulkanLibrary::new() else {
                 return;
             };
-            let Ok(instance) = vulkano::instance::Instance::new(library, Default::default()) else {
+            let Ok(instance) = vulkano::instance::Instance::new(&library, &Default::default())
+            else {
                 return;
             };
             let Ok(mut physical_devices) = instance.enumerate_physical_devices() else {
@@ -1022,11 +1023,11 @@ mod tests {
                     queue_family_index: i as u32,
                     ..Default::default()
                 })
-                .collect();
+                .collect::<Vec<_>>();
             let Ok((device, queues)) = vulkano::device::Device::new(
-                physical_device,
-                vulkano::device::DeviceCreateInfo {
-                    queue_create_infos,
+                &physical_device,
+                &vulkano::device::DeviceCreateInfo {
+                    queue_create_infos: &queue_create_infos,
                     ..Default::default()
                 },
             ) else {

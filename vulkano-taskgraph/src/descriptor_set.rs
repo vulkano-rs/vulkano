@@ -5,8 +5,7 @@ use crate::{
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use concurrent_slotmap::{hyaline, SlotMap};
-use foldhash::HashMap;
-use std::{collections::BTreeMap, iter, mem, sync::Arc};
+use std::{collections::BTreeMap, iter, mem, slice, sync::Arc};
 use vulkano::{
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, Subbuffer},
@@ -311,7 +310,7 @@ impl GlobalDescriptorSet {
         let device = resources.device();
 
         let allocator = Arc::new(GlobalDescriptorSetAllocator::new(device));
-        let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
+        let inner = RawDescriptorSet::new(&allocator, layout, 0).map_err(Validated::unwrap)?;
 
         let hyaline_collector = resources.hyaline_collector();
 
@@ -435,9 +434,9 @@ impl GlobalDescriptorSet {
 
     pub fn create_sampler(
         &self,
-        create_info: SamplerCreateInfo,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Result<SamplerId, Validated<VulkanError>> {
-        let sampler = Sampler::new(self.device().clone(), create_info)?;
+        let sampler = Sampler::new(self.device(), create_info)?;
 
         Ok(self.add_sampler(sampler))
     }
@@ -445,11 +444,11 @@ impl GlobalDescriptorSet {
     pub fn create_sampled_image(
         &self,
         image_id: Id<Image>,
-        create_info: ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
         image_layout: ImageLayout,
     ) -> Result<SampledImageId, Validated<VulkanError>> {
         let image_state = self.resources.image(image_id).unwrap();
-        let image_view = ImageView::new(image_state.image().clone(), create_info)?;
+        let image_view = ImageView::new(image_state.image(), create_info)?;
 
         Ok(self.add_sampled_image(image_view, image_layout))
     }
@@ -457,11 +456,11 @@ impl GlobalDescriptorSet {
     pub fn create_storage_image(
         &self,
         image_id: Id<Image>,
-        create_info: ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
         image_layout: ImageLayout,
     ) -> Result<StorageImageId, Validated<VulkanError>> {
         let image_state = self.resources.image(image_id).unwrap();
-        let image_view = ImageView::new(image_state.image().clone(), create_info)?;
+        let image_view = ImageView::new(image_state.image(), create_info)?;
 
         Ok(self.add_storage_image(image_view, image_layout))
     }
@@ -966,25 +965,25 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
         layout: &Arc<DescriptorSetLayout>,
         _variable_count: u32,
     ) -> Result<DescriptorSetAlloc, Validated<VulkanError>> {
-        let mut pool_sizes = HashMap::default();
-
-        for binding in layout.bindings().values() {
-            *pool_sizes.entry(binding.descriptor_type).or_insert(0) += binding.descriptor_count;
-        }
+        let pool_sizes = layout
+            .bindings()
+            .values()
+            .map(|binding| (binding.descriptor_type, binding.descriptor_count))
+            .collect::<Vec<_>>();
 
         let pool = Arc::new(DescriptorPool::new(
-            layout.device().clone(),
-            DescriptorPoolCreateInfo {
+            layout.device(),
+            &DescriptorPoolCreateInfo {
                 flags: DescriptorPoolCreateFlags::UPDATE_AFTER_BIND,
                 max_sets: 1,
-                pool_sizes,
+                pool_sizes: &pool_sizes,
                 ..Default::default()
             },
         )?);
 
-        let allocate_info = DescriptorSetAllocateInfo::new(layout.clone());
+        let allocate_info = DescriptorSetAllocateInfo::new(layout);
 
-        let inner = unsafe { pool.allocate_descriptor_sets(iter::once(allocate_info)) }?
+        let inner = unsafe { pool.allocate_descriptor_sets(slice::from_ref(&allocate_info)) }?
             .next()
             .unwrap();
 
@@ -996,6 +995,10 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
     }
 
     unsafe fn deallocate(&self, _allocation: DescriptorSetAlloc) {}
+
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn DescriptorSetAllocator> {
+        self
+    }
 }
 
 unsafe impl DeviceOwned for GlobalDescriptorSetAllocator {
@@ -1016,7 +1019,7 @@ impl LocalDescriptorSet {
         framebuffer: &Framebuffer,
         subpass_index: usize,
     ) -> Result<Arc<Self>, VulkanError> {
-        let allocator = resources.descriptor_set_allocator().clone();
+        let allocator = resources.descriptor_set_allocator();
         let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
 
         let render_pass = framebuffer.render_pass();

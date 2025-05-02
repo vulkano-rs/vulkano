@@ -16,13 +16,12 @@ pub use self::{
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
-use crate::{device::Queue, VulkanError};
+use crate::VulkanError;
 use ash::vk;
 use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    sync::Arc,
 };
 
 pub mod event;
@@ -32,51 +31,15 @@ mod pipeline;
 pub mod semaphore;
 
 /// Declares in which queue(s) a resource can be used.
-///
-/// When you create a buffer or an image, you have to tell the Vulkan library in which queue
-/// families it will be used. The vulkano library requires you to tell in which queue family
-/// the resource will be used, even for exclusive mode.
-#[derive(Debug, Clone, PartialEq, Eq)]
-// TODO: remove
-pub enum SharingMode {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Sharing<'a> {
     /// The resource is used is only one queue family.
     Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
-    Concurrent(Vec<u32>), // TODO: Vec is too expensive here
+    Concurrent(&'a [u32]),
 }
 
-impl<'a> From<&'a Arc<Queue>> for SharingMode {
-    #[inline]
-    fn from(_queue: &'a Arc<Queue>) -> SharingMode {
-        SharingMode::Exclusive
-    }
-}
-
-impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
-    #[inline]
-    fn from(queues: &'a [&'a Arc<Queue>]) -> SharingMode {
-        SharingMode::Concurrent(
-            queues
-                .iter()
-                .map(|queue| queue.queue_family_index())
-                .collect(),
-        )
-    }
-}
-
-/// Declares in which queue(s) a resource can be used.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Sharing<I>
-where
-    I: IntoIterator<Item = u32>,
-{
-    /// The resource is used is only one queue family.
-    Exclusive,
-    /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
-    Concurrent(I),
-}
-
-impl Sharing<SmallVec<[u32; 4]>> {
+impl<'a> Sharing<'a> {
     /// Returns `true` if `self` is the `Exclusive` variant.
     #[inline]
     pub fn is_exclusive(&self) -> bool {
@@ -89,12 +52,38 @@ impl Sharing<SmallVec<[u32; 4]>> {
         matches!(self, Self::Concurrent(..))
     }
 
-    pub(crate) fn to_vk(&self) -> (vk::SharingMode, &[u32]) {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> (vk::SharingMode, &'a [u32]) {
         match self {
-            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, &[]),
             Sharing::Concurrent(queue_family_indices) => {
-                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+                (vk::SharingMode::CONCURRENT, queue_family_indices)
             }
+        }
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_owned(&self) -> OwnedSharing {
+        match self {
+            Self::Exclusive => OwnedSharing::Exclusive,
+            Self::Concurrent(queue_family_indices) => {
+                OwnedSharing::Concurrent(queue_family_indices.iter().copied().collect())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum OwnedSharing {
+    Exclusive,
+    Concurrent(SmallVec<[u32; 4]>),
+}
+
+impl OwnedSharing {
+    pub(crate) fn as_ref(&self) -> Sharing<'_> {
+        match self {
+            Self::Exclusive => Sharing::Exclusive,
+            Self::Concurrent(queue_family_indices) => Sharing::Concurrent(queue_family_indices),
         }
     }
 }

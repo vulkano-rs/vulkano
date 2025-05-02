@@ -147,8 +147,8 @@ mod linux {
             let library = VulkanLibrary::new().unwrap();
             let required_extensions = Surface::required_extensions(event_loop).unwrap();
             let instance = Instance::new(
-                library,
-                InstanceCreateInfo {
+                &library,
+                &InstanceCreateInfo {
                     flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                     enabled_extensions: InstanceExtensions {
                         khr_get_physical_device_properties2: true,
@@ -232,10 +232,10 @@ mod linux {
             );
 
             let (device, mut queues) = Device::new(
-                physical_device,
-                DeviceCreateInfo {
-                    enabled_extensions: device_extensions,
-                    queue_create_infos: vec![QueueCreateInfo {
+                &physical_device,
+                &DeviceCreateInfo {
+                    enabled_extensions: &device_extensions,
+                    queue_create_infos: &[QueueCreateInfo {
                         queue_family_index,
                         ..Default::default()
                     }],
@@ -272,11 +272,11 @@ mod linux {
             ];
             let vertex_buffer = Buffer::from_iter(
                 memory_allocator.clone(),
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -287,7 +287,7 @@ mod linux {
 
             let raw_image = RawImage::new(
                 device.clone(),
-                ImageCreateInfo {
+                &ImageCreateInfo {
                     flags: ImageCreateFlags::MUTABLE_FORMAT,
                     image_type: ImageType::Dim2d,
                     format: Format::R16G16B16A16_UNORM,
@@ -336,7 +336,7 @@ mod linux {
 
             let sampler = Sampler::new(
                 device.clone(),
-                SamplerCreateInfo {
+                &SamplerCreateInfo {
                     mag_filter: Filter::Linear,
                     min_filter: Filter::Linear,
                     address_mode: [SamplerAddressMode::Repeat; 3],
@@ -469,7 +469,7 @@ mod linux {
                     .create_window(Window::default_attributes())
                     .unwrap(),
             );
-            let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+            let surface = Surface::from_window(&self.instance, &window).unwrap();
             let window_size = window.inner_size();
 
             let (swapchain, images) = {
@@ -486,8 +486,8 @@ mod linux {
 
                 Swapchain::new(
                     self.device.clone(),
-                    surface,
-                    SwapchainCreateInfo {
+                    &surface,
+                    &SwapchainCreateInfo {
                         min_image_count: surface_capabilities.min_image_count.max(2),
                         image_format,
                         image_extent: window_size.into(),
@@ -665,7 +665,7 @@ mod linux {
                     if rcx.recreate_swapchain {
                         let (new_swapchain, new_images) = rcx
                             .swapchain
-                            .recreate(SwapchainCreateInfo {
+                            .recreate(&SwapchainCreateInfo {
                                 image_extent: window_size.into(),
                                 ..rcx.swapchain.create_info()
                             })

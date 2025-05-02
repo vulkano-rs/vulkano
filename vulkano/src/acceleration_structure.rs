@@ -122,17 +122,17 @@ impl AccelerationStructure {
     /// [`acceleration_structure`]: crate::device::DeviceFeatures::acceleration_structure
     #[inline]
     pub unsafe fn new(
-        device: Arc<Device>,
-        create_info: AccelerationStructureCreateInfo,
+        device: &Arc<Device>,
+        create_info: &AccelerationStructureCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &AccelerationStructureCreateInfo,
+        create_info: &AccelerationStructureCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_extensions().khr_acceleration_structure {
             return Err(Box::new(ValidationError {
@@ -163,8 +163,8 @@ impl AccelerationStructure {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: AccelerationStructureCreateInfo,
+        device: &Arc<Device>,
+        create_info: &AccelerationStructureCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -195,11 +195,11 @@ impl AccelerationStructure {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::AccelerationStructureKHR,
-        create_info: AccelerationStructureCreateInfo,
+        create_info: &AccelerationStructureCreateInfo<'_>,
     ) -> Arc<Self> {
-        let AccelerationStructureCreateInfo {
+        let &AccelerationStructureCreateInfo {
             create_flags,
             buffer,
             ty,
@@ -207,12 +207,12 @@ impl AccelerationStructure {
         } = create_info;
 
         Arc::new(Self {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             handle,
             id: Self::next_id(),
 
             create_flags,
-            buffer,
+            buffer: buffer.clone(),
             ty,
         })
     }
@@ -311,7 +311,7 @@ vulkan_enum! {
 
 /// Parameters to create a new `AccelerationStructure`.
 #[derive(Clone, Debug)]
-pub struct AccelerationStructureCreateInfo {
+pub struct AccelerationStructureCreateInfo<'a> {
     /// Specifies how to create the acceleration structure.
     ///
     /// The default value is empty.
@@ -324,7 +324,7 @@ pub struct AccelerationStructureCreateInfo {
     /// to the acceleration structure.
     ///
     /// There is no default value.
-    pub buffer: Subbuffer<[u8]>,
+    pub buffer: &'a Subbuffer<[u8]>,
 
     /// The type of acceleration structure to create.
     ///
@@ -334,25 +334,25 @@ pub struct AccelerationStructureCreateInfo {
     /* TODO: enable
     // TODO: document
     pub device_address: DeviceAddress, */
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl AccelerationStructureCreateInfo {
+impl<'a> AccelerationStructureCreateInfo<'a> {
     /// Returns a default `AccelerationStructureCreateInfo` with the provided `buffer`.
     #[inline]
-    pub const fn new(buffer: Subbuffer<[u8]>) -> Self {
+    pub const fn new(buffer: &'a Subbuffer<[u8]>) -> Self {
         Self {
             create_flags: AccelerationStructureCreateFlags::empty(),
             buffer,
             ty: AccelerationStructureType::Generic,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             create_flags,
-            ref buffer,
+            buffer,
             ty,
             _ne: _,
         } = self;
@@ -413,7 +413,7 @@ impl AccelerationStructureCreateInfo {
     pub(crate) fn to_vk(&self) -> vk::AccelerationStructureCreateInfoKHR<'static> {
         let &Self {
             create_flags,
-            ref buffer,
+            buffer,
             ty,
             _ne: _,
         } = self;
@@ -494,7 +494,7 @@ pub struct AccelerationStructureBuildGeometryInfo {
     /// The default value is `None`.
     pub scratch_data: Option<Subbuffer<[u8]>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl AccelerationStructureBuildGeometryInfo {
@@ -507,7 +507,7 @@ impl AccelerationStructureBuildGeometryInfo {
             dst_acceleration_structure: None,
             geometries,
             scratch_data: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -887,7 +887,7 @@ pub struct AccelerationStructureGeometryTrianglesData {
     /// The default value is `None`.
     pub transform_data: Option<Subbuffer<TransformMatrix>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl AccelerationStructureGeometryTrianglesData {
@@ -903,7 +903,7 @@ impl AccelerationStructureGeometryTrianglesData {
             max_vertex: 0,
             index_data: None,
             transform_data: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1055,7 +1055,7 @@ pub struct AccelerationStructureGeometryAabbsData {
     /// The default value is 0, which must be overridden.
     pub stride: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for AccelerationStructureGeometryAabbsData {
@@ -1073,7 +1073,7 @@ impl AccelerationStructureGeometryAabbsData {
             flags: GeometryFlags::empty(),
             data: None,
             stride: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1154,7 +1154,7 @@ pub struct AccelerationStructureGeometryInstancesData {
     /// There is no default value.
     pub data: AccelerationStructureGeometryInstancesDataType,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl AccelerationStructureGeometryInstancesData {
@@ -1164,7 +1164,7 @@ impl AccelerationStructureGeometryInstancesData {
         Self {
             flags: GeometryFlags::empty(),
             data,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1422,7 +1422,7 @@ pub struct CopyAccelerationStructureInfo {
     /// The default value is [`CopyAccelerationStructureMode::Clone`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyAccelerationStructureInfo {
@@ -1433,7 +1433,7 @@ impl CopyAccelerationStructureInfo {
             src,
             dst,
             mode: CopyAccelerationStructureMode::Clone,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1518,7 +1518,7 @@ pub struct CopyAccelerationStructureToMemoryInfo {
     /// The default value is [`CopyAccelerationStructureMode::Serialize`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyAccelerationStructureToMemoryInfo {
@@ -1530,7 +1530,7 @@ impl CopyAccelerationStructureToMemoryInfo {
             src,
             dst,
             mode: CopyAccelerationStructureMode::Serialize,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1601,7 +1601,7 @@ pub struct CopyMemoryToAccelerationStructureInfo {
     /// The default value is [`CopyAccelerationStructureMode::Deserialize`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyMemoryToAccelerationStructureInfo {
@@ -1613,7 +1613,7 @@ impl CopyMemoryToAccelerationStructureInfo {
             src,
             dst,
             mode: CopyAccelerationStructureMode::Deserialize,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1728,7 +1728,7 @@ pub struct AccelerationStructureBuildSizesInfo {
     /// The minimum required size of the scratch data buffer for a build operation.
     pub build_scratch_size: DeviceSize,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl AccelerationStructureBuildSizesInfo {
@@ -1748,7 +1748,7 @@ impl AccelerationStructureBuildSizesInfo {
             acceleration_structure_size,
             update_scratch_size,
             build_scratch_size,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

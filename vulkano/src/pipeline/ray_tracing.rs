@@ -410,7 +410,7 @@ pub struct RayTracingPipelineCreateInfo {
     /// The default value is `None`.
     pub base_pipeline: Option<Arc<RayTracingPipeline>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl RayTracingPipelineCreateInfo {
@@ -426,7 +426,7 @@ impl RayTracingPipelineCreateInfo {
             dynamic_state: Default::default(),
             layout,
             base_pipeline: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -960,6 +960,13 @@ pub struct ShaderBindingTable {
 impl ShaderBindingTable {
     /// Automatically creates a shader binding table from a ray tracing pipeline.
     pub fn new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        ray_tracing_pipeline: &RayTracingPipeline,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::new_inner(allocator.clone().as_dyn(), ray_tracing_pipeline)
+    }
+
+    fn new_inner(
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -1049,13 +1056,13 @@ impl ShaderBindingTable {
 
         let sbt_buffer = new_bytes_buffer_with_alignment(
             allocator,
-            BufferCreateInfo {
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC
                     | BufferUsage::SHADER_DEVICE_ADDRESS
                     | BufferUsage::SHADER_BINDING_TABLE,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::HOST_SEQUENTIAL_WRITE
                     | MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
@@ -1112,13 +1119,13 @@ impl ShaderBindingTable {
 
 fn new_bytes_buffer_with_alignment(
     allocator: Arc<dyn MemoryAllocator>,
-    create_info: BufferCreateInfo,
-    allocation_info: AllocationCreateInfo,
+    create_info: &BufferCreateInfo<'_>,
+    allocation_info: &AllocationCreateInfo<'_>,
     size: DeviceSize,
     alignment: DeviceAlignment,
 ) -> Result<Subbuffer<[u8]>, Validated<AllocateBufferError>> {
     let layout = DeviceLayout::from_size_alignment(size, alignment.as_devicesize()).unwrap();
-    let buffer = Subbuffer::new(Buffer::new(
+    let buffer = Subbuffer::new(Buffer::new_inner(
         allocator,
         create_info,
         allocation_info,

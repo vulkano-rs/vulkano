@@ -77,7 +77,7 @@ fn fns_output(
         #[allow(missing_docs)]
         pub struct #struct_name {
             #(#struct_items)*
-            pub _ne: crate::NonExhaustive,
+            pub _ne: crate::NonExhaustive<'static>,
         }
 
         impl #struct_name {
@@ -86,7 +86,7 @@ fn fns_output(
             {
                 #struct_name {
                     #(#load_items)*
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 }
             }
         }

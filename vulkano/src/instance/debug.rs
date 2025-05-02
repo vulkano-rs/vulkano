@@ -11,16 +11,17 @@
 //! # Examples
 //!
 //! ```
-//! # use vulkano::instance::Instance;
 //! # use std::sync::Arc;
-//! # let instance: Arc<Instance> = return;
+//! # use vulkano::instance::Instance;
 //! use vulkano::instance::debug::{
 //!     DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
 //! };
 //!
+//! # let instance: Arc<Instance> = return;
+//! #
 //! let _callback = DebugUtilsMessenger::new(
-//!     instance,
-//!     DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+//!     &instance,
+//!     &DebugUtilsMessengerCreateInfo::new(&unsafe {
 //!         DebugUtilsMessengerCallback::new(|message_severity, message_type, callback_data| {
 //!             println!("Debug callback: {:?}", callback_data.message);
 //!         })
@@ -63,17 +64,17 @@ impl DebugUtilsMessenger {
     /// Initializes a debug callback.
     #[inline]
     pub fn new(
-        instance: Arc<Instance>,
-        create_info: DebugUtilsMessengerCreateInfo,
+        instance: &Arc<Instance>,
+        create_info: &DebugUtilsMessengerCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        Self::validate_new(&instance, &create_info)?;
+        Self::validate_new(instance, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(instance, create_info) }?)
     }
 
     fn validate_new(
         instance: &Instance,
-        create_info: &DebugUtilsMessengerCreateInfo,
+        create_info: &DebugUtilsMessengerCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_debug_utils {
             return Err(Box::new(ValidationError {
@@ -93,8 +94,8 @@ impl DebugUtilsMessenger {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        instance: Arc<Instance>,
-        create_info: DebugUtilsMessengerCreateInfo,
+        instance: &Arc<Instance>,
+        create_info: &DebugUtilsMessengerCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -116,8 +117,8 @@ impl DebugUtilsMessenger {
 
         Ok(DebugUtilsMessenger {
             handle,
-            instance: DebugWrapper(instance),
-            _user_callback: create_info.user_callback,
+            instance: DebugWrapper(instance.clone()),
+            _user_callback: create_info.user_callback.clone(),
         })
     }
 }
@@ -152,8 +153,8 @@ impl Debug for DebugUtilsMessenger {
 }
 
 /// Parameters to create a `DebugUtilsMessenger`.
-#[derive(Clone)]
-pub struct DebugUtilsMessengerCreateInfo {
+#[derive(Clone, Debug)]
+pub struct DebugUtilsMessengerCreateInfo<'a> {
     /// The message severity types that the callback should be called for.
     ///
     /// The value must not be empty.
@@ -172,28 +173,22 @@ pub struct DebugUtilsMessengerCreateInfo {
     ///
     /// The closure must not make any calls to the Vulkan API.
     /// If the closure panics, the panic is caught and ignored.
-    pub user_callback: Arc<DebugUtilsMessengerCallback>,
+    pub user_callback: &'a Arc<DebugUtilsMessengerCallback>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl DebugUtilsMessengerCreateInfo {
+impl<'a> DebugUtilsMessengerCreateInfo<'a> {
     /// Returns a default `DebugUtilsMessengerCreateInfo` with the provided `user_callback`.
-    // TODO: make const
     #[inline]
-    pub fn new(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
+    pub const fn new(user_callback: &'a Arc<DebugUtilsMessengerCallback>) -> Self {
         Self {
-            message_severity: DebugUtilsMessageSeverity::ERROR | DebugUtilsMessageSeverity::WARNING,
+            message_severity: DebugUtilsMessageSeverity::ERROR
+                .union(DebugUtilsMessageSeverity::WARNING),
             message_type: DebugUtilsMessageType::GENERAL,
             user_callback,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
-    }
-
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn user_callback(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
-        Self::new(user_callback)
     }
 
     #[inline]
@@ -256,7 +251,7 @@ impl DebugUtilsMessengerCreateInfo {
         let &Self {
             message_type,
             message_severity,
-            ref user_callback,
+            user_callback,
             _ne: _,
         } = self;
 
@@ -266,22 +261,6 @@ impl DebugUtilsMessengerCreateInfo {
             .message_type(message_type.into())
             .pfn_user_callback(Some(trampoline))
             .user_data(user_callback.as_ptr().cast_mut().cast())
-    }
-}
-
-impl Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let Self {
-            message_severity,
-            message_type,
-            user_callback: _,
-            _ne: _,
-        } = self;
-
-        f.debug_struct("DebugUtilsMessengerCreateInfo")
-            .field("message_severity", message_severity)
-            .field("message_type", message_type)
-            .finish_non_exhaustive()
     }
 }
 
@@ -316,6 +295,13 @@ impl DebugUtilsMessengerCallback {
 
     pub(crate) fn as_ptr(&self) -> *const CallbackData {
         ptr::addr_of!(self.0)
+    }
+}
+
+impl Debug for DebugUtilsMessengerCallback {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("DebugUtilsMessengerCallback")
+            .finish_non_exhaustive()
     }
 }
 
@@ -537,7 +523,7 @@ pub struct DebugUtilsLabel {
     /// The default value is `[0.0; 4]`.
     pub color: [f32; 4],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DebugUtilsLabel {
@@ -554,7 +540,7 @@ impl DebugUtilsLabel {
         Self {
             label_name: String::new(),
             color: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -674,9 +660,9 @@ mod tests {
             };
 
             match Instance::new(
-                library,
-                InstanceCreateInfo {
-                    enabled_extensions: InstanceExtensions {
+                &library,
+                &InstanceCreateInfo {
+                    enabled_extensions: &InstanceExtensions {
                         ext_debug_utils: true,
                         ..InstanceExtensions::empty()
                     },
@@ -689,13 +675,13 @@ mod tests {
         };
 
         let callback = DebugUtilsMessenger::new(
-            instance,
-            DebugUtilsMessengerCreateInfo {
+            &instance,
+            &DebugUtilsMessengerCreateInfo {
                 message_severity: DebugUtilsMessageSeverity::ERROR,
                 message_type: DebugUtilsMessageType::GENERAL
                     | DebugUtilsMessageType::VALIDATION
                     | DebugUtilsMessageType::PERFORMANCE,
-                ..DebugUtilsMessengerCreateInfo::new(unsafe {
+                ..DebugUtilsMessengerCreateInfo::new(&unsafe {
                     DebugUtilsMessengerCallback::new(|_, _, _| {})
                 })
             },

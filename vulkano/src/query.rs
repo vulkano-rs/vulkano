@@ -420,7 +420,7 @@ pub struct QueryPoolCreateInfo {
     /// The default value is empty.
     pub pipeline_statistics: QueryPipelineStatisticFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl QueryPoolCreateInfo {
@@ -431,7 +431,7 @@ impl QueryPoolCreateInfo {
             query_type,
             query_count: 0,
             pipeline_statistics: QueryPipelineStatisticFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

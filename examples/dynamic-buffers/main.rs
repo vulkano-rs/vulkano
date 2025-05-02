@@ -32,8 +32,8 @@ use vulkano::{
 fn main() {
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -71,10 +71,10 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -145,14 +145,14 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
     let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     // Create the input buffer. Data in a dynamic buffer **MUST** be aligned to
@@ -185,12 +185,12 @@ fn main() {
     };
 
     let input_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::UNIFORM_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -200,12 +200,12 @@ fn main() {
     .unwrap();
 
     let output_buffer = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()

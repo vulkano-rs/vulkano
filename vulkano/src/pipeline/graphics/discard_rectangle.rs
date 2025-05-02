@@ -31,7 +31,7 @@ pub struct DiscardRectangleState {
     /// [`DynamicState::DiscardRectangle`]: crate::pipeline::DynamicState::DiscardRectangle
     pub rectangles: Vec<Scissor>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DiscardRectangleState {
@@ -48,7 +48,7 @@ impl DiscardRectangleState {
         Self {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

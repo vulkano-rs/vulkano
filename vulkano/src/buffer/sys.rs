@@ -14,12 +14,11 @@ use crate::{
         allocator::AllocationType, is_aligned, DedicatedTo, ExternalMemoryHandleTypes,
         MemoryAllocateFlags, MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
-    sync::Sharing,
+    sync::{OwnedSharing, Sharing},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use ash::vk;
-use smallvec::SmallVec;
 use std::{marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// A raw buffer, with no memory backing it.
@@ -36,7 +35,7 @@ pub struct RawBuffer {
     flags: BufferCreateFlags,
     size: DeviceSize,
     usage: BufferUsage,
-    sharing: Sharing<SmallVec<[u32; 4]>>,
+    sharing: OwnedSharing,
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
     memory_requirements: MemoryRequirements,
@@ -54,17 +53,17 @@ impl RawBuffer {
     /// - Panics if `create_info.usage` is empty.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: BufferCreateInfo,
+        device: &Arc<Device>,
+        create_info: &BufferCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &BufferCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -80,8 +79,8 @@ impl RawBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: BufferCreateInfo,
+        device: &Arc<Device>,
+        create_info: &BufferCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         let mut extensions_vk = create_info.to_vk_extensions();
         let create_info_vk = create_info.to_vk(&mut extensions_vk);
@@ -115,9 +114,9 @@ impl RawBuffer {
     ///   `RawBuffer`.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Buffer,
-        create_info: BufferCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
     ) -> Self {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
     }
@@ -135,20 +134,20 @@ impl RawBuffer {
     ///   `RawBuffer`.
     #[inline]
     pub unsafe fn from_handle_borrowed(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Buffer,
-        create_info: BufferCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
     ) -> Self {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
     }
 
     unsafe fn from_handle_with_destruction(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Buffer,
-        create_info: BufferCreateInfo,
+        create_info: &BufferCreateInfo<'_>,
         needs_destruction: bool,
     ) -> Self {
-        let BufferCreateInfo {
+        let &BufferCreateInfo {
             flags,
             size,
             usage,
@@ -157,7 +156,7 @@ impl RawBuffer {
             _ne: _,
         } = create_info;
 
-        let mut memory_requirements = Self::get_memory_requirements(&device, handle);
+        let mut memory_requirements = Self::get_memory_requirements(device, handle);
 
         debug_assert!(memory_requirements.layout.size() >= size);
         debug_assert!(memory_requirements.memory_type_bits != 0);
@@ -187,12 +186,12 @@ impl RawBuffer {
 
         RawBuffer {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             flags,
             size,
             usage,
-            sharing,
+            sharing: sharing.to_owned(),
             external_memory_handle_types,
             memory_requirements,
             needs_destruction,
@@ -385,11 +384,11 @@ impl RawBuffer {
 
             for handle_type in memory.export_handle_types() {
                 let external_buffer_properties = unsafe {
-                    physical_device.external_buffer_properties_unchecked(ExternalBufferInfo {
+                    physical_device.external_buffer_properties_unchecked(&ExternalBufferInfo {
                         flags: self.flags,
                         usage: self.usage,
                         handle_type,
-                        _ne: crate::NonExhaustive(()),
+                        _ne: crate::NE,
                     })
                 };
 
@@ -583,8 +582,8 @@ impl RawBuffer {
 
     /// Returns the sharing the buffer was created with.
     #[inline]
-    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
-        &self.sharing
+    pub fn sharing(&self) -> Sharing<'_> {
+        self.sharing.as_ref()
     }
 
     /// Returns the external memory handle types that are supported with this buffer.
@@ -624,7 +623,7 @@ impl_id_counter!(RawBuffer);
 
 /// Parameters to create a new [`Buffer`].
 #[derive(Clone, Debug)]
-pub struct BufferCreateInfo {
+pub struct BufferCreateInfo<'a> {
     /// Additional properties of the buffer.
     ///
     /// The default value is empty.
@@ -633,7 +632,7 @@ pub struct BufferCreateInfo {
     /// Whether the buffer can be shared across multiple queues, or is limited to a single queue.
     ///
     /// The default value is [`Sharing::Exclusive`].
-    pub sharing: Sharing<SmallVec<[u32; 4]>>,
+    pub sharing: Sharing<'a>,
 
     /// The size in bytes of the buffer.
     ///
@@ -660,17 +659,17 @@ pub struct BufferCreateInfo {
     /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for BufferCreateInfo {
+impl Default for BufferCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BufferCreateInfo {
+impl<'a> BufferCreateInfo<'a> {
     /// Returns a default `BufferCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -680,14 +679,14 @@ impl BufferCreateInfo {
             size: 0,
             usage: BufferUsage::empty(),
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref sharing,
+            sharing,
             size,
             usage,
             external_memory_handle_types,
@@ -843,13 +842,13 @@ impl BufferCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &'a self,
         extensions_vk: &'a mut BufferCreateInfoExtensionsVk,
     ) -> vk::BufferCreateInfo<'a> {
         let &Self {
             flags,
-            ref sharing,
+            sharing,
             size,
             usage,
             external_memory_handle_types: _,
@@ -902,8 +901,8 @@ mod tests {
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let buf = RawBuffer::new(
-            device.clone(),
-            BufferCreateInfo {
+            &device,
+            &BufferCreateInfo {
                 size: 128,
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
@@ -991,17 +990,14 @@ mod tests {
     fn create_empty_buffer() {
         let (device, _) = gfx_dev_and_queue!();
 
-        if RawBuffer::new(
-            device,
-            BufferCreateInfo {
+        RawBuffer::new(
+            &device,
+            &BufferCreateInfo {
                 size: 0,
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .unwrap_err();
     }
 }

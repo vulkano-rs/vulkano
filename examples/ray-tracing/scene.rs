@@ -12,12 +12,14 @@ use vulkano::{
     },
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryCommandBufferAbstract,
     },
     device::{Device, Queue},
     format::Format,
-    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{
+        AllocationCreateInfo, DeviceLayout, MemoryTypeFilter, StandardMemoryAllocator,
+    },
     pipeline::{
         graphics::vertex_input::Vertex,
         ray_tracing::{
@@ -52,8 +54,8 @@ impl SceneTask {
     pub fn new(
         app: &App,
         virtual_swapchain_id: Id<Swapchain>,
-        memory_allocator: Arc<dyn MemoryAllocator>,
-        command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
     ) -> Self {
         let bcx = app.resources.bindless_context().unwrap();
 
@@ -116,14 +118,14 @@ impl SceneTask {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER
                     | BufferUsage::SHADER_DEVICE_ADDRESS
                     | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -139,11 +141,11 @@ impl SceneTask {
         // will trace rays against the top-level acceleration structure.
         let blas = unsafe {
             build_acceleration_structure_triangles(
-                vertex_buffer,
-                memory_allocator.clone(),
-                command_buffer_allocator.clone(),
-                app.device.clone(),
-                app.queue.clone(),
+                &vertex_buffer,
+                memory_allocator,
+                command_buffer_allocator,
+                &app.device,
+                &app.queue,
             )
         };
         let tlas = unsafe {
@@ -152,10 +154,10 @@ impl SceneTask {
                     acceleration_structure_reference: blas.device_address().into(),
                     ..Default::default()
                 }],
-                memory_allocator.clone(),
-                command_buffer_allocator.clone(),
-                app.device.clone(),
-                app.queue.clone(),
+                memory_allocator,
+                command_buffer_allocator,
+                &app.device,
+                &app.queue,
             )
         };
 
@@ -169,11 +171,11 @@ impl SceneTask {
         let camera_buffer_id = app
             .resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::STORAGE_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -214,8 +216,7 @@ impl SceneTask {
             )
             .unwrap();
 
-        let shader_binding_table =
-            ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
+        let shader_binding_table = ShaderBindingTable::new(memory_allocator, &pipeline).unwrap();
 
         SceneTask {
             swapchain_id: virtual_swapchain_id,
@@ -299,10 +300,10 @@ unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,
     primitive_count: u32,
     ty: AccelerationStructureType,
-    memory_allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
         mode: BuildAccelerationStructureMode::Build,
@@ -321,34 +322,38 @@ unsafe fn build_acceleration_structure_common(
     // We create a new scratch buffer for each acceleration structure for simplicity. You may want
     // to reuse scratch buffers if you need to build many acceleration structures.
     let scratch_buffer = Buffer::new_slice::<u8>(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
         as_build_sizes_info.build_scratch_size,
     )
     .unwrap();
 
-    let as_create_info = AccelerationStructureCreateInfo {
-        ty,
-        ..AccelerationStructureCreateInfo::new(
-            Buffer::new_slice::<u8>(
-                memory_allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
-                        | BufferUsage::SHADER_DEVICE_ADDRESS,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-                as_build_sizes_info.acceleration_structure_size,
-            )
-            .unwrap(),
+    let acceleration = unsafe {
+        AccelerationStructure::new(
+            device,
+            &AccelerationStructureCreateInfo {
+                ty,
+                ..AccelerationStructureCreateInfo::new(
+                    &Buffer::new_slice::<u8>(
+                        memory_allocator,
+                        &BufferCreateInfo {
+                            usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+                                | BufferUsage::SHADER_DEVICE_ADDRESS,
+                            ..Default::default()
+                        },
+                        &AllocationCreateInfo::default(),
+                        as_build_sizes_info.acceleration_structure_size,
+                    )
+                    .unwrap(),
+                )
+            },
         )
-    };
-
-    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info) }.unwrap();
+    }
+    .unwrap();
 
     as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
     as_build_geometry_info.scratch_data = Some(scratch_buffer);
@@ -361,7 +366,7 @@ unsafe fn build_acceleration_structure_common(
     // For simplicity, we build a single command buffer that builds the acceleration structure,
     // then waits for its execution to complete.
     let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
+        command_buffer_allocator.clone(),
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
@@ -377,7 +382,7 @@ unsafe fn build_acceleration_structure_common(
     builder
         .build()
         .unwrap()
-        .execute(queue)
+        .execute(queue.clone())
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap()
@@ -388,16 +393,16 @@ unsafe fn build_acceleration_structure_common(
 }
 
 unsafe fn build_acceleration_structure_triangles(
-    vertex_buffer: Subbuffer<[MyVertex]>,
-    memory_allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    vertex_buffer: &Subbuffer<[MyVertex]>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let primitive_count = (vertex_buffer.len() / 3) as u32;
     let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
         max_vertex: vertex_buffer.len() as _,
-        vertex_data: Some(vertex_buffer.into_bytes()),
+        vertex_data: Some(vertex_buffer.clone().into_bytes()),
         vertex_stride: size_of::<MyVertex>() as _,
         ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
     };
@@ -417,21 +422,21 @@ unsafe fn build_acceleration_structure_triangles(
 
 unsafe fn build_top_level_acceleration_structure(
     as_instances: Vec<AccelerationStructureInstance>,
-    allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let primitive_count = as_instances.len() as u32;
 
     let instance_buffer = Buffer::from_iter(
-        allocator.clone(),
-        BufferCreateInfo {
+        memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::SHADER_DEVICE_ADDRESS
                 | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -450,7 +455,7 @@ unsafe fn build_top_level_acceleration_structure(
         geometries,
         primitive_count,
         AccelerationStructureType::TopLevel,
-        allocator,
+        memory_allocator,
         command_buffer_allocator,
         device,
         queue,

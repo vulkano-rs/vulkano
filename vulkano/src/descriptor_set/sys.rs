@@ -33,6 +33,18 @@ impl RawDescriptorSet {
     /// Allocates a new descriptor set and returns it.
     #[inline]
     pub fn new(
+        allocator: &Arc<impl DescriptorSetAllocator + ?Sized>,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
+        Self::new_inner(
+            allocator.clone().as_dyn(),
+            layout,
+            variable_descriptor_count,
+        )
+    }
+
+    fn new_inner(
         allocator: Arc<dyn DescriptorSetAllocator>,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,

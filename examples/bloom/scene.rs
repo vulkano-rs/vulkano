@@ -45,11 +45,11 @@ impl SceneTask {
         let vertex_buffer_id = app
             .resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()

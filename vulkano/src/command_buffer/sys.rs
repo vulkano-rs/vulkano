@@ -33,12 +33,12 @@ impl RecordingCommandBuffer {
     /// Allocates and begins recording a new command buffer.
     #[inline]
     pub fn new(
-        allocator: Arc<dyn CommandBufferAllocator>,
+        allocator: &Arc<impl CommandBufferAllocator + ?Sized>,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
-        Self::validate_new(allocator.device(), queue_family_index, level, &begin_info)?;
+        Self::validate_new(allocator.device(), queue_family_index, level, begin_info)?;
 
         unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
     }
@@ -47,7 +47,7 @@ impl RecordingCommandBuffer {
         device: &Device,
         _queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: &CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkBeginCommandBuffer-commandBuffer-00049
         // VUID-vkBeginCommandBuffer-commandBuffer-00050
@@ -71,10 +71,26 @@ impl RecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
+        allocator: &Arc<impl CommandBufferAllocator + ?Sized>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo<'_>,
+    ) -> Result<Self, Validated<VulkanError>> {
+        unsafe {
+            Self::new_unchecked_inner(
+                allocator.clone().as_dyn(),
+                queue_family_index,
+                level,
+                begin_info,
+            )
+        }
+    }
+
+    unsafe fn new_unchecked_inner(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        begin_info: CommandBufferBeginInfo,
+        begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
         let allocation = allocator.allocate(queue_family_index, level)?;
 
@@ -92,7 +108,7 @@ impl RecordingCommandBuffer {
                 .map_err(VulkanError::from)?;
         }
 
-        let CommandBufferBeginInfo {
+        let &CommandBufferBeginInfo {
             usage,
             inheritance_info,
             _ne: _,
@@ -101,7 +117,7 @@ impl RecordingCommandBuffer {
         Ok(RecordingCommandBuffer {
             allocation: ManuallyDrop::new(allocation),
             allocator,
-            inheritance_info,
+            inheritance_info: inheritance_info.cloned(),
             queue_family_index,
             usage,
         })
@@ -183,7 +199,7 @@ impl Debug for RecordingCommandBuffer {
 
 /// Parameters to begin recording a command buffer.
 #[derive(Clone, Debug)]
-pub struct CommandBufferBeginInfo {
+pub struct CommandBufferBeginInfo<'a> {
     /// How the command buffer will be used.
     ///
     /// The default value is [`CommandBufferUsage::MultipleSubmit`].
@@ -194,26 +210,26 @@ pub struct CommandBufferBeginInfo {
     /// `None`.
     ///
     /// The default value is `None`.
-    pub inheritance_info: Option<CommandBufferInheritanceInfo>,
+    pub inheritance_info: Option<&'a CommandBufferInheritanceInfo>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for CommandBufferBeginInfo {
+impl Default for CommandBufferBeginInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CommandBufferBeginInfo {
+impl<'a> CommandBufferBeginInfo<'a> {
     /// Returns a default `CommandBufferBeginInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             usage: CommandBufferUsage::MultipleSubmit,
             inheritance_info: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -236,7 +252,7 @@ impl CommandBufferBeginInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a BeginInfoFields1Vk<'_>,
     ) -> vk::CommandBufferBeginInfo<'a> {
@@ -268,7 +284,7 @@ impl CommandBufferBeginInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &self,
         fields1_extensions_vk: &'a mut BeginInfoFields1ExtensionsVk<'_>,
     ) -> BeginInfoFields1Vk<'a> {
@@ -289,7 +305,7 @@ impl CommandBufferBeginInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1_extensions<'a>(
+    pub(crate) fn to_vk_fields1_extensions(
         &self,
         fields2_vk: &'a BeginInfoFields2Vk,
     ) -> BeginInfoFields1ExtensionsVk<'a> {

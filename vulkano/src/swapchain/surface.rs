@@ -40,9 +40,9 @@ pub struct Surface {
     // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
     // `Surface` is destroyed.
     pub(crate) surface_formats:
-        OnceCache<(vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
+        OnceCache<(vk::PhysicalDevice, SurfaceInfo<'static>), Vec<(Format, ColorSpace)>>,
     pub(crate) surface_present_modes:
-        OnceCache<(vk::PhysicalDevice, SurfaceInfo), Vec<PresentMode>>,
+        OnceCache<(vk::PhysicalDevice, SurfaceInfo<'static>), Vec<PresentMode>>,
     pub(crate) surface_support: OnceCache<(vk::PhysicalDevice, u32), bool>,
 }
 
@@ -72,11 +72,11 @@ impl Surface {
 
     /// Creates a new `Surface` from the given `window`.
     pub fn from_window(
-        instance: Arc<Instance>,
-        window: Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
+        instance: &Arc<Instance>,
+        window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
     ) -> Result<Arc<Self>, FromWindowError> {
-        let mut surface = unsafe { Self::from_window_ref(instance, &*window) }?;
-        Arc::get_mut(&mut surface).unwrap().object = Some(window);
+        let mut surface = unsafe { Self::from_window_ref(instance, window) }?;
+        Arc::get_mut(&mut surface).unwrap().object = Some(window.clone());
 
         Ok(surface)
     }
@@ -88,7 +88,7 @@ impl Surface {
     ///
     /// - The given `window` must outlive the created surface.
     pub unsafe fn from_window_ref(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         window: &(impl HasWindowHandle + HasDisplayHandle),
     ) -> Result<Arc<Self>, FromWindowError> {
         let window_handle = window
@@ -165,14 +165,14 @@ impl Surface {
     /// - The window object that `handle` was created from must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_handle(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         handle: vk::SurfaceKHR,
         api: SurfaceApi,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Self {
         Surface {
             handle,
-            instance: DebugWrapper(instance),
+            instance: DebugWrapper(instance.clone()),
             id: Self::next_id(),
             api,
             object,
@@ -188,10 +188,10 @@ impl Surface {
     /// However, it may be useful for testing, and it is available for future extensions to
     /// layer on top of.
     pub fn headless(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_headless(&instance)?;
+        Self::validate_headless(instance)?;
 
         Ok(unsafe { Self::headless_unchecked(instance, object) }?)
     }
@@ -211,7 +211,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn headless_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info_vk = vk::HeadlessSurfaceCreateInfoEXT::default()
@@ -241,17 +241,17 @@ impl Surface {
     /// Creates a `Surface` from a `DisplayMode` and display plane.
     #[inline]
     pub fn from_display_plane(
-        display_mode: Arc<DisplayMode>,
-        create_info: DisplaySurfaceCreateInfo,
+        display_mode: &Arc<DisplayMode>,
+        create_info: &DisplaySurfaceCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_display_plane(&display_mode, &create_info)?;
+        Self::validate_from_display_plane(display_mode, create_info)?;
 
         Ok(unsafe { Self::from_display_plane_unchecked(display_mode, create_info) }?)
     }
 
     fn validate_from_display_plane(
         display_mode: &DisplayMode,
-        create_info: &DisplaySurfaceCreateInfo,
+        create_info: &DisplaySurfaceCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !display_mode.instance().enabled_extensions().khr_display {
             return Err(Box::new(ValidationError {
@@ -362,8 +362,8 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_display_plane_unchecked(
-        display_mode: Arc<DisplayMode>,
-        create_info: DisplaySurfaceCreateInfo,
+        display_mode: &Arc<DisplayMode>,
+        create_info: &DisplaySurfaceCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info_vk = create_info.to_vk(display_mode.handle());
         let instance = display_mode.instance();
@@ -385,7 +385,7 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance.clone(), handle, SurfaceApi::DisplayPlane, None)
+            Self::from_handle(instance, handle, SurfaceApi::DisplayPlane, None)
         }))
     }
 
@@ -397,11 +397,11 @@ impl Surface {
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
     pub unsafe fn from_android(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         window: *mut vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_android(&instance, window)?;
+        Self::validate_from_android(instance, window)?;
 
         Ok(unsafe { Self::from_android_unchecked(instance, window, object) }?)
     }
@@ -427,7 +427,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_android_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         window: *mut vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -465,12 +465,12 @@ impl Surface {
     /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_directfb(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         dfb: *mut vk::IDirectFB,
         surface: *mut vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_directfb(&instance, dfb, surface)?;
+        Self::validate_from_directfb(instance, dfb, surface)?;
 
         Ok(unsafe { Self::from_directfb_unchecked(instance, dfb, surface, object) }?)
     }
@@ -500,7 +500,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_directfb_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         dfb: *mut vk::IDirectFB,
         surface: *mut vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -539,11 +539,11 @@ impl Surface {
     /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_fuchsia_image_pipe(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         image_pipe_handle: vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
+        Self::validate_from_fuchsia_image_pipe(instance, image_pipe_handle)?;
 
         Ok(
             unsafe {
@@ -573,7 +573,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_fuchsia_image_pipe_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         image_pipe_handle: vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -611,11 +611,11 @@ impl Surface {
     /// - The object referred to by `stream_descriptor` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_ggp_stream_descriptor(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         stream_descriptor: vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
+        Self::validate_from_ggp_stream_descriptor(instance, stream_descriptor)?;
 
         Ok(unsafe {
             Self::from_ggp_stream_descriptor_unchecked(instance, stream_descriptor, object)
@@ -643,7 +643,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_ggp_stream_descriptor_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         stream_descriptor: vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -682,11 +682,11 @@ impl Surface {
     ///   parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_ios(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_ios(&instance, view)?;
+        Self::validate_from_ios(instance, view)?;
 
         Ok(unsafe { Self::from_ios_unchecked(instance, view, object) }?)
     }
@@ -715,7 +715,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_ios_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -753,11 +753,11 @@ impl Surface {
     ///   parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_mac_os(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_mac_os(&instance, view)?;
+        Self::validate_from_mac_os(instance, view)?;
 
         Ok(unsafe { Self::from_mac_os_unchecked(instance, view, object) }?)
     }
@@ -786,7 +786,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_mac_os_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -830,11 +830,11 @@ impl Surface {
     /// The surface will retain the layer internally, so you do not need to
     /// keep the source from where this came from alive.
     pub unsafe fn from_metal(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         layer: *const vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_metal(&instance, layer)?;
+        Self::validate_from_metal(instance, layer)?;
 
         Ok(unsafe { Self::from_metal_unchecked(instance, layer, object) }?)
     }
@@ -859,7 +859,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_metal_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         layer: *const vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -897,12 +897,12 @@ impl Surface {
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
     pub unsafe fn from_qnx_screen(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         context: *mut vk::_screen_context,
         window: *mut vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_qnx_screen(&instance, context, window)?;
+        Self::validate_from_qnx_screen(instance, context, window)?;
 
         Ok(unsafe { Self::from_qnx_screen_unchecked(instance, context, window, object) }?)
     }
@@ -932,7 +932,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_qnx_screen_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         context: *mut vk::_screen_context,
         window: *mut vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -973,11 +973,11 @@ impl Surface {
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
     pub unsafe fn from_vi(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_vi(&instance, window)?;
+        Self::validate_from_vi(instance, window)?;
 
         Ok(unsafe { Self::from_vi_unchecked(instance, window, object) }?)
     }
@@ -1003,7 +1003,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_vi_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -1043,12 +1043,12 @@ impl Surface {
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     pub unsafe fn from_wayland(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         display: *mut vk::wl_display,
         surface: *mut vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_wayland(&instance, display, surface)?;
+        Self::validate_from_wayland(instance, display, surface)?;
 
         Ok(unsafe { Self::from_wayland_unchecked(instance, display, surface, object) }?)
     }
@@ -1078,7 +1078,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_wayland_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         display: *mut vk::wl_display,
         surface: *mut vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -1120,12 +1120,12 @@ impl Surface {
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_win32(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         hinstance: vk::HINSTANCE,
         hwnd: vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_win32(&instance, hinstance, hwnd)?;
+        Self::validate_from_win32(instance, hinstance, hwnd)?;
 
         Ok(unsafe { Self::from_win32_unchecked(instance, hinstance, hwnd, object) }?)
     }
@@ -1155,7 +1155,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_win32_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         hinstance: vk::HINSTANCE,
         hwnd: vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -1197,12 +1197,12 @@ impl Surface {
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     pub unsafe fn from_xcb(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         connection: *mut vk::xcb_connection_t,
         window: vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_xcb(&instance, connection, window)?;
+        Self::validate_from_xcb(instance, connection, window)?;
 
         Ok(unsafe { Self::from_xcb_unchecked(instance, connection, window, object) }?)
     }
@@ -1232,7 +1232,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_xcb_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         connection: *mut vk::xcb_connection_t,
         window: vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -1274,12 +1274,12 @@ impl Surface {
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_xlib(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         display: *mut vk::Display,
         window: vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_xlib(&instance, display, window)?;
+        Self::validate_from_xlib(instance, display, window)?;
 
         Ok(unsafe { Self::from_xlib_unchecked(instance, display, window, object) }?)
     }
@@ -1309,7 +1309,7 @@ impl Surface {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_xlib_unchecked(
-        instance: Arc<Instance>,
+        instance: &Arc<Instance>,
         display: *mut vk::Display,
         window: vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -1414,7 +1414,7 @@ impl_id_counter!(Surface);
 
 /// Parameters to create a surface from a display mode and plane.
 #[derive(Clone, Debug)]
-pub struct DisplaySurfaceCreateInfo {
+pub struct DisplaySurfaceCreateInfo<'a> {
     /// The index of the display plane in which the surface will appear.
     ///
     /// The default value is 0.
@@ -1446,17 +1446,17 @@ pub struct DisplaySurfaceCreateInfo {
     /// The default value is `[0; 2]`, which must be overridden.
     pub image_extent: [u32; 2],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DisplaySurfaceCreateInfo {
+impl Default for DisplaySurfaceCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DisplaySurfaceCreateInfo {
+impl DisplaySurfaceCreateInfo<'_> {
     /// Returns a default `DisplaySurfaceCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1467,7 +1467,7 @@ impl DisplaySurfaceCreateInfo {
             alpha_mode: DisplayPlaneAlpha::Opaque,
             global_alpha: 1.0,
             image_extent: [0; 2],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2024,7 +2024,7 @@ vulkan_enum! {
 /// Parameters for [`PhysicalDevice::surface_capabilities`] and
 /// [`PhysicalDevice::surface_formats`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SurfaceInfo {
+pub struct SurfaceInfo<'a> {
     /// If this is `Some`, the
     /// [`ext_surface_maintenance1`](crate::instance::InstanceExtensions::ext_surface_maintenance1)
     /// extension must be enabled on the instance.
@@ -2048,17 +2048,17 @@ pub struct SurfaceInfo {
     /// The default value is `None`.
     pub win32_monitor: Option<Win32Monitor>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SurfaceInfo {
+impl Default for SurfaceInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SurfaceInfo {
+impl<'a> SurfaceInfo<'a> {
     /// Returns a default `SurfaceInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -2066,7 +2066,7 @@ impl SurfaceInfo {
             present_mode: None,
             full_screen_exclusive: FullScreenExclusive::Default,
             win32_monitor: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2131,7 +2131,7 @@ impl SurfaceInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         surface_vk: vk::SurfaceKHR,
         extensions_vk: &'a mut SurfaceInfo2ExtensionsVk,
@@ -2185,6 +2185,13 @@ impl SurfaceInfo {
             full_screen_exclusive_vk,
             full_screen_exclusive_win32_vk,
             present_mode_vk,
+        }
+    }
+
+    pub(crate) fn to_owned(&self) -> SurfaceInfo<'static> {
+        SurfaceInfo {
+            _ne: crate::NE,
+            ..*self
         }
     }
 }
@@ -2324,7 +2331,7 @@ impl SurfaceCapabilities {
     pub(crate) fn to_mut_vk2_extensions<'a>(
         fields1_vk: &'a mut SurfaceCapabilities2Fields1Vk,
         physical_device: &PhysicalDevice,
-        surface_info: &SurfaceInfo,
+        surface_info: &SurfaceInfo<'_>,
     ) -> SurfaceCapabilities2ExtensionsVk<'a> {
         let SurfaceCapabilities2Fields1Vk { present_modes_vk } = fields1_vk;
 
@@ -2561,7 +2568,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_win32(instance, 0, 0, None) } {
+        match unsafe { Surface::from_win32(&instance, 0, 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2579,7 +2586,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(instance, ptr::null_mut(), 0, None) } {
+        match unsafe { Surface::from_xcb(&instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2597,7 +2604,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(instance, ptr::null_mut(), 0, None) } {
+        match unsafe { Surface::from_xlib(&instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2615,7 +2622,7 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(instance, ptr::null_mut(), ptr::null_mut(), None) } {
+        match unsafe { Surface::from_wayland(&instance, ptr::null_mut(), ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2633,7 +2640,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_android(instance, ptr::null_mut(), None) } {
+        match unsafe { Surface::from_android(&instance, ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,

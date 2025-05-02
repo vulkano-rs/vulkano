@@ -358,7 +358,7 @@ pub struct PipelineCacheCreateInfo {
     /// The default value is `None`.
     pub initial_data: Option<PipelineCacheData>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for PipelineCacheCreateInfo {
@@ -375,7 +375,7 @@ impl PipelineCacheCreateInfo {
         Self {
             flags: PipelineCacheCreateFlags::empty(),
             initial_data: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
