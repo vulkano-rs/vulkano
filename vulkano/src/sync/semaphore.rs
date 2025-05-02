@@ -65,7 +65,12 @@
 //! [`max_timeline_semaphore_value_difference`]: crate::device::DeviceProperties::max_timeline_semaphore_value_difference
 
 use crate::{
-    device::{physical::PhysicalDevice, Device, DeviceOwned}, instance::InstanceOwnedDebugWrapper, macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum}, self_referential::borrow_wrapper_impls, RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError, VulkanObject
+    device::{physical::PhysicalDevice, Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
+    self_referential::borrow_wrapper_impls,
+    RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk;
 use core::slice;

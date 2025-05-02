@@ -17,8 +17,8 @@ use crate::{
     device::Device,
     format::Format,
     macros::{vulkan_bitflags, vulkan_enum},
-    self_referential::self_referential,
     pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
+    self_referential::self_referential,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ash::vk;

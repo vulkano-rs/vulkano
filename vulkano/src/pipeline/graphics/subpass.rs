@@ -3,8 +3,8 @@ use crate::{
     device::Device,
     format::{Format, FormatFeatures},
     image::ImageAspects,
-    self_referential::self_referential,
     render_pass::Subpass,
+    self_referential::self_referential,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ash::vk;
