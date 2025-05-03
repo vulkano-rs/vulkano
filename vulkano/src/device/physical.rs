@@ -2,7 +2,7 @@ use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::{OnceCache, WeakArcOnceCache},
-    device::{properties::DeviceProperties, DeviceExtensions, DeviceFeatures, DeviceFeaturesFfi},
+    device::{properties::DeviceProperties, DeviceExtensions, DeviceFeatures},
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{Format, FormatProperties},
     image::{
@@ -207,14 +207,12 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_features(handle: vk::PhysicalDevice, instance: &Instance) -> DeviceFeatures {
-        let mut output = DeviceFeaturesFfi::default();
+        let mut features_vk = DeviceFeatures::to_mut_vk();
 
         let fns = instance.fns();
-        unsafe {
-            (fns.v1_0.get_physical_device_features)(handle, &mut output.head_as_mut().features)
-        };
+        unsafe { (fns.v1_0.get_physical_device_features)(handle, &mut features_vk) };
 
-        DeviceFeatures::from(&output)
+        DeviceFeatures::from_vk(&features_vk)
     }
 
     unsafe fn get_features2(
@@ -223,25 +221,35 @@ impl PhysicalDevice {
         api_version: Version,
         supported_extensions: &DeviceExtensions,
     ) -> DeviceFeatures {
-        let mut output = DeviceFeaturesFfi::default();
-        output.make_chain(
+        let fns = instance.fns();
+
+        let call = |features_vk: &mut vk::PhysicalDeviceFeatures2<'_>| {
+            if instance.api_version() >= Version::V1_1 {
+                unsafe { (fns.v1_1.get_physical_device_features2)(handle, features_vk) };
+            } else {
+                unsafe {
+                    (fns.khr_get_physical_device_properties2
+                        .get_physical_device_features2_khr)(handle, features_vk)
+                };
+            }
+        };
+
+        let mut features2_extensions_vk = DeviceFeatures::to_mut_vk2_extensions(
             api_version,
             supported_extensions,
             instance.enabled_extensions(),
         );
+        let mut features2_vk = DeviceFeatures::to_mut_vk2(&mut features2_extensions_vk);
 
-        let fns = instance.fns();
+        call(&mut features2_vk);
 
-        if instance.api_version() >= Version::V1_1 {
-            unsafe { (fns.v1_1.get_physical_device_features2)(handle, output.head_as_mut()) };
-        } else {
-            unsafe {
-                (fns.khr_get_physical_device_properties2
-                    .get_physical_device_features2_khr)(handle, output.head_as_mut())
-            };
-        }
+        // Unborrow
+        let features2_vk = vk::PhysicalDeviceFeatures2 {
+            _marker: PhantomData,
+            ..features2_vk
+        };
 
-        DeviceFeatures::from(&output)
+        DeviceFeatures::from_vk2(&features2_vk, &features2_extensions_vk)
     }
 
     unsafe fn get_properties(handle: vk::PhysicalDevice, instance: &Instance) -> DeviceProperties {
