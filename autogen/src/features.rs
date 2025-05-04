@@ -436,7 +436,7 @@ impl DeviceFeatures {
         quote! {
             impl std::fmt::Debug for DeviceFeatures {
                 #[allow(unused_assignments)]
-                fn fmt(&self, f: &mut std::fmt:: Formatter<'_>) -> Result<(), std::fmt::Error> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                     write!(f, "[")?;
 
                     let mut first = true;
@@ -447,6 +447,7 @@ impl DeviceFeatures {
             }
 
             impl Default for DeviceFeatures {
+                #[inline]
                 fn default() -> Self {
                     Self::empty()
                 }
@@ -798,10 +799,10 @@ impl Feature {
 
         let doc = {
             let doc = format!(
-            "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})",
-            struct_name_c,
-            feature_name_c,
-        );
+                "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions\
+                /man/html/{}.html#features-{})",
+                struct_name_c, feature_name_c,
+            );
             quote! {
                 #[doc = #doc]
             }
