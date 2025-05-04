@@ -28264,6 +28264,7 @@ impl std::fmt::Debug for DeviceFeatures {
     }
 }
 impl Default for DeviceFeatures {
+    #[inline]
     fn default() -> Self {
         Self::empty()
     }
