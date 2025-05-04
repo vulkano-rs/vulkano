@@ -37,7 +37,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
@@ -426,14 +425,8 @@ impl ApplicationHandler for App {
             //
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
             // which one.
-            let vs = vs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
 
             // Automatically generate a vertex input state from the vertex shader's input
             // interface, that takes a single vertex buffer containing `Vertex` structs.
@@ -441,8 +434,8 @@ impl ApplicationHandler for App {
 
             // Make a list of the shader stages that the pipeline will have.
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
 
             // We must now create a **pipeline layout** object, which describes the locations and
@@ -454,17 +447,12 @@ impl ApplicationHandler for App {
             // in the shaders; they can be used by shaders in other pipelines that share the same
             // layout. Thus, it is a good idea to design shaders so that many pipelines have common
             // resource locations, which allows them to share pipeline layouts.
-            let layout = PipelineLayout::new(
-                self.device.clone(),
-                // Since we only have one pipeline in this example, and thus one pipeline layout,
-                // we automatically generate the creation info for it from the resources used in
-                // the shaders. In a real application, you would specify this information manually
-                // so that you can re-use one layout in multiple pipelines.
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(self.device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            //
+            // Since we only have one pipeline in this example, and thus one pipeline layout, we
+            // automatically generate the layout from the resources used in the shaders. In a real
+            // application, you would specify this information manually so that you can re-use one
+            // layout in multiple pipelines.
+            let layout = PipelineLayout::from_stages(&self.device, &stages).unwrap();
 
             // We describe the formats of attachment images where the colors, depth and/or stencil
             // information will be written. The pipeline will only be usable with this particular
@@ -473,43 +461,43 @@ impl ApplicationHandler for App {
                 // We specify a single color attachment that will be rendered to. When we begin
                 // rendering, we will specify a swapchain image to be used as this attachment, so
                 // here we set its format to be the same format as the swapchain.
-                color_attachment_formats: vec![Some(swapchain.image_format())],
+                color_attachment_formats: &[Some(swapchain.image_format())],
                 ..Default::default()
             };
 
             // Finally, create the pipeline.
             GraphicsPipeline::new(
-                self.device.clone(),
+                &self.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
                     // How vertex data is read from the vertex buffers into the vertex shader.
-                    vertex_input_state: Some(vertex_input_state),
+                    vertex_input_state: Some(&vertex_input_state),
                     // How vertices are arranged into primitive shapes. The default primitive shape
                     // is a triangle.
-                    input_assembly_state: Some(InputAssemblyState::default()),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
                     // How primitives are transformed and clipped to fit the framebuffer. We use a
                     // resizable viewport, set to draw over the entire window.
-                    viewport_state: Some(ViewportState::default()),
+                    viewport_state: Some(&ViewportState::default()),
                     // How polygons are culled and converted into a raster of pixels. The default
                     // value does not perform any culling.
-                    rasterization_state: Some(RasterizationState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
                     // How multiple fragment shader samples are converted to a single pixel value.
                     // The default value does not perform any multisampling.
-                    multisample_state: Some(MultisampleState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
                     // How pixel values are combined with the values already present in the
                     // framebuffer. The default value overwrites the old value with the new one,
                     // without any blending.
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.color_attachment_formats.len() as u32,
-                        ColorBlendAttachmentState::default(),
-                    )),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
                     // Dynamic states allows us to specify parts of the pipeline settings when
                     // recording the command buffer, before we perform drawing. Here, we specify
                     // that the viewport should be dynamic.
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some((&subpass).into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()

@@ -35,7 +35,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
@@ -278,7 +277,7 @@ impl ApplicationHandler for App {
         };
 
         let render_pass = vulkano::single_pass_renderpass!(
-            self.device.clone(),
+            &self.device,
             attachments: {
                 color: {
                     format: swapchain.image_format(),
@@ -300,14 +299,8 @@ impl ApplicationHandler for App {
         )
         .unwrap();
 
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
 
         let (framebuffers, pipeline) = window_size_dependent_setup(
             window_size,
@@ -557,9 +550,9 @@ fn window_size_dependent_setup(
             let view = ImageView::new_default(image).unwrap();
 
             Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view, depth_buffer.clone()],
+                render_pass,
+                &FramebufferCreateInfo {
+                    attachments: &[&view, &depth_buffer],
                     ..Default::default()
                 },
             )
@@ -576,47 +569,39 @@ fn window_size_dependent_setup(
             .definition(vs)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs.clone()),
-            PipelineShaderStageCreateInfo::new(fs.clone()),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        let layout = PipelineLayout::from_stages(device, &stages).unwrap();
+        let subpass = Subpass::new(render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState {
-                    viewports: [Viewport {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState {
+                    viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: window_size.into(),
                         depth_range: 0.0..=1.0,
-                    }]
-                    .into_iter()
-                    .collect(),
+                    }],
                     ..Default::default()
                 }),
-                rasterization_state: Some(RasterizationState::default()),
-                depth_stencil_state: Some(DepthStencilState {
+                rasterization_state: Some(&RasterizationState::default()),
+                depth_stencil_state: Some(&DepthStencilState {
                     depth: Some(DepthState::simple()),
                     ..Default::default()
                 }),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()

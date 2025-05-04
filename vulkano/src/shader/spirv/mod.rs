@@ -516,10 +516,7 @@ impl Spirv {
         &self.functions
     }
 
-    pub fn apply_specialization(
-        &mut self,
-        specialization_info: &HashMap<u32, SpecializationConstant>,
-    ) {
+    pub fn apply_specialization(&mut self, specialization_info: &[(u32, SpecializationConstant)]) {
         self.constants = specialization::replace_specialization_instructions(
             specialization_info,
             self.constants.drain(..),

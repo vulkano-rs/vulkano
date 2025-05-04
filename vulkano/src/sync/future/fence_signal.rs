@@ -33,7 +33,7 @@ where
 
     assert!(future.queue().is_some()); // TODO: document
 
-    let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
+    let fence = Arc::new(Fence::from_pool(&device).unwrap());
     FenceSignalFuture {
         device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),

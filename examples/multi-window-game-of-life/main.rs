@@ -134,13 +134,13 @@ impl ApplicationHandler for App {
             RenderContext {
                 compute_pipeline: GameOfLifeComputePipeline::new(
                     self,
-                    gfx_queue.clone(),
+                    gfx_queue,
                     [
                         (WINDOW_WIDTH / SCALING) as u32,
                         (WINDOW_HEIGHT / SCALING) as u32,
                     ],
                 ),
-                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue.clone(), id1),
+                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue, id1),
                 life_color: [1.0, 0.0, 0.0, 1.0],
                 dead_color: [0.0; 4],
                 mouse_is_pressed: false,
@@ -151,13 +151,13 @@ impl ApplicationHandler for App {
             RenderContext {
                 compute_pipeline: GameOfLifeComputePipeline::new(
                     self,
-                    gfx_queue.clone(),
+                    gfx_queue,
                     [
                         (WINDOW2_WIDTH / SCALING) as u32,
                         (WINDOW2_HEIGHT / SCALING) as u32,
                     ],
                 ),
-                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue.clone(), id2),
+                place_over_frame: RenderPassPlaceOverFrame::new(self, gfx_queue, id2),
                 life_color: [0.0, 0.0, 0.0, 1.0],
                 dead_color: [1.0; 4],
                 mouse_is_pressed: false,

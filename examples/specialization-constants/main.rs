@@ -1,6 +1,6 @@
 // TODO: Give a paragraph about what specialization are and what problems they solve.
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -16,9 +16,8 @@ use vulkano::{
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout, PipelineShaderStageCreateInfo,
     },
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -108,29 +107,19 @@ fn main() {
     }
 
     let pipeline = {
-        let cs = cs::load(device.clone())
+        let cs = cs::load(&device)
             .unwrap()
-            .specialize(
-                [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
-                    .into_iter()
-                    .collect(),
-            )
+            .specialize(&[(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())])
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(&cs);
+        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
 
         ComputePipeline::new(
-            device.clone(),
+            &device,
             None,
-            ComputePipelineCreateInfo::new(stage, layout),
+            &ComputePipelineCreateInfo::new(stage, &layout),
         )
         .unwrap()
     };

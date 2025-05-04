@@ -32,8 +32,8 @@ impl DeferredOperation {
     ///
     /// [`khr_deferred_host_operations`]: crate::device::DeviceExtensions::khr_deferred_host_operations
     #[inline]
-    pub fn new(device: Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device)?;
+    pub fn new(device: &Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
+        Self::validate_new(device)?;
 
         Ok(unsafe { Self::new_unchecked(device) }?)
     }
@@ -52,7 +52,7 @@ impl DeferredOperation {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_unchecked(device: Arc<Device>) -> Result<Arc<Self>, VulkanError> {
+    pub unsafe fn new_unchecked(device: &Arc<Device>) -> Result<Arc<Self>, VulkanError> {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -78,9 +78,9 @@ impl DeferredOperation {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     #[inline]
-    pub unsafe fn from_handle(device: Arc<Device>, handle: vk::DeferredOperationKHR) -> Arc<Self> {
+    pub unsafe fn from_handle(device: &Arc<Device>, handle: vk::DeferredOperationKHR) -> Arc<Self> {
         Arc::new(Self {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             handle,
         })
     }

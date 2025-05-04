@@ -22,7 +22,7 @@ use std::ops::RangeInclusive;
 /// The state in a graphics pipeline describing how the depth, depth bounds and stencil tests
 /// should behave.
 #[derive(Clone, Debug)]
-pub struct DepthStencilState {
+pub struct DepthStencilState<'a> {
     /// Additional properties of the depth/stencil state.
     ///
     /// The default value is empty.
@@ -52,17 +52,17 @@ pub struct DepthStencilState {
     /// The default value is `None`.
     pub stencil: Option<StencilState>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DepthStencilState {
+impl Default for DepthStencilState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DepthStencilState {
+impl DepthStencilState<'_> {
     /// Returns a default `DepthStencilState`.
     #[inline]
     pub const fn new() -> Self {
@@ -214,6 +214,14 @@ impl DepthStencilState {
             .min_depth_bounds(min_depth_bounds_vk)
             .max_depth_bounds(max_depth_bounds_vk)
     }
+
+    pub(crate) fn to_owned(&self) -> DepthStencilState<'static> {
+        DepthStencilState {
+            depth_bounds: self.depth_bounds.clone(),
+            _ne: crate::NE,
+            ..*self
+        }
+    }
 }
 
 vulkan_bitflags! {
@@ -305,7 +313,7 @@ impl DepthState {
 }
 
 /// The state in a graphics pipeline describing how the stencil test should behave when enabled.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct StencilState {
     /// The stencil operation state to use for points and lines, and for triangles whose front is
     /// facing the user.

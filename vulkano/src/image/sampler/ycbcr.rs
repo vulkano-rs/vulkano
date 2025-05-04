@@ -62,19 +62,14 @@
 //! .unwrap();
 //!
 //! let descriptor_set_layout = DescriptorSetLayout::new(
-//!     device.clone(),
-//!     DescriptorSetLayoutCreateInfo {
-//!         bindings: [(
-//!             0,
-//!             DescriptorSetLayoutBinding {
-//!                 stages: ShaderStage::Fragment.into(),
-//!                 immutable_samplers: vec![sampler],
-//!                 ..DescriptorSetLayoutBinding::new(
-//!                     DescriptorType::CombinedImageSampler
-//!                 )
-//!             },
-//!         )]
-//!         .into(),
+//!     &device,
+//!     &DescriptorSetLayoutCreateInfo {
+//!         bindings: &[DescriptorSetLayoutBinding {
+//!             binding: 0,
+//!             stages: ShaderStage::Fragment.into(),
+//!             immutable_samplers: &[&sampler],
+//!             ..DescriptorSetLayoutBinding::new(DescriptorType::CombinedImageSampler)
+//!         }],
 //!         ..Default::default()
 //!     },
 //! )

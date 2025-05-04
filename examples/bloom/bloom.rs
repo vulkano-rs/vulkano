@@ -29,37 +29,37 @@ impl BloomTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let downsample_pipeline = {
-            let cs = downsample::load(app.device.clone())
+            let cs = downsample::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let stage = PipelineShaderStageCreateInfo::new(cs);
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
             let layout = bcx
                 .pipeline_layout_from_stages(slice::from_ref(&stage))
                 .unwrap();
 
             ComputePipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
 
         let upsample_pipeline = {
-            let cs = upsample::load(app.device.clone())
+            let cs = upsample::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let stage = PipelineShaderStageCreateInfo::new(cs);
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
             let layout = bcx
                 .pipeline_layout_from_stages(slice::from_ref(&stage))
                 .unwrap();
 
             ComputePipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };

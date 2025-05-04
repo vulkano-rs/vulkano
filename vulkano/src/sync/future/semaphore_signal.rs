@@ -34,7 +34,7 @@ where
 
     SemaphoreSignalFuture {
         previous: future,
-        semaphore: Arc::new(Semaphore::from_pool(device).unwrap()),
+        semaphore: Arc::new(Semaphore::from_pool(&device).unwrap()),
         wait_submitted: Mutex::new(false),
         finished: AtomicBool::new(false),
     }

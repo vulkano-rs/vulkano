@@ -31,7 +31,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{
@@ -71,8 +70,10 @@ fn main() {
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
         .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter(|p| p.supported_features().contains(&device_features))
+        .filter(|p| {
+            p.supported_extensions().contains(&device_extensions)
+                && p.supported_features().contains(&device_features)
+        })
         .filter(|p| {
             // This example renders to two layers of the framebuffer using the multiview extension
             // so we check that at least two views are supported by the device. Not checking this
@@ -212,92 +213,80 @@ fn main() {
         }
     }
 
-    let render_pass_description = RenderPassCreateInfo {
-        attachments: vec![AttachmentDescription {
-            format: image.format(),
-            samples: SampleCount::Sample1,
-            load_op: AttachmentLoadOp::Clear,
-            store_op: AttachmentStoreOp::Store,
-            initial_layout: ImageLayout::ColorAttachmentOptimal,
-            final_layout: ImageLayout::ColorAttachmentOptimal,
-            ..Default::default()
-        }],
-        subpasses: vec![SubpassDescription {
-            // The view mask indicates which layers of the framebuffer should be rendered for each
-            // subpass.
-            view_mask: 0b11,
-            color_attachments: vec![Some(AttachmentReference {
-                attachment: 0,
-                layout: ImageLayout::ColorAttachmentOptimal,
+    let render_pass = RenderPass::new(
+        &device,
+        &RenderPassCreateInfo {
+            attachments: &[AttachmentDescription {
+                format: image.format(),
+                samples: SampleCount::Sample1,
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+                initial_layout: ImageLayout::ColorAttachmentOptimal,
+                final_layout: ImageLayout::ColorAttachmentOptimal,
                 ..Default::default()
-            })],
+            }],
+            subpasses: &[SubpassDescription {
+                // The view mask indicates which layers of the framebuffer should be rendered for
+                // each subpass.
+                view_mask: 0b11,
+                color_attachments: &[Some(AttachmentReference {
+                    attachment: 0,
+                    layout: ImageLayout::ColorAttachmentOptimal,
+                    ..Default::default()
+                })],
+                ..Default::default()
+            }],
+            // The correlated view masks indicate sets of views that may be more efficient to render
+            // concurrently.
+            correlated_view_masks: &[0b11],
             ..Default::default()
-        }],
-        // The correlated view masks indicate sets of views that may be more efficient to render
-        // concurrently.
-        correlated_view_masks: vec![0b11],
-        ..Default::default()
-    };
-
-    let render_pass = RenderPass::new(device.clone(), render_pass_description).unwrap();
+        },
+    )
+    .unwrap();
 
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-            attachments: vec![image_view],
+        &render_pass,
+        &FramebufferCreateInfo {
+            attachments: &[&image_view],
             ..Default::default()
         },
     )
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass, 0).unwrap();
+        let layout = PipelineLayout::from_stages(&device, &stages).unwrap();
+        let subpass = Subpass::new(&render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            &device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState {
-                    viewports: [Viewport {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState {
+                    viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: [image.extent()[0] as f32, image.extent()[1] as f32],
                         depth_range: 0.0..=1.0,
-                    }]
-                    .into_iter()
-                    .collect(),
+                    }],
                     ..Default::default()
                 }),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()

@@ -356,7 +356,7 @@ impl FixedEntry {
                 pool_sizes: &layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| {
+                    .map(|&(ty, count)| {
                         assert_ne!(ty, DescriptorType::InlineUniformBlock);
                         (ty, count * create_info.set_count as u32)
                     })
@@ -442,7 +442,7 @@ impl VariableEntry {
                 pool_sizes: &layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| {
+                    .map(|&(ty, count)| {
                         assert_ne!(ty, DescriptorType::InlineUniformBlock);
                         (ty, count * create_info.set_count as u32)
                     })

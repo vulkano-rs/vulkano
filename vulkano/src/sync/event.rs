@@ -50,17 +50,17 @@ impl Event {
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: EventCreateInfo,
+        device: &Arc<Device>,
+        create_info: &EventCreateInfo<'_>,
     ) -> Result<Event, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &EventCreateInfo,
+        create_info: &EventCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
             return Err(Box::new(ValidationError {
@@ -82,8 +82,8 @@ impl Event {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: EventCreateInfo,
+        device: &Arc<Device>,
+        create_info: &EventCreateInfo<'_>,
     ) -> Result<Event, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -113,7 +113,7 @@ impl Event {
     /// For most applications, using the event pool should be preferred,
     /// in order to avoid creating new events every frame.
     #[inline]
-    pub fn from_pool(device: Arc<Device>) -> Result<Event, VulkanError> {
+    pub fn from_pool(device: &Arc<Device>) -> Result<Event, VulkanError> {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
@@ -127,7 +127,7 @@ impl Event {
 
                 Event {
                     handle,
-                    device: InstanceOwnedDebugWrapper(device),
+                    device: InstanceOwnedDebugWrapper(device.clone()),
                     id: Self::next_id(),
                     must_put_in_pool: true,
 
@@ -136,7 +136,7 @@ impl Event {
             }
             None => {
                 // Pool is empty, alloc new event
-                let mut event = unsafe { Event::new_unchecked(device, Default::default()) }?;
+                let mut event = unsafe { Event::new_unchecked(device, &Default::default()) }?;
                 event.must_put_in_pool = true;
                 event
             }
@@ -153,15 +153,15 @@ impl Event {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Event,
-        create_info: EventCreateInfo,
+        create_info: &EventCreateInfo<'_>,
     ) -> Event {
-        let EventCreateInfo { flags, _ne: _ } = create_info;
+        let &EventCreateInfo { flags, _ne: _ } = create_info;
 
         Event {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             must_put_in_pool: false,
             flags,
@@ -288,23 +288,23 @@ impl_id_counter!(Event);
 
 /// Parameters to create a new `Event`.
 #[derive(Clone, Debug)]
-pub struct EventCreateInfo {
+pub struct EventCreateInfo<'a> {
     /// Additional properties of the event.
     ///
     /// The default value is empty.
     pub flags: EventCreateFlags,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for EventCreateInfo {
+impl Default for EventCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventCreateInfo {
+impl EventCreateInfo<'_> {
     /// Returns a default `EventCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -352,14 +352,14 @@ mod tests {
     #[test]
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(device, Default::default()).unwrap();
+        let event = Event::new(&device, &Default::default()).unwrap();
         assert!(!event.is_signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let mut event = Event::new(device, Default::default()).unwrap();
+        let mut event = Event::new(&device, &Default::default()).unwrap();
         assert!(!event.is_signaled().unwrap());
 
         event.set().unwrap();
@@ -370,7 +370,7 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut event = Event::new(device, Default::default()).unwrap();
+        let mut event = Event::new(&device, &Default::default()).unwrap();
         event.set().unwrap();
         assert!(event.is_signaled().unwrap());
 
@@ -384,13 +384,13 @@ mod tests {
 
         assert_eq!(device.event_pool().lock().len(), 0);
         let event1_internal_obj = {
-            let event = Event::from_pool(device.clone()).unwrap();
+            let event = Event::from_pool(&device).unwrap();
             assert_eq!(device.event_pool().lock().len(), 0);
             event.handle()
         };
 
         assert_eq!(device.event_pool().lock().len(), 1);
-        let event2 = Event::from_pool(device.clone()).unwrap();
+        let event2 = Event::from_pool(&device).unwrap();
         assert_eq!(device.event_pool().lock().len(), 0);
         assert_eq!(event2.handle(), event1_internal_obj);
     }

@@ -24,7 +24,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
@@ -155,7 +154,7 @@ fn main() {
     let format = Format::R8G8B8A8_UNORM;
 
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        &device,
         attachments: {
             color: {
                 format: format,
@@ -187,67 +186,53 @@ fn main() {
     let render_output_image_view = ImageView::new_default(&render_output_image).unwrap();
 
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
+        &render_pass,
+        &FramebufferCreateInfo {
             // Attach the offscreen image to the framebuffer.
-            attachments: vec![render_output_image_view],
+            attachments: &[&render_output_image_view],
             ..Default::default()
         },
     )
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
 
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
 
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
 
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let layout = PipelineLayout::from_stages(&device, &stages).unwrap();
 
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        let subpass = Subpass::new(&render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            &device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState {
-                    viewports: [Viewport {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState {
+                    viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: [1920.0, 1080.0],
                         depth_range: 0.0..=1.0,
-                    }]
-                    .into_iter()
-                    .collect(),
+                    }],
                     ..Default::default()
                 }),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()
@@ -307,7 +292,7 @@ fn main() {
     // where consecutive pixels in the image are laid out consecutively in memory.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::new(
-            render_output_image.clone(),
+            render_output_image,
             render_output_buf.clone(),
         ))
         .unwrap();

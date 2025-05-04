@@ -15,7 +15,7 @@ pub(crate) mod validate_runtime;
 
 /// Specifies a single shader stage when creating a pipeline.
 #[derive(Clone, Debug)]
-pub struct PipelineShaderStageCreateInfo {
+pub struct PipelineShaderStageCreateInfo<'a> {
     /// Additional properties of the shader stage.
     ///
     /// The default value is empty.
@@ -24,7 +24,7 @@ pub struct PipelineShaderStageCreateInfo {
     /// The shader entry point for the stage, which includes any specialization constants.
     ///
     /// There is no default value.
-    pub entry_point: EntryPoint,
+    pub entry_point: &'a EntryPoint,
 
     /// The required subgroup size.
     ///
@@ -41,13 +41,13 @@ pub struct PipelineShaderStageCreateInfo {
     /// The default value is None.
     pub required_subgroup_size: Option<u32>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl PipelineShaderStageCreateInfo {
+impl<'a> PipelineShaderStageCreateInfo<'a> {
     /// Returns a default `PipelineShaderStageCreateInfo` with the provided `entry_point`.
     #[inline]
-    pub const fn new(entry_point: EntryPoint) -> Self {
+    pub const fn new(entry_point: &'a EntryPoint) -> Self {
         Self {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,
@@ -55,11 +55,13 @@ impl PipelineShaderStageCreateInfo {
             _ne: crate::NE,
         }
     }
+}
 
+impl<'a> PipelineShaderStageCreateInfo<'a> {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref entry_point,
+            entry_point,
             required_subgroup_size,
             _ne: _,
         } = self;
@@ -497,14 +499,14 @@ impl PipelineShaderStageCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a PipelineShaderStageCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut PipelineShaderStageCreateInfoExtensionsVk,
     ) -> vk::PipelineShaderStageCreateInfo<'a> {
         let &Self {
             flags,
-            ref entry_point,
+            entry_point,
             required_subgroup_size: _,
             _ne: _,
         } = self;
@@ -555,13 +557,13 @@ impl PipelineShaderStageCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &self,
         fields2_vk: &'a PipelineShaderStageCreateInfoFields2Vk,
     ) -> PipelineShaderStageCreateInfoFields1Vk<'a> {
         let &Self {
             flags: _,
-            ref entry_point,
+            entry_point,
             required_subgroup_size: _,
             _ne: _,
         } = self;
@@ -583,7 +585,7 @@ impl PipelineShaderStageCreateInfo {
     pub(crate) fn to_vk_fields2(&self) -> PipelineShaderStageCreateInfoFields2Vk {
         let &Self {
             flags: _,
-            ref entry_point,
+            entry_point,
             required_subgroup_size: _,
             _ne: _,
         } = self;
@@ -593,7 +595,7 @@ impl PipelineShaderStageCreateInfo {
             .module()
             .specialization_info()
             .iter()
-            .map(|(&constant_id, value)| {
+            .map(|&(constant_id, value)| {
                 let data = value.as_bytes();
                 let offset = specialization_data_vk.len() as u32;
                 let size = data.len();

@@ -315,7 +315,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                             }
                         }
 
-                        if inheritance_info.view_mask != render_pass_state.rendering_info.view_mask
+                        if inheritance_info.view_mask
+                            != render_pass_state.rendering_info.as_ref().view_mask
                         {
                             return Err(Box::new(ValidationError {
                                 context: format!(
