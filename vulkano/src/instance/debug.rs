@@ -428,11 +428,13 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackLabelIter<'a> {
     }
 }
 
+pub type ObjectType = vk::ObjectType;
+
 /// An object that triggered a callback.
 #[non_exhaustive]
 pub struct DebugUtilsMessengerCallbackObjectNameInfo<'a> {
     /// The type of object.
-    pub object_type: vk::ObjectType,
+    pub object_type: ObjectType,
 
     /// The handle of the object.
     pub object_handle: u64,
