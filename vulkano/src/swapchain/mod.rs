@@ -705,10 +705,7 @@ impl Swapchain {
             }));
         }
 
-        if !surface_formats
-            .iter()
-            .any(|&fc| fc == (image_format, image_color_space))
-        {
+        if !surface_formats.contains(&(image_format, image_color_space)) {
             return Err(Box::new(ValidationError {
                 problem: "the combination of `create_info.image_format` and \
                     `create_info.image_color_space` is not supported for `surface`"

@@ -2416,7 +2416,7 @@ impl<'a> ResourceMap<'a> {
         );
 
         let ptr = <*const _>::cast(state);
-        let is_duplicate = self.map.iter().any(|&p| p == ptr);
+        let is_duplicate = self.map.contains(&ptr);
 
         // SAFETY: We checked that `virtual_id` is present in `self.virtual_resources` above, and
         // since we initialized `self.map` with a length at least that of `self.virtual_resources`,
@@ -2497,7 +2497,7 @@ impl<'a> ResourceMap<'a> {
         );
 
         let ptr = <*const _>::cast(state);
-        let is_duplicate = self.map.iter().any(|&p| p == ptr);
+        let is_duplicate = self.map.contains(&ptr);
 
         // SAFETY: We checked that `virtual_id` is present in `self.virtual_resources` above, and
         // since we initialized `self.map` with a length at least that of `self.virtual_resources`,
@@ -2571,7 +2571,7 @@ impl<'a> ResourceMap<'a> {
         );
 
         let ptr = <*const _>::cast(state);
-        let is_duplicate = self.map.iter().any(|&p| p == ptr);
+        let is_duplicate = self.map.contains(&ptr);
 
         // SAFETY: We checked that `virtual_id` is present in `self.virtual_resources` above, and
         // since we initialized `self.map` with a length at least that of `self.virtual_resources`,

@@ -297,11 +297,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
@@ -792,11 +795,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
@@ -2417,11 +2423,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for &binding_num in vertex_input_state.bindings.keys() {
             if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
@@ -3724,11 +3733,14 @@ impl<L> AutoCommandBufferBuilder<L> {
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
     ) {
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         used_resources.extend(vertex_input_state.bindings.iter().map(|(&binding, _)| {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding];
