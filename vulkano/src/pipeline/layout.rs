@@ -90,6 +90,55 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
+    /// Creates a new `PipelineLayout`.
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &PipelineLayoutCreateInfo<'_>,
+    ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
+        Self::validate_new(device, create_info)?;
+
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &PipelineLayoutCreateInfo<'_>,
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkCreatePipelineLayout-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: &Arc<Device>,
+        create_info: &PipelineLayoutCreateInfo<'_>,
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let create_info_vk = create_info.to_vk(&create_info_fields1_vk);
+
+        let handle = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.v1_0.create_pipeline_layout)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
+        };
+
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
+    }
+
     /// Creates a new `PipelineLayout` from the union of the requirements of each shader stage in
     /// `stages`.
     ///
@@ -195,55 +244,6 @@ impl PipelineLayout {
                 ..Default::default()
             },
         )
-    }
-
-    /// Creates a new `PipelineLayout`.
-    pub fn new(
-        device: &Arc<Device>,
-        create_info: &PipelineLayoutCreateInfo<'_>,
-    ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
-        Self::validate_new(device, create_info)?;
-
-        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
-    }
-
-    fn validate_new(
-        device: &Device,
-        create_info: &PipelineLayoutCreateInfo<'_>,
-    ) -> Result<(), Box<ValidationError>> {
-        // VUID-vkCreatePipelineLayout-pCreateInfo-parameter
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_unchecked(
-        device: &Arc<Device>,
-        create_info: &PipelineLayoutCreateInfo<'_>,
-    ) -> Result<Arc<PipelineLayout>, VulkanError> {
-        let create_info_fields1_vk = create_info.to_vk_fields1();
-        let create_info_vk = create_info.to_vk(&create_info_fields1_vk);
-
-        let handle = {
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            unsafe {
-                (fns.v1_0.create_pipeline_layout)(
-                    device.handle(),
-                    &create_info_vk,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)?;
-            unsafe { output.assume_init() }
-        };
-
-        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `PipelineLayout` from a raw object handle.
