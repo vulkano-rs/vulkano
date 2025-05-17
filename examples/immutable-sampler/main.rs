@@ -15,7 +15,12 @@ use vulkano::{
         CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator,
+        layout::{
+            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+            DescriptorType,
+        },
+        DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -39,11 +44,12 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
+        layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::ShaderStages,
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
@@ -311,7 +317,7 @@ impl ApplicationHandler for App {
         };
 
         let render_pass = vulkano::single_pass_renderpass!(
-            self.device.clone(),
+            &self.device,
             attachments: {
                 color: {
                     format: swapchain.image_format(),
@@ -330,64 +336,68 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         let pipeline = {
-            let vs = vs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
             let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
-            let layout = {
-                let mut layout_create_info =
-                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages);
-
-                // Modify the auto-generated layout by setting an immutable sampler to set 0
-                // binding 0.
-                layout_create_info.set_layouts[0]
-                    .bindings
-                    .get_mut(&0)
-                    .unwrap()
-                    .immutable_samplers = vec![self.sampler.clone()];
-
-                PipelineLayout::new(
-                    self.device.clone(),
-                    layout_create_info
-                        .into_pipeline_layout_create_info(self.device.clone())
-                        .unwrap(),
-                )
-                .unwrap()
-            };
-            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+            let layout = PipelineLayout::new(
+                &self.device,
+                &PipelineLayoutCreateInfo {
+                    set_layouts: &[&DescriptorSetLayout::new(
+                        &self.device,
+                        &DescriptorSetLayoutCreateInfo {
+                            bindings: &[
+                                DescriptorSetLayoutBinding {
+                                    binding: 0,
+                                    descriptor_count: 1,
+                                    stages: ShaderStages::FRAGMENT,
+                                    immutable_samplers: &[&self.sampler],
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+                                },
+                                DescriptorSetLayoutBinding {
+                                    binding: 1,
+                                    descriptor_count: 1,
+                                    stages: ShaderStages::FRAGMENT,
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
+                                },
+                            ],
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap()],
+                    push_constant_ranges: &push_constant_ranges_from_stages(&stages),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let subpass = Subpass::new(&render_pass, 0).unwrap();
 
             GraphicsPipeline::new(
-                self.device.clone(),
+                &self.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState {
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&vertex_input_state),
+                    input_assembly_state: Some(&InputAssemblyState {
                         topology: PrimitiveTopology::TriangleStrip,
                         ..Default::default()
                     }),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState {
                             blend: Some(AttachmentBlend::alpha()),
                             ..Default::default()
-                        },
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                        }],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some((&subpass).into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
@@ -574,9 +584,9 @@ fn window_size_dependent_setup(
             let view = ImageView::new_default(image).unwrap();
 
             Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
+                render_pass,
+                &FramebufferCreateInfo {
+                    attachments: &[&view],
                     ..Default::default()
                 },
             )

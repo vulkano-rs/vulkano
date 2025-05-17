@@ -372,14 +372,14 @@ impl ApplicationHandler for App {
             .task_mut()
             .downcast_mut::<SceneTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
         let deferred_node = task_graph.task_node_mut(deferred_node_id).unwrap();
         let subpass = deferred_node.subpass().unwrap().clone();
         deferred_node
             .task_mut()
             .downcast_mut::<DeferredTask>()
             .unwrap()
-            .create_pipelines(self, subpass);
+            .create_pipelines(self, &subpass);
 
         self.rcx = Some(RenderContext {
             window,

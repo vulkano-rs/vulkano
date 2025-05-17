@@ -25,7 +25,7 @@ use crate::{
             rasterization::{
                 ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
             },
-            subpass::PipelineRenderingCreateInfo,
+            subpass::OwnedPipelineRenderingCreateInfo,
             vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
@@ -1485,7 +1485,7 @@ pub(in crate::command_buffer) struct RenderPassState {
     pub(in crate::command_buffer) render_area_offset: [u32; 2],
     pub(in crate::command_buffer) render_area_extent: [u32; 2],
 
-    pub(in crate::command_buffer) rendering_info: PipelineRenderingCreateInfo,
+    pub(in crate::command_buffer) rendering_info: OwnedPipelineRenderingCreateInfo,
     pub(in crate::command_buffer) attachments: Option<RenderPassStateAttachments>,
 
     pub(in crate::command_buffer) render_pass: RenderPassStateType,
@@ -1506,7 +1506,7 @@ impl RenderPassState {
                         // Still not exact, but it's a better upper bound.
                         .map_or([u32::MAX, u32::MAX], |framebuffer| framebuffer.extent()),
 
-                    rendering_info: PipelineRenderingCreateInfo::from_subpass(&info.subpass),
+                    rendering_info: OwnedPipelineRenderingCreateInfo::from_subpass(&info.subpass),
                     attachments: info.framebuffer.as_ref().map(|framebuffer| {
                         RenderPassStateAttachments::from_subpass(&info.subpass, framebuffer)
                     }),
@@ -1523,7 +1523,9 @@ impl RenderPassState {
                 render_area_offset: [0, 0],
                 render_area_extent: [u32::MAX, u32::MAX],
 
-                rendering_info: PipelineRenderingCreateInfo::from_inheritance_rendering_info(info),
+                rendering_info: OwnedPipelineRenderingCreateInfo::from_inheritance_rendering_info(
+                    info,
+                ),
                 attachments: None,
 
                 render_pass: BeginRenderingState {
@@ -1603,7 +1605,7 @@ impl RenderPassStateAttachments {
                 .collect(),
             depth_attachment: subpass_desc
                 .depth_stencil_attachment
-                .as_ref()
+                .and_then(|x| x.as_ref())
                 .filter(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize]
                         .format
@@ -1614,18 +1616,21 @@ impl RenderPassStateAttachments {
                     image_view: fb_attachments[depth_stencil_attachment.attachment as usize]
                         .clone(),
                     _image_layout: depth_stencil_attachment.layout,
-                    _resolve_info: subpass_desc.depth_stencil_resolve_attachment.as_ref().map(
-                        |depth_stencil_resolve_attachment| RenderPassStateAttachmentResolveInfo {
-                            _image_view: fb_attachments
-                                [depth_stencil_resolve_attachment.attachment as usize]
-                                .clone(),
-                            _image_layout: depth_stencil_resolve_attachment.layout,
-                        },
-                    ),
+                    _resolve_info: subpass_desc
+                        .depth_stencil_resolve_attachment
+                        .and_then(|x| x.as_ref())
+                        .map(|depth_stencil_resolve_attachment| {
+                            RenderPassStateAttachmentResolveInfo {
+                                _image_view: fb_attachments
+                                    [depth_stencil_resolve_attachment.attachment as usize]
+                                    .clone(),
+                                _image_layout: depth_stencil_resolve_attachment.layout,
+                            }
+                        }),
                 }),
             stencil_attachment: subpass_desc
                 .depth_stencil_attachment
-                .as_ref()
+                .and_then(|x| x.as_ref())
                 .filter(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize]
                         .format
@@ -1638,16 +1643,19 @@ impl RenderPassStateAttachments {
                     _image_layout: depth_stencil_attachment
                         .stencil_layout
                         .unwrap_or(depth_stencil_attachment.layout),
-                    _resolve_info: subpass_desc.depth_stencil_resolve_attachment.as_ref().map(
-                        |depth_stencil_resolve_attachment| RenderPassStateAttachmentResolveInfo {
-                            _image_view: fb_attachments
-                                [depth_stencil_resolve_attachment.attachment as usize]
-                                .clone(),
-                            _image_layout: depth_stencil_resolve_attachment
-                                .stencil_layout
-                                .unwrap_or(depth_stencil_resolve_attachment.layout),
-                        },
-                    ),
+                    _resolve_info: subpass_desc
+                        .depth_stencil_resolve_attachment
+                        .and_then(|x| x.as_ref())
+                        .map(|depth_stencil_resolve_attachment| {
+                            RenderPassStateAttachmentResolveInfo {
+                                _image_view: fb_attachments
+                                    [depth_stencil_resolve_attachment.attachment as usize]
+                                    .clone(),
+                                _image_layout: depth_stencil_resolve_attachment
+                                    .stencil_layout
+                                    .unwrap_or(depth_stencil_resolve_attachment.layout),
+                            }
+                        }),
                 }),
         }
     }

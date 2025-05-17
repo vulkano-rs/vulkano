@@ -731,7 +731,7 @@ impl Device {
     #[inline]
     pub fn descriptor_set_layout_support(
         &self,
-        create_info: &DescriptorSetLayoutCreateInfo,
+        create_info: &DescriptorSetLayoutCreateInfo<'_>,
     ) -> Result<Option<DescriptorSetLayoutSupport>, Box<ValidationError>> {
         self.validate_descriptor_set_layout_support(create_info)?;
 
@@ -740,7 +740,7 @@ impl Device {
 
     fn validate_descriptor_set_layout_support(
         &self,
-        create_info: &DescriptorSetLayoutCreateInfo,
+        create_info: &DescriptorSetLayoutCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !(self.api_version() >= Version::V1_1 || self.enabled_extensions().khr_maintenance3) {
             return Err(Box::new(ValidationError {
@@ -763,7 +763,7 @@ impl Device {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn descriptor_set_layout_support_unchecked(
         &self,
-        create_info: &DescriptorSetLayoutCreateInfo,
+        create_info: &DescriptorSetLayoutCreateInfo<'_>,
     ) -> Option<DescriptorSetLayoutSupport> {
         let create_info_fields2_vk = create_info.to_vk_fields2();
         let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);

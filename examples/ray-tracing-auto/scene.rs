@@ -56,24 +56,24 @@ impl Scene {
         command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
     ) -> Self {
         let pipeline = {
-            let raygen = raygen::load(app.device.clone())
+            let raygen = raygen::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let closest_hit = closest_hit::load(app.device.clone())
+            let closest_hit = closest_hit::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let miss = miss::load(app.device.clone())
+            let miss = miss::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
 
             // Make a list of the shader stages that the pipeline will have.
             let stages = [
-                PipelineShaderStageCreateInfo::new(raygen),
-                PipelineShaderStageCreateInfo::new(miss),
-                PipelineShaderStageCreateInfo::new(closest_hit),
+                PipelineShaderStageCreateInfo::new(&raygen),
+                PipelineShaderStageCreateInfo::new(&miss),
+                PipelineShaderStageCreateInfo::new(&closest_hit),
             ];
 
             // Define the shader groups that will eventually turn into the shader binding table.
@@ -88,13 +88,13 @@ impl Scene {
             ];
 
             RayTracingPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                RayTracingPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    groups: groups.into_iter().collect(),
+                &RayTracingPipelineCreateInfo {
+                    stages: &stages,
+                    groups: &groups,
                     max_pipeline_ray_recursion_depth: 1,
-                    ..RayTracingPipelineCreateInfo::new(pipeline_layout.clone())
+                    ..RayTracingPipelineCreateInfo::new(pipeline_layout)
                 },
             )
             .unwrap()

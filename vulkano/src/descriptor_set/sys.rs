@@ -135,11 +135,13 @@ impl RawDescriptorSet {
             return;
         }
 
-        let set_layout_bindings = self.layout().bindings();
+        let set_layout = self.layout();
         let writes_fields1_vk: SmallVec<[_; 8]> = descriptor_writes
             .iter()
             .map(|write| {
-                let default_image_layout = set_layout_bindings[&write.binding()]
+                let default_image_layout = set_layout
+                    .binding(write.binding())
+                    .unwrap()
                     .descriptor_type
                     .default_image_layout();
                 write.to_vk_fields1(default_image_layout)
@@ -157,7 +159,7 @@ impl RawDescriptorSet {
             .map(|((write, write_info_vk), write_extension_vk)| {
                 write.to_vk(
                     self.handle(),
-                    set_layout_bindings[&write.binding()].descriptor_type,
+                    set_layout.binding(write.binding()).unwrap().descriptor_type,
                     write_info_vk,
                     write_extension_vk,
                 )

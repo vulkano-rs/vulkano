@@ -68,13 +68,14 @@ use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
-    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
-    VulkanObject,
+    self_referential::borrow_wrapper_impls,
+    RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk;
 use core::slice;
 use smallvec::SmallVec;
-use std::{fs::File, mem::MaybeUninit, num::NonZero, ptr, sync::Arc, time::Duration};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc, time::Duration};
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -96,17 +97,17 @@ impl Semaphore {
     /// Creates a new `Semaphore`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: SemaphoreCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SemaphoreCreateInfo<'_>,
     ) -> Result<Semaphore, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &SemaphoreCreateInfo,
+        create_info: &SemaphoreCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -117,8 +118,8 @@ impl Semaphore {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: SemaphoreCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SemaphoreCreateInfo<'_>,
     ) -> Result<Semaphore, VulkanError> {
         let mut create_info_extensions_vk = create_info.to_vk_extensions();
         let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
@@ -149,12 +150,12 @@ impl Semaphore {
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
     #[inline]
-    pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, VulkanError> {
+    pub fn from_pool(device: &Arc<Device>) -> Result<Semaphore, VulkanError> {
         let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
             Some(handle) => Semaphore {
                 handle,
-                device: InstanceOwnedDebugWrapper(device),
+                device: InstanceOwnedDebugWrapper(device.clone()),
                 id: Self::next_id(),
 
                 semaphore_type: SemaphoreType::Binary,
@@ -165,7 +166,7 @@ impl Semaphore {
             None => {
                 // Pool is empty, alloc new semaphore
                 let mut semaphore =
-                    unsafe { Semaphore::new_unchecked(device, Default::default()) }?;
+                    unsafe { Semaphore::new_unchecked(device, &Default::default()) }?;
                 semaphore.must_put_in_pool = true;
                 semaphore
             }
@@ -182,11 +183,11 @@ impl Semaphore {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Semaphore,
-        create_info: SemaphoreCreateInfo,
+        create_info: &SemaphoreCreateInfo<'_>,
     ) -> Semaphore {
-        let SemaphoreCreateInfo {
+        let &SemaphoreCreateInfo {
             semaphore_type,
             initial_value: _,
             export_handle_types,
@@ -195,7 +196,7 @@ impl Semaphore {
 
         Semaphore {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             semaphore_type,
@@ -283,16 +284,16 @@ impl Semaphore {
     #[inline]
     pub unsafe fn signal(
         &self,
-        signal_info: SemaphoreSignalInfo,
+        signal_info: &SemaphoreSignalInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_signal(&signal_info)?;
+        self.validate_signal(signal_info)?;
 
         Ok(unsafe { self.signal_unchecked(signal_info) }?)
     }
 
     fn validate_signal(
         &self,
-        signal_info: &SemaphoreSignalInfo,
+        signal_info: &SemaphoreSignalInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if self.semaphore_type != SemaphoreType::Timeline {
             return Err(Box::new(ValidationError {
@@ -316,7 +317,7 @@ impl Semaphore {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn signal_unchecked(
         &self,
-        signal_info: SemaphoreSignalInfo,
+        signal_info: &SemaphoreSignalInfo<'_>,
     ) -> Result<(), VulkanError> {
         let signal_info_vk = signal_info.to_vk(self.handle());
 
@@ -341,17 +342,17 @@ impl Semaphore {
     #[inline]
     pub fn wait(
         &self,
-        wait_info: SemaphoreWaitInfo,
+        wait_info: &SemaphoreWaitInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_wait(&wait_info, timeout)?;
+        self.validate_wait(wait_info, timeout)?;
 
         Ok(unsafe { self.wait_unchecked(wait_info, timeout) }?)
     }
 
     fn validate_wait(
         &self,
-        wait_info: &SemaphoreWaitInfo,
+        wait_info: &SemaphoreWaitInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Box<ValidationError>> {
         if self.semaphore_type != SemaphoreType::Timeline {
@@ -383,7 +384,7 @@ impl Semaphore {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn wait_unchecked(
         &self,
-        wait_info: SemaphoreWaitInfo,
+        wait_info: &SemaphoreWaitInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
         let wait_info_vk = wait_info.to_vk(&self.handle);
@@ -422,16 +423,16 @@ impl Semaphore {
     /// - Panics if not all semaphores belong to the same device.
     #[inline]
     pub fn wait_multiple(
-        wait_info: SemaphoreWaitMultipleInfo,
+        wait_info: &SemaphoreWaitMultipleInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Validated<VulkanError>> {
-        Self::validate_wait_multiple(&wait_info, timeout)?;
+        Self::validate_wait_multiple(wait_info, timeout)?;
 
         Ok(unsafe { Self::wait_multiple_unchecked(wait_info, timeout) }?)
     }
 
     fn validate_wait_multiple(
-        wait_info: &SemaphoreWaitMultipleInfo,
+        wait_info: &SemaphoreWaitMultipleInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Box<ValidationError>> {
         if let Some(timeout) = timeout {
@@ -458,7 +459,7 @@ impl Semaphore {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn wait_multiple_unchecked(
-        wait_info: SemaphoreWaitMultipleInfo,
+        wait_info: &SemaphoreWaitMultipleInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
         if wait_info.semaphores.is_empty() {
@@ -496,7 +497,8 @@ impl Semaphore {
         .map_err(VulkanError::from)
     }
 
-    /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned `File`.
+    /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned file
+    /// descriptor.
     ///
     /// # Safety
     ///
@@ -510,7 +512,7 @@ impl Semaphore {
     pub unsafe fn export_fd(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<File, Validated<VulkanError>> {
+    ) -> Result<RawFd, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
         Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
@@ -573,35 +575,28 @@ impl Semaphore {
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<File, VulkanError> {
+    ) -> Result<RawFd, VulkanError> {
         let info_vk = vk::SemaphoreGetFdInfoKHR::default()
             .semaphore(self.handle)
             .handle_type(handle_type.into());
 
-        let mut output = MaybeUninit::uninit();
-        let fns = self.device.fns();
-        unsafe {
-            (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
-                self.device.handle(),
-                &info_vk,
-                output.as_mut_ptr(),
-            )
-        }
-        .result()
-        .map_err(VulkanError::from)?;
+        let fd = {
+            let mut output = MaybeUninit::uninit();
+            let fns = self.device.fns();
+            unsafe {
+                (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::io::FromRawFd;
-            let raw_fd = unsafe { output.assume_init() };
-            Ok(unsafe { File::from_raw_fd(raw_fd) })
-        }
+            unsafe { output.assume_init() }
+        };
 
-        #[cfg(not(unix))]
-        {
-            let _ = output;
-            unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
-        }
+        Ok(fd)
     }
 
     /// Exports the semaphore into a Win32 handle.
@@ -812,21 +807,21 @@ impl Semaphore {
     ///
     /// - The semaphore must not be in use by the device.
     /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then
-    ///   `file` must represent a binary semaphore that was exported from Vulkan or a compatible
-    ///   API, with a driver and device UUID equal to those of the device that owns `self`.
+    ///   `fd` must represent a binary semaphore that was exported from Vulkan or a compatible API,
+    ///   with a driver and device UUID equal to those of the device that owns `self`.
     #[inline]
     pub unsafe fn import_fd(
         &self,
-        import_semaphore_fd_info: ImportSemaphoreFdInfo,
+        import_semaphore_fd_info: &ImportSemaphoreFdInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_import_fd(&import_semaphore_fd_info)?;
+        self.validate_import_fd(import_semaphore_fd_info)?;
 
         Ok(unsafe { self.import_fd_unchecked(import_semaphore_fd_info) }?)
     }
 
     fn validate_import_fd(
         &self,
-        import_semaphore_fd_info: &ImportSemaphoreFdInfo,
+        import_semaphore_fd_info: &ImportSemaphoreFdInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(Box::new(ValidationError {
@@ -844,7 +839,7 @@ impl Semaphore {
         let &ImportSemaphoreFdInfo {
             flags,
             handle_type: _,
-            file: _,
+            fd: _,
             _ne: _,
         } = import_semaphore_fd_info;
 
@@ -867,9 +862,9 @@ impl Semaphore {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn import_fd_unchecked(
         &self,
-        import_semaphore_fd_info: ImportSemaphoreFdInfo,
+        import_semaphore_fd_info: &ImportSemaphoreFdInfo<'_>,
     ) -> Result<(), VulkanError> {
-        let info_vk = import_semaphore_fd_info.into_vk(self.handle());
+        let info_vk = import_semaphore_fd_info.to_vk(self.handle());
 
         let fns = self.device.fns();
         unsafe {
@@ -895,16 +890,16 @@ impl Semaphore {
     #[inline]
     pub unsafe fn import_win32_handle(
         &self,
-        import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
+        import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_import_win32_handle(&import_semaphore_win32_handle_info)?;
+        self.validate_import_win32_handle(import_semaphore_win32_handle_info)?;
 
         Ok(unsafe { self.import_win32_handle_unchecked(import_semaphore_win32_handle_info) }?)
     }
 
     fn validate_import_win32_handle(
         &self,
-        import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo,
+        import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .device
@@ -949,7 +944,7 @@ impl Semaphore {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn import_win32_handle_unchecked(
         &self,
-        import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
+        import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo<'_>,
     ) -> Result<(), VulkanError> {
         let info_vk = import_semaphore_win32_handle_info.to_vk(self.handle());
 
@@ -977,16 +972,16 @@ impl Semaphore {
     #[inline]
     pub unsafe fn import_zircon_handle(
         &self,
-        import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
+        import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_import_zircon_handle(&import_semaphore_zircon_handle_info)?;
+        self.validate_import_zircon_handle(import_semaphore_zircon_handle_info)?;
 
         Ok(unsafe { self.import_zircon_handle_unchecked(import_semaphore_zircon_handle_info) }?)
     }
 
     fn validate_import_zircon_handle(
         &self,
-        import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo,
+        import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(Box::new(ValidationError {
@@ -1015,7 +1010,7 @@ impl Semaphore {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn import_zircon_handle_unchecked(
         &self,
-        import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
+        import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo<'_>,
     ) -> Result<(), VulkanError> {
         let info_vk = import_semaphore_zircon_handle_info.to_vk(self.handle());
 
@@ -1064,7 +1059,7 @@ impl_id_counter!(Semaphore);
 
 /// Parameters to create a new `Semaphore`.
 #[derive(Clone, Debug)]
-pub struct SemaphoreCreateInfo {
+pub struct SemaphoreCreateInfo<'a> {
     /// The type of semaphore to create.
     ///
     /// The default value is [`SemaphoreType::Binary`].
@@ -1083,17 +1078,17 @@ pub struct SemaphoreCreateInfo {
     /// The default value is [`ExternalSemaphoreHandleTypes::empty()`].
     pub export_handle_types: ExternalSemaphoreHandleTypes,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SemaphoreCreateInfo {
+impl Default for SemaphoreCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SemaphoreCreateInfo {
+impl<'a> SemaphoreCreateInfo<'a> {
     /// Returns a default `SemaphoreCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1168,7 +1163,7 @@ impl SemaphoreCreateInfo {
                 let external_semaphore_properties = unsafe {
                     device
                         .physical_device()
-                        .external_semaphore_properties_unchecked(ExternalSemaphoreInfo {
+                        .external_semaphore_properties_unchecked(&ExternalSemaphoreInfo {
                             semaphore_type,
                             initial_value,
                             ..ExternalSemaphoreInfo::new(handle_type)
@@ -1213,7 +1208,7 @@ impl SemaphoreCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut SemaphoreCreateInfoExtensionsVk,
     ) -> vk::SemaphoreCreateInfo<'a> {
@@ -1350,23 +1345,23 @@ vulkan_bitflags_enum! {
 
 /// Parameters to signal a timeline semaphore.
 #[derive(Clone, Debug)]
-pub struct SemaphoreSignalInfo {
+pub struct SemaphoreSignalInfo<'a> {
     /// The new value to set the semaphore's counter to.
     ///
     /// The default value is `0`.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SemaphoreSignalInfo {
+impl Default for SemaphoreSignalInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SemaphoreSignalInfo {
+impl SemaphoreSignalInfo<'_> {
     /// Returns a default `SemaphoreSignalInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1398,7 +1393,7 @@ impl SemaphoreSignalInfo {
 
 /// Parameters to wait for a single timeline semaphore.
 #[derive(Clone, Debug)]
-pub struct SemaphoreWaitInfo {
+pub struct SemaphoreWaitInfo<'a> {
     /// Additional properties of the wait operation.
     ///
     /// The default value is empty.
@@ -1409,17 +1404,17 @@ pub struct SemaphoreWaitInfo {
     /// The default value is `0`.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SemaphoreWaitInfo {
+impl Default for SemaphoreWaitInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SemaphoreWaitInfo {
+impl<'a> SemaphoreWaitInfo<'a> {
     /// Returns a default `SemaphoreWaitInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1445,10 +1440,7 @@ impl SemaphoreWaitInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
-        &'a self,
-        semaphore_vk: &'a vk::Semaphore,
-    ) -> vk::SemaphoreWaitInfo<'a> {
+    pub(crate) fn to_vk(&'a self, semaphore_vk: &'a vk::Semaphore) -> vk::SemaphoreWaitInfo<'a> {
         let &Self {
             flags,
             ref value,
@@ -1464,7 +1456,7 @@ impl SemaphoreWaitInfo {
 
 /// Parameters to wait for multiple timeline semaphores.
 #[derive(Clone, Debug)]
-pub struct SemaphoreWaitMultipleInfo {
+pub struct SemaphoreWaitMultipleInfo<'a> {
     /// Additional properties of the wait operation.
     ///
     /// The default value is empty.
@@ -1473,25 +1465,25 @@ pub struct SemaphoreWaitMultipleInfo {
     /// The semaphores to wait for, and the values to wait for.
     ///
     /// The default value is empty.
-    pub semaphores: Vec<SemaphoreWaitValueInfo>,
+    pub semaphores: &'a [SemaphoreWaitValueInfo<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SemaphoreWaitMultipleInfo {
+impl Default for SemaphoreWaitMultipleInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SemaphoreWaitMultipleInfo {
+impl<'a> SemaphoreWaitMultipleInfo<'a> {
     /// Returns a default `SemaphoreWaitMultipleInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: SemaphoreWaitFlags::empty(),
-            semaphores: Vec::new(),
+            semaphores: &[],
             _ne: crate::NE,
         }
     }
@@ -1499,7 +1491,7 @@ impl SemaphoreWaitMultipleInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref semaphores,
+            semaphores,
             _ne,
         } = self;
 
@@ -1521,7 +1513,7 @@ impl SemaphoreWaitMultipleInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a SemaphoreWaitMultipleInfoFields1Vk,
     ) -> vk::SemaphoreWaitInfo<'a> {
@@ -1542,14 +1534,14 @@ impl SemaphoreWaitMultipleInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SemaphoreWaitMultipleInfoFields1Vk {
-        let &SemaphoreWaitMultipleInfo { ref semaphores, .. } = self;
+        let &SemaphoreWaitMultipleInfo { semaphores, .. } = self;
 
         let mut semaphores_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
         let mut values_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
 
         for value_info in semaphores {
             let &SemaphoreWaitValueInfo {
-                ref semaphore,
+                semaphore,
                 value,
                 _ne: _,
             } = value_info;
@@ -1583,24 +1575,24 @@ vulkan_bitflags! {
 
 /// A semaphore to wait for, along with the value to wait for.
 #[derive(Clone, Debug)]
-pub struct SemaphoreWaitValueInfo {
+pub struct SemaphoreWaitValueInfo<'a> {
     /// The semaphore to wait for.
     ///
     /// There is no default value.
-    pub semaphore: Arc<Semaphore>,
+    pub semaphore: &'a Semaphore,
 
     /// The value to wait for.
     ///
     /// There is no default value.
     pub value: u64,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl SemaphoreWaitValueInfo {
+impl<'a> SemaphoreWaitValueInfo<'a> {
     /// Returns a default `SemaphoreWaitValueInfo` with the provided `semaphore` and `value`.
     #[inline]
-    pub const fn new(semaphore: Arc<Semaphore>, value: u64) -> Self {
+    pub const fn new(semaphore: &'a Semaphore, value: u64) -> Self {
         Self {
             semaphore,
             value,
@@ -1610,7 +1602,7 @@ impl SemaphoreWaitValueInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref semaphore,
+            semaphore,
             value: _,
             _ne: _,
         } = self;
@@ -1642,7 +1634,7 @@ vulkan_bitflags! {
 }
 
 #[derive(Debug)]
-pub struct ImportSemaphoreFdInfo {
+pub struct ImportSemaphoreFdInfo<'a> {
     /// Additional parameters for the import operation.
     ///
     /// If `handle_type` has *copy transference*, this must include the `temporary` flag.
@@ -1650,32 +1642,32 @@ pub struct ImportSemaphoreFdInfo {
     /// The default value is [`SemaphoreImportFlags::empty()`].
     pub flags: SemaphoreImportFlags,
 
-    /// The handle type of `file`.
+    /// The handle type of `fd`.
     ///
     /// There is no default value.
     pub handle_type: ExternalSemaphoreHandleType,
 
     /// The file to import the semaphore from.
     ///
-    /// If `handle_type` is `ExternalSemaphoreHandleType::SyncFd`, then `file` can be `None`.
-    /// Instead of an imported file descriptor, a dummy file descriptor `-1` is used,
-    /// which represents a semaphore that is always signaled.
+    /// If `handle_type` is `ExternalSemaphoreHandleType::SyncFd`, then `fd` can be `None`. Instead
+    /// of an imported file descriptor, a dummy file descriptor `-1` is used, which represents a
+    /// semaphore that is always signaled.
     ///
     /// The default value is `None`, which must be overridden if `handle_type` is not
     /// `ExternalSemaphoreHandleType::SyncFd`.
-    pub file: Option<File>,
+    pub fd: Option<RawFd>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ImportSemaphoreFdInfo {
+impl ImportSemaphoreFdInfo<'_> {
     /// Returns a default `ImportSemaphoreFdInfo` with the provided `handle_type`.
     #[inline]
     pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
-            file: None,
+            fd: None,
             _ne: crate::NE,
         }
     }
@@ -1690,7 +1682,7 @@ impl ImportSemaphoreFdInfo {
         let &Self {
             flags,
             handle_type,
-            file: _,
+            fd: _,
             _ne: _,
         } = self;
 
@@ -1736,39 +1728,27 @@ impl ImportSemaphoreFdInfo {
         Ok(())
     }
 
-    pub(crate) fn into_vk(
-        self,
+    pub(crate) fn to_vk(
+        &self,
         semaphore_vk: vk::Semaphore,
     ) -> vk::ImportSemaphoreFdInfoKHR<'static> {
-        let Self {
+        let &Self {
             flags,
             handle_type,
-            file,
+            fd,
             _ne: _,
         } = self;
-
-        #[cfg(unix)]
-        let fd = {
-            use std::os::fd::IntoRawFd;
-            file.map_or(-1, |file| file.into_raw_fd())
-        };
-
-        #[cfg(not(unix))]
-        let fd = {
-            let _ = file;
-            -1
-        };
 
         vk::ImportSemaphoreFdInfoKHR::default()
             .semaphore(semaphore_vk)
             .flags(flags.into())
             .handle_type(handle_type.into())
-            .fd(fd)
+            .fd(fd.unwrap_or(-1))
     }
 }
 
 #[derive(Debug)]
-pub struct ImportSemaphoreWin32HandleInfo {
+pub struct ImportSemaphoreWin32HandleInfo<'a> {
     /// Additional parameters for the import operation.
     ///
     /// If `handle_type` has *copy transference*, this must include the `temporary` flag.
@@ -1786,10 +1766,10 @@ pub struct ImportSemaphoreWin32HandleInfo {
     /// The default value is `0`, which must be overridden.
     pub handle: vk::HANDLE,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ImportSemaphoreWin32HandleInfo {
+impl ImportSemaphoreWin32HandleInfo<'_> {
     /// Returns a default `ImportSemaphoreWin32HandleInfo` with the provided `handle_type`.
     #[inline]
     pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
@@ -1880,7 +1860,7 @@ impl ImportSemaphoreWin32HandleInfo {
 }
 
 #[derive(Debug)]
-pub struct ImportSemaphoreZirconHandleInfo {
+pub struct ImportSemaphoreZirconHandleInfo<'a> {
     /// Additional parameters for the import operation.
     ///
     /// If `handle_type` has *copy transference*, this must include the `temporary` flag.
@@ -1898,10 +1878,10 @@ pub struct ImportSemaphoreZirconHandleInfo {
     /// The default value is `ZX_HANDLE_INVALID`, which must be overridden.
     pub zircon_handle: vk::zx_handle_t,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ImportSemaphoreZirconHandleInfo {
+impl ImportSemaphoreZirconHandleInfo<'_> {
     /// Returns a default `ImportSemaphoreZirconHandleInfo` with the provided `handle_type`.
     #[inline]
     pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
@@ -1986,7 +1966,7 @@ impl ImportSemaphoreZirconHandleInfo {
 /// The semaphore configuration to query in
 /// [`PhysicalDevice::external_semaphore_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExternalSemaphoreInfo {
+pub struct ExternalSemaphoreInfo<'a> {
     /// The external handle type that will be used with the semaphore.
     ///
     /// There is no default value.
@@ -2002,10 +1982,10 @@ pub struct ExternalSemaphoreInfo {
     /// The default value is `0`.
     pub initial_value: u64,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ExternalSemaphoreInfo {
+impl<'a> ExternalSemaphoreInfo<'a> {
     /// Returns a default `ExternalSemaphoreInfo` with the provided `handle_type`.
     #[inline]
     pub const fn new(handle_type: ExternalSemaphoreHandleType) -> Self {
@@ -2077,7 +2057,7 @@ impl ExternalSemaphoreInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut ExternalSemaphoreInfoExtensionsVk,
     ) -> vk::PhysicalDeviceExternalSemaphoreInfo<'a> {
@@ -2116,7 +2096,16 @@ impl ExternalSemaphoreInfo {
 
         ExternalSemaphoreInfoExtensionsVk { type_vk }
     }
+
+    pub(crate) fn to_owned(&self) -> ExternalSemaphoreInfo<'static> {
+        ExternalSemaphoreInfo {
+            _ne: crate::NE,
+            ..*self
+        }
+    }
 }
+
+borrow_wrapper_impls!(ExternalSemaphoreInfo<'_>, PartialEq, Eq, Hash);
 
 pub(crate) struct ExternalSemaphoreInfoExtensionsVk {
     pub(crate) type_vk: Option<vk::SemaphoreTypeCreateInfo<'static>>,
@@ -2183,7 +2172,7 @@ mod tests {
     #[test]
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = Semaphore::new(device, Default::default());
+        let _ = Semaphore::new(&device, &Default::default());
     }
 
     #[test]
@@ -2192,13 +2181,13 @@ mod tests {
 
         assert_eq!(device.semaphore_pool().lock().len(), 0);
         let sem1_internal_obj = {
-            let sem = Semaphore::from_pool(device.clone()).unwrap();
+            let sem = Semaphore::from_pool(&device).unwrap();
             assert_eq!(device.semaphore_pool().lock().len(), 0);
             sem.handle()
         };
 
         assert_eq!(device.semaphore_pool().lock().len(), 1);
-        let sem2 = Semaphore::from_pool(device.clone()).unwrap();
+        let sem2 = Semaphore::from_pool(&device).unwrap();
         assert_eq!(device.semaphore_pool().lock().len(), 0);
         assert_eq!(sem2.handle(), sem1_internal_obj);
     }
@@ -2250,8 +2239,8 @@ mod tests {
         };
 
         let sem = Semaphore::new(
-            device,
-            SemaphoreCreateInfo {
+            &device,
+            &SemaphoreCreateInfo {
                 export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                 ..Default::default()
             },

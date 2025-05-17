@@ -329,14 +329,14 @@ impl ApplicationHandler for App {
             .task_mut()
             .downcast_mut::<SceneTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
         let tonemap_node = task_graph.task_node_mut(tonemap_node_id).unwrap();
         let subpass = tonemap_node.subpass().unwrap().clone();
         tonemap_node
             .task_mut()
             .downcast_mut::<TonemapTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
 
         self.rcx = Some(RenderContext {
             window,

@@ -6,8 +6,12 @@ use vulkano::{
         CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags, DescriptorSet,
-        WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator,
+        layout::{
+            DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding,
+            DescriptorSetLayoutCreateInfo, DescriptorType,
+        },
+        DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
@@ -31,11 +35,12 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
+        layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::ShaderStages,
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
@@ -411,7 +416,7 @@ impl ApplicationHandler for App {
         };
 
         let render_pass = vulkano::single_pass_renderpass!(
-            self.device.clone(),
+            &self.device,
             attachments: {
                 color: {
                     format: swapchain.image_format(),
@@ -430,61 +435,72 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         let pipeline = {
-            let vs = vs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
             let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
-            let layout = {
-                let mut layout_create_info =
-                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages);
-
-                // Adjust the info for set 0, binding 1 to make it variable with 2 descriptors.
-                let binding = layout_create_info.set_layouts[0]
-                    .bindings
-                    .get_mut(&1)
-                    .unwrap();
-                binding.binding_flags |= DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
-                binding.descriptor_count = 2;
-
-                PipelineLayout::new(
-                    self.device.clone(),
-                    layout_create_info
-                        .into_pipeline_layout_create_info(self.device.clone())
-                        .unwrap(),
-                )
-                .unwrap()
-            };
-            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
-            GraphicsPipeline::new(
-                self.device.clone(),
-                None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
-                            blend: Some(AttachmentBlend::alpha()),
+            // We can't use the automatic pipeline layout generation since we use a runtime-sized
+            // descriptor array, but we can still generate the push constant ranges automatically.
+            let layout = PipelineLayout::new(
+                &self.device,
+                &PipelineLayoutCreateInfo {
+                    set_layouts: &[&DescriptorSetLayout::new(
+                        &self.device,
+                        &DescriptorSetLayoutCreateInfo {
+                            bindings: &[
+                                DescriptorSetLayoutBinding {
+                                    binding: 0,
+                                    descriptor_count: 1,
+                                    stages: ShaderStages::FRAGMENT,
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+                                },
+                                DescriptorSetLayoutBinding {
+                                    binding_flags:
+                                        DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+                                    binding: 1,
+                                    // For variable descriptors, the descriptor count determines the
+                                    // maximum number of descriptors that the binding can have. This
+                                    // is why it's not possible to generate this binding
+                                    // automatically.
+                                    descriptor_count: 2,
+                                    stages: ShaderStages::FRAGMENT,
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
+                                },
+                            ],
                             ..Default::default()
                         },
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                    )
+                    .unwrap()],
+                    push_constant_ranges: &push_constant_ranges_from_stages(&stages),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let subpass = Subpass::new(&render_pass, 0).unwrap();
+
+            GraphicsPipeline::new(
+                &self.device,
+                None,
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&vertex_input_state),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState {
+                            blend: Some(AttachmentBlend::alpha()),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some((&subpass).into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
@@ -683,9 +699,9 @@ fn window_size_dependent_setup(
             let view = ImageView::new_default(image).unwrap();
 
             Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
+                render_pass,
+                &FramebufferCreateInfo {
+                    attachments: &[&view],
                     ..Default::default()
                 },
             )

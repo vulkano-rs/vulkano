@@ -78,7 +78,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
@@ -189,7 +188,7 @@ fn main() {
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        &device,
         attachments: {
             // The first framebuffer attachment is the intermediary image.
             intermediary: {
@@ -228,9 +227,9 @@ fn main() {
 
     // Creating the framebuffer, the calls to `add` match the list of attachments in order.
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-            attachments: vec![intermediary, view],
+        &render_pass,
+        &FramebufferCreateInfo {
+            attachments: &[&intermediary, &view],
             ..Default::default()
         },
     )
@@ -306,48 +305,36 @@ fn main() {
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass, 0).unwrap();
+        let layout = PipelineLayout::from_stages(&device, &stages).unwrap();
+        let subpass = Subpass::new(&render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            &device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState::default()),
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState {
                     rasterization_samples: subpass.num_samples().unwrap(),
                     ..Default::default()
                 }),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                dynamic_state: &[DynamicState::Viewport],
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()
