@@ -116,6 +116,7 @@ pub struct Image {
 }
 
 /// The type of backing memory that an image can have.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ImageMemory {
