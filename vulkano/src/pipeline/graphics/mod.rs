@@ -1114,9 +1114,10 @@ impl<'a> GraphicsPipelineCreateInfo<'a> {
             depth_stencil_state.is_some(),
             !need_fragment_output_state
                 || match subpass {
-                    Some(PipelineSubpassType::BeginRenderPass(subpass)) => {
-                        subpass.subpass_desc().depth_stencil_attachment.is_some()
-                    }
+                    Some(PipelineSubpassType::BeginRenderPass(subpass)) => subpass
+                        .subpass_desc()
+                        .depth_stencil_attachment
+                        .is_some_and(Option::is_some),
                     Some(PipelineSubpassType::BeginRendering(rendering_info)) => {
                         rendering_info.depth_attachment_format.is_some()
                             || rendering_info.stencil_attachment_format.is_some()
