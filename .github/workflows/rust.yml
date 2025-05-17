@@ -17,7 +17,7 @@ jobs:
       matrix:
         include:
         - name: windows-latest
-          runs-on: [self-hosted, Windows]
+          runs-on: windows-latest
           self-hosted: true
         - name: ubuntu-latest
           runs-on: ubuntu-latest
@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v4
-    - run: rustup toolchain install stable
+    - run: rustup toolchain install $(grep 'rust-version' Cargo.toml | awk -F '"' '{print $2}')
     - uses: Swatinem/rust-cache@v2
       if: ${{ ! matrix.self-hosted }}
       with:
@@ -59,7 +59,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v4
-    - run: rustup toolchain install stable --component clippy
+    - run: rustup toolchain install $(grep 'rust-version' Cargo.toml | awk -F '"' '{print $2}') --component clippy
     - uses: Swatinem/rust-cache@v2
       if: ${{ ! matrix.self-hosted }}
       with:
