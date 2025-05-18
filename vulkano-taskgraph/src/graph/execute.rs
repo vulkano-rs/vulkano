@@ -1197,6 +1197,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             set_clear_values(
                 &self.executable.graph.nodes,
                 self.resource_map,
+                self.world,
                 render_pass_state,
                 &mut self.clear_values,
                 &mut self.clear_values_vk,
@@ -1276,6 +1277,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             set_clear_attachments(
                 &self.executable.graph.nodes,
                 self.resource_map,
+                self.world,
                 node_index,
                 render_pass_state,
                 attachments,
@@ -1797,6 +1799,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             set_clear_values(
                 &self.executable.graph.nodes,
                 self.resource_map,
+                self.world,
                 render_pass_state,
                 &mut self.clear_values,
                 &mut self.clear_values_vk,
@@ -1876,6 +1879,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             set_clear_attachments(
                 &self.executable.graph.nodes,
                 self.resource_map,
+                self.world,
                 node_index,
                 render_pass_state,
                 attachments,
@@ -2084,9 +2088,10 @@ unsafe fn framebuffer_index(resource_map: &ResourceMap<'_>, swapchains: &[Id<Swa
     index as usize
 }
 
-unsafe fn set_clear_values(
-    nodes: &super::Nodes<impl ?Sized + 'static>,
+unsafe fn set_clear_values<W: ?Sized + 'static>(
+    nodes: &super::Nodes<W>,
     resource_map: &ResourceMap<'_>,
+    world: &W,
     render_pass_state: &super::RenderPassState,
     clear_values: &mut LinearMap<Id, Option<ClearValue>>,
     clear_values_vk: &mut Vec<vk::ClearValue>,
@@ -2103,10 +2108,13 @@ unsafe fn set_clear_values(
     for &node_index in &render_pass_state.clear_node_indices {
         let task_node = unsafe { nodes.task_node_unchecked(node_index) };
 
-        task_node.task.clear_values(&mut ClearValues {
-            inner: clear_values,
-            resource_map,
-        });
+        task_node.task.clear_values(
+            &mut ClearValues {
+                inner: clear_values,
+                resource_map,
+            },
+            world,
+        );
     }
 
     clear_values_vk.extend(clear_values.values().map(|clear_value| {
@@ -2116,9 +2124,10 @@ unsafe fn set_clear_values(
     }));
 }
 
-unsafe fn set_clear_attachments(
-    nodes: &super::Nodes<impl ?Sized + 'static>,
+unsafe fn set_clear_attachments<W: ?Sized + 'static>(
+    nodes: &super::Nodes<W>,
     resource_map: &ResourceMap<'_>,
+    world: &W,
     node_index: NodeIndex,
     render_pass_state: &super::RenderPassState,
     attachments: &[Id],
@@ -2131,10 +2140,13 @@ unsafe fn set_clear_attachments(
 
     let task_node = unsafe { nodes.task_node_unchecked(node_index) };
 
-    task_node.task.clear_values(&mut ClearValues {
-        inner: clear_values,
-        resource_map,
-    });
+    task_node.task.clear_values(
+        &mut ClearValues {
+            inner: clear_values,
+            resource_map,
+        },
+        world,
+    );
 
     clear_attachments_vk.extend(clear_values.iter().map(|(id, clear_value)| {
         let attachment_state = render_pass_state.attachments.get(id).unwrap();
