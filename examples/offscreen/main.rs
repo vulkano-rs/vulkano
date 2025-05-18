@@ -221,7 +221,8 @@ fn main() {
                     viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: [1920.0, 1080.0],
-                        depth_range: 0.0..=1.0,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
                     }],
                     ..Default::default()
                 }),

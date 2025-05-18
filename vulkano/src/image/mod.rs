@@ -441,8 +441,15 @@ impl Image {
         subresource_range: ImageSubresourceRange,
     ) -> SubresourceRangeIterator {
         assert!(self.format().aspects().contains(subresource_range.aspects));
-        assert!(subresource_range.mip_levels.end <= self.mip_levels());
-        assert!(subresource_range.array_layers.end <= self.array_layers());
+        assert!(subresource_range.base_mip_level < self.mip_levels());
+        assert!(
+            subresource_range.level_count <= self.mip_levels() - subresource_range.base_mip_level,
+        );
+        assert!(subresource_range.base_array_layer < self.array_layers());
+        assert!(
+            subresource_range.layer_count
+                <= self.array_layers() - subresource_range.base_array_layer,
+        );
 
         SubresourceRangeIterator::new(
             subresource_range,
@@ -473,8 +480,10 @@ impl Image {
                     .iter()
                     .copied()
                     .collect(),
-                mip_levels: 0..self.mip_levels(),
-                array_layers: 0..self.array_layers(),
+                base_mip_level: 0,
+                level_count: self.mip_levels(),
+                base_array_layer: 0,
+                layer_count: self.array_layers(),
             }
         } else {
             let aspect_num = (range.start / self.aspect_size) as usize;
@@ -495,8 +504,10 @@ impl Image {
 
                 ImageSubresourceRange {
                     aspects: self.aspect_list[aspect_num].into(),
-                    mip_levels: start_mip_level..end_mip_level,
-                    array_layers: 0..self.array_layers(),
+                    base_mip_level: start_mip_level,
+                    level_count: end_mip_level - start_mip_level,
+                    base_array_layer: 0,
+                    layer_count: self.array_layers(),
                 }
             } else {
                 let mip_level = (range.start / self.mip_level_size) as u32;
@@ -513,8 +524,10 @@ impl Image {
 
                 ImageSubresourceRange {
                     aspects: self.aspect_list[aspect_num].into(),
-                    mip_levels: mip_level..mip_level + 1,
-                    array_layers: start_array_layer..end_array_layer,
+                    base_mip_level: mip_level,
+                    level_count: 1,
+                    base_array_layer: start_array_layer,
+                    layer_count: end_array_layer - start_array_layer,
                 }
             }
         }
@@ -893,16 +906,17 @@ impl SubresourceRangeIterator {
         image_mip_level_size: DeviceSize,
         image_array_layers: u32,
     ) -> Self {
-        assert!(!subresource_range.mip_levels.is_empty());
-        assert!(!subresource_range.array_layers.is_empty());
+        let mip_levels = subresource_range.base_mip_level
+            ..subresource_range.base_mip_level + subresource_range.level_count;
+        let array_layers = subresource_range.base_array_layer
+            ..subresource_range.base_array_layer + subresource_range.layer_count;
 
-        let next_fn = if subresource_range.array_layers.start != 0
-            || subresource_range.array_layers.end != image_array_layers
-        {
+        assert!(!mip_levels.is_empty());
+        assert!(!array_layers.is_empty());
+
+        let next_fn = if array_layers.start != 0 || array_layers.end != image_array_layers {
             Self::next_some_layers
-        } else if subresource_range.mip_levels.start != 0
-            || subresource_range.mip_levels.end != image_mip_levels
-        {
+        } else if mip_levels.start != 0 || mip_levels.end != image_mip_levels {
             Self::next_some_levels_all_layers
         } else {
             Self::next_all_levels_all_layers
@@ -917,14 +931,14 @@ impl SubresourceRangeIterator {
             .peekable();
         assert_ne!(aspect_nums.len(), 0);
         let current_aspect_num = aspect_nums.next();
-        let current_mip_level = subresource_range.mip_levels.start;
+        let current_mip_level = mip_levels.start;
 
         Self {
             next_fn,
             image_aspect_size,
             image_mip_level_size,
-            mip_levels: subresource_range.mip_levels,
-            array_layers: subresource_range.array_layers,
+            mip_levels,
+            array_layers,
 
             aspect_nums,
             current_aspect_num,
@@ -1363,7 +1377,7 @@ pub fn mip_level_extent(extent: [u32; 3], level: u32) -> Option<[u32; 3]> {
 
 /// One or more subresources of an image, spanning a single mip level, that should be accessed by a
 /// command.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ImageSubresourceLayers {
     /// Selects the aspects that will be included.
     ///
@@ -1374,10 +1388,13 @@ pub struct ImageSubresourceLayers {
     /// Selects mip level that will be included.
     pub mip_level: u32,
 
-    /// Selects the range of array layers that will be included.
+    /// Selects the first array layer that will be included.
+    pub base_array_layer: u32,
+
+    /// Selects the number of array layers that will be included.
     ///
-    /// The range must not be empty.
-    pub array_layers: Range<u32>,
+    /// Must be nonzero.
+    pub layer_count: u32,
 }
 
 impl ImageSubresourceLayers {
@@ -1385,7 +1402,7 @@ impl ImageSubresourceLayers {
     /// mip level of the image. All aspects of the image are selected, or `PLANE_0` if the image
     /// is multi-planar.
     #[inline]
-    pub fn from_parameters(format: Format, array_layers: u32) -> Self {
+    pub fn from_parameters(format: Format, layer_count: u32) -> Self {
         Self {
             aspects: {
                 let aspects = format.aspects();
@@ -1397,7 +1414,8 @@ impl ImageSubresourceLayers {
                 }
             },
             mip_level: 0,
-            array_layers: 0..array_layers,
+            base_array_layer: 0,
+            layer_count,
         }
     }
 }
@@ -1407,7 +1425,8 @@ impl ImageSubresourceLayers {
         let &Self {
             aspects,
             mip_level: _,
-            ref array_layers,
+            base_array_layer: _,
+            layer_count,
         } = self;
 
         aspects.validate_device(device).map_err(|err| {
@@ -1463,10 +1482,10 @@ impl ImageSubresourceLayers {
             }));
         }
 
-        if array_layers.is_empty() {
+        if layer_count == 0 {
             return Err(Box::new(ValidationError {
-                context: "array_layers".into(),
-                problem: "is empty".into(),
+                context: "layer_count".into(),
+                problem: "is zero".into(),
                 vuids: &["VUID-VkImageSubresourceLayers-layerCount-01700"],
                 ..Default::default()
             }));
@@ -1482,20 +1501,21 @@ impl ImageSubresourceLayers {
         let &Self {
             aspects,
             mip_level,
-            ref array_layers,
+            base_array_layer,
+            layer_count,
         } = self;
 
         vk::ImageSubresourceLayers {
             aspect_mask: aspects.into(),
             mip_level,
-            base_array_layer: array_layers.start,
-            layer_count: array_layers.end - array_layers.start,
+            base_array_layer,
+            layer_count,
         }
     }
 }
 
 /// One or more subresources of an image that should be accessed by a command.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ImageSubresourceRange {
     /// Selects the aspects that will be included.
     ///
@@ -1503,35 +1523,45 @@ pub struct ImageSubresourceRange {
     /// The `color` aspect cannot be selected together any of with the `plane` aspects.
     pub aspects: ImageAspects,
 
-    /// Selects the range of the mip levels that will be included.
-    ///
-    /// The range must not be empty.
-    pub mip_levels: Range<u32>,
+    /// Selects the first mip level that will be included.
+    pub base_mip_level: u32,
 
-    /// Selects the range of array layers that will be included.
+    /// Selects the number of mip levels that will be included.
     ///
-    /// The range must not be empty.
-    pub array_layers: Range<u32>,
+    /// Must be nonzero.
+    pub level_count: u32,
+
+    /// Selects the first array layer that will be included.
+    pub base_array_layer: u32,
+
+    /// Selects the number of array layers that will be included.
+    ///
+    /// Must be nonzero.
+    pub layer_count: u32,
 }
 
 impl ImageSubresourceRange {
     /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
     /// image. If the image is multi-planar, only the `color` aspect is selected.
     #[inline]
-    pub fn from_parameters(format: Format, mip_levels: u32, array_layers: u32) -> Self {
+    pub fn from_parameters(format: Format, level_count: u32, layer_count: u32) -> Self {
         Self {
             aspects: format.aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
-            mip_levels: 0..mip_levels,
-            array_layers: 0..array_layers,
+            base_mip_level: 0,
+            level_count,
+            base_array_layer: 0,
+            layer_count,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,
-            ref mip_levels,
-            ref array_layers,
+            base_mip_level: _,
+            level_count,
+            base_array_layer: _,
+            layer_count,
         } = self;
 
         aspects.validate_device(device).map_err(|err| {
@@ -1548,19 +1578,19 @@ impl ImageSubresourceRange {
             }));
         }
 
-        if mip_levels.is_empty() {
+        if level_count == 0 {
             return Err(Box::new(ValidationError {
-                context: "mip_levels".into(),
-                problem: "is empty".into(),
+                context: "level_count".into(),
+                problem: "is zero".into(),
                 vuids: &["VUID-VkImageSubresourceRange-levelCount-01720"],
                 ..Default::default()
             }));
         }
 
-        if array_layers.is_empty() {
+        if layer_count == 0 {
             return Err(Box::new(ValidationError {
-                context: "array_layers".into(),
-                problem: "is empty".into(),
+                context: "layer_count".into(),
+                problem: "is zero".into(),
                 vuids: &["VUID-VkImageSubresourceRange-layerCount-01721"],
                 ..Default::default()
             }));
@@ -1604,16 +1634,18 @@ impl ImageSubresourceRange {
     pub fn to_vk(&self) -> vk::ImageSubresourceRange {
         let &Self {
             aspects,
-            ref mip_levels,
-            ref array_layers,
+            base_mip_level,
+            level_count,
+            base_array_layer,
+            layer_count,
         } = self;
 
         vk::ImageSubresourceRange {
             aspect_mask: aspects.into(),
-            base_mip_level: mip_levels.start,
-            level_count: mip_levels.end - mip_levels.start,
-            base_array_layer: array_layers.start,
-            layer_count: array_layers.end - array_layers.start,
+            base_mip_level,
+            level_count,
+            base_array_layer,
+            layer_count,
         }
     }
 }
@@ -1623,8 +1655,10 @@ impl From<ImageSubresourceLayers> for ImageSubresourceRange {
     fn from(val: ImageSubresourceLayers) -> Self {
         Self {
             aspects: val.aspects,
-            mip_levels: val.mip_level..val.mip_level + 1,
-            array_layers: val.array_layers,
+            base_mip_level: val.mip_level,
+            level_count: 1,
+            base_array_layer: val.base_array_layer,
+            layer_count: val.layer_count,
         }
     }
 }

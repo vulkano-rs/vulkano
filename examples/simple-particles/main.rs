@@ -430,7 +430,8 @@ impl ApplicationHandler for App {
                         viewports: &[Viewport {
                             offset: [0.0, 0.0],
                             extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
-                            depth_range: 0.0..=1.0,
+                            min_depth: 0.0,
+                            max_depth: 1.0,
                         }],
                         ..Default::default()
                     }),

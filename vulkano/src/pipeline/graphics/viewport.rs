@@ -44,7 +44,6 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::ops::RangeInclusive;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///
@@ -279,16 +278,27 @@ pub struct Viewport {
     /// using dynamic state.
     pub extent: [f32; 2],
 
-    /// Minimum and maximum values of the depth.
+    /// Minimum depth value.
     ///
-    /// The values `0.0` to `1.0` of each vertex's Z coordinate will be mapped to this
-    /// `depth_range` before being compared to the existing depth value.
+    /// The values `0.0` to `1.0` of each vertex's Z coordinate will be mapped to the range
+    /// \[`min_depth`,&nbsp;`max_depth`\] before being compared to the existing depth value.
     ///
-    /// This is equivalents to `glDepthRange` in OpenGL, except that OpenGL uses the Z coordinate
-    /// range from `-1.0` to `1.0` instead.
+    /// Together with `max_depth`, this is equivalent to `glDepthRange` in OpenGL, except that
+    /// OpenGL uses the Z coordinate range from `-1.0` to `1.0` instead.
     ///
-    /// The default value is `0.0..=1.0`.
-    pub depth_range: RangeInclusive<f32>,
+    /// The default value is `0.0`.
+    pub min_depth: f32,
+
+    /// Maximum depth value.
+    ///
+    /// The values `0.0` to `1.0` of each vertex's Z coordinate will be mapped to the range
+    /// \[`min_depth`,&nbsp;`max_depth`\] before being compared to the existing depth value.
+    ///
+    /// Together with `min_depth`, this is equivalent to `glDepthRange` in OpenGL, except that
+    /// OpenGL uses the Z coordinate range from `-1.0` to `1.0` instead.
+    ///
+    /// The default value is `1.0`.
+    pub max_depth: f32,
 }
 
 impl Default for Viewport {
@@ -305,7 +315,8 @@ impl Viewport {
         Self {
             offset: [0.0; 2],
             extent: [1.0; 2],
-            depth_range: 0.0..=1.0,
+            min_depth: 0.0,
+            max_depth: 1.0,
         }
     }
 
@@ -313,7 +324,8 @@ impl Viewport {
         let &Self {
             offset,
             extent,
-            ref depth_range,
+            min_depth,
+            max_depth,
         } = self;
 
         let properties = device.physical_device().properties();
@@ -416,9 +428,9 @@ impl Viewport {
         }
 
         if !device.enabled_extensions().ext_depth_range_unrestricted {
-            if *depth_range.start() < 0.0 || *depth_range.start() > 1.0 {
+            if !(0.0..=1.0).contains(&min_depth) {
                 return Err(Box::new(ValidationError {
-                    problem: "`depth_range.start` is not between 0.0 and 1.0 inclusive".into(),
+                    problem: "`min_depth` is not between 0.0 and 1.0 inclusive".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_depth_range_unrestricted",
                     )])]),
@@ -427,9 +439,9 @@ impl Viewport {
                 }));
             }
 
-            if *depth_range.end() < 0.0 || *depth_range.end() > 1.0 {
+            if !(0.0..=1.0).contains(&max_depth) {
                 return Err(Box::new(ValidationError {
-                    problem: "`depth_range.end` is not between 0.0 and 1.0 inclusive".into(),
+                    problem: "`max_depth` is not between 0.0 and 1.0 inclusive".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_depth_range_unrestricted",
                     )])]),
@@ -447,7 +459,8 @@ impl Viewport {
         let &Self {
             offset,
             extent,
-            ref depth_range,
+            min_depth,
+            max_depth,
         } = self;
 
         vk::Viewport {
@@ -455,8 +468,8 @@ impl Viewport {
             y: offset[1],
             width: extent[0],
             height: extent[1],
-            min_depth: *depth_range.start(),
-            max_depth: *depth_range.end(),
+            min_depth,
+            max_depth,
         }
     }
 }

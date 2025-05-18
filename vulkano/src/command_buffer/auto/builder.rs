@@ -663,20 +663,22 @@ impl AutoSyncState {
                 }
                 Resource::Image {
                     ref image,
-                    ref subresource_range,
+                    subresource_range,
                     memory_access,
                     start_layout,
                     end_layout,
                 } => {
                     debug_assert!(image.format().aspects().contains(subresource_range.aspects));
+                    debug_assert!(subresource_range.base_mip_level <= image.mip_levels());
                     debug_assert!(
-                        subresource_range.mip_levels.start <= subresource_range.mip_levels.end
+                        subresource_range.level_count
+                            <= image.mip_levels() - subresource_range.base_mip_level,
                     );
-                    debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
+                    debug_assert!(subresource_range.base_array_layer <= image.array_layers());
                     debug_assert!(
-                        subresource_range.array_layers.start <= subresource_range.array_layers.end
+                        subresource_range.layer_count
+                            <= image.array_layers() - subresource_range.base_array_layer,
                     );
-                    debug_assert!(subresource_range.array_layers.end <= image.array_layers());
 
                     debug_assert!(memory_access.contains_write() || start_layout == end_layout);
                     debug_assert!(end_layout != ImageLayout::Undefined);
@@ -684,7 +686,7 @@ impl AutoSyncState {
 
                     if let Some(previous_use) = self.find_image_conflict(
                         image,
-                        subresource_range.clone(),
+                        subresource_range,
                         memory_access,
                         start_layout,
                         end_layout,
@@ -837,7 +839,7 @@ impl AutoSyncState {
                 }
                 Resource::Image {
                     ref image,
-                    ref subresource_range,
+                    subresource_range,
                     memory_access,
                     start_layout,
                     end_layout,
@@ -850,7 +852,7 @@ impl AutoSyncState {
                             secondary_use_ref: use_ref.secondary_use_ref,
                         },
                         image.clone(),
-                        subresource_range.clone(),
+                        subresource_range,
                         memory_access,
                         start_layout,
                         end_layout,
@@ -922,7 +924,8 @@ impl AutoSyncState {
                             src_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                             dst_stages: PipelineStages::ALL_COMMANDS,
                             dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
-                            range: range.clone(),
+                            offset: range.start,
+                            size: range.end - range.start,
                             ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
                         };
 
@@ -966,7 +969,8 @@ impl AutoSyncState {
                                 .into_supported(&self.device),
                             dst_access: AccessFlags::from(memory_access)
                                 .into_supported(&self.device),
-                            range: range.clone(),
+                            offset: range.start,
+                            size: range.end - range.start,
                             ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
                         });
 
@@ -997,7 +1001,7 @@ impl AutoSyncState {
             .push(SecondaryCommandBufferImageUsage {
                 use_ref,
                 image: image.clone(),
-                subresource_range: subresource_range.clone(),
+                subresource_range,
                 memory_access,
                 start_layout,
                 end_layout,

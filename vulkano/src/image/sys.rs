@@ -1176,7 +1176,8 @@ impl RawImage {
                 }
             },
             mip_level: 0,
-            array_layers: 0..self.array_layers,
+            base_array_layer: 0,
+            layer_count: self.array_layers,
         }
     }
 
@@ -1187,8 +1188,10 @@ impl RawImage {
         ImageSubresourceRange {
             aspects: self.format.aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
-            mip_levels: 0..self.mip_levels,
-            array_layers: 0..self.array_layers,
+            base_mip_level: 0,
+            level_count: self.mip_levels,
+            base_array_layer: 0,
+            layer_count: self.array_layers,
         }
     }
 
@@ -3328,8 +3331,10 @@ mod tests {
                     | ImageAspects::DEPTH
                     | ImageAspects::STENCIL
                     | ImageAspects::PLANE_0,
-                mip_levels: 0..6,
-                array_layers: 0..8,
+                base_mip_level: 0,
+                level_count: 6,
+                base_array_layer: 0,
+                layer_count: 8,
             },
             &image_aspect_list,
             asp,
@@ -3345,8 +3350,10 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR | ImageAspects::DEPTH | ImageAspects::PLANE_0,
-                mip_levels: 0..6,
-                array_layers: 0..8,
+                base_mip_level: 0,
+                level_count: 6,
+                base_array_layer: 0,
+                layer_count: 8,
             },
             &image_aspect_list,
             asp,
@@ -3363,8 +3370,10 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
-                mip_levels: 2..4,
-                array_layers: 0..8,
+                base_mip_level: 2,
+                level_count: 2,
+                base_array_layer: 0,
+                layer_count: 8,
             },
             &image_aspect_list,
             asp,
@@ -3380,9 +3389,10 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR,
-
-                mip_levels: 0..1,
-                array_layers: 2..4,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 2,
+                layer_count: 2,
             },
             &image_aspect_list,
             asp,
@@ -3401,8 +3411,10 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
-                mip_levels: 2..4,
-                array_layers: 6..8,
+                base_mip_level: 2,
+                level_count: 2,
+                base_array_layer: 6,
+                layer_count: 2,
             },
             &image_aspect_list,
             asp,

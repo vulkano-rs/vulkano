@@ -773,11 +773,16 @@ impl ClearColorImageInfo {
                 }));
             }
 
-            if subresource_range.mip_levels.end > image.mip_levels() {
+            if !subresource_range
+                .base_mip_level
+                .checked_add(subresource_range.level_count)
+                .is_some_and(|end| end <= image.mip_levels())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].mip_levels.end` is greater than `image.mip_levels()`",
-                        region_index
+                        "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater than \
+                        `image.mip_levels()`",
+                        region_index,
                     )
                     .into(),
                     vuids: &[
@@ -788,11 +793,16 @@ impl ClearColorImageInfo {
                 }));
             }
 
-            if subresource_range.array_layers.end > image.array_layers() {
+            if !subresource_range
+                .base_array_layer
+                .checked_add(subresource_range.layer_count)
+                .is_some_and(|end| end <= image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].array_layers.end` is greater than `image.array_layers()`",
-                        region_index
+                        "`regions[{0}].base_array_level + regions[{0}].layer_count` is greater \
+                        than `image.array_layers()`",
+                        region_index,
                     )
                     .into(),
                     vuids: &[
@@ -1015,11 +1025,16 @@ impl ClearDepthStencilImageInfo {
                 }));
             }
 
-            if subresource_range.mip_levels.end > image.mip_levels() {
+            if !subresource_range
+                .base_mip_level
+                .checked_add(subresource_range.level_count)
+                .is_some_and(|end| end <= image.mip_levels())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].mip_levels.end` is greater than `image.mip_levels()`",
-                        region_index
+                        "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater than \
+                        `image.mip_levels()`",
+                        region_index,
                     )
                     .into(),
                     vuids: &[
@@ -1030,11 +1045,16 @@ impl ClearDepthStencilImageInfo {
                 }));
             }
 
-            if subresource_range.array_layers.end > image.array_layers() {
+            if !subresource_range
+                .base_array_layer
+                .checked_add(subresource_range.layer_count)
+                .is_some_and(|end| end <= image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].array_layers.end` is greater than `image.array_layers()`",
-                        region_index
+                        "`regions[{0}].base_array_layer + regions[{0}].layer_count` is greater \
+                        than `image.array_layers()`",
+                        region_index,
                     )
                     .into(),
                     vuids: &[

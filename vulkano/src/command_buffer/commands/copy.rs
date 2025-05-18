@@ -168,9 +168,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                 .iter()
                 .flat_map(|region| {
                     let &ImageCopy {
-                        ref src_subresource,
+                        src_subresource,
                         src_offset: _,
-                        ref dst_subresource,
+                        dst_subresource,
                         dst_offset: _,
                         extent: _,
                         _ne: _,
@@ -181,7 +181,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Source.into(),
                             Resource::Image {
                                 image: src_image.clone(),
-                                subresource_range: src_subresource.clone().into(),
+                                subresource_range: src_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
@@ -191,7 +191,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Destination.into(),
                             Resource::Image {
                                 image: dst_image.clone(),
-                                subresource_range: dst_subresource.clone().into(),
+                                subresource_range: dst_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
@@ -258,7 +258,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         buffer_offset,
                         buffer_row_length: _,
                         buffer_image_height: _,
-                        ref image_subresource,
+                        image_subresource,
                         image_offset: _,
                         image_extent: _,
                         _ne: _,
@@ -278,7 +278,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Destination.into(),
                             Resource::Image {
                                 image: dst_image.clone(),
-                                subresource_range: image_subresource.clone().into(),
+                                subresource_range: image_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
@@ -345,7 +345,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         buffer_offset,
                         buffer_row_length: _,
                         buffer_image_height: _,
-                        ref image_subresource,
+                        image_subresource,
                         image_offset: _,
                         image_extent: _,
                         _ne: _,
@@ -356,7 +356,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Source.into(),
                             Resource::Image {
                                 image: src_image.clone(),
-                                subresource_range: image_subresource.clone().into(),
+                                subresource_range: image_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
@@ -456,9 +456,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                 .iter()
                 .flat_map(|region| {
                     let &ImageBlit {
-                        ref src_subresource,
+                        src_subresource,
                         src_offsets: _,
-                        ref dst_subresource,
+                        dst_subresource,
                         dst_offsets: _,
                         _ne: _,
                     } = region;
@@ -468,7 +468,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Source.into(),
                             Resource::Image {
                                 image: src_image.clone(),
-                                subresource_range: src_subresource.clone().into(),
+                                subresource_range: src_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Blit_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
@@ -478,7 +478,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Destination.into(),
                             Resource::Image {
                                 image: dst_image.clone(),
-                                subresource_range: dst_subresource.clone().into(),
+                                subresource_range: dst_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Blit_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
@@ -546,9 +546,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                 .iter()
                 .flat_map(|region| {
                     let &ImageResolve {
-                        ref src_subresource,
+                        src_subresource,
                         src_offset: _,
-                        ref dst_subresource,
+                        dst_subresource,
                         dst_offset: _,
                         extent: _,
                         _ne: _,
@@ -559,7 +559,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Source.into(),
                             Resource::Image {
                                 image: src_image.clone(),
-                                subresource_range: src_subresource.clone().into(),
+                                subresource_range: src_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Resolve_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
@@ -569,7 +569,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::Destination.into(),
                             Resource::Image {
                                 image: dst_image.clone(),
-                                subresource_range: dst_subresource.clone().into(),
+                                subresource_range: dst_subresource.into(),
                                 memory_access: PipelineStageAccessFlags::Resolve_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
@@ -768,9 +768,9 @@ impl RecordingCommandBuffer {
         if min_image_transfer_granularity.is_some() {
             for (region_index, region) in regions.iter().enumerate() {
                 let &ImageCopy {
-                    ref src_subresource,
+                    src_subresource,
                     src_offset,
-                    ref dst_subresource,
+                    dst_subresource,
                     dst_offset,
                     extent,
                     _ne: _,
@@ -1106,7 +1106,7 @@ impl RecordingCommandBuffer {
                     buffer_offset,
                     buffer_row_length: _,
                     buffer_image_height: _,
-                    ref image_subresource,
+                    image_subresource,
                     image_offset,
                     image_extent,
                     _ne,
@@ -1386,7 +1386,7 @@ impl RecordingCommandBuffer {
                     buffer_offset,
                     buffer_row_length: _,
                     buffer_image_height: _,
-                    ref image_subresource,
+                    image_subresource,
                     image_offset,
                     image_extent,
                     _ne,
@@ -2191,11 +2191,11 @@ impl CopyImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageCopy {
             src_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..src_image.subresource_layers()
             },
             dst_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..dst_image.subresource_layers()
             },
             extent: {
@@ -2369,9 +2369,9 @@ impl CopyImageInfo {
                 .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
 
             let &ImageCopy {
-                ref src_subresource,
+                src_subresource,
                 src_offset,
-                ref dst_subresource,
+                dst_subresource,
                 dst_offset,
                 extent,
                 _ne,
@@ -2539,11 +2539,13 @@ impl CopyImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if src_subresource.array_layers != (0..1) {
+                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].src_subresource.base_array_layer, \
+                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -2557,12 +2559,17 @@ impl CopyImageInfo {
                 }
             }
 
-            if src_subresource.array_layers.end > src_image.array_layers() {
+            if !src_subresource
+                .base_array_layer
+                .checked_add(src_subresource.layer_count)
+                .is_some_and(|end| end <= src_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].src_subresource.base_array_layer + \
+                        regions[{0}].src_subresource.layer_count` is greater than \
                         `src_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07968"],
@@ -2907,11 +2914,13 @@ impl CopyImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if dst_subresource.array_layers != (0..1) {
+                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
-                                "`dst_image.image_type()` is  `ImageType::Dim3d`, but \
-                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                "`dst_image.image_type()` is `ImageType::Dim3d`, but \
+                                `(regions[{0}].dst_subresource.base_array_layer, \
+                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -2925,12 +2934,17 @@ impl CopyImageInfo {
                 }
             }
 
-            if dst_subresource.array_layers.end > dst_image.array_layers() {
+            if !dst_subresource
+                .base_array_layer
+                .checked_add(dst_subresource.layer_count)
+                .is_some_and(|end| end <= dst_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].dst_subresource.base_array_layer + \
+                        regions[{0}].dst_subresource.layer_count` is greater than \
                         `dst_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07968"],
@@ -3234,13 +3248,12 @@ impl CopyImageInfo {
             }
 
             if src_image.image_type() == dst_image.image_type() {
-                if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+                if src_subresource.layer_count != dst_subresource.layer_count {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`src_image.image_type()` equals `dst_image.image_type()`, but \
-                            the length of `regions[{0}].src_subresource.array_layers` \
-                            does not equal \
-                            the length of `regions[{0}].dst_subresource.array_layers`",
+                            `regions[{0}].src_subresource.layer_count` does not equal \
+                            `regions[{0}].dst_subresource.layer_count`",
                             region_index,
                         )
                         .into(),
@@ -3269,13 +3282,13 @@ impl CopyImageInfo {
                     }
                 }
                 (ImageType::Dim2d, ImageType::Dim3d) => {
-                    if extent[2] as usize != src_subresource.array_layers.len() {
+                    if extent[2] != src_subresource.layer_count {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim2d` and \
                                 `dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{0}].extent[2]` does not equal the length of \
-                                `regions[{0}].src_subresource.array_layers`",
+                                `regions[{0}].extent[2]` does not equal \
+                                `regions[{0}].src_subresource.layer_count`",
                                 region_index,
                             )
                             .into(),
@@ -3285,13 +3298,13 @@ impl CopyImageInfo {
                     }
                 }
                 (ImageType::Dim3d, ImageType::Dim2d) => {
-                    if extent[2] as usize != dst_subresource.array_layers.len() {
+                    if extent[2] != dst_subresource.layer_count {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d` and \
                                 `dst_image.image_type()` is `ImageType::Dim2d`, but \
-                                `regions[{0}].extent[2]` does not equal the length of \
-                                `regions[{0}].dst_subresource.array_layers`",
+                                `regions[{0}].extent[2]` does not equal \
+                                `regions[{0}].dst_subresource.layer_count`",
                                 region_index,
                             )
                             .into(),
@@ -3308,7 +3321,8 @@ impl CopyImageInfo {
                 let src_region_index = region_index;
                 let src_subresource_axes = [
                     src_subresource.mip_level..src_subresource.mip_level + 1,
-                    src_subresource.array_layers.start..src_subresource.array_layers.end,
+                    src_subresource.base_array_layer
+                        ..src_subresource.base_array_layer + src_subresource.layer_count,
                 ];
                 let src_extent_axes = [
                     src_offset[0]..src_offset[0] + extent[0],
@@ -3318,7 +3332,7 @@ impl CopyImageInfo {
 
                 for (dst_region_index, dst_region) in regions.iter().enumerate() {
                     let &ImageCopy {
-                        ref dst_subresource,
+                        dst_subresource,
                         dst_offset,
                         ..
                     } = dst_region;
@@ -3332,7 +3346,8 @@ impl CopyImageInfo {
 
                     let dst_subresource_axes = [
                         dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                        src_subresource.array_layers.start..src_subresource.array_layers.end,
+                        src_subresource.base_array_layer
+                            ..src_subresource.base_array_layer + src_subresource.layer_count,
                     ];
 
                     if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -3507,13 +3522,15 @@ impl ImageCopy {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offset: [0; 3],
             extent: [0; 3],
@@ -3523,9 +3540,9 @@ impl ImageCopy {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset: _,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset: _,
             extent,
             _ne,
@@ -3551,12 +3568,12 @@ impl ImageCopy {
                 }));
             }
 
-            if src_subresource.array_layers.len() != dst_subresource.array_layers.len()
+            if src_subresource.layer_count != dst_subresource.layer_count
                 && !device.enabled_extensions().khr_maintenance1
             {
                 return Err(Box::new(ValidationError {
-                    problem: "the length of `src_subresource.array_layers` does not equal \
-                        the length of `dst_subresource.array_layers`"
+                    problem: "`src_subresource.layer_count` does not equal \
+                        `dst_subresource.layer_count`"
                         .into(),
                     vuids: &["VUID-VkImageCopy2-extent-00140"],
                     ..Default::default()
@@ -3596,9 +3613,9 @@ impl ImageCopy {
 
     pub(crate) fn to_vk2(&self) -> vk::ImageCopy2<'static> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset,
             extent,
             _ne: _,
@@ -3626,9 +3643,9 @@ impl ImageCopy {
 
     pub(crate) fn to_vk(&self) -> vk::ImageCopy {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset,
             extent,
             _ne: _,
@@ -3808,7 +3825,7 @@ impl CopyBufferToImageInfo {
                 buffer_offset,
                 buffer_row_length,
                 buffer_image_height,
-                ref image_subresource,
+                image_subresource,
                 image_offset,
                 image_extent,
                 _ne: _,
@@ -3989,11 +4006,14 @@ impl CopyBufferToImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if image_subresource.array_layers != (0..1) {
+                    if !(image_subresource.base_array_layer == 0
+                        && image_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
-                                "`dst_image.image_type()` is  `ImageType::Dim3d`, but \
-                                `regions[{}].image_subresource.array_layers` is not `0..1`",
+                                "`dst_image.image_type()` is `ImageType::Dim3d`, but \
+                                `(regions[{0}].image_subresource.base_array_layer, \
+                                regions[{0}].image_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -4004,12 +4024,17 @@ impl CopyBufferToImageInfo {
                 }
             }
 
-            if image_subresource.array_layers.end > dst_image.array_layers() {
+            if !image_subresource
+                .base_array_layer
+                .checked_add(image_subresource.layer_count)
+                .is_some_and(|end| end <= dst_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].dst_subresource.base_array_layer + \
+                        regions[{0}].dst_subresource.layer_count` is greater than \
                         `dst_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-07968"],
@@ -4499,7 +4524,7 @@ impl CopyImageToBufferInfo {
                 buffer_offset,
                 buffer_row_length,
                 buffer_image_height,
-                ref image_subresource,
+                image_subresource,
                 image_offset,
                 image_extent,
                 _ne: _,
@@ -4680,11 +4705,14 @@ impl CopyImageToBufferInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if image_subresource.array_layers != (0..1) {
+                    if !(image_subresource.base_array_layer == 0
+                        && image_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is  `ImageType::Dim3d`, but \
-                                `regions[{}].image_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].image_subresource.base_array_layer, \
+                                regions[{0}].image_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -4695,12 +4723,17 @@ impl CopyImageToBufferInfo {
                 }
             }
 
-            if image_subresource.array_layers.end > src_image.array_layers() {
+            if !image_subresource
+                .base_array_layer
+                .checked_add(image_subresource.layer_count)
+                .is_some_and(|end| end <= src_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].image_subresource.base_array_layer + \
+                        regions[{0}].image_subresource.layer_count` is greater than \
                         `src_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07968"],
@@ -5093,7 +5126,8 @@ impl BufferImageCopy {
             image_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             image_offset: [0; 3],
             image_extent: [0; 3],
@@ -5108,7 +5142,7 @@ impl BufferImageCopy {
             buffer_offset: _,
             mut buffer_row_length,
             mut buffer_image_height,
-            ref image_subresource,
+            image_subresource,
             image_offset: _,
             mut image_extent,
             _ne: _,
@@ -5132,10 +5166,7 @@ impl BufferImageCopy {
         }
 
         // Only one of these is greater than 1, take the greater number.
-        image_extent[2] = max(
-            image_extent[2],
-            image_subresource.array_layers.end - image_subresource.array_layers.start,
-        );
+        image_extent[2] = max(image_extent[2], image_subresource.layer_count);
 
         let blocks_to_last_slice = (image_extent[2] as DeviceSize - 1)
             * buffer_image_height as DeviceSize
@@ -5152,7 +5183,7 @@ impl BufferImageCopy {
             buffer_offset: _,
             buffer_row_length,
             buffer_image_height,
-            ref image_subresource,
+            image_subresource,
             image_offset: _,
             image_extent,
             _ne: _,
@@ -5226,7 +5257,7 @@ impl BufferImageCopy {
             buffer_offset,
             buffer_row_length,
             buffer_image_height,
-            ref image_subresource,
+            image_subresource,
             image_offset,
             image_extent,
             _ne: _,
@@ -5254,7 +5285,7 @@ impl BufferImageCopy {
             buffer_offset,
             buffer_row_length,
             buffer_image_height,
-            ref image_subresource,
+            image_subresource,
             image_offset,
             image_extent,
             _ne: _,
@@ -5335,12 +5366,12 @@ impl BlitImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageBlit {
             src_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..src_image.subresource_layers()
             },
             src_offsets: [[0; 3], src_image.extent()],
             dst_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..dst_image.subresource_layers()
             },
             dst_offsets: [[0; 3], dst_image.extent()],
@@ -5605,9 +5636,9 @@ impl BlitImageInfo {
                 .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
 
             let &ImageBlit {
-                ref src_subresource,
+                src_subresource,
                 src_offsets,
-                ref dst_subresource,
+                dst_subresource,
                 dst_offsets,
                 _ne: _,
             } = region;
@@ -5727,11 +5758,13 @@ impl BlitImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if src_subresource.array_layers != (0..1) {
+                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].src_subresource.base_array_layer, \
+                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -5742,12 +5775,17 @@ impl BlitImageInfo {
                 }
             }
 
-            if src_subresource.array_layers.end > src_image.array_layers() {
+            if !src_subresource
+                .base_array_layer
+                .checked_add(src_subresource.layer_count)
+                .is_some_and(|end| end <= src_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].src_subresource.base_array_layer + \
+                        regions[{0}].src_subresource.layer_count` is greater than \
                         `src_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
@@ -5918,11 +5956,13 @@ impl BlitImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if dst_subresource.array_layers != (0..1) {
+                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].dst_subresource.base_array_layer, \
+                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -5933,12 +5973,17 @@ impl BlitImageInfo {
                 }
             }
 
-            if dst_subresource.array_layers.end > dst_image.array_layers() {
+            if !dst_subresource
+                .base_array_layer
+                .checked_add(dst_subresource.layer_count)
+                .is_some_and(|end| end <= dst_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        "`(regions[{0}].dst_subresource.base_array_layer, \
+                        regions[{0}].dst_subresource.layer_count)` is greater than \
                         `dst_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
@@ -5999,7 +6044,8 @@ impl BlitImageInfo {
                 let src_region_index = region_index;
                 let src_subresource_axes = [
                     src_subresource.mip_level..src_subresource.mip_level + 1,
-                    src_subresource.array_layers.start..src_subresource.array_layers.end,
+                    src_subresource.base_array_layer
+                        ..src_subresource.base_array_layer + src_subresource.layer_count,
                 ];
                 let src_extent_axes = [
                     min(src_offsets[0][0], src_offsets[1][0])
@@ -6012,14 +6058,15 @@ impl BlitImageInfo {
 
                 for (dst_region_index, dst_region) in regions.iter().enumerate() {
                     let &ImageBlit {
-                        ref dst_subresource,
+                        dst_subresource,
                         dst_offsets,
                         ..
                     } = dst_region;
 
                     let dst_subresource_axes = [
                         dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                        src_subresource.array_layers.start..src_subresource.array_layers.end,
+                        src_subresource.base_array_layer
+                            ..src_subresource.base_array_layer + src_subresource.layer_count,
                     ];
 
                     if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -6203,13 +6250,15 @@ impl ImageBlit {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offsets: [[0; 3]; 2],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offsets: [[0; 3]; 2],
             _ne: crate::NE,
@@ -6218,9 +6267,9 @@ impl ImageBlit {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offsets: _,
-            ref dst_subresource,
+            dst_subresource,
             dst_offsets: _,
             _ne: _,
         } = self;
@@ -6242,10 +6291,10 @@ impl ImageBlit {
             }));
         }
 
-        if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+        if src_subresource.layer_count != dst_subresource.layer_count {
             return Err(Box::new(ValidationError {
-                problem: "the length of `src_subresource.array_layers` does not equal \
-                    the length of `dst_subresource.array_layers`"
+                problem: "`src_subresource.layer_count` does not equal \
+                    `dst_subresource.layer_count`"
                     .into(),
                 vuids: &["VUID-VkImageBlit2-layerCount-00239"],
                 ..Default::default()
@@ -6257,9 +6306,9 @@ impl ImageBlit {
 
     pub(crate) fn to_vk2(&self) -> vk::ImageBlit2<'static> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offsets,
-            ref dst_subresource,
+            dst_subresource,
             dst_offsets,
             _ne: _,
         } = self;
@@ -6295,9 +6344,9 @@ impl ImageBlit {
 
     pub(crate) fn to_vk(&self) -> vk::ImageBlit {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offsets,
-            ref dst_subresource,
+            dst_subresource,
             dst_offsets,
             _ne: _,
         } = self;
@@ -6382,11 +6431,11 @@ impl ResolveImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageResolve {
             src_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..src_image.subresource_layers()
             },
             dst_subresource: ImageSubresourceLayers {
-                array_layers: 0..min_array_layers,
+                layer_count: min_array_layers,
                 ..dst_image.subresource_layers()
             },
             extent: {
@@ -6567,9 +6616,9 @@ impl ResolveImageInfo {
                 .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
 
             let &ImageResolve {
-                ref src_subresource,
+                src_subresource,
                 src_offset,
-                ref dst_subresource,
+                dst_subresource,
                 dst_offset,
                 extent,
                 _ne: _,
@@ -6677,11 +6726,13 @@ impl ResolveImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if src_subresource.array_layers != (0..1) {
+                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].src_subresource.base_array_layer, \
+                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -6692,12 +6743,17 @@ impl ResolveImageInfo {
                 }
             }
 
-            if src_subresource.array_layers.end > src_image.array_layers() {
+            if !src_subresource
+                .base_array_layer
+                .checked_add(src_subresource.layer_count)
+                .is_some_and(|end| end <= src_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].src_subresource.base_array_layer + \
+                        regions[{0}].src_subresource.layer_count` is greater than \
                         `src_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01711"],
@@ -6849,11 +6905,13 @@ impl ResolveImageInfo {
                     }
                 }
                 ImageType::Dim3d => {
-                    if dst_subresource.array_layers != (0..1) {
+                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                `(regions[{0}].dst_subresource.base_array_layer, \
+                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
                                 region_index,
                             )
                             .into(),
@@ -6864,12 +6922,17 @@ impl ResolveImageInfo {
                 }
             }
 
-            if dst_subresource.array_layers.end > dst_image.array_layers() {
+            if !dst_subresource
+                .base_array_layer
+                .checked_add(dst_subresource.layer_count)
+                .is_some_and(|end| end <= dst_image.array_layers())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        "`regions[{0}].dst_subresource.base_array_layer + \
+                        regions[{0}].dst_subresource.layer_count` is greater than \
                         `dst_image.array_layers()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01712"],
@@ -7028,13 +7091,15 @@ impl ImageResolve {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offset: [0; 3],
             extent: [0; 3],
@@ -7044,9 +7109,9 @@ impl ImageResolve {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset: _,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset: _,
             extent: _,
             _ne: _,
@@ -7076,10 +7141,10 @@ impl ImageResolve {
             }));
         }
 
-        if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+        if src_subresource.layer_count != dst_subresource.layer_count {
             return Err(Box::new(ValidationError {
-                problem: "the length of `src_subresource.array_layers` does not equal \
-                    the length of `dst_subresource.array_layers`"
+                problem: "`src_subresource.layer_count` does not equal \
+                    `dst_subresource.layer_count`"
                     .into(),
                 vuids: &["VUID-VkImageResolve2-layerCount-00267"],
                 ..Default::default()
@@ -7091,9 +7156,9 @@ impl ImageResolve {
 
     pub(crate) fn to_vk2(&self) -> vk::ImageResolve2<'static> {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset,
             extent,
             _ne: _,
@@ -7121,9 +7186,9 @@ impl ImageResolve {
 
     pub(crate) fn to_vk(&self) -> vk::ImageResolve {
         let &Self {
-            ref src_subresource,
+            src_subresource,
             src_offset,
-            ref dst_subresource,
+            dst_subresource,
             dst_offset,
             extent,
             _ne: _,

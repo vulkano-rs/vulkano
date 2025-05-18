@@ -275,7 +275,8 @@ fn main() {
                     viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: [image.extent()[0] as f32, image.extent()[1] as f32],
-                        depth_range: 0.0..=1.0,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
                     }],
                     ..Default::default()
                 }),
@@ -350,7 +351,8 @@ fn main() {
         .copy_image_to_buffer(CopyImageToBufferInfo {
             regions: [BufferImageCopy {
                 image_subresource: ImageSubresourceLayers {
-                    array_layers: 0..1,
+                    base_array_layer: 0,
+                    layer_count: 1,
                     ..image.subresource_layers()
                 },
                 image_extent: image.extent(),
@@ -363,7 +365,8 @@ fn main() {
         .copy_image_to_buffer(CopyImageToBufferInfo {
             regions: [BufferImageCopy {
                 image_subresource: ImageSubresourceLayers {
-                    array_layers: 1..2,
+                    base_array_layer: 1,
+                    layer_count: 1,
                     ..image.subresource_layers()
                 },
                 image_extent: image.extent(),

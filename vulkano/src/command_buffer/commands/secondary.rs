@@ -516,7 +516,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         let &SecondaryCommandBufferImageUsage {
                             use_ref,
                             ref image,
-                            ref subresource_range,
+                            subresource_range,
                             memory_access,
                             start_layout,
                             end_layout,
@@ -531,7 +531,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             },
                             Resource::Image {
                                 image: image.clone(),
-                                subresource_range: subresource_range.clone(),
+                                subresource_range,
                                 memory_access,
                                 start_layout,
                                 end_layout,

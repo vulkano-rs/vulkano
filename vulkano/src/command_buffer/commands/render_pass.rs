@@ -20,7 +20,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{cmp::min, ops::Range, sync::Arc};
+use std::{cmp::min, sync::Arc};
 
 /// # Commands for render passes.
 ///
@@ -124,7 +124,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         ResourceInCommand::FramebufferAttachment { index }.into(),
                         Resource::Image {
                             image: image_view.image().clone(),
-                            subresource_range: image_view.subresource_range().clone(),
+                            subresource_range: *image_view.subresource_range(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::FragmentShader_InputAttachmentRead
                                 | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
@@ -425,7 +425,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::ColorAttachment { index }.into(),
                             Resource::Image {
                                 image: image_view.image().clone(),
-                                subresource_range: image_view.subresource_range().clone(),
+                                subresource_range: *image_view.subresource_range(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
                                     | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite,
@@ -444,7 +444,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 ResourceInCommand::ColorResolveAttachment { index }.into(),
                                 Resource::Image {
                                     image: image_view.image().clone(),
-                                    subresource_range: image_view.subresource_range().clone(),
+                                    subresource_range: *image_view.subresource_range(),
                                     // TODO: suboptimal
                                     memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
                                         | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite,
@@ -473,7 +473,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         ResourceInCommand::DepthStencilAttachment.into(),
                         Resource::Image {
                             image: image_view.image().clone(),
-                            subresource_range: image_view.subresource_range().clone(),
+                            subresource_range: *image_view.subresource_range(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
                                 | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
@@ -494,7 +494,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::DepthStencilResolveAttachment.into(),
                             Resource::Image {
                                 image: image_view.image().clone(),
-                                subresource_range: image_view.subresource_range().clone(),
+                                subresource_range: *image_view.subresource_range(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
                                     | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
@@ -525,7 +525,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         ResourceInCommand::DepthStencilAttachment.into(),
                         Resource::Image {
                             image: image_view.image().clone(),
-                            subresource_range: image_view.subresource_range().clone(),
+                            subresource_range: *image_view.subresource_range(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
                                 | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
@@ -546,7 +546,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             ResourceInCommand::DepthStencilResolveAttachment.into(),
                             Resource::Image {
                                 image: image_view.image().clone(),
-                                subresource_range: image_view.subresource_range().clone(),
+                                subresource_range: *image_view.subresource_range(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
                                     | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
@@ -742,8 +742,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
-                        let array_layers = &image_view.subresource_range().array_layers;
-                        layer_count = min(layer_count, array_layers.end - array_layers.start);
+                        layer_count = min(layer_count, image_view.subresource_range().layer_count);
                     }
                 }
                 ClearAttachment::Depth(_)
@@ -801,8 +800,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
-                        let array_layers = &image_view.subresource_range().array_layers;
-                        layer_count = min(layer_count, array_layers.end - array_layers.start);
+                        layer_count = min(layer_count, image_view.subresource_range().layer_count);
                     }
                 }
             }
@@ -845,12 +843,16 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }
             }
 
-            if rect.array_layers.end > layer_count {
+            if !rect
+                .base_array_layer
+                .checked_add(rect.layer_count)
+                .is_some_and(|end| end <= layer_count)
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`rects[{}].array_layers.end` is greater than the number of \
-                        array layers in the current render pass instance",
-                        rect_index
+                        "`rects[{0}].base_array_layer + rects[{0}].layer_count` is greater than \
+                        the number of array layers in the current render pass instance",
+                        rect_index,
                     )
                     .into(),
                     vuids: &["VUID-vkCmdClearAttachments-pRects-06937"],
@@ -859,13 +861,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
 
             if render_pass_state.rendering_info.as_ref().view_mask != 0
-                && rect.array_layers != (0..1)
+                && !(rect.base_array_layer == 0 && rect.layer_count == 1)
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "the current render pass instance has a non-zero `view_mask`, but \
-                        `rects[{}].array_layers` is not `0..1`",
-                        rect_index
+                        `(rects[{0}].base_array_layer, rects[{0}].layer_count)` is not `(0, 1)`",
+                        rect_index,
                     )
                     .into(),
                     vuids: &["VUID-vkCmdClearAttachments-baseArrayLayer-00018"],
@@ -1630,7 +1632,8 @@ impl RecordingCommandBuffer {
             let &ClearRect {
                 offset: _,
                 extent,
-                ref array_layers,
+                base_array_layer: _,
+                layer_count,
             } = rect;
 
             if extent[0] == 0 {
@@ -1651,10 +1654,10 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if array_layers.is_empty() {
+            if layer_count == 0 {
                 return Err(Box::new(ValidationError {
-                    context: format!("rects[{}].array_layers", rect_index).into(),
-                    problem: "is empty".into(),
+                    context: format!("rects[{}].layer_count", rect_index).into(),
+                    problem: "is zero".into(),
                     vuids: &["VUID-vkCmdClearAttachments-layerCount-01934"],
                     ..Default::default()
                 }));
@@ -2159,8 +2162,7 @@ impl RenderingInfo {
                 })
             {
                 let image_view_extent = image_view.image().extent();
-                let image_view_array_layers =
-                    image_view.subresource_range().array_layers.len() as u32;
+                let image_view_array_layers = image_view.subresource_range().layer_count;
 
                 auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
                 auto_extent[1] = auto_extent[1].min(image_view_extent[1]);
@@ -3331,8 +3333,11 @@ pub struct ClearRect {
     /// The width and height of the rectangle.
     pub extent: [u32; 2],
 
-    /// The range of array layers to be cleared.
-    pub array_layers: Range<u32>,
+    /// The first array layer to be cleared.
+    pub base_array_layer: u32,
+
+    /// The number of array layers to be cleared.
+    pub layer_count: u32,
 }
 
 impl ClearRect {
@@ -3341,7 +3346,8 @@ impl ClearRect {
         let &Self {
             offset,
             extent,
-            ref array_layers,
+            base_array_layer,
+            layer_count,
         } = self;
 
         vk::ClearRect {
@@ -3355,8 +3361,8 @@ impl ClearRect {
                     height: extent[1],
                 },
             },
-            base_array_layer: array_layers.start,
-            layer_count: array_layers.end - array_layers.start,
+            base_array_layer,
+            layer_count,
         }
     }
 }

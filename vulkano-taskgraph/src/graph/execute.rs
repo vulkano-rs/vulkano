@@ -773,10 +773,11 @@ unsafe fn create_framebuffers(
                         component_mapping: attachment.component_mapping,
                         subresource_range: ImageSubresourceRange {
                             aspects: attachment.format.aspects(),
-                            mip_levels: attachment.mip_level..attachment.mip_level + 1,
+                            base_mip_level: attachment.mip_level,
+                            level_count: 1,
+                            base_array_layer: attachment.base_array_layer,
                             // FIXME:
-                            array_layers: attachment.base_array_layer
-                                ..attachment.base_array_layer + 1,
+                            layer_count: 1,
                         },
                         ..Default::default()
                     },

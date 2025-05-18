@@ -234,7 +234,8 @@ impl ApplicationHandler for App {
         let viewport = Viewport {
             offset: [0.0, 0.0],
             extent: window_size.into(),
-            depth_range: 0.0..=1.0,
+            min_depth: 0.0,
+            max_depth: 1.0,
         };
 
         let bloom_sampler_id = bcx
@@ -243,7 +244,7 @@ impl ApplicationHandler for App {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 mipmap_mode: SamplerMipmapMode::Nearest,
-                lod: 0.0..=LOD_CLAMP_NONE,
+                max_lod: LOD_CLAMP_NONE,
                 ..Default::default()
             })
             .unwrap();
@@ -515,8 +516,10 @@ fn window_size_dependent_setup(
                     format: Format::R32_UINT,
                     subresource_range: ImageSubresourceRange {
                         aspects: ImageAspects::COLOR,
-                        mip_levels: mip_level..mip_level + 1,
-                        array_layers: 0..1,
+                        base_mip_level: mip_level,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
                     },
                     usage: ImageUsage::STORAGE,
                     ..Default::default()

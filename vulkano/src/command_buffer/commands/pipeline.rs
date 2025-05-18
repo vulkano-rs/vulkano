@@ -3604,14 +3604,17 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
-                                let DescriptorBufferInfo { buffer, range } = buffer_info;
+                                let &DescriptorBufferInfo {
+                                    ref buffer,
+                                    offset,
+                                    range,
+                                } = buffer_info;
 
                                 let dynamic_offset = dynamic_offsets[index] as DeviceSize;
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
-                                let mut range = range.clone();
-                                range.start += dynamic_offset;
-                                range.end += dynamic_offset;
+                                let range =
+                                    dynamic_offset + offset..dynamic_offset + offset + range;
 
                                 used_resources.push((
                                     use_ref,
@@ -3626,7 +3629,11 @@ impl<L> AutoCommandBufferBuilder<L> {
                     } else {
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
-                                let DescriptorBufferInfo { buffer, range } = buffer_info;
+                                let &DescriptorBufferInfo {
+                                    ref buffer,
+                                    offset,
+                                    range,
+                                } = buffer_info;
 
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
@@ -3634,7 +3641,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                     use_ref,
                                     Resource::Buffer {
                                         buffer: buffer.clone(),
-                                        range: range.clone(),
+                                        range: offset..offset + range,
                                         memory_access,
                                     },
                                 ));
@@ -3677,7 +3684,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 use_ref,
                                 Resource::Image {
                                     image: image_view.image().clone(),
-                                    subresource_range: image_view.subresource_range().clone(),
+                                    subresource_range: *image_view.subresource_range(),
                                     memory_access,
                                     start_layout: image_layout,
                                     end_layout: image_layout,
@@ -3704,7 +3711,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 use_ref,
                                 Resource::Image {
                                     image: image_view.image().clone(),
-                                    subresource_range: image_view.subresource_range().clone(),
+                                    subresource_range: *image_view.subresource_range(),
                                     memory_access,
                                     start_layout: image_layout,
                                     end_layout: image_layout,

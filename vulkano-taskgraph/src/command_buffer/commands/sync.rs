@@ -4,7 +4,6 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::ops::Range;
 use vulkano::{
     buffer::Buffer,
     device::DeviceOwned,
@@ -67,7 +66,8 @@ impl RecordingCommandBuffer<'_> {
                         dst_stages,
                         dst_access,
                         buffer,
-                        ref range,
+                        offset,
+                        size,
                         _ne: _,
                     } = barrier;
 
@@ -81,8 +81,8 @@ impl RecordingCommandBuffer<'_> {
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .buffer(buffer.handle())
-                        .offset(range.start)
-                        .size(range.end - range.start)
+                        .offset(offset)
+                        .size(size)
                 })
                 .collect();
 
@@ -97,7 +97,7 @@ impl RecordingCommandBuffer<'_> {
                         old_layout,
                         new_layout,
                         image,
-                        ref subresource_range,
+                        subresource_range,
                         _ne: _,
                     } = barrier;
 
@@ -164,7 +164,8 @@ impl RecordingCommandBuffer<'_> {
                         dst_stages,
                         dst_access,
                         buffer,
-                        ref range,
+                        offset,
+                        size,
                         _ne: _,
                     } = barrier;
 
@@ -179,8 +180,8 @@ impl RecordingCommandBuffer<'_> {
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .buffer(buffer.handle())
-                        .offset(range.start)
-                        .size(range.end - range.start)
+                        .offset(offset)
+                        .size(size)
                 })
                 .collect();
 
@@ -195,7 +196,7 @@ impl RecordingCommandBuffer<'_> {
                         old_layout,
                         new_layout,
                         image,
-                        ref subresource_range,
+                        subresource_range,
                         _ne: _,
                     } = barrier;
 
@@ -394,10 +395,15 @@ pub struct BufferMemoryBarrier<'a> {
     /// The default value is [`Id::INVALID`], which must be overridden.
     pub buffer: Id<Buffer>,
 
-    /// The byte range of `buffer` to apply the barrier to.
+    /// The byte offset from `buffer` to apply the barrier to.
     ///
-    /// The default value is empty, which must be overridden.
-    pub range: Range<DeviceSize>,
+    /// The default value is `0`.
+    pub offset: DeviceSize,
+
+    /// The byte size to apply the barrier to.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive<'a>,
 }
@@ -419,7 +425,8 @@ impl BufferMemoryBarrier<'_> {
             dst_stages: PipelineStages::empty(),
             dst_access: AccessFlags::empty(),
             buffer: Id::INVALID,
-            range: 0..0,
+            offset: 0,
+            size: 0,
             _ne: crate::NE,
         }
     }
@@ -495,8 +502,10 @@ impl ImageMemoryBarrier<'_> {
             image: Id::INVALID,
             subresource_range: ImageSubresourceRange {
                 aspects: ImageAspects::empty(),
-                mip_levels: 0..0,
-                array_layers: 0..0,
+                base_mip_level: 0,
+                level_count: 0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             _ne: crate::NE,
         }

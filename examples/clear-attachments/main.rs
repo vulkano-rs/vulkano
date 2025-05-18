@@ -297,19 +297,22 @@ impl ApplicationHandler for App {
                             ClearRect {
                                 offset: [0, 0],
                                 extent: [100, 100],
-                                array_layers: 0..1,
+                                base_array_layer: 0,
+                                layer_count: 1,
                             },
                             // Fixed offset, relative extent.
                             ClearRect {
                                 offset: [100, 150],
                                 extent: [rcx.width / 4, rcx.height / 4],
-                                array_layers: 0..1,
+                                base_array_layer: 0,
+                                layer_count: 1,
                             },
                             // Relative offset and extent.
                             ClearRect {
                                 offset: [rcx.width / 2, rcx.height / 2],
                                 extent: [rcx.width / 3, rcx.height / 5],
-                                array_layers: 0..1,
+                                base_array_layer: 0,
+                                layer_count: 1,
                             },
                         ]
                         .into_iter()

@@ -443,7 +443,8 @@ impl ApplicationHandler for App {
         let viewport = Viewport {
             offset: [0.0, 0.0],
             extent: window_size.into(),
-            depth_range: 0.0..=1.0,
+            min_depth: 0.0,
+            max_depth: 1.0,
         };
 
         let sampler_id = bcx
@@ -965,7 +966,8 @@ impl Task for UploadTask {
                 image_subresource: ImageSubresourceLayers {
                     aspects: ImageAspects::COLOR,
                     mip_level: 0,
-                    array_layers: 0..1,
+                    base_array_layer: 0,
+                    layer_count: 1,
                 },
                 image_offset: CORNER_OFFSETS[current_corner % 4],
                 image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],
@@ -982,7 +984,8 @@ impl Task for UploadTask {
                     image_subresource: ImageSubresourceLayers {
                         aspects: ImageAspects::COLOR,
                         mip_level: 0,
-                        array_layers: 0..1,
+                        base_array_layer: 0,
+                        layer_count: 1,
                     },
                     image_offset: CORNER_OFFSETS[(current_corner - 1) % 4],
                     image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],
