@@ -19,6 +19,7 @@
 //!         ",
 //!     }
 //! }
+//! #
 //! # fn main() {}
 //! ```
 //!
@@ -49,7 +50,6 @@
 //! this:
 //!
 //! ```
-//! # fn main() {}
 //! # use std::sync::Arc;
 //! # use vulkano::{device::Device, shader::ShaderModule, Validated, VulkanError};
 //! #
@@ -67,6 +67,9 @@
 //! #         ",
 //! #     }
 //! # }
+//! #
+//! # fn main() {}
+//! #
 //! // ...various use statements...
 //! // ...`vs` module containing a `shader!` call...
 //!
@@ -75,7 +78,7 @@
 //! }
 //!
 //! impl Shaders {
-//!     pub fn load(device: Arc<Device>) -> Result<Self, Validated<VulkanError>> {
+//!     pub fn load(device: &Arc<Device>) -> Result<Self, Validated<VulkanError>> {
 //!         Ok(Self {
 //!             vs: vs::load(device)?,
 //!         })

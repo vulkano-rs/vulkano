@@ -28,41 +28,35 @@ impl TonemapTask {
         TonemapTask { pipeline: None }
     }
 
-    pub fn create_pipeline(&mut self, app: &App, subpass: Subpass) {
+    pub fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = vs::load(app.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(app.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let vs = vs::load(&app.device).unwrap().entry_point("main").unwrap();
+            let fs = fs::load(&app.device).unwrap().entry_point("main").unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
             let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
             GraphicsPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(VertexInputState::default()),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&VertexInputState::default()),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()

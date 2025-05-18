@@ -165,8 +165,8 @@ pub fn acquire_next_image(
     swapchain: Arc<Swapchain>,
     timeout: Option<Duration>,
 ) -> Result<(u32, bool, SwapchainAcquireFuture), Validated<VulkanError>> {
-    let semaphore = Arc::new(Semaphore::from_pool(swapchain.device.clone())?);
-    let fence = Arc::new(Fence::from_pool(swapchain.device.clone())?);
+    let semaphore = Arc::new(Semaphore::from_pool(&swapchain.device)?);
+    let fence = Arc::new(Fence::from_pool(&swapchain.device)?);
 
     let AcquiredImage {
         image_index,

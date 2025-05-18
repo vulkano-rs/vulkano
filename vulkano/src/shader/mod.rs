@@ -454,7 +454,7 @@ pub struct ShaderModule {
     id: NonZero<u64>,
 
     spirv: Spirv,
-    specialization_constants: HashMap<u32, SpecializationConstant>,
+    specialization_constants: Vec<(u32, SpecializationConstant)>,
 }
 
 impl ShaderModule {
@@ -465,8 +465,8 @@ impl ShaderModule {
     /// - The SPIR-V code in `create_info.code` must be valid.
     #[inline]
     pub unsafe fn new(
-        device: Arc<Device>,
-        create_info: ShaderModuleCreateInfo<'_>,
+        device: &Arc<Device>,
+        create_info: &ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let spirv = Spirv::new(create_info.code).map_err(|err| {
             Box::new(ValidationError {
@@ -476,7 +476,7 @@ impl ShaderModule {
             })
         })?;
 
-        Self::validate_new(&device, &create_info, &spirv)?;
+        Self::validate_new(device, create_info, &spirv)?;
 
         Ok(unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }?)
     }
@@ -495,16 +495,17 @@ impl ShaderModule {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: ShaderModuleCreateInfo<'_>,
+        device: &Arc<Device>,
+        create_info: &ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let spirv = Spirv::new(create_info.code).unwrap();
+
         unsafe { Self::new_with_spirv_unchecked(device, create_info, spirv) }
     }
 
     unsafe fn new_with_spirv_unchecked(
-        device: Arc<Device>,
-        create_info: ShaderModuleCreateInfo<'_>,
+        device: &Arc<Device>,
+        create_info: &ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let create_info_vk = create_info.to_vk();
@@ -535,26 +536,27 @@ impl ShaderModule {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::ShaderModule,
-        create_info: ShaderModuleCreateInfo<'_>,
+        create_info: &ShaderModuleCreateInfo<'_>,
     ) -> Arc<ShaderModule> {
         let spirv = Spirv::new(create_info.code).unwrap();
+
         unsafe { Self::from_handle_with_spirv(device, handle, create_info, spirv) }
     }
 
     unsafe fn from_handle_with_spirv(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::ShaderModule,
-        create_info: ShaderModuleCreateInfo<'_>,
+        create_info: &ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Arc<ShaderModule> {
-        let ShaderModuleCreateInfo { code: _, _ne: _ } = create_info;
+        let &ShaderModuleCreateInfo { code: _, _ne: _ } = create_info;
         let specialization_constants = reflect::specialization_constants(&spirv);
 
         Arc::new(ShaderModule {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             spirv,
@@ -574,7 +576,7 @@ impl ShaderModule {
         device: Arc<Device>,
         words: &[u32],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        unsafe { Self::new(device, ShaderModuleCreateInfo::new(words)) }
+        unsafe { Self::new(&device, &ShaderModuleCreateInfo::new(words)) }
     }
 
     /// As `from_words`, but takes a slice of bytes.
@@ -593,7 +595,8 @@ impl ShaderModule {
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let words = spirv::bytes_to_words(bytes).unwrap();
-        unsafe { Self::new(device, ShaderModuleCreateInfo::new(&words)) }
+
+        unsafe { Self::new(&device, &ShaderModuleCreateInfo::new(&words)) }
     }
 
     /// Returns the specialization constants that are defined in the module,
@@ -602,7 +605,7 @@ impl ShaderModule {
     /// Specialization constants are constants whose value can be overridden when you create
     /// a pipeline. They are indexed by their `constant_id`.
     #[inline]
-    pub fn specialization_constants(&self) -> &HashMap<u32, SpecializationConstant> {
+    pub fn specialization_constants(&self) -> &[(u32, SpecializationConstant)] {
         &self.specialization_constants
     }
 
@@ -618,18 +621,18 @@ impl ShaderModule {
     #[inline]
     pub fn specialize(
         self: &Arc<Self>,
-        specialization_info: HashMap<u32, SpecializationConstant>,
+        specialization_info: &[(u32, SpecializationConstant)],
     ) -> Result<Arc<SpecializedShaderModule>, Box<ValidationError>> {
-        SpecializedShaderModule::new(self.clone(), specialization_info)
+        SpecializedShaderModule::new(self, specialization_info)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn specialize_unchecked(
         self: &Arc<Self>,
-        specialization_info: HashMap<u32, SpecializationConstant>,
+        specialization_info: &[(u32, SpecializationConstant)],
     ) -> Arc<SpecializedShaderModule> {
-        unsafe { SpecializedShaderModule::new_unchecked(self.clone(), specialization_info) }
+        unsafe { SpecializedShaderModule::new_unchecked(self, specialization_info) }
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -638,7 +641,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
-        unsafe { self.specialize_unchecked(HashMap::default()) }.entry_point(name)
+        unsafe { self.specialize_unchecked(&[]) }.entry_point(name)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -651,8 +654,7 @@ impl ShaderModule {
         name: &str,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe { self.specialize_unchecked(HashMap::default()) }
-            .entry_point_with_execution(name, execution)
+        unsafe { self.specialize_unchecked(&[]) }.entry_point_with_execution(name, execution)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -661,7 +663,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
-        unsafe { self.specialize_unchecked(HashMap::default()) }.single_entry_point()
+        unsafe { self.specialize_unchecked(&[]) }.single_entry_point()
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -673,8 +675,7 @@ impl ShaderModule {
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe { self.specialize_unchecked(HashMap::default()) }
-            .single_entry_point_with_execution(execution)
+        unsafe { self.specialize_unchecked(&[]) }.single_entry_point_with_execution(execution)
     }
 }
 
@@ -704,13 +705,14 @@ unsafe impl DeviceOwned for ShaderModule {
 
 impl_id_counter!(ShaderModule);
 
+#[derive(Clone, Debug)]
 pub struct ShaderModuleCreateInfo<'a> {
     /// The SPIR-V code, in the form of 32-bit words.
     ///
     /// There is no default value.
     pub code: &'a [u32],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
 impl<'a> ShaderModuleCreateInfo<'a> {
@@ -967,7 +969,7 @@ impl From<f64> for SpecializationConstant {
 #[derive(Debug)]
 pub struct SpecializedShaderModule {
     base_module: Arc<ShaderModule>,
-    specialization_info: HashMap<u32, SpecializationConstant>,
+    specialization_info: Vec<(u32, SpecializationConstant)>,
     spirv: Option<Spirv>,
     entry_point_infos: SmallVec<[(Id, EntryPointInfo); 1]>,
 }
@@ -976,24 +978,28 @@ impl SpecializedShaderModule {
     /// Returns `base_module` specialized with `specialization_info`.
     #[inline]
     pub fn new(
-        base_module: Arc<ShaderModule>,
-        specialization_info: HashMap<u32, SpecializationConstant>,
+        base_module: &Arc<ShaderModule>,
+        specialization_info: &[(u32, SpecializationConstant)],
     ) -> Result<Arc<Self>, Box<ValidationError>> {
-        Self::validate_new(&base_module, &specialization_info)?;
+        Self::validate_new(base_module, specialization_info)?;
 
         Ok(unsafe { Self::new_unchecked(base_module, specialization_info) })
     }
 
     fn validate_new(
         base_module: &ShaderModule,
-        specialization_info: &HashMap<u32, SpecializationConstant>,
+        specialization_info: &[(u32, SpecializationConstant)],
     ) -> Result<(), Box<ValidationError>> {
-        for (&constant_id, provided_value) in specialization_info {
+        for (index, &(constant_id, provided_value)) in specialization_info.iter().enumerate() {
             // Per `VkSpecializationMapEntry` spec:
             // "If a constantID value is not a specialization constant ID used in the shader,
             // that map entry does not affect the behavior of the pipeline."
             // We *may* want to be stricter than this for the sake of catching user errors?
-            if let Some(default_value) = base_module.specialization_constants.get(&constant_id) {
+            if let Some((_, default_value)) = base_module
+                .specialization_constants
+                .iter()
+                .find(|(id, _)| *id == constant_id)
+            {
                 // Check for equal types rather than only equal size.
                 if !provided_value.eq_type(default_value) {
                     return Err(Box::new(ValidationError {
@@ -1008,6 +1014,23 @@ impl SpecializedShaderModule {
                     }));
                 }
             }
+
+            for (other_index, &(other_constant_id, _)) in
+                specialization_info.iter().enumerate().skip(index + 1)
+            {
+                if constant_id == other_constant_id {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`specialization_info[{}].0` and `specialization_info[{}].0` have the \
+                            same value",
+                            index, other_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSpecializationInfo-constantID-04911"],
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -1015,20 +1038,20 @@ impl SpecializedShaderModule {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        base_module: Arc<ShaderModule>,
-        specialization_info: HashMap<u32, SpecializationConstant>,
+        base_module: &Arc<ShaderModule>,
+        specialization_info: &[(u32, SpecializationConstant)],
     ) -> Arc<Self> {
         let spirv = (!base_module.specialization_constants.is_empty()).then(|| {
             let mut spirv = base_module.spirv.clone();
-            spirv.apply_specialization(&specialization_info);
+            spirv.apply_specialization(specialization_info);
             spirv
         });
         let entry_point_infos =
             reflect::entry_points(spirv.as_ref().unwrap_or(&base_module.spirv)).collect();
 
         Arc::new(Self {
-            base_module,
-            specialization_info,
+            base_module: base_module.clone(),
+            specialization_info: specialization_info.to_owned(),
             spirv,
             entry_point_infos,
         })
@@ -1042,7 +1065,7 @@ impl SpecializedShaderModule {
 
     /// Returns the specialization constants that have been applied to the module.
     #[inline]
-    pub fn specialization_info(&self) -> &HashMap<u32, SpecializationConstant> {
+    pub fn specialization_info(&self) -> &[(u32, SpecializationConstant)] {
         &self.specialization_info
     }
 

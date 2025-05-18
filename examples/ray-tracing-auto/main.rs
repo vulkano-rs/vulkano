@@ -215,50 +215,38 @@ impl ApplicationHandler for App {
         };
 
         let pipeline_layout = PipelineLayout::new(
-            self.device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts: vec![
-                    DescriptorSetLayout::new(
-                        self.device.clone(),
-                        DescriptorSetLayoutCreateInfo {
-                            bindings: [
-                                (
-                                    0,
-                                    DescriptorSetLayoutBinding {
-                                        stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::new(
-                                            DescriptorType::AccelerationStructure,
-                                        )
-                                    },
-                                ),
-                                (
-                                    1,
-                                    DescriptorSetLayoutBinding {
-                                        stages: ShaderStages::RAYGEN,
-                                        ..DescriptorSetLayoutBinding::new(
-                                            DescriptorType::UniformBuffer,
-                                        )
-                                    },
-                                ),
-                            ]
-                            .into_iter()
-                            .collect(),
+            &self.device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &[
+                    &DescriptorSetLayout::new(
+                        &self.device,
+                        &DescriptorSetLayoutCreateInfo {
+                            bindings: &[
+                                DescriptorSetLayoutBinding {
+                                    binding: 0,
+                                    stages: ShaderStages::RAYGEN,
+                                    ..DescriptorSetLayoutBinding::new(
+                                        DescriptorType::AccelerationStructure,
+                                    )
+                                },
+                                DescriptorSetLayoutBinding {
+                                    binding: 1,
+                                    stages: ShaderStages::RAYGEN,
+                                    ..DescriptorSetLayoutBinding::new(DescriptorType::UniformBuffer)
+                                },
+                            ],
                             ..Default::default()
                         },
                     )
                     .unwrap(),
-                    DescriptorSetLayout::new(
-                        self.device.clone(),
-                        DescriptorSetLayoutCreateInfo {
-                            bindings: [(
-                                0,
-                                DescriptorSetLayoutBinding {
-                                    stages: ShaderStages::RAYGEN,
-                                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
-                                },
-                            )]
-                            .into_iter()
-                            .collect(),
+                    &DescriptorSetLayout::new(
+                        &self.device,
+                        &DescriptorSetLayoutCreateInfo {
+                            bindings: &[DescriptorSetLayoutBinding {
+                                binding: 0,
+                                stages: ShaderStages::RAYGEN,
+                                ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
+                            }],
                             ..Default::default()
                         },
                     )

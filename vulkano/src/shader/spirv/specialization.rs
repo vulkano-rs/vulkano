@@ -9,7 +9,7 @@ use smallvec::{smallvec, SmallVec};
 /// Go through all the specialization constant instructions,
 /// and updates their values and replaces them with regular constants.
 pub(super) fn replace_specialization_instructions(
-    specialization_info: &HashMap<u32, SpecializationConstant>,
+    specialization_info: &[(u32, SpecializationConstant)],
     instructions_global: impl IntoIterator<Item = Instruction>,
     ids: &HashMap<Id, IdInfo>,
     mut next_new_id: u32,
@@ -19,13 +19,15 @@ pub(super) fn replace_specialization_instructions(
             .decorations
             .iter()
             .find_map(|instruction| match instruction {
-                Instruction::Decorate {
+                &Instruction::Decorate {
                     decoration:
                         Decoration::SpecId {
                             specialization_constant_id,
                         },
                     ..
-                } => specialization_info.get(specialization_constant_id).copied(),
+                } => specialization_info
+                    .iter()
+                    .find_map(|&(id, value)| (id == specialization_constant_id).then_some(value)),
                 _ => None,
             })
     };

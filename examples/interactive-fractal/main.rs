@@ -163,15 +163,15 @@ impl ApplicationHandler for App {
         self.rcx = Some(RenderContext {
             render_target_id,
             fractal_pipeline: FractalComputePipeline::new(
-                gfx_queue.clone(),
-                self.context.memory_allocator().clone(),
-                self.command_buffer_allocator.clone(),
-                self.descriptor_set_allocator.clone(),
+                gfx_queue,
+                self.context.memory_allocator(),
+                &self.command_buffer_allocator,
+                &self.descriptor_set_allocator,
             ),
             place_over_frame: RenderPassPlaceOverFrame::new(
-                gfx_queue.clone(),
-                self.command_buffer_allocator.clone(),
-                self.descriptor_set_allocator.clone(),
+                gfx_queue,
+                &self.command_buffer_allocator,
+                &self.descriptor_set_allocator,
                 window_renderer.swapchain_format(),
                 window_renderer.swapchain_image_views(),
             ),

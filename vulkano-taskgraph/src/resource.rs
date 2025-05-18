@@ -323,8 +323,8 @@ impl Resources {
                 // SAFETY: The parameters are valid.
                 unsafe {
                     Fence::new_unchecked(
-                        self.device().clone(),
-                        FenceCreateInfo {
+                        self.device(),
+                        &FenceCreateInfo {
                             flags: FenceCreateFlags::SIGNALED,
                             ..Default::default()
                         },
@@ -499,7 +499,7 @@ impl Resources {
 
         let frames_in_flight = self
             .storage
-            .flight_protected(flight_id, &self.storage.pin())
+            .flight_protected(flight_id, guard)
             .unwrap()
             .frame_count();
 
@@ -508,15 +508,15 @@ impl Resources {
                 Ok(SwapchainSemaphoreState {
                     // SAFETY: The parameters are valid.
                     image_available_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device().clone(), Default::default())
+                        Semaphore::new_unchecked(self.device(), &Default::default())
                     }?,
                     // SAFETY: The parameters are valid.
                     pre_present_complete_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device().clone(), Default::default())
+                        Semaphore::new_unchecked(self.device(), &Default::default())
                     }?,
                     // SAFETY: The parameters are valid.
                     tasks_complete_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device().clone(), Default::default())
+                        Semaphore::new_unchecked(self.device(), &Default::default())
                     }?,
                 })
             })
@@ -774,7 +774,7 @@ impl Resources {
     /// additionally collects outstanding garbage.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.storage.pin();
-        let mut fences = SmallVec::<[_; 8]>::new();
+        let mut fence_guards = SmallVec::<[_; 8]>::new();
         let mut frames = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
@@ -785,13 +785,20 @@ impl Resources {
             }
 
             let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fences.push(flight.fences[frame_index as usize].read());
+            fence_guards.push(flight.fences[frame_index as usize].read());
             frames.push((flight, biased_frame));
         }
 
+        let fences = fence_guards
+            .iter()
+            .map(|guard| &**guard)
+            .collect::<SmallVec<[_; 8]>>();
+
         // SAFETY: We created these fences with the same device as `self`.
-        unsafe { Fence::multi_wait_unchecked(fences.iter().map(|guard| &**guard), None) }?;
+        unsafe { Fence::multi_wait_unchecked(&fences, None) }?;
+
         drop(fences);
+        drop(fence_guards);
 
         let mut collect = false;
 
@@ -994,7 +1001,7 @@ impl Drop for Resources {
     fn drop(&mut self) {
         let guard = &self.storage.pin();
 
-        let mut fences = SmallVec::<[_; 8]>::new();
+        let mut fence_guards = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
             let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
@@ -1004,13 +1011,16 @@ impl Drop for Resources {
             }
 
             let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fences.push(flight.fences[frame_index as usize].read());
+            fence_guards.push(flight.fences[frame_index as usize].read());
         }
 
-        if let Err(err) =
-            // SAFETY: We created these fences with the same device as `self`.
-            unsafe { Fence::multi_wait_unchecked(fences.iter().map(|guard| &**guard), None) }
-        {
+        let fences = fence_guards
+            .iter()
+            .map(|guard| &**guard)
+            .collect::<SmallVec<[_; 8]>>();
+
+        // SAFETY: We created these fences with the same device as `self`.
+        if let Err(err) = unsafe { Fence::multi_wait_unchecked(&fences, None) } {
             if err != VulkanError::DeviceLost {
                 return;
             }

@@ -1015,7 +1015,7 @@ mod tests {
     fn signal_fence() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
+        let fence = Arc::new(Fence::new(&device, &Default::default()).unwrap());
         assert!(!fence.is_signaled().unwrap());
 
         queue

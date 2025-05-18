@@ -393,7 +393,7 @@ impl DescriptorSetResources {
         let binding_resources = layout
             .bindings()
             .iter()
-            .map(|(&binding_num, binding)| {
+            .map(|binding| {
                 let count = if binding
                     .binding_flags
                     .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
@@ -448,7 +448,8 @@ impl DescriptorSetResources {
                         DescriptorBindingResources::AccelerationStructure(smallvec![None; count])
                     }
                 };
-                (binding_num, binding_resources)
+
+                (binding.binding, binding_resources)
             })
             .collect();
 
@@ -465,8 +466,7 @@ impl DescriptorSetResources {
     #[inline]
     pub(crate) fn write(&mut self, write: &WriteDescriptorSet, layout: &DescriptorSetLayout) {
         let descriptor_type = layout
-            .bindings()
-            .get(&write.binding())
+            .binding(write.binding())
             .expect("descriptor write has invalid binding number")
             .descriptor_type;
         self.binding_resources
