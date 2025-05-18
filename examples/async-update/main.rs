@@ -717,7 +717,7 @@ struct RenderTask {
 impl Task for RenderTask {
     type World = RenderContext;
 
-    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>, _world: &Self::World) {
         clear_values.set(self.swapchain_id.current_image_id(), [0.0; 4]);
     }
 

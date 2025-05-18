@@ -147,7 +147,7 @@ pub trait Task: Any + Send + Sync {
     /// [set to be cleared]: graph::AttachmentInfo::clear
     /// [`execute`]: Self::execute
     #[allow(unused)]
-    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {}
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>, world: &Self::World) {}
 
     /// Executes the task, which should record its commands using the provided command buffer and
     /// context.
