@@ -906,13 +906,13 @@ impl SubresourceRangeIterator {
         image_mip_level_size: DeviceSize,
         image_array_layers: u32,
     ) -> Self {
+        assert_ne!(subresource_range.level_count, 0);
+        assert_ne!(subresource_range.layer_count, 0);
+
         let mip_levels = subresource_range.base_mip_level
             ..subresource_range.base_mip_level + subresource_range.level_count;
         let array_layers = subresource_range.base_array_layer
             ..subresource_range.base_array_layer + subresource_range.layer_count;
-
-        assert!(!mip_levels.is_empty());
-        assert!(!array_layers.is_empty());
 
         let next_fn = if array_layers.start != 0 || array_layers.end != image_array_layers {
             Self::next_some_layers
