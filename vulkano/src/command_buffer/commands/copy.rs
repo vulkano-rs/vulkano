@@ -4031,8 +4031,8 @@ impl CopyBufferToImageInfo {
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer + \
-                        regions[{0}].dst_subresource.layer_count` is greater than \
+                        "`regions[{0}].image_subresource.base_array_layer + \
+                        regions[{0}].image_subresource.layer_count` is greater than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
