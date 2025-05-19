@@ -18,17 +18,17 @@ use crate::{
     format::Format,
     macros::{vulkan_bitflags, vulkan_enum},
     pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
+    self_referential::self_referential,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::iter;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
 #[derive(Clone, Debug)]
-pub struct ColorBlendState {
+pub struct ColorBlendState<'a> {
     /// Additional properties of the color blend state.
     ///
     /// The default value is empty.
@@ -53,17 +53,17 @@ pub struct ColorBlendState {
     ///
     /// The default value is empty,
     /// which must be overridden if the subpass has color attachments.
-    pub attachments: Vec<ColorBlendAttachmentState>,
+    pub attachments: &'a [ColorBlendAttachmentState],
 
     /// The constant color to use for some of the `BlendFactor` variants.
     ///
     /// The default value is `[0.0; 4]`.
     pub blend_constants: [f32; 4],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ColorBlendState {
+impl Default for ColorBlendState<'_> {
     /// Returns [`ColorBlendState::new(1)`].
     #[inline]
     fn default() -> Self {
@@ -71,27 +71,16 @@ impl Default for ColorBlendState {
     }
 }
 
-impl ColorBlendState {
+impl<'a> ColorBlendState<'a> {
     /// Returns a default `ColorBlendState`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: ColorBlendStateFlags::empty(),
             logic_op: None,
-            attachments: Vec::new(),
+            attachments: &[],
             blend_constants: [0.0; 4],
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    /// Returns a default `ColorBlendState` with `count` duplicates of `attachment_state`.
-    #[inline]
-    pub fn with_attachment_states(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
-        Self {
-            attachments: iter::repeat(attachment_state)
-                .take(count as usize)
-                .collect(),
-            ..Default::default()
+            _ne: crate::NE,
         }
     }
 
@@ -100,46 +89,6 @@ impl ColorBlendState {
     #[deprecated(since = "0.34.0")]
     pub fn logic_op(mut self, logic_op: LogicOp) -> Self {
         self.logic_op = Some(logic_op);
-        self
-    }
-
-    /// Enables blending for all attachments, with the given parameters.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn blend(mut self, blend: AttachmentBlend) -> Self {
-        self.attachments
-            .iter_mut()
-            .for_each(|attachment_state| attachment_state.blend = Some(blend.clone()));
-        self
-    }
-
-    /// Enables blending for all attachments, with alpha blending.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn blend_alpha(mut self) -> Self {
-        self.attachments
-            .iter_mut()
-            .for_each(|attachment_state| attachment_state.blend = Some(AttachmentBlend::alpha()));
-        self
-    }
-
-    /// Enables blending for all attachments, with additive blending.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn blend_additive(mut self) -> Self {
-        self.attachments.iter_mut().for_each(|attachment_state| {
-            attachment_state.blend = Some(AttachmentBlend::additive())
-        });
-        self
-    }
-
-    /// Sets the color write mask for all attachments.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn color_write_mask(mut self, color_write_mask: ColorComponents) -> Self {
-        self.attachments
-            .iter_mut()
-            .for_each(|attachment_state| attachment_state.color_write_mask = color_write_mask);
         self
     }
 
@@ -155,7 +104,7 @@ impl ColorBlendState {
         let &Self {
             flags,
             logic_op,
-            ref attachments,
+            attachments,
             blend_constants: _,
             _ne: _,
         } = self;
@@ -217,7 +166,7 @@ impl ColorBlendState {
 
     pub(crate) fn validate_required_fragment_outputs(
         &self,
-        subpass: &PipelineSubpassType,
+        subpass: PipelineSubpassType<'_>,
         fragment_shader_outputs: &HashMap<u32, ShaderInterfaceLocationInfo>,
     ) -> Result<(), Box<ValidationError>> {
         let validate_location =
@@ -452,7 +401,7 @@ impl ColorBlendState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a ColorBlendStateFields1Vk,
         extensions_vk: &'a mut ColorBlendStateExtensionsVk<'_>,
@@ -491,7 +440,7 @@ impl ColorBlendState {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &self,
         fields1_vk: &'a ColorBlendStateFields1Vk,
     ) -> ColorBlendStateExtensionsVk<'a> {
@@ -513,7 +462,7 @@ impl ColorBlendState {
         let mut color_write_enables_vk = SmallVec::with_capacity(self.attachments.len());
         let mut has_color_write_enables = false;
 
-        for color_blend_attachment_state in &self.attachments {
+        for color_blend_attachment_state in self.attachments {
             color_blend_attachments_vk.push(color_blend_attachment_state.to_vk());
             color_write_enables_vk.push(color_blend_attachment_state.color_write_enable as _);
             has_color_write_enables |= !color_blend_attachment_state.color_write_enable;
@@ -526,6 +475,16 @@ impl ColorBlendState {
                 .unwrap_or_default(),
         }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedColorBlendState {
+        let attachments = self.attachments.to_owned();
+
+        OwnedColorBlendState::new(attachments, |attachments| ColorBlendState {
+            attachments,
+            _ne: crate::NE,
+            ..*self
+        })
+    }
 }
 
 pub(crate) struct ColorBlendStateExtensionsVk<'a> {
@@ -535,6 +494,15 @@ pub(crate) struct ColorBlendStateExtensionsVk<'a> {
 pub(crate) struct ColorBlendStateFields1Vk {
     color_blend_attachments_vk: SmallVec<[vk::PipelineColorBlendAttachmentState; 4]>,
     color_write_enables_vk: SmallVec<[vk::Bool32; 4]>,
+}
+
+self_referential! {
+    mod owned_color_blend_state {
+        pub(crate) struct OwnedColorBlendState {
+            inner: ColorBlendState<'_>,
+            attachments: Vec<ColorBlendAttachmentState>,
+        }
+    }
 }
 
 vulkan_bitflags! {

@@ -36,7 +36,7 @@ pub struct FragmentShadingRateState {
     /// The default value is `[FragmentShadingRateCombinerOp::Keep; 2]`.
     pub combiner_ops: [FragmentShadingRateCombinerOp; 2],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for FragmentShadingRateState {
@@ -53,7 +53,7 @@ impl FragmentShadingRateState {
         Self {
             fragment_size: [1, 1],
             combiner_ops: [FragmentShadingRateCombinerOp::Keep; 2],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

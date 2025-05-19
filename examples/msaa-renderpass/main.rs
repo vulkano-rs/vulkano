@@ -78,7 +78,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
@@ -90,8 +89,8 @@ fn main() {
     // The usual Vulkan initialization.
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -128,10 +127,10 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -142,16 +141,16 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
     // Creating our intermediate multisampled image.
     //
     // As explained in the introduction, we pass the same extent and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
-        Image::new(
-            memory_allocator.clone(),
-            ImageCreateInfo {
+        &Image::new(
+            &memory_allocator,
+            &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
                 extent: [1024, 1024, 1],
@@ -159,7 +158,7 @@ fn main() {
                 samples: SampleCount::Sample4,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
         )
         .unwrap(),
     )
@@ -167,8 +166,8 @@ fn main() {
 
     // This is the final image that will receive the anti-aliased triangle.
     let image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
             extent: [1024, 1024, 1],
@@ -178,18 +177,18 @@ fn main() {
                 | ImageUsage::STORAGE,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
 
-    let view = ImageView::new_default(image.clone()).unwrap();
+    let view = ImageView::new_default(&image).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        &device,
         attachments: {
             // The first framebuffer attachment is the intermediary image.
             intermediary: {
@@ -228,9 +227,9 @@ fn main() {
 
     // Creating the framebuffer, the calls to `add` match the list of attachments in order.
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-            attachments: vec![intermediary, view],
+        &render_pass,
+        &FramebufferCreateInfo {
+            attachments: &[&intermediary, &view],
             ..Default::default()
         },
     )
@@ -291,12 +290,12 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -306,48 +305,36 @@ fn main() {
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass, 0).unwrap();
+        let layout = PipelineLayout::from_stages(&device, &stages).unwrap();
+        let subpass = Subpass::new(&render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            &device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState::default()),
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState {
                     rasterization_samples: subpass.num_samples().unwrap(),
                     ..Default::default()
                 }),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                dynamic_state: &[DynamicState::Viewport],
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()
@@ -360,17 +347,17 @@ fn main() {
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device,
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     let buf = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::TRANSFER_DST,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_HOST
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()

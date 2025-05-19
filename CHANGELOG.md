@@ -13,9 +13,27 @@
 
 ### Breaking changes
 
-Changes to `GraphicsPipeline`:
+Global changes:
+- Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
+
+Changes to images:
+- `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
+
+Changes to memory allocation:
+- `StandardMemoryAllocator::new_default` was removed in favor of `StandardMemoryAllocator::new(&device, &Default::default())` fulfilling the same function instead.
+- `MemoryRequirements` is now marked `#[non_exhaustive]`.
+
+Changes to pipelines:
 - `ColorBlendState::new` and `ViewportState::new` (previously deprecated, now undeprecated) now return the same as `Default::default()`.
 - `PipelineCacheCreateInfo::initial_data` now takes `Option<PipelineCacheData>` instead of `Vec<u8>` in order to make `PipelineCache::new` safe.
+- `RasterizationConservativeState` no longer has a `_ne` field.
+- `PipelineDescriptorSetLayoutCreateInfo` was replaced by `PipelineLayout::from_stages` and `pipeline::layout::push_constant_ranges_from_stages`.
+
+Changes to render passes:
+- `Subpass::from` was renamed to `Subpass::new`.
+
+Changes to external memory and external sync:
+- Where `File`s were previously taken as arguments for importing and returned for exporting, the raw descriptor is now used instead.
 
 ### Additions
 
@@ -24,12 +42,15 @@ Changes to `GraphicsPipeline`:
 - Added a safe `PipelineCacheData` binary data wrapper.
 
 ### Bugs fixed
+
 - When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.
 - [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
+- The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
 
 # Version 0.35.1 (2025-02-08)
 
 ### Bugs fixed
+
 - Fixed a bug in `StandardMemoryAllocator` where if the suballocation count of a `DeviceMemory` block would drop to zero, no more suballocations could be made, leading to needless allocations of new `DeviceMemory` blocks.
 - Fixed a panic for non-contiguous push constants ranges.
 - Vulkano-taskgraph: Fixed a panic that would happen when looking up the previous barrier and it's an initial barrier.

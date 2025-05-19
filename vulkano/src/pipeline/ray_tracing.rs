@@ -60,11 +60,12 @@ use crate::{
         },
         DeviceAlignment,
     },
-    shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
+    self_referential::self_referential,
+    shader::{spirv::ExecutionModel, DescriptorBindingRequirements, EntryPoint},
     DeviceSize, StridedDeviceAddressRegion, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
-use foldhash::{HashMap, HashSet};
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
@@ -84,18 +85,27 @@ pub struct RayTracingPipeline {
     num_used_descriptor_sets: u32,
 
     groups: SmallVec<[RayTracingShaderGroupCreateInfo; 5]>,
-    stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
+    stages: OwnedPipelineShaderStages,
+}
+
+self_referential! {
+    mod owned_pipeline_shader_stages {
+        struct OwnedPipelineShaderStages {
+            inner: SmallVec<[PipelineShaderStageCreateInfo<'_>; 5]>,
+            entry_points: Vec<EntryPoint>,
+        }
+    }
 }
 
 impl RayTracingPipeline {
     /// Creates a new `RayTracingPipeline`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: RayTracingPipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &RayTracingPipelineCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_deref(), &create_info)?;
+        Self::validate_new(device, cache.map(|c| &**c), create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
     }
@@ -103,9 +113,9 @@ impl RayTracingPipeline {
     fn validate_new(
         device: &Arc<Device>,
         cache: Option<&PipelineCache>,
-        create_info: &RayTracingPipelineCreateInfo,
+        create_info: &RayTracingPipelineCreateInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        if let Some(cache) = &cache {
+        if let Some(cache) = cache {
             assert_eq!(device, cache.device());
         }
 
@@ -118,9 +128,9 @@ impl RayTracingPipeline {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: RayTracingPipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &RayTracingPipelineCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let handle = {
             let fields3_vk = create_info.to_vk_fields3();
@@ -160,11 +170,11 @@ impl RayTracingPipeline {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Pipeline,
-        create_info: RayTracingPipelineCreateInfo,
+        create_info: &RayTracingPipelineCreateInfo<'_>,
     ) -> Arc<Self> {
-        let RayTracingPipelineCreateInfo {
+        let &RayTracingPipelineCreateInfo {
             flags,
             stages,
             groups,
@@ -177,7 +187,7 @@ impl RayTracingPipeline {
             DescriptorBindingRequirements,
         > = HashMap::default();
 
-        for stage in &stages {
+        for stage in stages {
             for (&loc, reqs) in stage
                 .entry_point
                 .info()
@@ -205,18 +215,34 @@ impl RayTracingPipeline {
             .map(|x| x + 1)
             .unwrap_or(0);
 
+        let entry_points = stages
+            .iter()
+            .map(|stage| stage.entry_point.clone())
+            .collect();
+        let stages = OwnedPipelineShaderStages::new(entry_points, |entry_points| {
+            stages
+                .iter()
+                .zip(entry_points)
+                .map(|(stage, entry_point)| PipelineShaderStageCreateInfo {
+                    entry_point,
+                    _ne: crate::NE,
+                    ..*stage
+                })
+                .collect()
+        });
+
         Arc::new(Self {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
-            layout: DeviceOwnedDebugWrapper(layout),
+            layout: DeviceOwnedDebugWrapper(layout.clone()),
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
 
-            groups,
+            groups: groups.iter().cloned().collect(),
             stages,
         })
     }
@@ -229,8 +255,8 @@ impl RayTracingPipeline {
 
     /// Returns the shader stages that the pipeline was created with.
     #[inline]
-    pub fn stages(&self) -> &[PipelineShaderStageCreateInfo] {
-        &self.stages
+    pub fn stages(&self) -> &[PipelineShaderStageCreateInfo<'_>] {
+        self.stages.as_ref()
     }
 
     /// Returns the `Device` that the pipeline was created with.
@@ -368,7 +394,7 @@ impl Drop for RayTracingPipeline {
 
 /// Parameters to create a new `RayTracingPipeline`.
 #[derive(Clone, Debug)]
-pub struct RayTracingPipelineCreateInfo {
+pub struct RayTracingPipelineCreateInfo<'a> {
     /// Additional properties of the pipeline.
     ///
     /// The default value is empty.
@@ -377,12 +403,12 @@ pub struct RayTracingPipelineCreateInfo {
     /// The ray tracing shader stages to use.
     ///
     /// The default value is empty, which must be overridden.
-    pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
+    pub stages: &'a [PipelineShaderStageCreateInfo<'a>],
 
     /// The shader groups to use. They reference the shader stages in `stages`.
     ///
     /// The default value is empty, which must be overridden.
-    pub groups: SmallVec<[RayTracingShaderGroupCreateInfo; 5]>,
+    pub groups: &'a [RayTracingShaderGroupCreateInfo],
 
     /// The maximum recursion depth of the pipeline.
     ///
@@ -394,12 +420,12 @@ pub struct RayTracingPipelineCreateInfo {
     /// May only contain `DynamicState::RayTracingPipelineStackSize`.
     ///
     /// The default value is empty.
-    pub dynamic_state: HashSet<DynamicState>,
+    pub dynamic_state: &'a [DynamicState],
 
     /// The pipeline layout to use.
     ///
     /// There is no default value.
-    pub layout: Arc<PipelineLayout>,
+    pub layout: &'a Arc<PipelineLayout>,
 
     /// The pipeline to use as a base when creating this pipeline.
     ///
@@ -408,42 +434,35 @@ pub struct RayTracingPipelineCreateInfo {
     /// [`PipelineCreateFlags::ALLOW_DERIVATIVES`].
     ///
     /// The default value is `None`.
-    pub base_pipeline: Option<Arc<RayTracingPipeline>>,
+    pub base_pipeline: Option<&'a Arc<RayTracingPipeline>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl RayTracingPipelineCreateInfo {
+impl<'a> RayTracingPipelineCreateInfo<'a> {
     /// Returns a default `RayTracingPipelineCreateInfo` with the provided `layout`.
-    // TODO: make const
     #[inline]
-    pub fn new(layout: Arc<PipelineLayout>) -> Self {
+    pub const fn new(layout: &'a Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
-            stages: SmallVec::new(),
-            groups: SmallVec::new(),
+            stages: &[],
+            groups: &[],
             max_pipeline_ray_recursion_depth: 1,
-            dynamic_state: Default::default(),
+            dynamic_state: &[],
             layout,
             base_pipeline: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
-    }
-
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn layout(layout: Arc<PipelineLayout>) -> Self {
-        Self::new(layout)
     }
 
     fn validate(&self, device: &Arc<Device>) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref stages,
-            ref groups,
-            ref layout,
-            ref base_pipeline,
-            ref dynamic_state,
+            stages,
+            groups,
+            layout,
+            base_pipeline,
+            dynamic_state,
             max_pipeline_ray_recursion_depth,
             _ne: _,
         } = self;
@@ -591,16 +610,15 @@ impl RayTracingPipelineCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a RayTracingPipelineCreateInfoFields1Vk<'_>,
     ) -> vk::RayTracingPipelineCreateInfoKHR<'a> {
         let &Self {
             flags,
             max_pipeline_ray_recursion_depth,
-
-            ref layout,
-            ref base_pipeline,
+            layout,
+            base_pipeline,
             ..
         } = self;
 
@@ -630,12 +648,12 @@ impl RayTracingPipelineCreateInfo {
         val_vk
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &self,
         fields2_vk: &'a RayTracingPipelineCreateInfoFields2Vk<'_>,
         extensions_vk: &'a mut RayTracingPipelineCreateInfoFields1ExtensionsVk,
     ) -> RayTracingPipelineCreateInfoFields1Vk<'a> {
-        let Self { stages, groups, .. } = self;
+        let &Self { stages, groups, .. } = self;
         let RayTracingPipelineCreateInfoFields2Vk {
             stages_fields1_vk,
             dynamic_states_vk,
@@ -674,7 +692,7 @@ impl RayTracingPipelineCreateInfo {
     pub(crate) fn to_vk_fields1_extensions(
         &self,
     ) -> RayTracingPipelineCreateInfoFields1ExtensionsVk {
-        let Self { stages, .. } = self;
+        let &Self { stages, .. } = self;
 
         let stages_extensions_vk = stages
             .iter()
@@ -686,11 +704,11 @@ impl RayTracingPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields2<'a>(
+    pub(crate) fn to_vk_fields2(
         &self,
         fields3_vk: &'a RayTracingPipelineCreateInfoFields3Vk,
     ) -> RayTracingPipelineCreateInfoFields2Vk<'a> {
-        let Self {
+        let &Self {
             stages,
             dynamic_state,
             ..
@@ -711,7 +729,7 @@ impl RayTracingPipelineCreateInfo {
     }
 
     pub(crate) fn to_vk_fields3(&self) -> RayTracingPipelineCreateInfoFields3Vk {
-        let Self { stages, .. } = self;
+        let &Self { stages, .. } = self;
 
         let stages_fields2_vk = stages.iter().map(|stage| stage.to_vk_fields2()).collect();
 
@@ -766,7 +784,7 @@ pub enum RayTracingShaderGroupCreateInfo {
 impl RayTracingShaderGroupCreateInfo {
     fn validate(
         &self,
-        stages: &[PipelineShaderStageCreateInfo],
+        stages: &[PipelineShaderStageCreateInfo<'_>],
     ) -> Result<(), Box<ValidationError>> {
         let get_shader_type =
             |shader: u32| stages[shader as usize].entry_point.info().execution_model;
@@ -960,6 +978,13 @@ pub struct ShaderBindingTable {
 impl ShaderBindingTable {
     /// Automatically creates a shader binding table from a ray tracing pipeline.
     pub fn new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        ray_tracing_pipeline: &RayTracingPipeline,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::new_inner(allocator.clone().as_dyn(), ray_tracing_pipeline)
+    }
+
+    fn new_inner(
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -1049,13 +1074,13 @@ impl ShaderBindingTable {
 
         let sbt_buffer = new_bytes_buffer_with_alignment(
             allocator,
-            BufferCreateInfo {
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC
                     | BufferUsage::SHADER_DEVICE_ADDRESS
                     | BufferUsage::SHADER_BINDING_TABLE,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::HOST_SEQUENTIAL_WRITE
                     | MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
@@ -1112,13 +1137,13 @@ impl ShaderBindingTable {
 
 fn new_bytes_buffer_with_alignment(
     allocator: Arc<dyn MemoryAllocator>,
-    create_info: BufferCreateInfo,
-    allocation_info: AllocationCreateInfo,
+    create_info: &BufferCreateInfo<'_>,
+    allocation_info: &AllocationCreateInfo<'_>,
     size: DeviceSize,
     alignment: DeviceAlignment,
 ) -> Result<Subbuffer<[u8]>, Validated<AllocateBufferError>> {
     let layout = DeviceLayout::from_size_alignment(size, alignment.as_devicesize()).unwrap();
-    let buffer = Subbuffer::new(Buffer::new(
+    let buffer = Subbuffer::new(Buffer::new_inner(
         allocator,
         create_info,
         allocation_info,

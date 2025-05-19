@@ -33,7 +33,7 @@ pub struct Queue {
 }
 
 impl Queue {
-    pub(super) unsafe fn new(device: Arc<Device>, queue_info: DeviceQueueInfo) -> Arc<Self> {
+    pub(super) unsafe fn new(device: &Arc<Device>, queue_info: &DeviceQueueInfo<'_>) -> Arc<Self> {
         let queue_info_vk = queue_info.to_vk();
 
         let handle = {
@@ -70,11 +70,11 @@ impl Queue {
     // TODO: Make public
     #[inline]
     pub(super) unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Queue,
-        queue_info: DeviceQueueInfo,
+        queue_info: &DeviceQueueInfo<'_>,
     ) -> Arc<Self> {
-        let DeviceQueueInfo {
+        let &DeviceQueueInfo {
             flags,
             queue_family_index,
             queue_index,
@@ -83,7 +83,7 @@ impl Queue {
 
         Arc::new(Queue {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             flags,
             queue_family_index,
             queue_index,
@@ -175,26 +175,26 @@ impl Hash for Queue {
 
 /// Parameters to retrieve a [`Queue`] from the device.
 #[derive(Clone, Debug)]
-pub(super) struct DeviceQueueInfo {
+pub(super) struct DeviceQueueInfo<'a> {
     pub(super) flags: QueueCreateFlags,
     pub(super) queue_family_index: u32,
     pub(super) queue_index: u32,
-    pub(super) _ne: crate::NonExhaustive,
+    pub(super) _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DeviceQueueInfo {
+impl Default for DeviceQueueInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self {
             flags: QueueCreateFlags::empty(),
             queue_family_index: 0,
             queue_index: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
 
-impl DeviceQueueInfo {
+impl DeviceQueueInfo<'_> {
     pub(crate) fn to_vk(&self) -> vk::DeviceQueueInfo2<'static> {
         let &Self {
             flags,
@@ -1015,7 +1015,7 @@ mod tests {
     fn signal_fence() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
+        let fence = Arc::new(Fence::new(&device, &Default::default()).unwrap());
         assert!(!fence.is_signaled().unwrap());
 
         queue

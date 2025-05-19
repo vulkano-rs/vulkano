@@ -22,7 +22,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
@@ -40,69 +39,63 @@ pub struct PixelsDrawPipeline {
 
 impl PixelsDrawPipeline {
     pub fn new(
-        gfx_queue: Arc<Queue>,
-        subpass: Subpass,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+        gfx_queue: &Arc<Queue>,
+        subpass: &Subpass,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let pipeline = {
             let device = gfx_queue.device();
-            let vs = vs::load(device.clone())
+            let vs = vs::load(device)
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let fs = fs::load(device.clone())
+            let fs = fs::load(device)
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let layout = PipelineLayout::from_stages(device, &stages).unwrap();
 
             GraphicsPipeline::new(
-                device.clone(),
+                device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(VertexInputState::default()),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&VertexInputState::default()),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
         };
 
         PixelsDrawPipeline {
-            gfx_queue,
-            subpass,
+            gfx_queue: gfx_queue.clone(),
+            subpass: subpass.clone(),
             pipeline,
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            command_buffer_allocator: command_buffer_allocator.clone(),
+            descriptor_set_allocator: descriptor_set_allocator.clone(),
         }
     }
 
     fn create_descriptor_set(&self, image: Arc<ImageView>) -> Arc<DescriptorSet> {
         let layout = &self.pipeline.layout().set_layouts()[0];
         let sampler = Sampler::new(
-            self.gfx_queue.device().clone(),
-            SamplerCreateInfo {
+            self.gfx_queue.device(),
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],

@@ -1,6 +1,6 @@
 use glam::f32::Vec2;
 use rand::random;
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -14,9 +14,8 @@ use vulkano::{
     image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout, PipelineShaderStageCreateInfo,
     },
     sync::GpuFuture,
 };
@@ -34,10 +33,10 @@ pub struct FractalComputePipeline {
 
 impl FractalComputePipeline {
     pub fn new(
-        queue: Arc<Queue>,
-        memory_allocator: Arc<StandardMemoryAllocator>,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+        queue: &Arc<Queue>,
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
     ) -> FractalComputePipeline {
         // Initial colors.
         let colors = vec![
@@ -50,12 +49,12 @@ impl FractalComputePipeline {
         ];
         let palette_size = colors.len() as i32;
         let palette = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -67,32 +66,24 @@ impl FractalComputePipeline {
 
         let pipeline = {
             let device = queue.device();
-            let cs = cs::load(device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let cs = cs::load(device).unwrap().entry_point("main").unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device.clone(),
+                device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
 
         FractalComputePipeline {
-            queue,
+            queue: queue.clone(),
             pipeline,
-            memory_allocator,
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            memory_allocator: memory_allocator.clone(),
+            command_buffer_allocator: command_buffer_allocator.clone(),
+            descriptor_set_allocator: descriptor_set_allocator.clone(),
             palette,
             palette_size,
             end_color,
@@ -110,12 +101,12 @@ impl FractalComputePipeline {
             colors.push([r, g, b, a]);
         }
         self.palette = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
+            &self.memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()

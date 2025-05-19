@@ -385,16 +385,13 @@ impl WriteDescriptorSet {
 
         let device = layout.device();
 
-        let layout_binding = match layout.bindings().get(&binding) {
-            Some(layout_binding) => layout_binding,
-            None => {
-                return Err(Box::new(ValidationError {
-                    context: "binding".into(),
-                    problem: "does not exist in the descriptor set layout".into(),
-                    vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
-                    ..Default::default()
-                }));
-            }
+        let Some(layout_binding) = layout.binding(binding) else {
+            return Err(Box::new(ValidationError {
+                context: "binding".into(),
+                problem: "does not exist in the descriptor set layout".into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
+                ..Default::default()
+            }));
         };
 
         let max_descriptor_count = if layout_binding
@@ -1625,7 +1622,7 @@ pub struct CopyDescriptorSet {
     /// The default value is 1.
     pub descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyDescriptorSet {
@@ -1639,7 +1636,7 @@ impl CopyDescriptorSet {
             dst_binding: 0,
             dst_first_array_element: 0,
             descriptor_count: 1,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1723,17 +1720,13 @@ impl CopyDescriptorSet {
             _ => (),
         }
 
-        let src_layout_binding = match src_set.layout().bindings().get(&src_binding) {
-            Some(layout_binding) => layout_binding,
-            None => {
-                return Err(Box::new(ValidationError {
-                    problem: "`src_binding` does not exist in the descriptor set layout of \
-                        `src_set`"
-                        .into(),
-                    vuids: &["VUID-VkCopyDescriptorSet-srcBinding-00345"],
-                    ..Default::default()
-                }));
-            }
+        let Some(src_layout_binding) = src_set.layout().binding(src_binding) else {
+            return Err(Box::new(ValidationError {
+                problem: "`src_binding` does not exist in the descriptor set layout of `src_set`"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-srcBinding-00345"],
+                ..Default::default()
+            }));
         };
 
         let src_max_descriptor_count = if src_layout_binding
@@ -1755,17 +1748,13 @@ impl CopyDescriptorSet {
             }));
         }
 
-        let dst_layout_binding = match dst_set.layout().bindings().get(&dst_binding) {
-            Some(layout_binding) => layout_binding,
-            None => {
-                return Err(Box::new(ValidationError {
-                    problem: "`dst_binding` does not exist in the descriptor set layout of \
-                        `dst_set`"
-                        .into(),
-                    vuids: &["VUID-VkCopyDescriptorSet-dstBinding-00347"],
-                    ..Default::default()
-                }));
-            }
+        let Some(dst_layout_binding) = dst_set.layout().binding(dst_binding) else {
+            return Err(Box::new(ValidationError {
+                problem: "`dst_binding` does not exist in the descriptor set layout of `dst_set`"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-dstBinding-00347"],
+                ..Default::default()
+            }));
         };
 
         let dst_max_descriptor_count = if dst_layout_binding
@@ -1897,7 +1886,7 @@ pub struct InvalidateDescriptorSet {
     /// The default value is 1.
     pub descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl InvalidateDescriptorSet {
@@ -1910,7 +1899,7 @@ impl InvalidateDescriptorSet {
             binding,
             first_array_element,
             descriptor_count,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1926,16 +1915,13 @@ impl InvalidateDescriptorSet {
             ..
         } = self;
 
-        let layout_binding = match layout.bindings().get(&binding) {
-            Some(layout_binding) => layout_binding,
-            None => {
-                return Err(Box::new(ValidationError {
-                    context: "binding".into(),
-                    problem: "does not exist in the descriptor set layout".into(),
-                    vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
-                    ..Default::default()
-                }));
-            }
+        let Some(layout_binding) = layout.binding(binding) else {
+            return Err(Box::new(ValidationError {
+                context: "binding".into(),
+                problem: "does not exist in the descriptor set layout".into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
+                ..Default::default()
+            }));
         };
 
         debug_assert!(descriptor_count != 0);

@@ -45,7 +45,7 @@ impl VulkanoWindows {
         event_loop: &ActiveEventLoop,
         vulkano_context: &VulkanoContext,
         window_descriptor: &WindowDescriptor,
-        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo<'_>),
     ) -> WindowId {
         let mut winit_window_attributes = winit::window::Window::default_attributes();
 

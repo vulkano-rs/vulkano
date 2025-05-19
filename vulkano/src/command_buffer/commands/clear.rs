@@ -649,7 +649,7 @@ pub struct ClearColorImageInfo {
     /// The default value is a single region, covering the whole image.
     pub regions: SmallVec<[ImageSubresourceRange; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ClearColorImageInfo {
@@ -664,7 +664,7 @@ impl ClearColorImageInfo {
             image_layout: ImageLayout::TransferDstOptimal,
             clear_value: ClearColorValue::Float([0.0; 4]),
             regions: smallvec![range],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -864,7 +864,7 @@ pub struct ClearDepthStencilImageInfo {
     /// The default value is a single region, covering the whole image.
     pub regions: SmallVec<[ImageSubresourceRange; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ClearDepthStencilImageInfo {
@@ -879,7 +879,7 @@ impl ClearDepthStencilImageInfo {
             image_layout: ImageLayout::TransferDstOptimal,
             clear_value: ClearDepthStencilValue::default(),
             regions: smallvec![range],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

@@ -9,7 +9,7 @@ use ash::vk;
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
 #[derive(Clone, Debug)]
-pub struct TessellationState {
+pub struct TessellationState<'a> {
     /// The number of patch control points to use.
     ///
     /// The default value is 3.
@@ -24,24 +24,24 @@ pub struct TessellationState {
     /// The default value is [`TessellationDomainOrigin::UpperLeft`].
     pub domain_origin: TessellationDomainOrigin,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for TessellationState {
+impl Default for TessellationState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TessellationState {
+impl<'a> TessellationState<'a> {
     /// Returns a default `TessellationState`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             patch_control_points: 3,
             domain_origin: TessellationDomainOrigin::UpperLeft,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -105,7 +105,7 @@ impl TessellationState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut TessellationStateExtensionsVk,
     ) -> vk::PipelineTessellationStateCreateInfo<'a> {
@@ -141,6 +141,13 @@ impl TessellationState {
         });
 
         TessellationStateExtensionsVk { domain_origin_vk }
+    }
+
+    pub(crate) fn to_owned(&self) -> TessellationState<'static> {
+        TessellationState {
+            _ne: crate::NE,
+            ..*self
+        }
     }
 }
 

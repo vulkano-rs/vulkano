@@ -7,7 +7,7 @@ use ash::vk;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
-pub struct RasterizationState {
+pub struct RasterizationState<'a> {
     /// If true, then the depth value of the vertices will be clamped to the range [0.0, 1.0]. If
     /// false, fragments whose depth is outside of this range will be discarded.
     ///
@@ -90,17 +90,17 @@ pub struct RasterizationState {
     /// The default value is `None`.
     pub conservative: Option<RasterizationConservativeState>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for RasterizationState {
+impl Default for RasterizationState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RasterizationState {
+impl<'a> RasterizationState<'a> {
     /// Returns a default `RasterizationState`.
     #[inline]
     pub const fn new() -> Self {
@@ -115,7 +115,7 @@ impl RasterizationState {
             line_rasterization_mode: LineRasterizationMode::Default,
             line_stipple: None,
             conservative: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -375,7 +375,7 @@ impl RasterizationState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut RasterizationStateExtensionsVk,
     ) -> vk::PipelineRasterizationStateCreateInfo<'a> {
@@ -468,6 +468,13 @@ impl RasterizationState {
         RasterizationStateExtensionsVk {
             line_vk,
             conservative_vk,
+        }
+    }
+
+    pub(crate) fn to_owned(&self) -> RasterizationState<'static> {
+        RasterizationState {
+            _ne: crate::NE,
+            ..*self
         }
     }
 }
@@ -666,7 +673,7 @@ pub struct LineStipple {
 
 /// The state in a graphics pipeline describing how the conservative rasterization mode should
 /// behave.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RasterizationConservativeState {
     /// Sets the conservative rasterization mode.
     ///
@@ -679,8 +686,6 @@ pub struct RasterizationConservativeState {
     ///
     ///  The default value is 0.0.
     pub overestimation_size: f32,
-
-    pub _ne: crate::NonExhaustive,
 }
 
 impl Default for RasterizationConservativeState {
@@ -697,15 +702,13 @@ impl RasterizationConservativeState {
         Self {
             mode: ConservativeRasterizationMode::Disabled,
             overestimation_size: 0.0,
-            _ne: crate::NonExhaustive(()),
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
+    pub(crate) fn validate(self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let Self {
             mode,
             overestimation_size,
-            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();
@@ -732,11 +735,11 @@ impl RasterizationConservativeState {
         Ok(())
     }
 
+    #[allow(clippy::wrong_self_convention, clippy::trivially_copy_pass_by_ref)]
     pub(crate) fn to_vk(&self) -> vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static> {
         let &Self {
             mode,
             overestimation_size,
-            _ne: _,
         } = self;
 
         vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()

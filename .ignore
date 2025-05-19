@@ -1,2 +1,2 @@
-vulkano/spirv.core.grammar.json
-vulkano/vk.xml
+autogen/spirv.core.grammar.json
+autogen/vk.xml

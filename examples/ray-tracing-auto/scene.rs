@@ -12,7 +12,7 @@ use vulkano::{
     },
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
@@ -21,7 +21,7 @@ use vulkano::{
     device::{Device, Queue},
     format::Format,
     image::{view::ImageView, Image},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::vertex_input::Vertex,
         ray_tracing::{
@@ -50,30 +50,30 @@ impl Scene {
     pub fn new(
         app: &App,
         images: &[Arc<Image>],
-        pipeline_layout: Arc<PipelineLayout>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-        memory_allocator: Arc<dyn MemoryAllocator>,
-        command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
+        pipeline_layout: &Arc<PipelineLayout>,
+        descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
     ) -> Self {
         let pipeline = {
-            let raygen = raygen::load(app.device.clone())
+            let raygen = raygen::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let closest_hit = closest_hit::load(app.device.clone())
+            let closest_hit = closest_hit::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let miss = miss::load(app.device.clone())
+            let miss = miss::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
 
             // Make a list of the shader stages that the pipeline will have.
             let stages = [
-                PipelineShaderStageCreateInfo::new(raygen),
-                PipelineShaderStageCreateInfo::new(miss),
-                PipelineShaderStageCreateInfo::new(closest_hit),
+                PipelineShaderStageCreateInfo::new(&raygen),
+                PipelineShaderStageCreateInfo::new(&miss),
+                PipelineShaderStageCreateInfo::new(&closest_hit),
             ];
 
             // Define the shader groups that will eventually turn into the shader binding table.
@@ -88,13 +88,13 @@ impl Scene {
             ];
 
             RayTracingPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                RayTracingPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    groups: groups.into_iter().collect(),
+                &RayTracingPipelineCreateInfo {
+                    stages: &stages,
+                    groups: &groups,
                     max_pipeline_ray_recursion_depth: 1,
-                    ..RayTracingPipelineCreateInfo::new(pipeline_layout.clone())
+                    ..RayTracingPipelineCreateInfo::new(pipeline_layout)
                 },
             )
             .unwrap()
@@ -112,14 +112,14 @@ impl Scene {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER
                     | BufferUsage::SHADER_DEVICE_ADDRESS
                     | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -135,11 +135,11 @@ impl Scene {
         // will trace rays against the top-level acceleration structure.
         let blas = unsafe {
             build_acceleration_structure_triangles(
-                vertex_buffer,
-                memory_allocator.clone(),
-                command_buffer_allocator.clone(),
-                app.device.clone(),
-                app.queue.clone(),
+                &vertex_buffer,
+                memory_allocator,
+                command_buffer_allocator,
+                &app.device,
+                &app.queue,
             )
         };
         let tlas = unsafe {
@@ -148,10 +148,10 @@ impl Scene {
                     acceleration_structure_reference: blas.device_address().into(),
                     ..Default::default()
                 }],
-                memory_allocator.clone(),
-                command_buffer_allocator.clone(),
-                app.device.clone(),
-                app.queue.clone(),
+                memory_allocator,
+                command_buffer_allocator,
+                &app.device,
+                &app.queue,
             )
         };
 
@@ -163,12 +163,12 @@ impl Scene {
         );
 
         let uniform_buffer = Buffer::from_data(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::UNIFORM_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -193,16 +193,15 @@ impl Scene {
         .unwrap();
 
         let swapchain_image_sets =
-            window_size_dependent_setup(images, &pipeline_layout, &descriptor_set_allocator);
+            window_size_dependent_setup(images, pipeline_layout, descriptor_set_allocator);
 
-        let shader_binding_table =
-            ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
+        let shader_binding_table = ShaderBindingTable::new(memory_allocator, &pipeline).unwrap();
 
         Scene {
             descriptor_set,
             swapchain_image_sets,
-            descriptor_set_allocator,
-            pipeline_layout,
+            descriptor_set_allocator: descriptor_set_allocator.clone(),
+            pipeline_layout: pipeline_layout.clone(),
             shader_binding_table,
             pipeline,
             _blas: blas,
@@ -284,7 +283,7 @@ fn window_size_dependent_setup(
     let swapchain_image_sets = images
         .iter()
         .map(|image| {
-            let image_view = ImageView::new_default(image.clone()).unwrap();
+            let image_view = ImageView::new_default(image).unwrap();
             let descriptor_set = DescriptorSet::new(
                 descriptor_set_allocator.clone(),
                 pipeline_layout.set_layouts()[1].clone(),
@@ -310,10 +309,10 @@ unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,
     primitive_count: u32,
     ty: AccelerationStructureType,
-    memory_allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
         mode: BuildAccelerationStructureMode::Build,
@@ -332,34 +331,38 @@ unsafe fn build_acceleration_structure_common(
     // We create a new scratch buffer for each acceleration structure for simplicity. You may want
     // to reuse scratch buffers if you need to build many acceleration structures.
     let scratch_buffer = Buffer::new_slice::<u8>(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
         as_build_sizes_info.build_scratch_size,
     )
     .unwrap();
 
-    let as_create_info = AccelerationStructureCreateInfo {
-        ty,
-        ..AccelerationStructureCreateInfo::new(
-            Buffer::new_slice::<u8>(
-                memory_allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
-                        | BufferUsage::SHADER_DEVICE_ADDRESS,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-                as_build_sizes_info.acceleration_structure_size,
-            )
-            .unwrap(),
+    let acceleration = unsafe {
+        AccelerationStructure::new(
+            device,
+            &AccelerationStructureCreateInfo {
+                ty,
+                ..AccelerationStructureCreateInfo::new(
+                    &Buffer::new_slice::<u8>(
+                        memory_allocator,
+                        &BufferCreateInfo {
+                            usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+                                | BufferUsage::SHADER_DEVICE_ADDRESS,
+                            ..Default::default()
+                        },
+                        &AllocationCreateInfo::default(),
+                        as_build_sizes_info.acceleration_structure_size,
+                    )
+                    .unwrap(),
+                )
+            },
         )
-    };
-
-    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info) }.unwrap();
+    }
+    .unwrap();
 
     as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
     as_build_geometry_info.scratch_data = Some(scratch_buffer);
@@ -372,7 +375,7 @@ unsafe fn build_acceleration_structure_common(
     // For simplicity, we build a single command buffer that builds the acceleration structure,
     // then waits for its execution to complete.
     let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
+        command_buffer_allocator.clone(),
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
@@ -388,7 +391,7 @@ unsafe fn build_acceleration_structure_common(
     builder
         .build()
         .unwrap()
-        .execute(queue)
+        .execute(queue.clone())
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap()
@@ -399,16 +402,16 @@ unsafe fn build_acceleration_structure_common(
 }
 
 unsafe fn build_acceleration_structure_triangles(
-    vertex_buffer: Subbuffer<[MyVertex]>,
-    memory_allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    vertex_buffer: &Subbuffer<[MyVertex]>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let primitive_count = (vertex_buffer.len() / 3) as u32;
     let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
         max_vertex: vertex_buffer.len() as _,
-        vertex_data: Some(vertex_buffer.into_bytes()),
+        vertex_data: Some(vertex_buffer.clone().into_bytes()),
         vertex_stride: size_of::<MyVertex>() as _,
         ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
     };
@@ -428,21 +431,21 @@ unsafe fn build_acceleration_structure_triangles(
 
 unsafe fn build_top_level_acceleration_structure(
     as_instances: Vec<AccelerationStructureInstance>,
-    allocator: Arc<dyn MemoryAllocator>,
-    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
     let primitive_count = as_instances.len() as u32;
 
     let instance_buffer = Buffer::from_iter(
-        allocator.clone(),
-        BufferCreateInfo {
+        memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::SHADER_DEVICE_ADDRESS
                 | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -461,7 +464,7 @@ unsafe fn build_top_level_acceleration_structure(
         geometries,
         primitive_count,
         AccelerationStructureType::TopLevel,
-        allocator,
+        memory_allocator,
         command_buffer_allocator,
         device,
         queue,

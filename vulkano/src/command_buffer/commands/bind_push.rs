@@ -93,7 +93,9 @@ impl<L> AutoCommandBufferBuilder<L> {
             let mut dynamic_offsets_remaining = dynamic_offsets;
             let mut required_dynamic_offset_count = 0;
 
-            for (&binding_num, binding) in set_layout.bindings() {
+            for binding in set_layout.bindings() {
+                let binding_num = binding.binding;
+
                 let required_alignment = match binding.descriptor_type {
                     DescriptorType::UniformBufferDynamic => {
                         properties.min_uniform_buffer_offset_alignment
@@ -682,7 +684,9 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            for (&binding_num, binding) in set_layout.bindings() {
+            for binding in set_layout.bindings() {
+                let binding_num = binding.binding;
+
                 let required_alignment = match binding.descriptor_type {
                     DescriptorType::UniformBufferDynamic => {
                         properties.min_uniform_buffer_offset_alignment
@@ -1585,11 +1589,13 @@ impl RecordingCommandBuffer {
             return self;
         }
 
-        let set_layout_bindings = &pipeline_layout.set_layouts()[set_num as usize].bindings();
+        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
         let writes_fields1_vk: SmallVec<[_; 8]> = descriptor_writes
             .iter()
             .map(|write| {
-                let default_image_layout = set_layout_bindings[&write.binding()]
+                let default_image_layout = set_layout
+                    .binding(write.binding())
+                    .unwrap()
                     .descriptor_type
                     .default_image_layout();
                 write.to_vk_fields1(default_image_layout)
@@ -1607,7 +1613,7 @@ impl RecordingCommandBuffer {
             .map(|((write, write_info_vk), write_extension_vk)| {
                 write.to_vk(
                     vk::DescriptorSet::null(),
-                    set_layout_bindings[&write.binding()].descriptor_type,
+                    set_layout.binding(write.binding()).unwrap().descriptor_type,
                     write_info_vk,
                     write_extension_vk,
                 )

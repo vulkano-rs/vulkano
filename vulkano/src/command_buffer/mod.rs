@@ -301,7 +301,7 @@ pub struct CommandBufferInheritanceInfo {
     /// [`pipeline_statistics_query`]: crate::device::DeviceFeatures::pipeline_statistics_query
     pub pipeline_statistics: QueryPipelineStatisticFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for CommandBufferInheritanceInfo {
@@ -319,7 +319,7 @@ impl CommandBufferInheritanceInfo {
             render_pass: None,
             occlusion_query: None,
             pipeline_statistics: QueryPipelineStatisticFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -953,7 +953,7 @@ pub struct SubmitInfo {
     /// The default value is empty.
     pub signal_semaphores: Vec<SemaphoreSubmitInfo>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for SubmitInfo {
@@ -971,7 +971,7 @@ impl SubmitInfo {
             wait_semaphores: Vec::new(),
             command_buffers: Vec::new(),
             signal_semaphores: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1215,7 +1215,7 @@ pub struct CommandBufferSubmitInfo {
     /// There is no default value.
     pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CommandBufferSubmitInfo {
@@ -1224,7 +1224,7 @@ impl CommandBufferSubmitInfo {
     pub const fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
             command_buffer,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1297,7 +1297,7 @@ pub struct SemaphoreSubmitInfo {
     /// [`synchronization2`]: crate::device::DeviceFeatures::synchronization2
     pub stages: PipelineStages,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SemaphoreSubmitInfo {
@@ -1308,7 +1308,7 @@ impl SemaphoreSubmitInfo {
             semaphore,
             value: 0,
             stages: PipelineStages::ALL_COMMANDS,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

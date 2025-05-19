@@ -7,7 +7,7 @@ use ash::vk;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Debug)]
-pub struct InputAssemblyState {
+pub struct InputAssemblyState<'a> {
     /// The type of primitives.
     ///
     /// When [`DynamicState::PrimitiveTopology`] is used, if the
@@ -33,10 +33,10 @@ pub struct InputAssemblyState {
     /// The default value is `false`.
     pub primitive_restart_enable: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for InputAssemblyState {
+impl Default for InputAssemblyState<'_> {
     /// Returns [`InputAssemblyState::new()`].
     #[inline]
     fn default() -> Self {
@@ -44,14 +44,14 @@ impl Default for InputAssemblyState {
     }
 }
 
-impl InputAssemblyState {
+impl InputAssemblyState<'_> {
     /// Returns a default `InputAssemblyState`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             topology: PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -186,6 +186,13 @@ impl InputAssemblyState {
             .flags(vk::PipelineInputAssemblyStateCreateFlags::empty())
             .topology(topology.into())
             .primitive_restart_enable(primitive_restart_enable)
+    }
+
+    pub(crate) fn to_owned(&self) -> InputAssemblyState<'static> {
+        InputAssemblyState {
+            _ne: crate::NE,
+            ..*self
+        }
     }
 }
 

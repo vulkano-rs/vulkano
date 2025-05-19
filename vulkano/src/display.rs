@@ -62,7 +62,7 @@ impl Display {
     /// - `properties` must match the properties retrieved from `physical_device`.
     #[inline]
     pub fn from_handle(
-        physical_device: Arc<PhysicalDevice>,
+        physical_device: &Arc<PhysicalDevice>,
         handle: vk::DisplayKHR,
         properties: DisplayProperties,
     ) -> Arc<Self> {
@@ -76,7 +76,7 @@ impl Display {
         } = properties;
 
         Arc::new(Self {
-            physical_device: InstanceOwnedDebugWrapper(physical_device),
+            physical_device: InstanceOwnedDebugWrapper(physical_device.clone()),
             handle,
 
             name,
@@ -185,9 +185,9 @@ impl Display {
                     self.display_modes
                         .get_or_insert(properties_vk.display_mode, |&handle| {
                             DisplayMode::from_handle(
-                                self.clone(),
+                                self,
                                 handle,
-                                DisplayModeCreateInfo::from_vk_parameters(
+                                &DisplayModeCreateInfo::from_vk_parameters(
                                     &properties_vk.parameters,
                                 ),
                             )
@@ -234,9 +234,9 @@ impl Display {
                     self.display_modes
                         .get_or_insert(properties_vk.display_mode, |&handle| {
                             DisplayMode::from_handle(
-                                self.clone(),
+                                self,
                                 handle,
-                                DisplayModeCreateInfo::from_vk_parameters(
+                                &DisplayModeCreateInfo::from_vk_parameters(
                                     &properties_vk.parameters,
                                 ),
                             )
@@ -354,17 +354,17 @@ impl DisplayMode {
     /// Creates a custom display mode.
     #[inline]
     pub fn new(
-        display: Arc<Display>,
-        create_info: DisplayModeCreateInfo,
+        display: &Arc<Display>,
+        create_info: &DisplayModeCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&display, &create_info)?;
+        Self::validate_new(display, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(display, create_info) }?)
     }
 
     fn validate_new(
         display: &Display,
-        create_info: &DisplayModeCreateInfo,
+        create_info: &DisplayModeCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateDisplayModeKHR-pCreateInfo-parameter
         create_info
@@ -376,8 +376,8 @@ impl DisplayMode {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        display: Arc<Display>,
-        create_info: DisplayModeCreateInfo,
+        display: &Arc<Display>,
+        create_info: &DisplayModeCreateInfo<'_>,
     ) -> Result<Arc<Self>, VulkanError> {
         let physical_device = &display.physical_device;
         let create_info_vk = create_info.to_vk();
@@ -400,7 +400,7 @@ impl DisplayMode {
         };
 
         Ok(display.display_modes.get_or_insert(handle, |&handle| {
-            Self::from_handle(display.clone(), handle, create_info)
+            Self::from_handle(display, handle, create_info)
         }))
     }
 
@@ -412,18 +412,18 @@ impl DisplayMode {
     /// - `create_info` must match the info used to create the object, or retrieved from `display`.
     #[inline]
     pub fn from_handle(
-        display: Arc<Display>,
+        display: &Arc<Display>,
         handle: vk::DisplayModeKHR,
-        create_info: DisplayModeCreateInfo,
+        create_info: &DisplayModeCreateInfo<'_>,
     ) -> Arc<Self> {
-        let DisplayModeCreateInfo {
+        let &DisplayModeCreateInfo {
             visible_region,
             refresh_rate,
             _ne: _,
         } = create_info;
 
         Arc::new(Self {
-            display: InstanceOwnedDebugWrapper(display),
+            display: InstanceOwnedDebugWrapper(display.clone()),
             handle,
 
             visible_region,
@@ -495,7 +495,7 @@ impl DisplayMode {
         plane_index: u32,
     ) -> Result<DisplayPlaneCapabilities, VulkanError> {
         self.display_plane_capabilities
-            .get_or_try_insert(plane_index, |&plane_index| {
+            .get_or_try_insert(&plane_index, || {
                 let fns = self.display.physical_device.instance().fns();
 
                 let mut capabilities_vk = DisplayPlaneCapabilities::to_mut_vk2();
@@ -532,7 +532,10 @@ impl DisplayMode {
                     .map_err(VulkanError::from)?;
                 }
 
-                Ok(DisplayPlaneCapabilities::from_vk2(&capabilities_vk))
+                Ok((
+                    plane_index,
+                    DisplayPlaneCapabilities::from_vk2(&capabilities_vk),
+                ))
             })
     }
 }
@@ -572,7 +575,7 @@ impl Hash for DisplayMode {
 
 /// Parameters to create a new `DisplayMode`.
 #[derive(Clone, Debug)]
-pub struct DisplayModeCreateInfo {
+pub struct DisplayModeCreateInfo<'a> {
     /// The extent of the visible region. Neither coordinate may be zero.
     ///
     /// The default value is `[0; 2]`, which must be overridden.
@@ -584,24 +587,24 @@ pub struct DisplayModeCreateInfo {
     /// The default value is 0, which must be overridden.
     pub refresh_rate: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DisplayModeCreateInfo {
+impl Default for DisplayModeCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DisplayModeCreateInfo {
+impl DisplayModeCreateInfo<'_> {
     /// Returns a default `DisplayModeCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             visible_region: [0; 2],
             refresh_rate: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -672,7 +675,7 @@ impl DisplayModeCreateInfo {
         DisplayModeCreateInfo {
             visible_region: [visible_region.width, visible_region.height],
             refresh_rate,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

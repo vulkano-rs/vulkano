@@ -10,7 +10,7 @@ macro_rules! instance {
             Err(_) => return,
         };
 
-        match Instance::new(library, Default::default()) {
+        match Instance::new(&library, &Default::default()) {
             Ok(x) => x,
             Err(_) => return,
         }
@@ -35,37 +35,37 @@ macro_rules! gfx_dev_and_queue {
             $(
                 $extension: true,
             )*
-            .. DeviceExtensions::empty()
+            ..DeviceExtensions::empty()
         };
         let enabled_features = DeviceFeatures {
             $(
                 $feature: true,
             )*
-            .. DeviceFeatures::empty()
+            ..DeviceFeatures::empty()
         };
 
         let select = match instance.enumerate_physical_devices() {
             Ok(x) => x,
             Err(_) => return,
         }
-            .filter(|p| {
-                p.supported_extensions().contains(&enabled_extensions) &&
-                p.supported_features().contains(&enabled_features)
-            })
-            .filter_map(|p| {
-                p.queue_family_properties().iter()
-                    .position(|q| q.queue_flags.intersects(crate::device::QueueFlags::GRAPHICS))
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| {
-                match p.properties().device_type {
-                    PhysicalDeviceType::DiscreteGpu => 0,
-                    PhysicalDeviceType::IntegratedGpu => 1,
-                    PhysicalDeviceType::VirtualGpu => 2,
-                    PhysicalDeviceType::Cpu => 3,
-                    PhysicalDeviceType::Other => 4,
-                }
-            });
+        .filter(|p| {
+            p.supported_extensions().contains(&enabled_extensions) &&
+            p.supported_features().contains(&enabled_features)
+        })
+        .filter_map(|p| {
+            p.queue_family_properties().iter()
+                .position(|q| q.queue_flags.intersects(crate::device::QueueFlags::GRAPHICS))
+                .map(|i| (p, i as u32))
+        })
+        .min_by_key(|(p, _)| {
+            match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+            }
+        });
 
         let (physical_device, queue_family_index) = match select {
             Some(x) => x,
@@ -73,16 +73,16 @@ macro_rules! gfx_dev_and_queue {
         };
 
         let (device, mut queues) = match Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
-                enabled_extensions,
-                enabled_features,
+                enabled_extensions: &enabled_extensions,
+                enabled_features: &enabled_features,
                 ..Default::default()
-            }
+            },
         ) {
             Ok(r) => r,
             Err(_) => return,

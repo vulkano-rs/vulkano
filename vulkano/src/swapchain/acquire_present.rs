@@ -28,7 +28,7 @@ use std::{
 
 /// Parameters to acquire the next image from a swapchain.
 #[derive(Clone, Debug)]
-pub struct AcquireNextImageInfo {
+pub struct AcquireNextImageInfo<'a> {
     /// If no image is immediately available, how long to wait for one to become available.
     ///
     /// Specify `None` to wait forever. This is only allowed if at least one image in the swapchain
@@ -42,26 +42,26 @@ pub struct AcquireNextImageInfo {
     /// `semaphore` and `fence` must not both be `None`.
     ///
     /// The default value is `None`.
-    pub semaphore: Option<Arc<Semaphore>>,
+    pub semaphore: Option<&'a Semaphore>,
 
     /// The fence to signal when an image has become available.
     ///
     /// `semaphore` and `fence` must not both be `None`.
     ///
     /// The default value is `None`.
-    pub fence: Option<Arc<Fence>>,
+    pub fence: Option<&'a Fence>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for AcquireNextImageInfo {
+impl Default for AcquireNextImageInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AcquireNextImageInfo {
+impl AcquireNextImageInfo<'_> {
     /// Returns a default `AcquireNextImageInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -69,15 +69,15 @@ impl AcquireNextImageInfo {
             timeout: None,
             semaphore: None,
             fence: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             timeout,
-            ref semaphore,
-            ref fence,
+            semaphore,
+            fence,
             _ne: _,
         } = self;
 
@@ -128,8 +128,8 @@ impl AcquireNextImageInfo {
     ) -> vk::AcquireNextImageInfoKHR<'static> {
         let &Self {
             timeout,
-            ref semaphore,
-            ref fence,
+            semaphore,
+            fence,
             _ne: _,
         } = self;
 
@@ -165,8 +165,8 @@ pub fn acquire_next_image(
     swapchain: Arc<Swapchain>,
     timeout: Option<Duration>,
 ) -> Result<(u32, bool, SwapchainAcquireFuture), Validated<VulkanError>> {
-    let semaphore = Arc::new(Semaphore::from_pool(swapchain.device.clone())?);
-    let fence = Arc::new(Fence::from_pool(swapchain.device.clone())?);
+    let semaphore = Arc::new(Semaphore::from_pool(&swapchain.device)?);
+    let fence = Arc::new(Fence::from_pool(&swapchain.device)?);
 
     let AcquiredImage {
         image_index,
@@ -174,8 +174,8 @@ pub fn acquire_next_image(
     } = unsafe {
         swapchain.acquire_next_image(&AcquireNextImageInfo {
             timeout,
-            semaphore: Some(semaphore.clone()),
-            fence: Some(fence.clone()),
+            semaphore: Some(&semaphore),
+            fence: Some(&fence),
             ..Default::default()
         })
     }?;
@@ -457,7 +457,7 @@ pub struct PresentInfo {
     /// The default value is empty.
     pub swapchain_infos: Vec<SwapchainPresentInfo>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for PresentInfo {
@@ -474,7 +474,7 @@ impl PresentInfo {
         Self {
             wait_semaphores: Vec::new(),
             swapchain_infos: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -789,7 +789,7 @@ pub struct SwapchainPresentInfo {
     /// The default value is empty.
     pub present_region: Vec<RectangleLayer>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SwapchainPresentInfo {
@@ -802,7 +802,7 @@ impl SwapchainPresentInfo {
             present_id: None,
             present_mode: None,
             present_region: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -988,7 +988,7 @@ pub struct SemaphorePresentInfo {
     /// There is no default value.
     pub semaphore: Arc<Semaphore>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl SemaphorePresentInfo {
@@ -997,7 +997,7 @@ impl SemaphorePresentInfo {
     pub const fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

@@ -71,14 +71,7 @@ use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    array,
-    cmp::max,
-    collections::hash_map::Entry,
-    error::Error,
-    fmt::{Display, Formatter, Write},
-    mem::MaybeUninit,
-    num::NonZero,
-    ptr,
+    array, cmp::max, collections::hash_map::Entry, fmt::Write, mem::MaybeUninit, num::NonZero, ptr,
     sync::Arc,
 };
 
@@ -99,17 +92,17 @@ pub struct PipelineLayout {
 impl PipelineLayout {
     /// Creates a new `PipelineLayout`.
     pub fn new(
-        device: Arc<Device>,
-        create_info: PipelineLayoutCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PipelineLayoutCreateInfo<'_>,
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &PipelineLayoutCreateInfo,
+        create_info: &PipelineLayoutCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreatePipelineLayout-pCreateInfo-parameter
         create_info
@@ -121,8 +114,8 @@ impl PipelineLayout {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: PipelineLayoutCreateInfo,
+        device: &Arc<Device>,
+        create_info: &PipelineLayoutCreateInfo<'_>,
     ) -> Result<Arc<PipelineLayout>, VulkanError> {
         let create_info_fields1_vk = create_info.to_vk_fields1();
         let create_info_vk = create_info.to_vk(&create_info_fields1_vk);
@@ -146,6 +139,113 @@ impl PipelineLayout {
         Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
+    /// Creates a new `PipelineLayout` from the union of the requirements of each shader stage in
+    /// `stages`.
+    ///
+    /// This is intended for quick prototyping or for single use layouts that do not have any
+    /// bindings in common with other shaders. For the general case, it is strongly recommended to
+    /// create pipeline layouts manually:
+    /// - When multiple pipelines share the same layout object, it is faster than if they have
+    ///   different objects, even if the objects both contain identical bindings. It is also faster
+    ///   (though a little bit less), if multiple pipeline layout objects share common descriptor
+    ///   set objects.
+    /// - Pipeline layouts only need to be a superset of what the shaders use; they don't have to
+    ///   match exactly. Creating a manual pipeline layout therefore allows you to specify layouts
+    ///   that are applicable for many shaders, as long as each one uses a subset. This allows
+    ///   further sharing.
+    /// - Creating a manual pipeline layout makes your code more robust against changes in the
+    ///   shader, in particular regarding whether a particular binding in the shader is used or not
+    ///   (see also the limitations below).
+    ///
+    /// # Limitations
+    ///
+    /// Only bindings that are [statically used] are included in the descriptor binding
+    /// requirements, and therefore are included in the descriptor set layout. If the use of a
+    /// binding depends on input variables to the shader (buffers, images, push constants etc.)
+    /// then the shader reflection is unable to know that the binding is in use, and it will not be
+    /// included in the pipeline layout.
+    ///
+    /// Note that this corresponds to the `shader_*_array_dynamic_indexing` device features.
+    ///
+    /// [statically used]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#shaders-staticuse
+    pub fn from_stages(
+        device: &Arc<Device>,
+        stages: &[PipelineShaderStageCreateInfo<'_>],
+    ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
+        // Produce `DescriptorBindingRequirements` for each binding by iterating over all shaders
+        // and adding the requirements of each.
+        let mut descriptor_binding_requirements =
+            HashMap::<_, DescriptorBindingRequirements>::default();
+        let mut max_set_num = 0;
+
+        for stage in stages {
+            let entry_point_info = stage.entry_point.info();
+
+            for (&(set_num, binding_num), reqs) in &entry_point_info.descriptor_binding_requirements
+            {
+                max_set_num = max(max_set_num, set_num);
+
+                match descriptor_binding_requirements.entry((set_num, binding_num)) {
+                    Entry::Occupied(entry) => {
+                        // Previous shaders already added requirements, so we merge requirements of
+                        // the current shader into the requirements of the previous ones.
+                        // TODO: return an error here instead of panicking?
+                        entry.into_mut().merge(reqs).expect(
+                            "could not produce an intersection of the shader descriptor \
+                            requirements",
+                        );
+                    }
+                    Entry::Vacant(entry) => {
+                        // No previous shader had this descriptor yet, so we just insert the
+                        // requirements.
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
+        }
+
+        // Convert the descriptor binding requirements.
+        let mut set_layouts_bindings =
+            vec![Vec::<DescriptorSetLayoutBinding<'static>>::new(); max_set_num as usize + 1];
+
+        for ((set_num, binding_num), reqs) in descriptor_binding_requirements {
+            let bindings = &mut set_layouts_bindings[set_num as usize];
+            let (Ok(index) | Err(index)) =
+                bindings.binary_search_by_key(&binding_num, |binding| binding.binding);
+            bindings.insert(
+                index,
+                DescriptorSetLayoutBinding {
+                    binding: binding_num,
+                    descriptor_count: reqs.descriptor_count.unwrap_or(0),
+                    stages: reqs.stages,
+                    ..DescriptorSetLayoutBinding::new(reqs.descriptor_types[0])
+                },
+            );
+        }
+
+        let set_layouts = set_layouts_bindings
+            .iter()
+            .map(|bindings| {
+                DescriptorSetLayout::new(
+                    device,
+                    &DescriptorSetLayoutCreateInfo {
+                        bindings,
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Self::new(
+            device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &set_layouts.iter().collect::<Vec<_>>(),
+                push_constant_ranges: &push_constant_ranges_from_stages(stages),
+                ..Default::default()
+            },
+        )
+    }
+
     /// Creates a new `PipelineLayout` from a raw object handle.
     ///
     /// # Safety
@@ -154,16 +254,18 @@ impl PipelineLayout {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::PipelineLayout,
-        create_info: PipelineLayoutCreateInfo,
+        create_info: &PipelineLayoutCreateInfo<'_>,
     ) -> Arc<PipelineLayout> {
-        let PipelineLayoutCreateInfo {
+        let &PipelineLayoutCreateInfo {
             flags,
             set_layouts,
-            mut push_constant_ranges,
+            push_constant_ranges,
             _ne: _,
         } = create_info;
+
+        let mut push_constant_ranges = push_constant_ranges.to_owned();
 
         // Sort the ranges for the purpose of comparing for equality.
         // The stage mask is guaranteed to be unique, so it's a suitable sorting key.
@@ -216,11 +318,13 @@ impl PipelineLayout {
 
         Arc::new(PipelineLayout {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             flags,
             set_layouts: set_layouts
-                .into_iter()
+                .iter()
+                .copied()
+                .cloned()
                 .map(DeviceOwnedDebugWrapper)
                 .collect(),
             push_constant_ranges,
@@ -307,21 +411,18 @@ impl PipelineLayout {
             let layout_binding = self
                 .set_layouts
                 .get(set_num as usize)
-                .and_then(|set_layout| set_layout.bindings().get(&binding_num));
+                .and_then(|set_layout| set_layout.binding(binding_num));
 
-            let layout_binding = match layout_binding {
-                Some(x) => x,
-                None => {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the requirements for descriptor set {} binding {} were not met: \
-                            no such binding exists in the pipeline layout",
-                            set_num, binding_num,
-                        )
-                        .into(),
-                        ..Default::default()
-                    }));
-                }
+            let Some(layout_binding) = layout_binding else {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the requirements for descriptor set {} binding {} were not met: \
+                        no such binding exists in the pipeline layout",
+                        set_num, binding_num,
+                    )
+                    .into(),
+                    ..Default::default()
+                }));
             };
 
             if let Err(error) = layout_binding.ensure_compatible_with_shader(reqs) {
@@ -386,7 +487,7 @@ impl_id_counter!(PipelineLayout);
 
 /// Parameters to create a new `PipelineLayout`.
 #[derive(Clone, Debug)]
-pub struct PipelineLayoutCreateInfo {
+pub struct PipelineLayoutCreateInfo<'a> {
     /// Additional properties of the pipeline layout.
     ///
     /// The default value is empty.
@@ -397,7 +498,7 @@ pub struct PipelineLayoutCreateInfo {
     /// They are provided in order of set number.
     ///
     /// The default value is empty.
-    pub set_layouts: Vec<Arc<DescriptorSetLayout>>,
+    pub set_layouts: &'a [&'a Arc<DescriptorSetLayout>],
 
     /// The ranges of push constants that the pipeline will access.
     ///
@@ -405,27 +506,27 @@ pub struct PipelineLayoutCreateInfo {
     /// ranges for multiple shader stages if they are the same.
     ///
     /// The default value is empty.
-    pub push_constant_ranges: Vec<PushConstantRange>,
+    pub push_constant_ranges: &'a [PushConstantRange],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for PipelineLayoutCreateInfo {
+impl Default for PipelineLayoutCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PipelineLayoutCreateInfo {
+impl<'a> PipelineLayoutCreateInfo<'a> {
     /// Returns a default `PipelineLayoutCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: PipelineLayoutCreateFlags::empty(),
-            set_layouts: Vec::new(),
-            push_constant_ranges: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            set_layouts: &[],
+            push_constant_ranges: &[],
+            _ne: crate::NE,
         }
     }
 
@@ -434,8 +535,8 @@ impl PipelineLayoutCreateInfo {
 
         let &Self {
             flags,
-            ref set_layouts,
-            ref push_constant_ranges,
+            set_layouts,
+            push_constant_ranges,
             _ne: _,
         } = self;
 
@@ -701,8 +802,9 @@ impl PipelineLayoutCreateInfo {
                 .flags()
                 .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL);
 
-            for layout_binding in set_layout.bindings().values() {
+            for layout_binding in set_layout.bindings() {
                 let &DescriptorSetLayoutBinding {
+                    binding: _,
                     binding_flags: _,
                     descriptor_type,
                     descriptor_count,
@@ -896,7 +998,7 @@ impl PipelineLayoutCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a PipelineLayoutCreateInfoFields1Vk,
     ) -> vk::PipelineLayoutCreateInfo<'a> {
@@ -919,8 +1021,8 @@ impl PipelineLayoutCreateInfo {
 
     pub(crate) fn to_vk_fields1(&self) -> PipelineLayoutCreateInfoFields1Vk {
         let &Self {
-            ref set_layouts,
-            ref push_constant_ranges,
+            set_layouts,
+            push_constant_ranges,
             ..
         } = self;
 
@@ -1087,171 +1189,35 @@ impl PushConstantRange {
     }
 }
 
-/// Parameters to create a new `PipelineLayout` as well as its accompanying `DescriptorSetLayout`
-/// objects.
-#[derive(Clone, Debug)]
-pub struct PipelineDescriptorSetLayoutCreateInfo {
-    pub flags: PipelineLayoutCreateFlags,
-    pub set_layouts: Vec<DescriptorSetLayoutCreateInfo>,
-    pub push_constant_ranges: Vec<PushConstantRange>,
-}
+/// Creates a set of push constant ranges from the union of the requirements of `stages`.
+///
+/// This can be used to simplify the creation of a [`PipelineLayout`].
+pub fn push_constant_ranges_from_stages(
+    stages: &[PipelineShaderStageCreateInfo<'_>],
+) -> Vec<PushConstantRange> {
+    let mut push_constant_ranges = Vec::<PushConstantRange>::new();
 
-impl PipelineDescriptorSetLayoutCreateInfo {
-    /// Creates a new `PipelineDescriptorSetLayoutCreateInfo` from the union of the requirements of
-    /// each shader stage in `stages`.
-    ///
-    /// This is intended for quick prototyping or for single use layouts that do not have any
-    /// bindings in common with other shaders. For the general case, it is strongly recommended
-    /// to create pipeline layouts manually:
-    /// - When multiple pipelines share the same layout object, it is faster than if they have
-    ///   different objects, even if the objects both contain identical bindings. It is also faster
-    ///   (though a little bit less), if multiple pipeline layout objects share common descriptor
-    ///   set objects.
-    /// - Pipeline layouts only need to be a superset of what the shaders use, they don't have to
-    ///   match exactly. Creating a manual pipeline layout therefore allows you to specify layouts
-    ///   that are applicable for many shaders, as long as each one uses a subset. This allows
-    ///   further sharing.
-    /// - Creating a manual pipeline layout makes your code more robust against changes in the
-    ///   shader, in particular regarding whether a particular binding in the shader is used or not
-    ///   (see also the limitations below).
-    ///
-    /// # Limitations:
-    ///
-    /// Only bindings that are [statically used] are included in the descriptor binding
-    /// requirements, and therefore are included in the descriptor set layout.
-    /// If the use of a binding depends on input variables to the shader (buffers, images,
-    /// push constants etc.) then the shader reflection is unable to know that the binding is in
-    /// use, and it will not be included in the pipeline layout.
-    ///
-    /// Note that this corresponds to the `shader_*_array_dynamic_indexing` device features.
-    ///
-    /// [statically used]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#shaders-staticuse
-    pub fn from_stages<'a>(
-        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
-    ) -> Self {
-        // Produce `DescriptorBindingRequirements` for each binding, by iterating over all
-        // shaders and adding the requirements of each.
-        let mut descriptor_binding_requirements: HashMap<
-            (u32, u32),
-            DescriptorBindingRequirements,
-        > = HashMap::default();
-        let mut max_set_num = 0;
-        let mut push_constant_ranges: Vec<PushConstantRange> = Vec::new();
+    for stage in stages {
+        let entry_point_info = stage.entry_point.info();
 
-        for stage in stages {
-            let entry_point_info = stage.entry_point.info();
-
-            for (&(set_num, binding_num), reqs) in &entry_point_info.descriptor_binding_requirements
-            {
-                max_set_num = max(max_set_num, set_num);
-
-                match descriptor_binding_requirements.entry((set_num, binding_num)) {
-                    Entry::Occupied(entry) => {
-                        // Previous shaders already added requirements, so we merge
-                        // requirements of the current shader into the requirements of the
-                        // previous ones.
-                        // TODO: return an error here instead of panicking?
-                        entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
-                    }
-                    Entry::Vacant(entry) => {
-                        // No previous shader had this descriptor yet, so we just insert the
-                        // requirements.
-                        entry.insert(reqs.clone());
-                    }
-                }
-            }
-
-            if let Some(range) = &entry_point_info.push_constant_requirements {
-                if let Some(existing_range) =
-                    push_constant_ranges.iter_mut().find(|existing_range| {
-                        existing_range.offset == range.offset && existing_range.size == range.size
-                    })
-                {
-                    // If this range was already used before, add our stage to it.
-                    existing_range.stages |= range.stages;
-                } else {
-                    // If this range is new, insert it.
-                    push_constant_ranges.push(*range)
-                }
+        if let Some(range) = &entry_point_info.push_constant_requirements {
+            if let Some(existing_range) = push_constant_ranges.iter_mut().find(|existing_range| {
+                existing_range.offset == range.offset && existing_range.size == range.size
+            }) {
+                // If this range was already used before, add our stage to it.
+                existing_range.stages |= range.stages;
+            } else {
+                // If this range is new, insert it.
+                push_constant_ranges.push(*range);
             }
         }
-
-        // Convert the descriptor binding requirements.
-        let mut set_layouts =
-            vec![DescriptorSetLayoutCreateInfo::default(); max_set_num as usize + 1];
-
-        for ((set_num, binding_num), reqs) in descriptor_binding_requirements {
-            set_layouts[set_num as usize]
-                .bindings
-                .insert(binding_num, DescriptorSetLayoutBinding::from(&reqs));
-        }
-
-        Self {
-            flags: PipelineLayoutCreateFlags::empty(),
-            set_layouts,
-            push_constant_ranges,
-        }
     }
 
-    /// Converts the `PipelineDescriptorSetLayoutCreateInfo` into a `PipelineLayoutCreateInfo` by
-    /// creating the descriptor set layout objects.
-    pub fn into_pipeline_layout_create_info(
-        self,
-        device: Arc<Device>,
-    ) -> Result<PipelineLayoutCreateInfo, IntoPipelineLayoutCreateInfoError> {
-        let PipelineDescriptorSetLayoutCreateInfo {
-            flags,
-            set_layouts,
-            push_constant_ranges,
-        } = self;
-
-        let set_layouts = set_layouts
-            .into_iter()
-            .enumerate()
-            .map(|(set_num, create_info)| {
-                DescriptorSetLayout::new(device.clone(), create_info).map_err(|error| {
-                    IntoPipelineLayoutCreateInfoError {
-                        set_num: set_num as u32,
-                        error,
-                    }
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(PipelineLayoutCreateInfo {
-            flags,
-            set_layouts,
-            push_constant_ranges,
-            _ne: crate::NonExhaustive(()),
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct IntoPipelineLayoutCreateInfoError {
-    pub set_num: u32,
-    pub error: Validated<VulkanError>,
-}
-
-impl Display for IntoPipelineLayoutCreateInfoError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "an error occurred while creating a descriptor set layout for set number {}",
-            self.set_num
-        )
-    }
-}
-
-impl Error for IntoPipelineLayoutCreateInfoError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(&self.error)
-    }
+    push_constant_ranges
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::PipelineLayout;
     use crate::{
         pipeline::layout::{PipelineLayoutCreateInfo, PushConstantRange},
@@ -1445,9 +1411,9 @@ mod tests {
 
         for (input, expected) in test_cases {
             let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineLayoutCreateInfo {
-                    push_constant_ranges: input.into(),
+                &device,
+                &PipelineLayoutCreateInfo {
+                    push_constant_ranges: input,
                     ..Default::default()
                 },
             )

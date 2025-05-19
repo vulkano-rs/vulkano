@@ -20,17 +20,17 @@ use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
 ///
 /// ```
 /// # use std::sync::Arc;
-/// # use vulkano::render_pass::RenderPass;
-/// # use vulkano::image::view::ImageView;
+/// # use vulkano::{image::view::ImageView, render_pass::RenderPass};
 /// use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo};
 ///
 /// # let render_pass: Arc<RenderPass> = return;
 /// # let view: Arc<ImageView> = return;
+/// #
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::new(
-///     render_pass.clone(),
-///     FramebufferCreateInfo {
-///         attachments: vec![view],
+///     &render_pass,
+///     &FramebufferCreateInfo {
+///         attachments: &[&view],
 ///         ..Default::default()
 ///     },
 /// )
@@ -51,18 +51,19 @@ pub struct Framebuffer {
 impl Framebuffer {
     /// Creates a new `Framebuffer`.
     pub fn new(
-        render_pass: Arc<RenderPass>,
-        mut create_info: FramebufferCreateInfo,
+        render_pass: &Arc<RenderPass>,
+        create_info: &FramebufferCreateInfo<'_>,
     ) -> Result<Arc<Framebuffer>, Validated<VulkanError>> {
-        create_info.set_auto_extent_layers(&render_pass);
-        Self::validate_new(&render_pass, &create_info)?;
+        let mut create_info = create_info.clone();
+        create_info.set_auto_extent_layers(render_pass);
+        Self::validate_new(render_pass, &create_info)?;
 
-        Ok(unsafe { Self::new_unchecked(render_pass, create_info) }?)
+        Ok(unsafe { Self::new_unchecked(render_pass, &create_info) }?)
     }
 
     fn validate_new(
         render_pass: &RenderPass,
-        create_info: &FramebufferCreateInfo,
+        create_info: &FramebufferCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateFramebuffer-pCreateInfo-parameter
         create_info
@@ -71,7 +72,7 @@ impl Framebuffer {
 
         let &FramebufferCreateInfo {
             flags: _,
-            ref attachments,
+            attachments,
             extent,
             layers,
             _ne,
@@ -243,10 +244,11 @@ impl Framebuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        render_pass: Arc<RenderPass>,
-        mut create_info: FramebufferCreateInfo,
+        render_pass: &Arc<RenderPass>,
+        create_info: &FramebufferCreateInfo<'_>,
     ) -> Result<Arc<Framebuffer>, VulkanError> {
-        create_info.set_auto_extent_layers(&render_pass);
+        let mut create_info = create_info.clone();
+        create_info.set_auto_extent_layers(render_pass);
 
         let create_info_fields1_vk = create_info.to_vk_fields1();
         let create_info_vk = create_info.to_vk(render_pass.handle(), &create_info_fields1_vk);
@@ -267,7 +269,7 @@ impl Framebuffer {
             unsafe { output.assume_init() }
         };
 
-        Ok(unsafe { Self::from_handle(render_pass, handle, create_info) })
+        Ok(unsafe { Self::from_handle(render_pass, handle, &create_info) })
     }
 
     /// Creates a new `Framebuffer` from a raw object handle.
@@ -278,11 +280,12 @@ impl Framebuffer {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        render_pass: Arc<RenderPass>,
+        render_pass: &Arc<RenderPass>,
         handle: vk::Framebuffer,
-        mut create_info: FramebufferCreateInfo,
+        create_info: &FramebufferCreateInfo<'_>,
     ) -> Arc<Framebuffer> {
-        create_info.set_auto_extent_layers(&render_pass);
+        let mut create_info = create_info.clone();
+        create_info.set_auto_extent_layers(render_pass);
 
         let FramebufferCreateInfo {
             flags,
@@ -294,12 +297,14 @@ impl Framebuffer {
 
         Arc::new(Framebuffer {
             handle,
-            render_pass: DeviceOwnedDebugWrapper(render_pass),
+            render_pass: DeviceOwnedDebugWrapper(render_pass.clone()),
             id: Self::next_id(),
 
             flags,
             attachments: attachments
-                .into_iter()
+                .iter()
+                .copied()
+                .cloned()
                 .map(DeviceOwnedDebugWrapper)
                 .collect(),
             extent,
@@ -375,7 +380,7 @@ impl_id_counter!(Framebuffer);
 
 /// Parameters to create a new `Framebuffer`.
 #[derive(Clone, Debug)]
-pub struct FramebufferCreateInfo {
+pub struct FramebufferCreateInfo<'a> {
     /// Additional properties of the framebuffer.
     ///
     /// The default value is empty.
@@ -396,7 +401,7 @@ pub struct FramebufferCreateInfo {
     /// image must have at least `views_used` array layers.
     ///
     /// The default value is empty.
-    pub attachments: Vec<Arc<ImageView>>,
+    pub attachments: &'a [&'a Arc<ImageView>],
 
     /// The extent (width and height) of the framebuffer.
     ///
@@ -430,26 +435,26 @@ pub struct FramebufferCreateInfo {
     /// The default value is `0`.
     pub layers: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for FramebufferCreateInfo {
+impl Default for FramebufferCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FramebufferCreateInfo {
+impl<'a> FramebufferCreateInfo<'a> {
     /// Returns a default `FramebufferCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: FramebufferCreateFlags::empty(),
-            attachments: Vec::new(),
+            attachments: &[],
             extent: [0, 0],
             layers: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -497,7 +502,7 @@ impl FramebufferCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
-            ref attachments,
+            attachments,
             extent,
             layers,
             _ne: _,
@@ -621,7 +626,7 @@ impl FramebufferCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         render_pass_vk: vk::RenderPass,
         fields1_vk: &'a FramebufferCreateInfoFields1Vk,
@@ -645,9 +650,7 @@ impl FramebufferCreateInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> FramebufferCreateInfoFields1Vk {
-        let &Self {
-            ref attachments, ..
-        } = self;
+        let &Self { attachments, .. } = self;
 
         let attachments_vk: SmallVec<[_; 4]> =
             attachments.iter().map(VulkanObject::handle).collect();
@@ -692,7 +695,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 color: {
                     format: Format::R8G8B8A8_UNORM,
@@ -708,26 +711,26 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![view],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&view],
                 ..Default::default()
             },
         )
@@ -739,17 +742,17 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
+            &device,
+            &RenderPassCreateInfo {
+                subpasses: &[SubpassDescription::default()],
                 ..Default::default()
             },
         )
         .unwrap();
 
         assert!(Framebuffer::new(
-            render_pass.clone(),
-            FramebufferCreateInfo {
+            &render_pass,
+            &FramebufferCreateInfo {
                 extent: [0xffffffff, 0xffffffff],
                 layers: 1,
                 ..Default::default()
@@ -758,8 +761,8 @@ mod tests {
         .is_err());
 
         assert!(Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
+            &render_pass,
+            &FramebufferCreateInfo {
                 extent: [1, 1],
                 layers: 0xffffffff,
                 ..Default::default()
@@ -773,7 +776,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 color: {
                     format: Format::R8G8B8A8_UNORM,
@@ -789,27 +792,27 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![view],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&view],
                 ..Default::default()
             },
         )
@@ -823,7 +826,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 color: {
                     format: Format::R8G8B8A8_UNORM,
@@ -839,27 +842,27 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [600, 600, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         let _ = Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![view],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&view],
                 extent: [512, 512],
                 layers: 1,
                 ..Default::default()
@@ -873,7 +876,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 color: {
                     format: Format::R8G8B8A8_UNORM,
@@ -889,27 +892,27 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [512, 700, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![view],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&view],
                 extent: [600, 600],
                 layers: 1,
                 ..Default::default()
@@ -923,7 +926,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 a: {
                     format: Format::R8G8B8A8_UNORM,
@@ -945,42 +948,42 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let a = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [512, 128, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         let framebuffer = Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![a, b],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&a, &b],
                 ..Default::default()
             },
         )
@@ -997,7 +1000,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 a: {
                     format: Format::R8G8B8A8_UNORM,
@@ -1019,27 +1022,27 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let view = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![view],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&view],
                 ..Default::default()
             },
         )
@@ -1051,7 +1054,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = single_pass_renderpass!(
-            device.clone(),
+            &device,
             attachments: {
                 a: {
                     format: Format::R8G8B8A8_UNORM,
@@ -1067,42 +1070,42 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let a = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
+            &Image::new(
+                &memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
-                attachments: vec![a, b],
+            &render_pass,
+            &FramebufferCreateInfo {
+                attachments: &[&a, &b],
                 ..Default::default()
             },
         )
@@ -1114,16 +1117,16 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
+            &device,
+            &RenderPassCreateInfo {
+                subpasses: &[SubpassDescription::default()],
                 ..Default::default()
             },
         )
         .unwrap();
         let _ = Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo {
+            &render_pass,
+            &FramebufferCreateInfo {
                 extent: [512, 512],
                 layers: 1,
                 ..Default::default()
@@ -1137,14 +1140,14 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let render_pass = RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
+            &device,
+            &RenderPassCreateInfo {
+                subpasses: &[SubpassDescription::default()],
                 ..Default::default()
             },
         )
         .unwrap();
 
-        assert!(Framebuffer::new(render_pass, FramebufferCreateInfo::default()).is_err());
+        assert!(Framebuffer::new(&render_pass, &FramebufferCreateInfo::default()).is_err());
     }
 }

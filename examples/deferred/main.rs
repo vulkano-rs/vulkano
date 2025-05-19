@@ -89,10 +89,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -137,11 +137,11 @@ impl App {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                enabled_features: device_features,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                enabled_features: &device_features,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -184,7 +184,7 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         let swapchain_format;
@@ -192,19 +192,19 @@ impl ApplicationHandler for App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             (swapchain_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             self.resources
                 .create_swapchain(
                     self.flight_id,
-                    surface,
-                    SwapchainCreateInfo {
+                    &surface,
+                    &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
@@ -372,14 +372,14 @@ impl ApplicationHandler for App {
             .task_mut()
             .downcast_mut::<SceneTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
         let deferred_node = task_graph.task_node_mut(deferred_node_id).unwrap();
         let subpass = deferred_node.subpass().unwrap().clone();
         deferred_node
             .task_mut()
             .downcast_mut::<DeferredTask>()
             .unwrap()
-            .create_pipelines(self, subpass);
+            .create_pipelines(self, &subpass);
 
         self.rcx = Some(RenderContext {
             window,
@@ -426,20 +426,17 @@ impl ApplicationHandler for App {
                         .resources
                         .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
                             image_extent: window_size.into(),
-                            ..create_info
+                            ..*create_info
                         })
                         .expect("failed to recreate swapchain");
 
                     rcx.viewport.extent = window_size.into();
 
-                    // FIXME(taskgraph): safe resource destruction
-                    flight
-                        .wait_for_frame(flight.current_frame() - 1, None)
-                        .unwrap();
-
-                    unsafe { self.resources.remove_image(rcx.diffuse_image_id) }.unwrap();
-                    unsafe { self.resources.remove_image(rcx.normals_image_id) }.unwrap();
-                    unsafe { self.resources.remove_image(rcx.depth_image_id) }.unwrap();
+                    self.resources
+                        .create_deferred_batch()
+                        .destroy_image(rcx.diffuse_image_id)
+                        .destroy_image(rcx.normals_image_id)
+                        .destroy_image(rcx.depth_image_id);
 
                     (
                         rcx.diffuse_image_id,
@@ -502,7 +499,7 @@ fn window_size_dependent_setup(
     // becomes undefined.
     let diffuse_image_id = resources
         .create_image(
-            ImageCreateInfo {
+            &ImageCreateInfo {
                 extent,
                 format: Format::A2B10G10R10_UNORM_PACK32,
                 usage: ImageUsage::COLOR_ATTACHMENT
@@ -510,12 +507,12 @@ fn window_size_dependent_setup(
                     | ImageUsage::INPUT_ATTACHMENT,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
         )
         .unwrap();
     let normals_image_id = resources
         .create_image(
-            ImageCreateInfo {
+            &ImageCreateInfo {
                 extent,
                 format: Format::R16G16B16A16_SFLOAT,
                 usage: ImageUsage::COLOR_ATTACHMENT
@@ -523,12 +520,12 @@ fn window_size_dependent_setup(
                     | ImageUsage::INPUT_ATTACHMENT,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
         )
         .unwrap();
     let depth_image_id = resources
         .create_image(
-            ImageCreateInfo {
+            &ImageCreateInfo {
                 extent,
                 format: Format::D16_UNORM,
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
@@ -536,7 +533,7 @@ fn window_size_dependent_setup(
                     | ImageUsage::INPUT_ATTACHMENT,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            &AllocationCreateInfo::default(),
         )
         .unwrap();
 

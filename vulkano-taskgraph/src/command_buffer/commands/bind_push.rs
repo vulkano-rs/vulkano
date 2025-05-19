@@ -1,4 +1,5 @@
 use crate::{
+    collector::Deferred,
     command_buffer::{RecordingCommandBuffer, Result},
     descriptor_set::LOCAL_SET,
     Id,
@@ -98,7 +99,7 @@ impl RecordingCommandBuffer<'_> {
             }
         }
 
-        self.death_row.push(pipeline.clone());
+        self.deferreds.push(Deferred::destroy(pipeline.clone()));
 
         self
     }
@@ -134,7 +135,7 @@ impl RecordingCommandBuffer<'_> {
             }
         }
 
-        self.death_row.push(pipeline.clone());
+        self.deferreds.push(Deferred::destroy(pipeline.clone()));
 
         self
     }
@@ -174,7 +175,7 @@ impl RecordingCommandBuffer<'_> {
             }
         }
 
-        self.death_row.push(pipeline.clone());
+        self.deferreds.push(Deferred::destroy(pipeline.clone()));
 
         self
     }

@@ -1,4 +1,5 @@
 // This example showcases how you can most effectively update a resource asynchronously, such that
+// your rendering or any other tasks can use the resource without any latency at the same time as
 // it's being updated. The resource being updated asynchronously here is a large texture, which
 // needs to be updated partially at the request of the user.
 //
@@ -23,7 +24,7 @@ use std::{
         mpsc, Arc,
     },
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
@@ -116,10 +117,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -218,16 +219,16 @@ impl App {
                 // different queues on the same queue family. This way, at least the threads on the
                 // host don't have to lock the same queue when submitting.
                 if queue_family_properties.queue_count > 1 {
-                    queue_create_infos[0].queues.push(0.5);
+                    queue_create_infos[0].queues = &[0.5, 0.5];
                 }
             }
 
             Device::new(
-                physical_device,
-                DeviceCreateInfo {
-                    enabled_extensions: device_extensions,
-                    enabled_features: device_features,
-                    queue_create_infos,
+                &physical_device,
+                &DeviceCreateInfo {
+                    enabled_extensions: &device_extensions,
+                    enabled_features: &device_features,
+                    queue_create_infos: &queue_create_infos,
                     ..Default::default()
                 },
             )
@@ -273,11 +274,11 @@ impl App {
         ];
         let vertex_buffer_id = resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -289,25 +290,23 @@ impl App {
         // Create two textures, where at any point in time one is used exclusively for reading and
         // one is used exclusively for writing, swapping the two after each update.
         let texture_ids = [(); 2].map(|_| {
+            let queue_family_indices = [graphics_family_index, transfer_family_index];
+
             resources
                 .create_image(
-                    ImageCreateInfo {
+                    &ImageCreateInfo {
                         image_type: ImageType::Dim2d,
                         format: Format::R8G8B8A8_UNORM,
                         extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
                         usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                         sharing: if graphics_family_index != transfer_family_index {
-                            Sharing::Concurrent(
-                                [graphics_family_index, transfer_family_index]
-                                    .into_iter()
-                                    .collect(),
-                            )
+                            Sharing::Concurrent(&queue_family_indices)
                         } else {
                             Sharing::Exclusive
                         },
                         ..Default::default()
                     },
-                    AllocationCreateInfo::default(),
+                    &AllocationCreateInfo::default(),
                 )
                 .unwrap()
         });
@@ -394,7 +393,7 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         let swapchain_format;
@@ -402,19 +401,19 @@ impl ApplicationHandler for App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             (swapchain_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             self.resources
                 .create_swapchain(
                     self.graphics_flight_id,
-                    surface,
-                    SwapchainCreateInfo {
+                    &surface,
+                    &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
@@ -432,18 +431,12 @@ impl ApplicationHandler for App {
                 .unwrap()
         };
 
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
         let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
@@ -455,7 +448,7 @@ impl ApplicationHandler for App {
 
         let sampler_id = bcx
             .global_set()
-            .create_sampler(SamplerCreateInfo::simple_repeat_linear())
+            .create_sampler(&SamplerCreateInfo::simple_repeat_linear())
             .unwrap();
         let sampled_image_ids = self.texture_ids.map(|texture_id| {
             let texture_state = self.resources.image(texture_id).unwrap();
@@ -464,7 +457,7 @@ impl ApplicationHandler for App {
             bcx.global_set()
                 .create_sampled_image(
                     texture_id,
-                    ImageViewCreateInfo::from_image(texture),
+                    &ImageViewCreateInfo::from_image(texture),
                     ImageLayout::ShaderReadOnlyOptimal,
                 )
                 .unwrap()
@@ -476,13 +469,10 @@ impl ApplicationHandler for App {
             image_format: swapchain_format,
             ..Default::default()
         });
+        let queue_family_indices = [self.graphics_family_index, self.transfer_family_index];
         let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
             sharing: if self.graphics_family_index != self.transfer_family_index {
-                Sharing::Concurrent(
-                    [self.graphics_family_index, self.transfer_family_index]
-                        .into_iter()
-                        .collect(),
-                )
+                Sharing::Concurrent(&queue_family_indices)
             } else {
                 Sharing::Exclusive
             },
@@ -535,25 +525,25 @@ impl ApplicationHandler for App {
         let subpass = node.subpass().unwrap().clone();
 
         let pipeline = GraphicsPipeline::new(
-            self.device.clone(),
+            &self.device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState {
                     topology: PrimitiveTopology::TriangleStrip,
                     ..Default::default()
                 }),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                viewport_state: Some(&ViewportState::default()),
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                dynamic_state: &[DynamicState::Viewport],
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap();
@@ -617,7 +607,7 @@ impl ApplicationHandler for App {
                         .resources
                         .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
                             image_extent: window_size.into(),
-                            ..create_info
+                            ..*create_info
                         })
                         .expect("failed to recreate swapchain");
                     rcx.viewport.extent = window_size.into();
@@ -727,7 +717,7 @@ struct RenderTask {
 impl Task for RenderTask {
     type World = RenderContext;
 
-    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>, _world: &Self::World) {
         clear_values.set(self.swapchain_id.current_image_id(), [0.0; 4]);
     }
 
@@ -798,11 +788,11 @@ fn run_worker(
     let staging_buffer_ids = [(); 2].map(|_| {
         resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::TRANSFER_SRC,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_HOST
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -820,13 +810,10 @@ fn run_worker(
 
     let virtual_front_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
     let virtual_back_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
+    let queue_family_indices = [graphics_family_index, transfer_family_index];
     let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
         sharing: if graphics_family_index != transfer_family_index {
-            Sharing::Concurrent(
-                [graphics_family_index, transfer_family_index]
-                    .into_iter()
-                    .collect(),
-            )
+            Sharing::Concurrent(&queue_family_indices)
         } else {
             Sharing::Exclusive
         },
@@ -878,6 +865,11 @@ fn run_worker(
         while let Ok(()) = channel.recv() {
             let graphics_flight = resources.flight(graphics_flight_id).unwrap();
 
+            // We can't wait for a frame that hasn't been executed yet.
+            while last_frame == graphics_flight.current_frame() {
+                thread::sleep(Duration::from_millis(1));
+            }
+
             // We swap the texture index to use after a write, but there is no guarantee that other
             // tasks have actually moved on to using the new texture. What could happen then, if
             // the writes being done are quicker than rendering a frame (or any other task reading
@@ -915,7 +907,7 @@ fn run_worker(
             resources
                 .flight(transfer_flight_id)
                 .unwrap()
-                .wait(None)
+                .wait_idle()
                 .unwrap();
 
             last_frame = graphics_flight.current_frame();

@@ -1742,7 +1742,7 @@ pub struct DependencyInfo {
     /// The default value is empty.
     pub image_memory_barriers: SmallVec<[ImageMemoryBarrier; 8]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for DependencyInfo {
@@ -1762,7 +1762,7 @@ impl DependencyInfo {
             memory_barriers: SmallVec::new(),
             buffer_memory_barriers: SmallVec::new(),
             image_memory_barriers: SmallVec::new(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2033,7 +2033,7 @@ pub struct MemoryBarrier {
     /// available and visible.
     pub dst_access: AccessFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for MemoryBarrier {
@@ -2052,7 +2052,7 @@ impl MemoryBarrier {
             src_access: AccessFlags::empty(),
             dst_stages: PipelineStages::empty(),
             dst_access: AccessFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2585,7 +2585,7 @@ pub struct BufferMemoryBarrier {
     /// The byte range of `buffer` to apply the barrier to.
     pub range: Range<DeviceSize>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl BufferMemoryBarrier {
@@ -2599,7 +2599,7 @@ impl BufferMemoryBarrier {
             queue_family_ownership_transfer: None,
             buffer,
             range: 0..0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -3312,7 +3312,7 @@ pub struct ImageMemoryBarrier {
     /// The subresource range of `image` to apply the barrier to.
     pub subresource_range: ImageSubresourceRange,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImageMemoryBarrier {
@@ -3333,7 +3333,7 @@ impl ImageMemoryBarrier {
                 mip_levels: 0..0,
                 array_layers: 0..0,
             },
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

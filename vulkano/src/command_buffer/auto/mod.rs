@@ -351,8 +351,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device,
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         AutoCommandBufferBuilder::primary(
@@ -373,9 +373,9 @@ mod tests {
         };
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index: 0,
                     ..Default::default()
                 }],
@@ -385,15 +385,15 @@ mod tests {
         .unwrap();
 
         let queue = queues.next().unwrap();
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let source = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -403,12 +403,12 @@ mod tests {
         .unwrap();
 
         let destination = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -418,8 +418,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device,
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -459,8 +459,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device,
-            StandardCommandBufferAllocatorCreateInfo {
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
                 secondary_buffer_count: 1,
                 ..Default::default()
             },
@@ -524,14 +524,14 @@ mod tests {
     fn buffer_self_copy_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let source = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -541,8 +541,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device,
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut builder = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -582,14 +582,14 @@ mod tests {
     fn buffer_self_copy_not_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let source = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -599,8 +599,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device,
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut builder = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -628,8 +628,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            StandardCommandBufferAllocatorCreateInfo {
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
                 secondary_buffer_count: 1,
                 ..Default::default()
             },
@@ -641,15 +641,15 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         // Create a tiny test buffer
         let buffer = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -734,8 +734,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut sync = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -744,14 +744,14 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let buf = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -771,8 +771,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut sync = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -781,32 +781,28 @@ mod tests {
         )
         .unwrap();
         let set_layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    0,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::all_graphics(),
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
-                    },
-                )]
-                .into(),
+            &device,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    stages: ShaderStages::all_graphics(),
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+                }],
                 ..Default::default()
             },
         )
         .unwrap();
         let pipeline_layout = PipelineLayout::new(
-            device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts: [set_layout.clone(), set_layout.clone()].into(),
+            &device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &[&set_layout, &set_layout],
                 ..Default::default()
             },
         )
         .unwrap();
 
         let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         let set = DescriptorSet::new(
@@ -814,7 +810,7 @@ mod tests {
             set_layout.clone(),
             [WriteDescriptorSet::sampler(
                 0,
-                Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
             )],
             [],
         )
@@ -871,13 +867,12 @@ mod tests {
             .is_some_and(|state| state.descriptor_sets.contains_key(&1)));
 
         let pipeline_layout = PipelineLayout::new(
-            device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts: [
-                    DescriptorSetLayout::new(device.clone(), Default::default()).unwrap(),
-                    set_layout.clone(),
-                ]
-                .into(),
+            &device,
+            &PipelineLayoutCreateInfo {
+                set_layouts: &[
+                    &DescriptorSetLayout::new(&device, &Default::default()).unwrap(),
+                    &set_layout,
+                ],
                 ..Default::default()
             },
         )
@@ -888,7 +883,7 @@ mod tests {
             set_layout,
             [WriteDescriptorSet::sampler(
                 0,
-                Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
             )],
             [],
         )

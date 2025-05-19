@@ -37,17 +37,17 @@ impl QueryPool {
     /// Creates a new `QueryPool`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: QueryPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &QueryPoolCreateInfo<'_>,
     ) -> Result<Arc<QueryPool>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &QueryPoolCreateInfo,
+        create_info: &QueryPoolCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -58,8 +58,8 @@ impl QueryPool {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: QueryPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &QueryPoolCreateInfo<'_>,
     ) -> Result<Arc<QueryPool>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -90,11 +90,11 @@ impl QueryPool {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::QueryPool,
-        create_info: QueryPoolCreateInfo,
+        create_info: &QueryPoolCreateInfo<'_>,
     ) -> Arc<QueryPool> {
-        let QueryPoolCreateInfo {
+        let &QueryPoolCreateInfo {
             query_type,
             query_count,
             pipeline_statistics,
@@ -103,7 +103,7 @@ impl QueryPool {
 
         Arc::new(QueryPool {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             query_type,
             query_count,
@@ -402,7 +402,7 @@ impl_id_counter!(QueryPool);
 
 /// Parameters to create a new `QueryPool`.
 #[derive(Clone, Debug)]
-pub struct QueryPoolCreateInfo {
+pub struct QueryPoolCreateInfo<'a> {
     /// The type of query that the pool should be for.
     ///
     /// There is no default value.
@@ -420,10 +420,10 @@ pub struct QueryPoolCreateInfo {
     /// The default value is empty.
     pub pipeline_statistics: QueryPipelineStatisticFlags,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl QueryPoolCreateInfo {
+impl QueryPoolCreateInfo<'_> {
     /// Returns a default `QueryPoolCreateInfo` with the provided `query_type`.
     #[inline]
     pub const fn new(query_type: QueryType) -> Self {
@@ -431,7 +431,7 @@ impl QueryPoolCreateInfo {
             query_type,
             query_count: 0,
             pipeline_statistics: QueryPipelineStatisticFlags::empty(),
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -791,8 +791,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         assert!(matches!(
             QueryPool::new(
-                device,
-                QueryPoolCreateInfo {
+                &device,
+                &QueryPoolCreateInfo {
                     query_count: 256,
                     ..QueryPoolCreateInfo::new(QueryType::PipelineStatistics)
                 },

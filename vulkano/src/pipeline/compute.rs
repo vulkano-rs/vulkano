@@ -54,11 +54,11 @@ impl ComputePipeline {
     /// Creates a new `ComputePipeline`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: ComputePipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &ComputePipelineCreateInfo<'_>,
     ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_deref(), &create_info)?;
+        Self::validate_new(device, cache.map(|c| &**c), create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }
@@ -66,10 +66,10 @@ impl ComputePipeline {
     fn validate_new(
         device: &Device,
         cache: Option<&PipelineCache>,
-        create_info: &ComputePipelineCreateInfo,
+        create_info: &ComputePipelineCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
-        if let Some(cache) = &cache {
+        if let Some(cache) = cache {
             assert_eq!(device, cache.device().as_ref());
         }
         create_info
@@ -80,9 +80,9 @@ impl ComputePipeline {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        cache: Option<Arc<PipelineCache>>,
-        create_info: ComputePipelineCreateInfo,
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &ComputePipelineCreateInfo<'_>,
     ) -> Result<Arc<ComputePipeline>, VulkanError> {
         let create_info_fields2_vk = create_info.to_vk_fields2();
         let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
@@ -119,13 +119,13 @@ impl ComputePipeline {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Pipeline,
-        create_info: ComputePipelineCreateInfo,
+        create_info: &ComputePipelineCreateInfo<'_>,
     ) -> Arc<ComputePipeline> {
-        let ComputePipelineCreateInfo {
+        let &ComputePipelineCreateInfo {
             flags,
-            stage,
+            ref stage,
             layout,
             base_pipeline: _,
             _ne: _,
@@ -147,11 +147,11 @@ impl ComputePipeline {
 
         Arc::new(ComputePipeline {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
-            layout: DeviceOwnedDebugWrapper(layout),
+            layout: DeviceOwnedDebugWrapper(layout.clone()),
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -223,7 +223,7 @@ impl Drop for ComputePipeline {
 
 /// Parameters to create a new `ComputePipeline`.
 #[derive(Clone, Debug)]
-pub struct ComputePipelineCreateInfo {
+pub struct ComputePipelineCreateInfo<'a> {
     /// Additional properties of the pipeline.
     ///
     /// The default value is empty.
@@ -232,12 +232,12 @@ pub struct ComputePipelineCreateInfo {
     /// The compute shader stage to use.
     ///
     /// There is no default value.
-    pub stage: PipelineShaderStageCreateInfo,
+    pub stage: PipelineShaderStageCreateInfo<'a>,
 
     /// The pipeline layout to use.
     ///
     /// There is no default value.
-    pub layout: Arc<PipelineLayout>,
+    pub layout: &'a Arc<PipelineLayout>,
 
     /// The pipeline to use as a base when creating this pipeline.
     ///
@@ -246,36 +246,33 @@ pub struct ComputePipelineCreateInfo {
     /// [`PipelineCreateFlags::ALLOW_DERIVATIVES`].
     ///
     /// The default value is `None`.
-    pub base_pipeline: Option<Arc<ComputePipeline>>,
+    pub base_pipeline: Option<&'a Arc<ComputePipeline>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ComputePipelineCreateInfo {
+impl<'a> ComputePipelineCreateInfo<'a> {
     /// Returns a default `ComputePipelineCreateInfo` with the provided `stage` and `layout`.
     #[inline]
-    pub const fn new(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
+    pub const fn new(
+        stage: PipelineShaderStageCreateInfo<'a>,
+        layout: &'a Arc<PipelineLayout>,
+    ) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
             stage,
             layout,
             base_pipeline: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
-    }
-
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn stage_layout(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
-        Self::new(stage, layout)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref stage,
-            ref layout,
-            ref base_pipeline,
+            layout,
+            base_pipeline,
             _ne: _,
         } = self;
 
@@ -366,7 +363,7 @@ impl ComputePipelineCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a ComputePipelineCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk,
@@ -374,8 +371,8 @@ impl ComputePipelineCreateInfo {
         let &Self {
             flags,
             ref stage,
-            ref layout,
-            ref base_pipeline,
+            layout,
+            base_pipeline,
             _ne: _,
         } = self;
         let ComputePipelineCreateInfoFields1Vk { stage_fields1_vk } = fields1_vk;
@@ -405,7 +402,7 @@ impl ComputePipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields1<'a>(
+    pub(crate) fn to_vk_fields1(
         &self,
         fields2_vk: &'a ComputePipelineCreateInfoFields2Vk,
     ) -> ComputePipelineCreateInfoFields1Vk<'a> {
@@ -447,14 +444,13 @@ mod tests {
         },
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{
-            compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-            ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-            PipelineShaderStageCreateInfo,
+            compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+            PipelineLayout, PipelineShaderStageCreateInfo,
         },
         shader::{ShaderModule, ShaderModuleCreateInfo, ShaderStages},
         sync::{now, GpuFuture},
     };
-    use std::sync::Arc;
+    use std::{slice, sync::Arc};
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
@@ -494,40 +490,35 @@ mod tests {
                 4, 0, 3, 131320, 5, 327745, 12, 13, 9, 10, 196670, 13, 11, 65789, 65592,
             ];
             let module =
-                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
                     .unwrap();
             module
-                .specialize([(83, 0x12345678i32.into())].into_iter().collect())
+                .specialize(&[(83, 0x12345678i32.into())])
                 .unwrap()
                 .entry_point("main")
                 .unwrap()
         };
 
         let pipeline = {
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device.clone(),
+                &device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let data_buffer = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -537,8 +528,8 @@ mod tests {
         .unwrap();
 
         let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let set = DescriptorSet::new(
             ds_allocator,
@@ -549,8 +540,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,
@@ -641,7 +632,7 @@ mod tests {
                 131321, 17, 131320, 17, 65789, 65592,
             ];
             let module =
-                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                unsafe { ShaderModule::new(&device, &ShaderModuleCreateInfo::new(&MODULE)) }
                     .unwrap();
             module.entry_point("main").unwrap()
         };
@@ -652,31 +643,26 @@ mod tests {
         let pipeline = {
             let stage = PipelineShaderStageCreateInfo {
                 required_subgroup_size: Some(subgroup_size),
-                ..PipelineShaderStageCreateInfo::new(cs)
+                ..PipelineShaderStageCreateInfo::new(&cs)
             };
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
             ComputePipeline::new(
-                device.clone(),
+                &device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let data_buffer = Buffer::from_data(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
@@ -686,8 +672,8 @@ mod tests {
         .unwrap();
 
         let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let set = DescriptorSet::new(
             ds_allocator,
@@ -698,8 +684,8 @@ mod tests {
         .unwrap();
 
         let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
         let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,

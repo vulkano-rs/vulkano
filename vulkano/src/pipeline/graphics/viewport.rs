@@ -38,16 +38,19 @@
 //!
 //! In all cases the number of viewports and scissor boxes must be the same.
 
-use crate::{device::Device, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version};
+use crate::{
+    device::Device, self_referential::self_referential, Requires, RequiresAllOf, RequiresOneOf,
+    ValidationError, Version,
+};
 use ash::vk;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use std::ops::RangeInclusive;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///
 /// Note that the number of viewports and scissors must be the same.
 #[derive(Clone, Debug)]
-pub struct ViewportState {
+pub struct ViewportState<'a> {
     /// Specifies the viewport transforms.
     ///
     /// When [`DynamicState::Viewport`] is used, the values of each viewport are ignored
@@ -63,7 +66,7 @@ pub struct ViewportState {
     ///
     /// [`DynamicState::Viewport`]: crate::pipeline::DynamicState::Viewport
     /// [`DynamicState::ViewportWithCount`]: crate::pipeline::DynamicState::ViewportWithCount
-    pub viewports: SmallVec<[Viewport; 1]>,
+    pub viewports: &'a [Viewport],
 
     /// Specifies the scissor rectangles.
     ///
@@ -80,58 +83,31 @@ pub struct ViewportState {
     ///
     /// [`DynamicState::Scissor`]: crate::pipeline::DynamicState::Scissor
     /// [`DynamicState::ScissorWithCount`]: crate::pipeline::DynamicState::ScissorWithCount
-    pub scissors: SmallVec<[Scissor; 1]>,
+    pub scissors: &'a [Scissor],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ViewportState {
+impl Default for ViewportState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ViewportState {
+impl<'a> ViewportState<'a> {
     /// Returns a default `ViewportState`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            viewports: smallvec![Viewport::default()],
-            scissors: smallvec![Scissor::default()],
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    /// Creates a `ViewportState` with fixed state from the given viewports and scissors.
-    #[deprecated(since = "0.34.0")]
-    pub fn viewport_fixed_scissor_fixed(
-        data: impl IntoIterator<Item = (Viewport, Scissor)>,
-    ) -> Self {
-        let (viewports, scissors) = data.into_iter().unzip();
-        Self {
-            viewports,
-            scissors,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    /// Creates a `ViewportState` with fixed state from the given viewports, and matching scissors
-    /// that cover the whole viewport.
-    #[deprecated(since = "0.34.0")]
-    pub fn viewport_fixed_scissor_irrelevant(data: impl IntoIterator<Item = Viewport>) -> Self {
-        let viewports: SmallVec<_> = data.into_iter().collect();
-        let scissors = smallvec![Scissor::default(); viewports.len()];
-        Self {
-            viewports,
-            scissors,
-            _ne: crate::NonExhaustive(()),
+            viewports: &[const { Viewport::new() }],
+            scissors: &[const { Scissor::new() }],
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let Self {
+        let &Self {
             viewports,
             scissors,
             _ne: _,
@@ -223,7 +199,7 @@ impl ViewportState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a ViewportStateFields1Vk,
     ) -> vk::PipelineViewportStateCreateInfo<'a> {
@@ -247,7 +223,7 @@ impl ViewportState {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> ViewportStateFields1Vk {
-        let Self {
+        let &Self {
             viewports,
             scissors,
             _ne: _,
@@ -261,11 +237,32 @@ impl ViewportState {
             scissors_vk,
         }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedViewportState {
+        let viewports = self.viewports.iter().cloned().collect();
+        let scissors = self.scissors.iter().cloned().collect();
+
+        OwnedViewportState::new(viewports, scissors, |viewports, scissors| ViewportState {
+            viewports,
+            scissors,
+            _ne: crate::NE,
+        })
+    }
 }
 
 pub(crate) struct ViewportStateFields1Vk {
     pub(crate) viewports_vk: SmallVec<[vk::Viewport; 2]>,
     pub(crate) scissors_vk: SmallVec<[vk::Rect2D; 2]>,
+}
+
+self_referential! {
+    mod owned_viewport_state {
+        pub(crate) struct OwnedViewportState {
+            inner: ViewportState<'_>,
+            viewports: SmallVec<[Viewport; 1]>,
+            scissors: SmallVec<[Scissor; 1]>,
+        }
+    }
 }
 
 /// State of a single viewport.

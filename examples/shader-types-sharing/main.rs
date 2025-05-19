@@ -16,7 +16,7 @@
 // invocation. The macro will check that there is no inconsistency between declared GLSL structs
 // with the same names, and it will not generate duplicates.
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -32,9 +32,8 @@ use vulkano::{
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout, PipelineShaderStageCreateInfo,
     },
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -43,8 +42,8 @@ use vulkano::{
 fn main() {
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
@@ -82,10 +81,10 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            enabled_extensions: &device_extensions,
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
@@ -176,24 +175,24 @@ fn main() {
     /// the provided push constants parameter. Note that the shaders' interface `parameters` here
     /// are shader-independent.
     fn run_shader(
-        pipeline: Arc<ComputePipeline>,
-        queue: Arc<Queue>,
-        data_buffer: Subbuffer<[u32]>,
+        pipeline: &Arc<ComputePipeline>,
+        queue: &Arc<Queue>,
+        data_buffer: &Subbuffer<[u32]>,
         parameters: shaders::Parameters,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
     ) {
         let layout = &pipeline.layout().set_layouts()[0];
         let set = DescriptorSet::new(
-            descriptor_set_allocator,
+            descriptor_set_allocator.clone(),
             layout.clone(),
-            [WriteDescriptorSet::buffer(0, data_buffer)],
+            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
             [],
         )
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator,
+            command_buffer_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -223,24 +222,24 @@ fn main() {
         future.wait(None).unwrap();
     }
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
     let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     // Prepare test array `[0, 1, 2, 3....]`.
     let data_buffer = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
@@ -251,75 +250,70 @@ fn main() {
 
     // Load the first shader, and create a pipeline for the shader.
     let mult_pipeline = {
-        let cs = shaders::load_mult(device.clone())
+        let cs = shaders::load_mult(&device)
             .unwrap()
-            .specialize([(0, true.into())].into_iter().collect())
+            .specialize(&[(0, true.into())])
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(&cs);
+        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
         ComputePipeline::new(
-            device.clone(),
+            &device,
             None,
-            ComputePipelineCreateInfo::new(stage, layout),
+            &ComputePipelineCreateInfo::new(stage, &layout),
         )
         .unwrap()
     };
 
     // Load the second shader, and create a pipeline for the shader.
     let add_pipeline = {
-        let cs = shaders::load_add(device.clone())
+        let cs = shaders::load_add(&device)
             .unwrap()
-            .specialize([(0, true.into())].into_iter().collect())
+            .specialize(&[(0, true.into())])
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
+        let stage = PipelineShaderStageCreateInfo::new(&cs);
+        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+
+        ComputePipeline::new(
+            &device,
+            None,
+            &ComputePipelineCreateInfo::new(stage, &layout),
         )
-        .unwrap();
-        ComputePipeline::new(device, None, ComputePipelineCreateInfo::new(stage, layout)).unwrap()
+        .unwrap()
     };
 
     // Multiply each value by 2.
     run_shader(
-        mult_pipeline.clone(),
-        queue.clone(),
-        data_buffer.clone(),
+        &mult_pipeline,
+        &queue,
+        &data_buffer,
         shaders::Parameters { value: 2 },
-        descriptor_set_allocator.clone(),
-        command_buffer_allocator.clone(),
+        &descriptor_set_allocator,
+        &command_buffer_allocator,
     );
 
     // Then add 1 to each value.
     run_shader(
-        add_pipeline,
-        queue.clone(),
-        data_buffer.clone(),
+        &add_pipeline,
+        &queue,
+        &data_buffer,
         shaders::Parameters { value: 1 },
-        descriptor_set_allocator.clone(),
-        command_buffer_allocator.clone(),
+        &descriptor_set_allocator,
+        &command_buffer_allocator,
     );
 
     // Then multiply each value by 3.
     run_shader(
-        mult_pipeline,
-        queue,
-        data_buffer.clone(),
+        &mult_pipeline,
+        &queue,
+        &data_buffer,
         shaders::Parameters { value: 3 },
-        descriptor_set_allocator,
-        command_buffer_allocator,
+        &descriptor_set_allocator,
+        &command_buffer_allocator,
     );
 
     let data_buffer_content = data_buffer.read().unwrap();

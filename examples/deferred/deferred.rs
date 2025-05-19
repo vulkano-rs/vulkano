@@ -43,11 +43,10 @@ impl DeferredTask {
         }
     }
 
-    pub fn create_pipelines(&mut self, app: &App, subpass: Subpass) {
-        self.ambient_lighting_pipeline
-            .create_pipeline(app, subpass.clone());
+    pub fn create_pipelines(&mut self, app: &App, subpass: &Subpass) {
+        self.ambient_lighting_pipeline.create_pipeline(app, subpass);
         self.directional_lighting_pipeline
-            .create_pipeline(app, subpass.clone());
+            .create_pipeline(app, subpass);
         self.point_lighting_pipeline.create_pipeline(app, subpass);
     }
 }
@@ -55,7 +54,7 @@ impl DeferredTask {
 impl Task for DeferredTask {
     type World = RenderContext;
 
-    fn clear_values(&self, clear_values: &mut ClearValues<'_>) {
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>, _world: &Self::World) {
         clear_values.set(self.swapchain_id.current_image_id(), [0.0; 4]);
     }
 
@@ -128,11 +127,11 @@ impl AmbientLightingPipeline {
         let vertex_buffer_id = app
             .resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -172,38 +171,37 @@ impl AmbientLightingPipeline {
         }
     }
 
-    fn create_pipeline(&mut self, app: &App, subpass: Subpass) {
+    fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = ambient_lighting_vs::load(app.device.clone())
+            let vs = ambient_lighting_vs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = ambient_lighting_fs::load(app.device.clone())
+            let fs = ambient_lighting_fs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
             let vertex_input_state = LightingVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
             let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
             GraphicsPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&vertex_input_state),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState {
                             blend: Some(AttachmentBlend {
                                 color_blend_op: BlendOp::Add,
                                 src_color_blend_factor: BlendFactor::One,
@@ -213,11 +211,12 @@ impl AmbientLightingPipeline {
                                 dst_alpha_blend_factor: BlendFactor::One,
                             }),
                             ..Default::default()
-                        },
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                        }],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
@@ -326,11 +325,11 @@ impl DirectionalLightingPipeline {
         let vertex_buffer_id = app
             .resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -370,38 +369,37 @@ impl DirectionalLightingPipeline {
         }
     }
 
-    fn create_pipeline(&mut self, app: &App, subpass: Subpass) {
+    fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = directional_lighting_vs::load(app.device.clone())
+            let vs = directional_lighting_vs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = directional_lighting_fs::load(app.device.clone())
+            let fs = directional_lighting_fs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
             let vertex_input_state = LightingVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
             let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
             GraphicsPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&vertex_input_state),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState {
                             blend: Some(AttachmentBlend {
                                 color_blend_op: BlendOp::Add,
                                 src_color_blend_factor: BlendFactor::One,
@@ -411,11 +409,12 @@ impl DirectionalLightingPipeline {
                                 dst_alpha_blend_factor: BlendFactor::One,
                             }),
                             ..Default::default()
-                        },
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                        }],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
@@ -541,11 +540,11 @@ impl PointLightingPipeline {
         let vertex_buffer_id = app
             .resources
             .create_buffer(
-                BufferCreateInfo {
+                &BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
-                AllocationCreateInfo {
+                &AllocationCreateInfo {
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -585,38 +584,37 @@ impl PointLightingPipeline {
         }
     }
 
-    fn create_pipeline(&mut self, app: &App, subpass: Subpass) {
+    fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = point_lighting_vs::load(app.device.clone())
+            let vs = point_lighting_vs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = point_lighting_fs::load(app.device.clone())
+            let fs = point_lighting_fs::load(&app.device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
             let vertex_input_state = LightingVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
             let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
             GraphicsPipeline::new(
-                app.device.clone(),
+                &app.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState::default()),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    vertex_input_state: Some(&vertex_input_state),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    viewport_state: Some(&ViewportState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState {
                             blend: Some(AttachmentBlend {
                                 color_blend_op: BlendOp::Add,
                                 src_color_blend_factor: BlendFactor::One,
@@ -626,11 +624,12 @@ impl PointLightingPipeline {
                                 dst_alpha_blend_factor: BlendFactor::One,
                             }),
                             ..Default::default()
-                        },
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.clone().into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                        }],
+                        ..Default::default()
+                    }),
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()

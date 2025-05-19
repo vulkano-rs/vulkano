@@ -4,9 +4,9 @@ use crate::{
 };
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
-use concurrent_slotmap::{epoch, SlotMap};
-use foldhash::HashMap;
-use std::{collections::BTreeMap, iter, sync::Arc};
+use concurrent_slotmap::{hyaline, SlotMap};
+use smallvec::{smallvec, SmallVec};
+use std::{iter, mem, slice, sync::Arc};
 use vulkano::{
     acceleration_structure::AccelerationStructure,
     buffer::{Buffer, Subbuffer},
@@ -31,7 +31,7 @@ use vulkano::{
     },
     instance::Instance,
     pipeline::{
-        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
         PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::Framebuffer,
@@ -144,71 +144,26 @@ impl BindlessContext {
     /// It is recommended that you share the same pipeline layout object with as many pipelines as
     /// possible in order to reduce the amount of descriptor set (re)binding that is needed.
     ///
-    /// See also [`pipeline_layout_create_info_from_stages`].
-    ///
     /// [global descriptor set layout]: Self::global_set_layout
     /// [local descriptor set layout]: Self::local_set_layout
-    /// [`pipeline_layout_create_info_from_stages`]: Self::pipeline_layout_create_info_from_stages
-    pub fn pipeline_layout_from_stages<'a>(
+    pub fn pipeline_layout_from_stages(
         &self,
-        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
+        stages: &[PipelineShaderStageCreateInfo<'_>],
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
-        PipelineLayout::new(
-            self.device().clone(),
-            self.pipeline_layout_create_info_from_stages(stages),
-        )
-    }
-
-    /// Creates a new bindless pipeline layout create info from the union of the push constant
-    /// requirements of each stage in `stages` for push constant ranges and the [global descriptor
-    /// set layout] and optionally the [local descriptor set layout] for set layouts.
-    ///
-    /// All pipelines that you bind must have been created with a layout created like this or with
-    /// a compatible layout for the bindless system to be able to bind its descriptor sets.
-    ///
-    /// It is recommended that you share the same pipeline layout object with as many pipelines as
-    /// possible in order to reduce the amount of descriptor set (re)binding that is needed.
-    ///
-    /// See also [`pipeline_layout_from_stages`].
-    ///
-    /// [global descriptor set layout]: Self::global_set_layout
-    /// [local descriptor set layout]: Self::local_set_layout
-    /// [`pipeline_layout_from_stages`]: Self::pipeline_layout_from_stages
-    pub fn pipeline_layout_create_info_from_stages<'a>(
-        &self,
-        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
-    ) -> PipelineLayoutCreateInfo {
-        let mut push_constant_ranges = Vec::<PushConstantRange>::new();
-
-        for stage in stages {
-            let entry_point_info = stage.entry_point.info();
-
-            if let Some(range) = &entry_point_info.push_constant_requirements {
-                if let Some(existing_range) =
-                    push_constant_ranges.iter_mut().find(|existing_range| {
-                        existing_range.offset == range.offset && existing_range.size == range.size
-                    })
-                {
-                    // If this range was already used before, add our stage to it.
-                    existing_range.stages |= range.stages;
-                } else {
-                    // If this range is new, insert it.
-                    push_constant_ranges.push(*range);
-                }
-            }
-        }
-
-        let mut set_layouts = vec![self.global_set_layout().clone()];
+        let mut set_layouts: SmallVec<[_; 2]> = smallvec![self.global_set_layout()];
 
         if let Some(local_set_layout) = &self.local_set_layout {
-            set_layouts.push(local_set_layout.clone());
+            set_layouts.push(local_set_layout);
         }
 
-        PipelineLayoutCreateInfo {
-            set_layouts,
-            push_constant_ranges,
-            ..Default::default()
-        }
+        PipelineLayout::new(
+            self.device(),
+            &PipelineLayoutCreateInfo {
+                set_layouts: &set_layouts,
+                push_constant_ranges: &push_constant_ranges_from_stages(stages),
+                ..Default::default()
+            },
+        )
     }
 
     /// Returns the `GlobalDescriptorSet`.
@@ -264,8 +219,6 @@ impl BindlessContextCreateInfo<'_> {
 
 #[derive(Debug)]
 pub struct GlobalDescriptorSet {
-    // DO NOT change the order of these fields! `ResourceStorage` must be dropped first because
-    // that guarantees that all flights are waited on before the descriptor set is destroyed.
     resources: Arc<ResourceStorage>,
     inner: RawDescriptorSet,
 
@@ -313,11 +266,11 @@ impl GlobalDescriptorSet {
         let device = resources.device();
 
         let allocator = Arc::new(GlobalDescriptorSetAllocator::new(device));
-        let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
+        let inner = RawDescriptorSet::new(&allocator, layout, 0).map_err(Validated::unwrap)?;
 
-        let global = resources.global();
+        let hyaline_collector = resources.hyaline_collector();
 
-        let descriptor_count = |n| layout.bindings().get(&n).map_or(0, |b| b.descriptor_count);
+        let descriptor_count = |n| layout.binding(n).map_or(0, |b| b.descriptor_count);
         let max_samplers = descriptor_count(SAMPLER_BINDING);
         let max_sampled_images = descriptor_count(SAMPLED_IMAGE_BINDING);
         let max_storage_images = descriptor_count(STORAGE_IMAGE_BINDING);
@@ -327,14 +280,30 @@ impl GlobalDescriptorSet {
         Ok(GlobalDescriptorSet {
             resources: resources.clone(),
             inner,
-            samplers: SlotMap::with_global_and_key(max_samplers, global.clone()),
-            sampled_images: SlotMap::with_global_and_key(max_sampled_images, global.clone()),
-            storage_images: SlotMap::with_global_and_key(max_storage_images, global.clone()),
-            storage_buffers: SlotMap::with_global_and_key(max_storage_buffers, global.clone()),
-            acceleration_structures: SlotMap::with_global_and_key(
-                max_acceleration_structures,
-                global.clone(),
-            ),
+            // SAFETY: We make sure that any guard we acquire through `ResourceStorage::pin` doesn't
+            // outlive the `Resources` collection.
+            samplers: unsafe {
+                SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            sampled_images: unsafe {
+                SlotMap::with_collector_and_key(max_sampled_images, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            storage_images: unsafe {
+                SlotMap::with_collector_and_key(max_storage_images, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            storage_buffers: unsafe {
+                SlotMap::with_collector_and_key(max_storage_buffers, hyaline_collector.clone())
+            },
+            // SAFETY: Same as the previous.
+            acceleration_structures: unsafe {
+                SlotMap::with_collector_and_key(
+                    max_acceleration_structures,
+                    hyaline_collector.clone(),
+                )
+            },
         })
     }
 
@@ -350,62 +319,52 @@ impl GlobalDescriptorSet {
 
         let stages = get_all_supported_shader_stages(device);
 
-        let mut bindings = BTreeMap::from([
-            (
-                SAMPLER_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_samplers,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
-                },
-            ),
-            (
-                SAMPLED_IMAGE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_sampled_images,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
-                },
-            ),
-            (
-                STORAGE_IMAGE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_storage_images,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
-                },
-            ),
-            (
-                STORAGE_BUFFER_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_storage_buffers,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::StorageBuffer)
-                },
-            ),
-        ]);
+        let mut bindings: SmallVec<[_; 5]> = smallvec![
+            DescriptorSetLayoutBinding {
+                binding: SAMPLER_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_samplers,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::Sampler)
+            },
+            DescriptorSetLayoutBinding {
+                binding: SAMPLED_IMAGE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_sampled_images,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::SampledImage)
+            },
+            DescriptorSetLayoutBinding {
+                binding: STORAGE_IMAGE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_storage_images,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::StorageImage)
+            },
+            DescriptorSetLayoutBinding {
+                binding: STORAGE_BUFFER_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_storage_buffers,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::StorageBuffer)
+            },
+        ];
 
         if device.enabled_features().acceleration_structure {
-            bindings.insert(
-                ACCELERATION_STRUCTURE_BINDING,
-                DescriptorSetLayoutBinding {
-                    binding_flags,
-                    descriptor_count: create_info.max_acceleration_structures,
-                    stages,
-                    ..DescriptorSetLayoutBinding::new(DescriptorType::AccelerationStructure)
-                },
-            );
+            bindings.push(DescriptorSetLayoutBinding {
+                binding: ACCELERATION_STRUCTURE_BINDING,
+                binding_flags,
+                descriptor_count: create_info.max_acceleration_structures,
+                stages,
+                ..DescriptorSetLayoutBinding::new(DescriptorType::AccelerationStructure)
+            });
         }
 
         let layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
+            device,
+            &DescriptorSetLayoutCreateInfo {
                 flags: DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
-                bindings,
+                bindings: &bindings,
                 ..Default::default()
             },
         )?;
@@ -421,9 +380,9 @@ impl GlobalDescriptorSet {
 
     pub fn create_sampler(
         &self,
-        create_info: SamplerCreateInfo,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Result<SamplerId, Validated<VulkanError>> {
-        let sampler = Sampler::new(self.device().clone(), create_info)?;
+        let sampler = Sampler::new(self.device(), create_info)?;
 
         Ok(self.add_sampler(sampler))
     }
@@ -431,11 +390,11 @@ impl GlobalDescriptorSet {
     pub fn create_sampled_image(
         &self,
         image_id: Id<Image>,
-        create_info: ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
         image_layout: ImageLayout,
     ) -> Result<SampledImageId, Validated<VulkanError>> {
         let image_state = self.resources.image(image_id).unwrap();
-        let image_view = ImageView::new(image_state.image().clone(), create_info)?;
+        let image_view = ImageView::new(image_state.image(), create_info)?;
 
         Ok(self.add_sampled_image(image_view, image_layout))
     }
@@ -443,11 +402,11 @@ impl GlobalDescriptorSet {
     pub fn create_storage_image(
         &self,
         image_id: Id<Image>,
-        create_info: ImageViewCreateInfo,
+        create_info: &ImageViewCreateInfo<'_>,
         image_layout: ImageLayout,
     ) -> Result<StorageImageId, Validated<VulkanError>> {
         let image_state = self.resources.image(image_id).unwrap();
-        let image_view = ImageView::new(image_state.image().clone(), create_info)?;
+        let image_view = ImageView::new(image_state.image(), create_info)?;
 
         Ok(self.add_storage_image(image_view, image_layout))
     }
@@ -593,115 +552,127 @@ impl GlobalDescriptorSet {
         id
     }
 
-    pub unsafe fn remove_sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
-        let guard = self.resources.pin();
-
-        // SAFETY: We own an `epoch::Guard`.
-        let inner = self.samplers.remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    pub(crate) fn invalidate_sampler<'a>(
+        &'a self,
+        id: SamplerId,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Option<&'a SamplerDescriptor> {
+        self.samplers.invalidate(id, guard)
     }
 
-    pub unsafe fn remove_sampled_image(
-        &self,
+    pub(crate) fn invalidate_sampled_image<'a>(
+        &'a self,
         id: SampledImageId,
-    ) -> Option<Ref<'_, SampledImageDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .sampled_images
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Option<&'a SampledImageDescriptor> {
+        self.sampled_images.invalidate(id, guard)
     }
 
-    pub unsafe fn remove_storage_image(
-        &self,
+    pub(crate) fn invalidate_storage_image<'a>(
+        &'a self,
         id: StorageImageId,
-    ) -> Option<Ref<'_, StorageImageDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .storage_images
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Option<&'a StorageImageDescriptor> {
+        self.storage_images.invalidate(id, guard)
     }
 
-    pub unsafe fn remove_storage_buffer(
-        &self,
+    pub(crate) fn invalidate_storage_buffer<'a>(
+        &'a self,
         id: StorageBufferId,
-    ) -> Option<Ref<'_, StorageBufferDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .storage_buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Option<&'a StorageBufferDescriptor> {
+        self.storage_buffers.invalidate(id, guard)
     }
 
-    pub unsafe fn remove_acceleration_structure(
+    pub(crate) fn invalidate_acceleration_structure<'a>(
+        &'a self,
+        id: AccelerationStructureId,
+        guard: &'a hyaline::Guard<'a>,
+    ) -> Option<&'a AccelerationStructureDescriptor> {
+        self.acceleration_structures.invalidate(id, guard)
+    }
+
+    pub(crate) unsafe fn remove_invalidated_sampler_unchecked(&self, id: SamplerId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.samplers.remove_invalidated_unchecked(id) };
+    }
+
+    pub(crate) unsafe fn remove_invalidated_sampled_image_unchecked(&self, id: SampledImageId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.sampled_images.remove_invalidated_unchecked(id) };
+    }
+
+    pub(crate) unsafe fn remove_invalidated_storage_image_unchecked(&self, id: StorageImageId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_images.remove_invalidated_unchecked(id) };
+    }
+
+    pub(crate) unsafe fn remove_invalidated_storage_buffer_unchecked(&self, id: StorageBufferId) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.storage_buffers.remove_invalidated_unchecked(id) };
+    }
+
+    pub(crate) unsafe fn remove_invalidated_acceleration_structure_unchecked(
         &self,
         id: AccelerationStructureId,
-    ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
-        let guard = self.resources.pin();
-
-        let inner = self
-            .acceleration_structures
-            // SAFETY: We own an `epoch::Guard`.
-            .remove(id, unsafe { epoch::unprotected() })?;
-
-        Some(Ref { inner, guard })
+    ) {
+        // SAFETY: Enforced by the caller.
+        unsafe {
+            self.acceleration_structures
+                .remove_invalidated_unchecked(id)
+        };
     }
 
     #[inline]
     pub fn sampler(&self, id: SamplerId) -> Option<Ref<'_, SamplerDescriptor>> {
         let guard = self.resources.pin();
 
-        // SAFETY: We own an `epoch::Guard`.
-        let inner = self.samplers.get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: We unbind the lifetime because this would result in E0515 otherwise. This is
+        // perfectly safe to do -- none of these methods actually borrow from the guard (there's
+        // physically no way for them to; this is encoded in the type system). The lifetime is bound
+        // to the returned reference to ensure that the reference doesn't outlive the guard. We
+        // enforce that by `Ref` owning the `hyaline::Guard` instead.
+        let descriptor = self.samplers.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
     pub fn sampled_image(&self, id: SampledImageId) -> Option<Ref<'_, SampledImageDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .sampled_images
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: Same as in the `sampler` method above.
+        let descriptor = self.sampled_images.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
     pub fn storage_image(&self, id: StorageImageId) -> Option<Ref<'_, StorageImageDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .storage_images
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: Same as in the `sampler` method above.
+        let descriptor = self.storage_images.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
     pub fn storage_buffer(&self, id: StorageBufferId) -> Option<Ref<'_, StorageBufferDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .storage_buffers
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: Same as in the `sampler` method above.
+        let descriptor = self.storage_buffers.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
-        Some(Ref { inner, guard })
+        Some(Ref::new(descriptor, guard))
     }
 
     #[inline]
@@ -711,20 +682,12 @@ impl GlobalDescriptorSet {
     ) -> Option<Ref<'_, AccelerationStructureDescriptor>> {
         let guard = self.resources.pin();
 
-        let inner = self
-            .acceleration_structures
-            // SAFETY: We own an `epoch::Guard`.
-            .get(id, unsafe { epoch::unprotected() })?;
+        // SAFETY: Same as in the `sampler` method above.
+        let descriptor = self.acceleration_structures.get(id, unsafe {
+            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+        })?;
 
-        Some(Ref { inner, guard })
-    }
-
-    pub(crate) fn try_collect(&self, guard: &epoch::Guard<'_>) {
-        self.samplers.try_collect(guard);
-        self.sampled_images.try_collect(guard);
-        self.storage_images.try_collect(guard);
-        self.storage_buffers.try_collect(guard);
-        self.acceleration_structures.try_collect(guard);
+        Some(Ref::new(descriptor, guard))
     }
 }
 
@@ -804,28 +767,28 @@ impl AccelerationStructureDescriptor {
 pub struct GlobalDescriptorSetCreateInfo<'a> {
     /// The maximum number of [`Sampler`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `256` (2<sup>8</sup>).
+    /// The default value is `100`.
     pub max_samplers: u32,
 
     /// The maximum number of sampled [`Image`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_sampled_images: u32,
 
     /// The maximum number of storage [`Image`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_storage_images: u32,
 
     /// The maximum number of storage [`Buffer`] descriptors that the collection can hold at once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_storage_buffers: u32,
 
     /// The maximum number of [`AccelerationStructure`] descriptors that the collection can hold at
     /// once.
     ///
-    /// The default value is `1048576` (2<sup>20</sup>).
+    /// The default value is `1_000_000`.
     pub max_acceleration_structures: u32,
 
     pub _ne: crate::NonExhaustive<'a>,
@@ -843,11 +806,11 @@ impl GlobalDescriptorSetCreateInfo<'_> {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            max_samplers: 1 << 8,
-            max_sampled_images: 1 << 20,
-            max_storage_images: 1 << 20,
-            max_storage_buffers: 1 << 20,
-            max_acceleration_structures: 1 << 20,
+            max_samplers: 100,
+            max_sampled_images: 1_000_000,
+            max_storage_images: 1_000_000,
+            max_storage_buffers: 1_000_000,
+            max_acceleration_structures: 1_000_000,
             _ne: crate::NE,
         }
     }
@@ -948,25 +911,25 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
         layout: &Arc<DescriptorSetLayout>,
         _variable_count: u32,
     ) -> Result<DescriptorSetAlloc, Validated<VulkanError>> {
-        let mut pool_sizes = HashMap::default();
-
-        for binding in layout.bindings().values() {
-            *pool_sizes.entry(binding.descriptor_type).or_insert(0) += binding.descriptor_count;
-        }
+        let pool_sizes = layout
+            .bindings()
+            .iter()
+            .map(|binding| (binding.descriptor_type, binding.descriptor_count))
+            .collect::<Vec<_>>();
 
         let pool = Arc::new(DescriptorPool::new(
-            layout.device().clone(),
-            DescriptorPoolCreateInfo {
+            layout.device(),
+            &DescriptorPoolCreateInfo {
                 flags: DescriptorPoolCreateFlags::UPDATE_AFTER_BIND,
                 max_sets: 1,
-                pool_sizes,
+                pool_sizes: &pool_sizes,
                 ..Default::default()
             },
         )?);
 
-        let allocate_info = DescriptorSetAllocateInfo::new(layout.clone());
+        let allocate_info = DescriptorSetAllocateInfo::new(layout);
 
-        let inner = unsafe { pool.allocate_descriptor_sets(iter::once(allocate_info)) }?
+        let inner = unsafe { pool.allocate_descriptor_sets(slice::from_ref(&allocate_info)) }?
             .next()
             .unwrap();
 
@@ -978,6 +941,10 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
     }
 
     unsafe fn deallocate(&self, _allocation: DescriptorSetAlloc) {}
+
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn DescriptorSetAllocator> {
+        self
+    }
 }
 
 unsafe impl DeviceOwned for GlobalDescriptorSetAllocator {
@@ -998,7 +965,7 @@ impl LocalDescriptorSet {
         framebuffer: &Framebuffer,
         subpass_index: usize,
     ) -> Result<Arc<Self>, VulkanError> {
-        let allocator = resources.descriptor_set_allocator().clone();
+        let allocator = resources.descriptor_set_allocator();
         let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
 
         let render_pass = framebuffer.render_pass();
@@ -1034,17 +1001,15 @@ impl LocalDescriptorSet {
         let device = resources.device();
 
         let layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: BTreeMap::from([(
-                    INPUT_ATTACHMENT_BINDING,
-                    DescriptorSetLayoutBinding {
-                        binding_flags: DescriptorBindingFlags::PARTIALLY_BOUND,
-                        descriptor_count: create_info.max_input_attachments,
-                        stages: ShaderStages::FRAGMENT,
-                        ..DescriptorSetLayoutBinding::new(DescriptorType::InputAttachment)
-                    },
-                )]),
+            device,
+            &DescriptorSetLayoutCreateInfo {
+                bindings: &[DescriptorSetLayoutBinding {
+                    binding: INPUT_ATTACHMENT_BINDING,
+                    binding_flags: DescriptorBindingFlags::PARTIALLY_BOUND,
+                    descriptor_count: create_info.max_input_attachments,
+                    stages: ShaderStages::FRAGMENT,
+                    ..DescriptorSetLayoutBinding::new(DescriptorType::InputAttachment)
+                }],
                 ..Default::default()
             },
         )?;

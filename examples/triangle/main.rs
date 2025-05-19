@@ -31,7 +31,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
@@ -90,12 +89,12 @@ impl App {
 
         // Now creating the instance.
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 // Enable enumerating devices that use non-conformant Vulkan implementations.
                 // (e.g. MoltenVK)
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -183,17 +182,17 @@ impl App {
         // An iterator of created queues is returned by the function alongside the device.
         let (device, mut queues) = Device::new(
             // Which physical device to connect to.
-            physical_device,
-            DeviceCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
                 // A list of optional features and extensions that our program needs to work
                 // correctly. Some parts of the Vulkan specs are optional and must be enabled
                 // manually at device creation. In this example the only thing we are going to need
                 // is the `khr_swapchain` extension that allows us to draw to a window.
-                enabled_extensions: device_extensions,
+                enabled_extensions: &device_extensions,
 
                 // The list of queues that we are going to use. Here we only use one queue, from
                 // the previously chosen queue family.
-                queue_create_infos: vec![QueueCreateInfo {
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -208,14 +207,14 @@ impl App {
         // the iterator.
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         // Before we can start creating and recording command buffers, we need a way of allocating
         // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command
         // pools underneath and provides a safe interface for them.
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
+            &device,
+            &Default::default(),
         ));
 
         // We now create a buffer that will store the shape of our triangle.
@@ -231,12 +230,12 @@ impl App {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
@@ -271,7 +270,7 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         // Before we can draw on the surface, we have to create what is called a swapchain.
@@ -283,21 +282,21 @@ impl ApplicationHandler for App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
 
             // Choosing the internal format that the images will have.
             let (image_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             // Please take a look at the docs for the meaning of the parameters we didn't mention.
             Swapchain::new(
-                self.device.clone(),
-                surface,
-                SwapchainCreateInfo {
+                &self.device,
+                &surface,
+                &SwapchainCreateInfo {
                     // Some drivers report an `min_image_count` of 1, but fullscreen mode requires
                     // at least 2. Therefore we must ensure the count is at least 2, otherwise the
                     // program would crash when entering fullscreen mode on those drivers.
@@ -386,7 +385,7 @@ impl ApplicationHandler for App {
         // output of the graphics pipeline will go. It describes the layout of the images where the
         // colors, depth and/or stencil information will be written.
         let render_pass = vulkano::single_pass_renderpass!(
-            self.device.clone(),
+            &self.device,
             attachments: {
                 // `color` is a custom name we give to the first and only attachment.
                 color: {
@@ -434,14 +433,8 @@ impl ApplicationHandler for App {
             //
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
             // which one.
-            let vs = vs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(self.device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
 
             // Automatically generate a vertex input state from the vertex shader's input
             // interface, that takes a single vertex buffer containing `Vertex` structs.
@@ -449,8 +442,8 @@ impl ApplicationHandler for App {
 
             // Make a list of the shader stages that the pipeline will have.
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
             ];
 
             // We must now create a **pipeline layout** object, which describes the locations and
@@ -462,55 +455,50 @@ impl ApplicationHandler for App {
             // in the shaders; they can be used by shaders in other pipelines that share the same
             // layout. Thus, it is a good idea to design shaders so that many pipelines have common
             // resource locations, which allows them to share pipeline layouts.
-            let layout = PipelineLayout::new(
-                self.device.clone(),
-                // Since we only have one pipeline in this example, and thus one pipeline layout,
-                // we automatically generate the creation info for it from the resources used in
-                // the shaders. In a real application, you would specify this information manually
-                // so that you can re-use one layout in multiple pipelines.
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(self.device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            //
+            // Since we only have one pipeline in this example, and thus one pipeline layout, we
+            // automatically generate the layout from the resources used in the shaders. In a real
+            // application, you would specify this information manually so that you can re-use one
+            // layout in multiple pipelines.
+            let layout = PipelineLayout::from_stages(&self.device, &stages).unwrap();
 
             // We have to indicate which subpass of which render pass this pipeline is going to be
             // used in. The pipeline will only be usable from this particular subpass.
-            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+            let subpass = Subpass::new(&render_pass, 0).unwrap();
 
             // Finally, create the pipeline.
             GraphicsPipeline::new(
-                self.device.clone(),
+                &self.device,
                 None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
                     // How vertex data is read from the vertex buffers into the vertex shader.
-                    vertex_input_state: Some(vertex_input_state),
+                    vertex_input_state: Some(&vertex_input_state),
                     // How vertices are arranged into primitive shapes. The default primitive shape
                     // is a triangle.
-                    input_assembly_state: Some(InputAssemblyState::default()),
+                    input_assembly_state: Some(&InputAssemblyState::default()),
                     // How primitives are transformed and clipped to fit the framebuffer. We use a
                     // resizable viewport, set to draw over the entire window.
-                    viewport_state: Some(ViewportState::default()),
+                    viewport_state: Some(&ViewportState::default()),
                     // How polygons are culled and converted into a raster of pixels. The default
                     // value does not perform any culling.
-                    rasterization_state: Some(RasterizationState::default()),
+                    rasterization_state: Some(&RasterizationState::default()),
                     // How multiple fragment shader samples are converted to a single pixel value.
                     // The default value does not perform any multisampling.
-                    multisample_state: Some(MultisampleState::default()),
+                    multisample_state: Some(&MultisampleState::default()),
                     // How pixel values are combined with the values already present in the
                     // framebuffer. The default value overwrites the old value with the new one,
                     // without any blending.
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
-                    )),
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
                     // Dynamic states allows us to specify parts of the pipeline settings when
                     // recording the command buffer, before we perform drawing. Here, we specify
                     // that the viewport should be dynamic.
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::new(layout)
+                    dynamic_state: &[DynamicState::Viewport],
+                    subpass: Some((&subpass).into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
                 },
             )
             .unwrap()
@@ -593,7 +581,7 @@ impl ApplicationHandler for App {
 
                     let (new_swapchain, new_images) = rcx
                         .swapchain
-                        .recreate(SwapchainCreateInfo {
+                        .recreate(&SwapchainCreateInfo {
                             image_extent: window_size.into(),
                             ..rcx.swapchain.create_info()
                         })
@@ -733,7 +721,7 @@ impl ApplicationHandler for App {
                     }
                     Err(e) => {
                         panic!("failed to flush future: {e}");
-                        // previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        // previous_frame_end = Some(sync::now(&device).boxed());
                     }
                 }
             }
@@ -764,12 +752,12 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
+            let view = ImageView::new_default(image).unwrap();
 
             Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
+                render_pass,
+                &FramebufferCreateInfo {
+                    attachments: &[&view],
                     ..Default::default()
                 },
             )

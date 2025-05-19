@@ -7,7 +7,15 @@ use super::{
 use crate::{linear_map::LinearMap, resource::Flight, Id, QueueFamilyType};
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{cell::RefCell, cmp, error::Error, fmt, ops::Range, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    cmp,
+    error::Error,
+    fmt,
+    mem::ManuallyDrop,
+    ops::Range,
+    sync::Arc,
+};
 use vulkano::{
     device::{Device, DeviceOwned, Queue, QueueFlags},
     format::Format,
@@ -245,8 +253,8 @@ impl<W: ?Sized> TaskGraph<W> {
                 if let Some(subpass) = nodes[id.index() as usize].subpass {
                     let render_pass = &render_passes[subpass.render_pass_index].render_pass;
                     task_node.subpass = Some(
-                        vulkano::render_pass::Subpass::from(
-                            render_pass.clone(),
+                        vulkano::render_pass::Subpass::new(
+                            render_pass,
                             subpass.subpass_index as u32,
                         )
                         .unwrap(),
@@ -256,11 +264,8 @@ impl<W: ?Sized> TaskGraph<W> {
         }
 
         let semaphores = match (0..semaphore_count)
-            .map(|_| {
-                // SAFETY: The parameters are valid.
-                unsafe { Semaphore::new_unchecked(device.clone(), Default::default()) }
-                    .map(Arc::new)
-            })
+            // SAFETY: The parameters are valid.
+            .map(|_| unsafe { Semaphore::new_unchecked(device, &Default::default()) })
             .collect::<Result<_, _>>()
         {
             Ok(semaphores) => semaphores,
@@ -270,7 +275,7 @@ impl<W: ?Sized> TaskGraph<W> {
         let swapchains = last_swapchain_accesses.keys().copied().collect();
 
         Ok(ExecutableTaskGraph {
-            graph: self,
+            graph: ManuallyDrop::new(self),
             flight_id,
             instructions: builder.instructions,
             submissions: builder.submissions,
@@ -281,6 +286,8 @@ impl<W: ?Sized> TaskGraph<W> {
             swapchains,
             present_queue: present_queue.cloned(),
             last_accesses,
+            last_frame: Cell::new(None),
+            drop_graph: true,
         })
     }
 
@@ -1248,47 +1255,61 @@ fn create_render_pass(
                 ..Default::default()
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let subpasses = render_pass_state
         .subpasses
         .iter()
-        .map(|subpass_state| SubpassDescription {
-            // FIXME:
-            view_mask: 0,
-            input_attachments: convert_attachments(
-                &render_pass_state,
-                &subpass_state.input_attachments,
-            ),
-            color_attachments: convert_attachments(
-                &render_pass_state,
-                &subpass_state.color_attachments,
-            ),
-            depth_stencil_attachment: subpass_state.depth_stencil_attachment.map(|(id, layout)| {
-                AttachmentReference {
-                    attachment: render_pass_state.attachments.index_of(&id).unwrap() as u32,
-                    layout,
+        .map(|subpass_state| {
+            (
+                convert_attachments(&render_pass_state, &subpass_state.input_attachments),
+                convert_attachments(&render_pass_state, &subpass_state.color_attachments),
+                subpass_state
+                    .depth_stencil_attachment
+                    .map(|(id, layout)| AttachmentReference {
+                        attachment: render_pass_state.attachments.index_of(&id).unwrap() as u32,
+                        layout,
+                        ..Default::default()
+                    }),
+                render_pass_state
+                    .attachments
+                    .keys()
+                    .enumerate()
+                    .filter_map(|(attachment, &id)| {
+                        (!subpass_state.input_attachments.contains_key(&id)
+                            && !subpass_state.color_attachments.contains_key(&id)
+                            && !subpass_state
+                                .depth_stencil_attachment
+                                .is_some_and(|(x, _)| x == id))
+                        .then_some(attachment as u32)
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let subpasses = subpasses
+        .iter()
+        .map(
+            |(
+                input_attachments,
+                color_attachments,
+                depth_stencil_attachment,
+                preserve_attachments,
+            )| {
+                SubpassDescription {
+                    // FIXME:
+                    view_mask: 0,
+                    input_attachments,
+                    color_attachments,
+                    depth_stencil_attachment: Some(depth_stencil_attachment),
+                    preserve_attachments,
                     ..Default::default()
                 }
-            }),
-            preserve_attachments: render_pass_state
-                .attachments
-                .keys()
-                .enumerate()
-                .filter_map(|(attachment, &id)| {
-                    (!subpass_state.input_attachments.contains_key(&id)
-                        && !subpass_state.color_attachments.contains_key(&id)
-                        && !subpass_state
-                            .depth_stencil_attachment
-                            .is_some_and(|(x, _)| x == id))
-                    .then_some(attachment as u32)
-                })
-                .collect(),
-            ..Default::default()
-        })
-        .collect();
+            },
+        )
+        .collect::<Vec<_>>();
 
-    let mut dependencies = Vec::<SubpassDependency>::new();
+    let mut dependencies = Vec::<SubpassDependency<'static>>::new();
 
     // FIXME: subpass dependency chains
     for (src_subpass_index, src_subpass_state) in render_pass_state.subpasses.iter().enumerate() {
@@ -1366,11 +1387,11 @@ fn create_render_pass(
     }
 
     let render_pass = RenderPass::new(
-        resources.physical_resources.device().clone(),
-        RenderPassCreateInfo {
-            attachments,
-            subpasses,
-            dependencies,
+        resources.physical_resources.device(),
+        &RenderPassCreateInfo {
+            attachments: &attachments,
+            subpasses: &subpasses,
+            dependencies: &dependencies,
             ..Default::default()
         },
     )
@@ -1405,7 +1426,7 @@ fn create_render_pass(
 fn convert_attachments(
     render_pass_state: &RenderPassState,
     attachments: &LinearMap<Id, (u32, ImageLayout)>,
-) -> Vec<Option<AttachmentReference>> {
+) -> Vec<Option<AttachmentReference<'static>>> {
     let len = attachments.values().map(|(i, _)| *i + 1).max().unwrap_or(0);
     let mut attachments_out = vec![None; len as usize];
 
@@ -1424,11 +1445,11 @@ fn convert_attachments(
     attachments_out
 }
 
-fn get_or_insert_subpass_dependency(
-    dependencies: &mut Vec<SubpassDependency>,
+fn get_or_insert_subpass_dependency<'a>(
+    dependencies: &'a mut Vec<SubpassDependency<'static>>,
     src_subpass: u32,
     dst_subpass: u32,
-) -> &mut SubpassDependency {
+) -> &'a mut SubpassDependency<'static> {
     let dependency_index = dependencies
         .iter_mut()
         .position(|dependency| {
@@ -1656,8 +1677,12 @@ impl FinalRepresentationBuilder {
 impl<W: ?Sized> ExecutableTaskGraph<W> {
     /// Decompiles the graph back into a modifiable form.
     #[inline]
-    pub fn decompile(self) -> TaskGraph<W> {
-        self.graph
+    pub fn decompile(mut self) -> TaskGraph<W> {
+        self.drop_graph = false;
+
+        // SAFETY: We unset the `drop_graph` flag which ensures that the graph isn't dropped by the
+        // `Drop` implementation.
+        unsafe { ManuallyDrop::take(&mut self.graph) }
     }
 }
 
@@ -2927,21 +2952,25 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let sharing = Sharing::Concurrent(&queue_family_indices);
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let buffer2 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image1 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image2 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let compute_node = graph
@@ -3220,21 +3249,25 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let sharing = Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let sharing = Sharing::Concurrent(&queue_family_indices);
         let buffer1 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let buffer2 = graph.add_buffer(&BufferCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image1 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let image2 = graph.add_image(&ImageCreateInfo {
-            sharing: sharing.clone(),
+            sharing,
             ..Default::default()
         });
         let color_image = graph.add_image(&ImageCreateInfo {
@@ -3483,16 +3516,19 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let concurrent_sharing =
-            Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let concurrent_sharing = Sharing::Concurrent(&queue_family_indices);
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo {
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let swapchain3 = graph.add_swapchain(&SwapchainCreateInfo::default());
         let swapchain4 = graph.add_swapchain(&SwapchainCreateInfo {
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let node = graph
@@ -3829,15 +3865,18 @@ mod tests {
         }
 
         let mut graph = TaskGraph::<()>::new(&resources);
-        let concurrent_sharing =
-            Sharing::Concurrent(queues.iter().map(|q| q.queue_family_index()).collect());
+        let queue_family_indices = queues
+            .iter()
+            .map(|q| q.queue_family_index())
+            .collect::<Vec<_>>();
+        let concurrent_sharing = Sharing::Concurrent(&queue_family_indices);
         let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo {
             image_format: Format::R8G8B8A8_UNORM,
             ..SwapchainCreateInfo::default()
         });
         let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo {
             image_format: Format::R8G8B8A8_UNORM,
-            image_sharing: concurrent_sharing.clone(),
+            image_sharing: concurrent_sharing,
             ..Default::default()
         });
         let depth_image = graph.add_image(&ImageCreateInfo {

@@ -10,8 +10,9 @@
 //! memory that can be allocated.
 //!
 //! ```
-//! // Enumerating memory heaps.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
+//! #
+//! // Enumerating memory heaps.
 //! for (index, heap) in physical_device
 //!     .memory_properties()
 //!     .memory_heaps
@@ -32,8 +33,9 @@
 //! that non-device-local memory types are still accessible by the device, they are just slower.
 //!
 //! ```
-//! // Enumerating memory types.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
+//! #
+//! // Enumerating memory types.
 //! for ty in physical_device.memory_properties().memory_types.iter() {
 //!     println!("Memory type belongs to heap #{:?}", ty.heap_index);
 //!     println!("Property flags: {:?}", ty.property_flags);
@@ -63,18 +65,19 @@
 //! use vulkano::memory::{DeviceMemory, MemoryAllocateInfo};
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! #
 //! // Taking the first memory type for the sake of this example.
 //! let memory_type_index = 0;
 //!
 //! let memory = DeviceMemory::allocate(
-//!     device.clone(),
-//!     MemoryAllocateInfo {
+//!     &device,
+//!     &MemoryAllocateInfo {
 //!         allocation_size: 1024,
 //!         memory_type_index,
 //!         ..Default::default()
 //!     },
 //! )
-//! .expect("Failed to allocate memory");
+//! .expect("failed to allocate memory");
 //!
 //! // The memory is automatically freed when `memory` is destroyed.
 //! ```
@@ -145,7 +148,7 @@ impl ResourceMemory {
     /// aliasing resources. On the other hand, the device memory can never be reused: it will be
     /// freed once the returned object is dropped.
     pub fn new_dedicated(device_memory: DeviceMemory) -> Self {
-        unsafe { Self::new_dedicated_unchecked(Arc::new(device_memory)) }
+        unsafe { Self::new_dedicated_unchecked(&Arc::new(device_memory)) }
     }
 
     /// Same as [`new_dedicated`], except that this allows creating aliasing resources.
@@ -156,7 +159,7 @@ impl ResourceMemory {
     ///   synchronization yourself.
     ///
     /// [`new_dedicated`]: Self::new_dedicated
-    pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
+    pub unsafe fn new_dedicated_unchecked(device_memory: &Arc<DeviceMemory>) -> Self {
         let size = device_memory.allocation_size();
 
         unsafe { Self::from_device_memory_unchecked(device_memory, 0, size) }
@@ -177,7 +180,7 @@ impl ResourceMemory {
     ///
     /// - Panics if `offset + size` is greater than `device_memory.allocation_size()`.
     pub unsafe fn from_device_memory_unchecked(
-        device_memory: Arc<DeviceMemory>,
+        device_memory: &Arc<DeviceMemory>,
         offset: DeviceSize,
         size: DeviceSize,
     ) -> Self {
@@ -191,7 +194,7 @@ impl ResourceMemory {
             allocation_handle: AllocationHandle::null(),
             suballocation_handle: None,
             allocator: None,
-            device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(device_memory)),
+            device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(device_memory.clone())),
         }
     }
 
@@ -206,6 +209,13 @@ impl ResourceMemory {
     /// - `allocation` must never be deallocated.
     #[inline]
     pub unsafe fn from_allocation(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        allocation: MemoryAlloc,
+    ) -> Self {
+        unsafe { Self::from_allocation_inner(allocator.clone().as_dyn(), allocation) }
+    }
+
+    pub(crate) unsafe fn from_allocation_inner(
         allocator: Arc<dyn MemoryAllocator>,
         allocation: MemoryAlloc,
     ) -> Self {
@@ -348,13 +358,13 @@ impl ResourceMemory {
     #[inline]
     pub unsafe fn invalidate_range(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_memory_range(&memory_range)?;
+        self.validate_memory_range(memory_range)?;
 
         unsafe {
             self.device_memory()
-                .invalidate_range(self.create_memory_range(memory_range))
+                .invalidate_range(&self.create_memory_range(memory_range))
         }
     }
 
@@ -362,11 +372,11 @@ impl ResourceMemory {
     #[inline]
     pub unsafe fn invalidate_range_unchecked(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), VulkanError> {
         unsafe {
             self.device_memory()
-                .invalidate_range_unchecked(self.create_memory_range(memory_range))
+                .invalidate_range_unchecked(&self.create_memory_range(memory_range))
         }
     }
 
@@ -386,13 +396,13 @@ impl ResourceMemory {
     #[inline]
     pub unsafe fn flush_range(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
-        self.validate_memory_range(&memory_range)?;
+        self.validate_memory_range(memory_range)?;
 
         unsafe {
             self.device_memory()
-                .flush_range(self.create_memory_range(memory_range))
+                .flush_range(&self.create_memory_range(memory_range))
         }
     }
 
@@ -400,17 +410,17 @@ impl ResourceMemory {
     #[inline]
     pub unsafe fn flush_range_unchecked(
         &self,
-        memory_range: MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), VulkanError> {
         unsafe {
             self.device_memory()
-                .flush_range_unchecked(self.create_memory_range(memory_range))
+                .flush_range_unchecked(&self.create_memory_range(memory_range))
         }
     }
 
     fn validate_memory_range(
         &self,
-        memory_range: &MappedMemoryRange,
+        memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let &MappedMemoryRange {
             offset,
@@ -429,8 +439,11 @@ impl ResourceMemory {
         Ok(())
     }
 
-    fn create_memory_range(&self, memory_range: MappedMemoryRange) -> MappedMemoryRange {
-        let MappedMemoryRange {
+    fn create_memory_range(
+        &self,
+        memory_range: &MappedMemoryRange<'_>,
+    ) -> MappedMemoryRange<'static> {
+        let &MappedMemoryRange {
             mut offset,
             mut size,
             _ne: _,
@@ -455,7 +468,7 @@ impl ResourceMemory {
         MappedMemoryRange {
             offset,
             size,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -742,6 +755,7 @@ vulkan_bitflags! {
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
 /// to a resource.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct MemoryRequirements {
     /// Memory layout required for the resource.
     pub layout: DeviceLayout,

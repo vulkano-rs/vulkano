@@ -217,7 +217,7 @@ pub use self::{
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
     MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
-    MemoryPropertyFlags, MemoryRequirements, MemoryType,
+    MemoryPropertyFlags, MemoryRequirements,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -334,9 +334,9 @@ pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
     fn allocate(
         &self,
-        requirements: MemoryRequirements,
+        requirements: &MemoryRequirements,
         allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
+        create_info: &AllocationCreateInfo<'_>,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
@@ -355,6 +355,9 @@ pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     ///
     /// - `allocation` must refer to a **currently allocated** allocation of `self`.
     unsafe fn deallocate(&self, allocation: MemoryAlloc);
+
+    /// Coerces a reference to the allocator to a reference to a trait object.
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn MemoryAllocator>;
 }
 
 impl Debug for dyn MemoryAllocator {
@@ -384,14 +387,14 @@ impl Debug for dyn MemoryAllocator {
 /// # let extent = return;
 /// #
 /// let texture = Image::new(
-///     memory_allocator.clone(),
-///     ImageCreateInfo {
+///     &memory_allocator,
+///     &ImageCreateInfo {
 ///         format,
 ///         extent,
 ///         usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
 ///         ..Default::default()
 ///     },
@@ -414,12 +417,12 @@ impl Debug for dyn MemoryAllocator {
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// #
 /// let staging_buffer = Buffer::new_sized(
-///     memory_allocator.clone(),
-///     BufferCreateInfo {
+///     &memory_allocator,
+///     &BufferCreateInfo {
 ///         usage: BufferUsage::TRANSFER_SRC,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         memory_type_filter: MemoryTypeFilter::PREFER_HOST |
 ///             MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
 ///         ..Default::default()
@@ -444,12 +447,12 @@ impl Debug for dyn MemoryAllocator {
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// #
 /// let uniform_buffer = Buffer::new_sized(
-///     memory_allocator.clone(),
-///     BufferCreateInfo {
+///     &memory_allocator,
+///     &BufferCreateInfo {
 ///         usage: BufferUsage::UNIFORM_BUFFER,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE |
 ///             MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
 ///         ..Default::default()
@@ -473,12 +476,12 @@ impl Debug for dyn MemoryAllocator {
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// #
 /// let readback_buffer = Buffer::new_sized(
-///     memory_allocator.clone(),
-///     BufferCreateInfo {
+///     &memory_allocator,
+///     &BufferCreateInfo {
 ///         usage: BufferUsage::TRANSFER_DST,
 ///         ..Default::default()
 ///     },
-///     AllocationCreateInfo {
+///     &AllocationCreateInfo {
 ///         memory_type_filter: MemoryTypeFilter::PREFER_HOST |
 ///             MemoryTypeFilter::HOST_RANDOM_ACCESS,
 ///         ..Default::default()
@@ -656,7 +659,7 @@ impl BitOr for MemoryTypeFilter {
 /// [allocation]: MemoryAlloc
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug)]
-pub struct AllocationCreateInfo {
+pub struct AllocationCreateInfo<'a> {
     /// Filter used to narrow down the memory type to be selected.
     ///
     /// The default value is [`MemoryTypeFilter::PREFER_DEVICE`].
@@ -673,17 +676,17 @@ pub struct AllocationCreateInfo {
     /// The default value is [`MemoryAllocatePreference::Unknown`].
     pub allocate_preference: MemoryAllocatePreference,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for AllocationCreateInfo {
+impl Default for AllocationCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AllocationCreateInfo {
+impl AllocationCreateInfo<'_> {
     /// Returns a default `AllocationCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -691,7 +694,7 @@ impl AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
             memory_type_bits: u32::MAX,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -862,51 +865,6 @@ impl Display for MemoryAllocatorError {
 /// [`FreeListAllocator`] for details about the suballocation algorithm.
 pub type StandardMemoryAllocator = GenericMemoryAllocator<FreeListAllocator>;
 
-impl StandardMemoryAllocator {
-    /// Creates a new `StandardMemoryAllocator` with default configuration.
-    pub fn new_default(device: Arc<Device>) -> Self {
-        let MemoryProperties {
-            memory_types,
-            memory_heaps,
-        } = device.physical_device().memory_properties();
-
-        let mut block_sizes = vec![0; memory_types.len()];
-        let mut memory_type_bits = u32::MAX;
-
-        for (index, memory_type) in memory_types.iter().enumerate() {
-            const LARGE_HEAP_THRESHOLD: DeviceSize = 1024 * 1024 * 1024;
-
-            let heap_size = memory_heaps[memory_type.heap_index as usize].size;
-
-            block_sizes[index] = if heap_size >= LARGE_HEAP_THRESHOLD {
-                256 * 1024 * 1024
-            } else {
-                64 * 1024 * 1024
-            };
-
-            if memory_type.property_flags.intersects(
-                MemoryPropertyFlags::LAZILY_ALLOCATED
-                    | MemoryPropertyFlags::PROTECTED
-                    | MemoryPropertyFlags::DEVICE_COHERENT
-                    | MemoryPropertyFlags::RDMA_CAPABLE,
-            ) {
-                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
-                // VUID-vkAllocateMemory-deviceCoherentMemory-02790
-                // Lazily allocated memory would just cause problems for suballocation in general.
-                memory_type_bits &= !(1 << index);
-            }
-        }
-
-        let create_info = GenericMemoryAllocatorCreateInfo {
-            block_sizes: &block_sizes,
-            memory_type_bits,
-            ..Default::default()
-        };
-
-        Self::new(device, create_info)
-    }
-}
-
 /// A generic implementation of a [memory allocator].
 ///
 /// The allocator keeps [a pool of `DeviceMemory` blocks] for each memory type and uses the type
@@ -976,30 +934,36 @@ impl<S> GenericMemoryAllocator<S> {
     ///   memory types.
     /// - Panics if `create_info.export_handle_types` is non-empty and doesn't contain as many
     ///   elements as the number of memory types.
-    pub fn new(device: Arc<Device>, create_info: GenericMemoryAllocatorCreateInfo<'_>) -> Self {
-        let GenericMemoryAllocatorCreateInfo {
+    pub fn new(device: &Arc<Device>, create_info: &GenericMemoryAllocatorCreateInfo<'_>) -> Self {
+        let &GenericMemoryAllocatorCreateInfo {
             block_sizes,
-            memory_type_bits,
+            mut memory_type_bits,
             dedicated_allocation,
             export_handle_types,
             mut device_address,
             _ne: _,
         } = create_info;
 
-        let memory_types = &device.physical_device().memory_properties().memory_types;
+        let MemoryProperties {
+            memory_types,
+            memory_heaps,
+        } = device.physical_device().memory_properties();
 
-        assert_eq!(
-            block_sizes.len(),
-            memory_types.len(),
-            "`create_info.block_sizes` must contain as many elements as the number of memory types",
-        );
+        if !block_sizes.is_empty() {
+            assert_eq!(
+                block_sizes.len(),
+                memory_types.len(),
+                "`create_info.block_sizes` must be empty or contain as many elements as the number
+                of memory types",
+            );
+        }
 
         if !export_handle_types.is_empty() {
             assert_eq!(
                 export_handle_types.len(),
                 memory_types.len(),
-                "`create_info.export_handle_types` must contain as many elements as the number of \
-                memory types if not empty",
+                "`create_info.export_handle_types` must be empty or contain as many elements as \
+                the number of memory types",
             );
         }
 
@@ -1012,7 +976,10 @@ impl<S> GenericMemoryAllocator<S> {
 
         let mut pools = ArrayVec::new(memory_types.len(), [Self::EMPTY_POOL; MAX_MEMORY_TYPES]);
 
-        for (index, &MemoryType { property_flags, .. }) in memory_types.iter().enumerate() {
+        for (index, memory_type) in memory_types.iter().enumerate() {
+            const LARGE_HEAP_THRESHOLD: DeviceSize = 1024 * 1024 * 1024;
+
+            let property_flags = memory_type.property_flags;
             pools[index].property_flags = property_flags;
 
             if property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE)
@@ -1022,7 +989,34 @@ impl<S> GenericMemoryAllocator<S> {
                     device.physical_device().properties().non_coherent_atom_size;
             }
 
-            pools[index].block_size = block_sizes[index];
+            pools[index].block_size = block_sizes.get(index).copied().unwrap_or_else(|| {
+                let heap_size = memory_heaps[memory_type.heap_index as usize].size;
+
+                if heap_size >= LARGE_HEAP_THRESHOLD {
+                    256 * 1024 * 1024
+                } else {
+                    64 * 1024 * 1024
+                }
+            });
+        }
+
+        if memory_type_bits == 0 {
+            memory_type_bits = u32::MAX;
+
+            for (index, memory_type) in memory_types.iter().enumerate() {
+                if memory_type.property_flags.intersects(
+                    MemoryPropertyFlags::LAZILY_ALLOCATED
+                        | MemoryPropertyFlags::PROTECTED
+                        | MemoryPropertyFlags::DEVICE_COHERENT
+                        | MemoryPropertyFlags::RDMA_CAPABLE,
+                ) {
+                    // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
+                    // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+                    // Lazily allocated memory would just cause problems for suballocation in
+                    // general.
+                    memory_type_bits &= !(1 << index);
+                }
+            }
         }
 
         let export_handle_types = {
@@ -1055,7 +1049,7 @@ impl<S> GenericMemoryAllocator<S> {
         let max_allocations = max_memory_allocation_count / 4 * 3;
 
         GenericMemoryAllocator {
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             buffer_image_granularity,
             pools,
             dedicated_allocation,
@@ -1082,8 +1076,8 @@ impl<S> GenericMemoryAllocator<S> {
         export_handle_types: ExternalMemoryHandleTypes,
     ) -> Result<Arc<DeviceMemory>, Validated<VulkanError>> {
         let mut memory = DeviceMemory::allocate(
-            self.device.clone(),
-            MemoryAllocateInfo {
+            &self.device,
+            &MemoryAllocateInfo {
                 allocation_size,
                 memory_type_index,
                 dedicated_allocation,
@@ -1102,11 +1096,11 @@ impl<S> GenericMemoryAllocator<S> {
             // - The memory can't be mapped already, because we just allocated it.
             // - Mapping the whole range is always valid.
             unsafe {
-                memory.map_unchecked(MemoryMapInfo {
+                memory.map_unchecked(&MemoryMapInfo {
                     flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
-                    _ne: crate::NonExhaustive(()),
+                    _ne: crate::NE,
                 })
             }?;
         }
@@ -1309,12 +1303,12 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
     fn allocate(
         &self,
-        requirements: MemoryRequirements,
+        requirements: &MemoryRequirements,
         allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
+        create_info: &AllocationCreateInfo<'_>,
         mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        let MemoryRequirements {
+        let &MemoryRequirements {
             layout,
             mut memory_type_bits,
             mut prefers_dedicated_allocation,
@@ -1324,7 +1318,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         memory_type_bits &= self.memory_type_bits;
         memory_type_bits &= create_info.memory_type_bits;
 
-        let AllocationCreateInfo {
+        let &AllocationCreateInfo {
             memory_type_filter,
             memory_type_bits: _,
             allocate_preference,
@@ -1490,9 +1484,13 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             unsafe { block.deallocate(suballocation) };
         }
     }
+
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn MemoryAllocator> {
+        self
+    }
 }
 
-unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
+unsafe impl<T: MemoryAllocator + ?Sized> MemoryAllocator for Arc<T> {
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
@@ -1513,9 +1511,9 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
 
     fn allocate(
         &self,
-        requirements: MemoryRequirements,
+        requirements: &MemoryRequirements,
         allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
+        create_info: &AllocationCreateInfo<'_>,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate(
@@ -1543,6 +1541,10 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
 
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
         unsafe { (**self).deallocate(allocation) }
+    }
+
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn MemoryAllocator> {
+        self
     }
 }
 
@@ -1788,9 +1790,10 @@ impl<S> Drop for DeviceMemoryPoolGuard<'_, S> {
 pub struct GenericMemoryAllocatorCreateInfo<'a> {
     /// Lets you configure the block sizes for each memory type.
     ///
-    /// Must contain one entry for each memory type. The allocator keeps a pool of [`DeviceMemory`]
-    /// blocks for each memory type, and every time a new block is allocated, the block size
-    /// corresponding to the memory type index is looked up here and used for the allocation.
+    /// Must be either empty or contain one entry for each memory type. The allocator keeps a pool
+    /// of [`DeviceMemory`] blocks for each memory type, and every time a new block is allocated,
+    /// the block size corresponding to the memory type index is looked up here and used for the
+    /// allocation.
     ///
     /// The block size is going to be the maximum size of a `DeviceMemory` block that is tried. If
     /// allocating a block with the size fails, the allocator tries 1/2, 1/4 and 1/8 of the block
@@ -1799,7 +1802,9 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     /// always made a dedicated allocation. All of this doesn't apply when using
     /// [`MemoryAllocatePreference::NeverAllocate`] however.
     ///
-    /// The default value is `&[]`, which must be overridden.
+    /// If you leave the default, block sizes are selected automatically.
+    ///
+    /// The default value is empty.
     pub block_sizes: &'a [DeviceSize],
 
     /// Lets you configure the allocator's global mask of memory type indices. Only the memory type
@@ -1809,10 +1814,12 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     /// You may use this to disallow problematic memory types, for instance ones with the
     /// [`PROTECTED`] flag, or any other flags you don't want.
     ///
-    /// The default value is [`u32::MAX`].
+    /// If you leave the default, unsuited memory types are excluded automatically.
+    ///
+    /// The default value is `0`.
     ///
     /// [`allocate`]: struct.GenericMemoryAllocator.html#method.allocate
-    /// [`PROTECTED`]: MemoryPropertyFlags::DEVICE_COHERENT
+    /// [`PROTECTED`]: MemoryPropertyFlags::PROTECTED
     pub memory_type_bits: u32,
 
     /// Whether the allocator should use the dedicated allocation APIs.
@@ -1844,7 +1851,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     /// allocated, the external handle types corresponding to the memory type index are looked up
     /// here and used for the allocation.
     ///
-    /// The default value is `&[]`.
+    /// The default value is empty.
     pub export_handle_types: &'a [ExternalMemoryHandleTypes],
 
     /// Whether the allocator should allocate the [`DeviceMemory`] blocks with the
@@ -1867,7 +1874,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
     pub device_address: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
 impl Default for GenericMemoryAllocatorCreateInfo<'_> {
@@ -1887,7 +1894,7 @@ impl GenericMemoryAllocatorCreateInfo<'_> {
             dedicated_allocation: true,
             export_handle_types: &[],
             device_address: true,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }

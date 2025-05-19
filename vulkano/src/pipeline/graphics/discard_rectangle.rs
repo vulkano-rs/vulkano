@@ -3,14 +3,15 @@
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
 use crate::{
-    device::Device, macros::vulkan_enum, pipeline::graphics::viewport::Scissor, ValidationError,
+    device::Device, macros::vulkan_enum, pipeline::graphics::viewport::Scissor,
+    self_referential::self_referential, ValidationError,
 };
 use ash::vk;
 use smallvec::SmallVec;
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
-pub struct DiscardRectangleState {
+pub struct DiscardRectangleState<'a> {
     /// Sets whether the discard rectangle test operates inclusively or exclusively.
     ///
     /// The default value is [`DiscardRectangleMode::Exclusive`].
@@ -29,33 +30,33 @@ pub struct DiscardRectangleState {
     /// The default value is empty.
     ///
     /// [`DynamicState::DiscardRectangle`]: crate::pipeline::DynamicState::DiscardRectangle
-    pub rectangles: Vec<Scissor>,
+    pub rectangles: &'a [Scissor],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for DiscardRectangleState {
+impl Default for DiscardRectangleState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DiscardRectangleState {
+impl<'a> DiscardRectangleState<'a> {
     /// Returns a default `DiscardRectangleState`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             mode: DiscardRectangleMode::Exclusive,
-            rectangles: Vec::new(),
-            _ne: crate::NonExhaustive(()),
+            rectangles: &[],
+            _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             mode,
-            ref rectangles,
+            rectangles,
             _ne: _,
         } = self;
 
@@ -81,7 +82,7 @@ impl DiscardRectangleState {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a DiscardRectangleStateFields1Vk,
     ) -> vk::PipelineDiscardRectangleStateCreateInfoEXT<'a> {
@@ -101,7 +102,7 @@ impl DiscardRectangleState {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> DiscardRectangleStateFields1Vk {
-        let Self {
+        let &Self {
             mode: _,
             rectangles,
             _ne: _,
@@ -113,10 +114,29 @@ impl DiscardRectangleState {
             discard_rectangles_vk,
         }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedDiscardRectangleState {
+        let rectangles = self.rectangles.to_owned();
+
+        OwnedDiscardRectangleState::new(rectangles, |rectangles| DiscardRectangleState {
+            rectangles,
+            _ne: crate::NE,
+            ..*self
+        })
+    }
 }
 
 pub(crate) struct DiscardRectangleStateFields1Vk {
     pub(crate) discard_rectangles_vk: SmallVec<[vk::Rect2D; 2]>,
+}
+
+self_referential! {
+    mod owned_discard_rectangle_state {
+        pub(crate) struct OwnedDiscardRectangleState {
+            inner: DiscardRectangleState<'_>,
+            rectangles: Vec<Scissor>,
+        }
+    }
 }
 
 vulkan_enum! {

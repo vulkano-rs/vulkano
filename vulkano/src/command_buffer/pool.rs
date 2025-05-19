@@ -41,17 +41,17 @@ pub struct CommandPool {
 impl CommandPool {
     /// Creates a new `CommandPool`.
     pub fn new(
-        device: Arc<Device>,
-        create_info: CommandPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &CommandPoolCreateInfo<'_>,
     ) -> Result<CommandPool, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &CommandPoolCreateInfo,
+        create_info: &CommandPoolCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -62,8 +62,8 @@ impl CommandPool {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: CommandPoolCreateInfo,
+        device: &Arc<Device>,
+        create_info: &CommandPoolCreateInfo<'_>,
     ) -> Result<Self, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
@@ -94,11 +94,11 @@ impl CommandPool {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::CommandPool,
-        create_info: CommandPoolCreateInfo,
+        create_info: &CommandPoolCreateInfo<'_>,
     ) -> CommandPool {
-        let CommandPoolCreateInfo {
+        let &CommandPoolCreateInfo {
             flags,
             queue_family_index,
             _ne: _,
@@ -106,7 +106,7 @@ impl CommandPool {
 
         CommandPool {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
 
             flags,
@@ -163,9 +163,9 @@ impl CommandPool {
     #[inline]
     pub fn allocate_command_buffers(
         &self,
-        allocate_info: CommandBufferAllocateInfo,
+        allocate_info: &CommandBufferAllocateInfo<'_>,
     ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc>, VulkanError> {
-        let CommandBufferAllocateInfo {
+        let &CommandBufferAllocateInfo {
             level,
             command_buffer_count,
             _ne: _,
@@ -338,7 +338,7 @@ impl_id_counter!(CommandPool);
 
 /// Parameters to create an `CommandPool`.
 #[derive(Clone, Debug)]
-pub struct CommandPoolCreateInfo {
+pub struct CommandPoolCreateInfo<'a> {
     /// Additional properties of the command pool.
     ///
     /// The default value is empty.
@@ -350,24 +350,24 @@ pub struct CommandPoolCreateInfo {
     /// The default value is `u32::MAX`, which must be overridden.
     pub queue_family_index: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for CommandPoolCreateInfo {
+impl Default for CommandPoolCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CommandPoolCreateInfo {
+impl CommandPoolCreateInfo<'_> {
     /// Returns a default `CommandPoolCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
             flags: CommandPoolCreateFlags::empty(),
             queue_family_index: u32::MAX,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -443,7 +443,7 @@ vulkan_bitflags! {
 
 /// Parameters to allocate a `CommandPoolAlloc`.
 #[derive(Clone, Debug)]
-pub struct CommandBufferAllocateInfo {
+pub struct CommandBufferAllocateInfo<'a> {
     /// The level of command buffer to allocate.
     ///
     /// The default value is [`CommandBufferLevel::Primary`].
@@ -454,10 +454,27 @@ pub struct CommandBufferAllocateInfo {
     /// The default value is `1`.
     pub command_buffer_count: u32,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CommandBufferAllocateInfo {
+impl Default for CommandBufferAllocateInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CommandBufferAllocateInfo<'_> {
+    /// Returns a default `CommandBufferAllocateInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            level: CommandBufferLevel::Primary,
+            command_buffer_count: 1,
+            _ne: crate::NE,
+        }
+    }
+
     pub(crate) fn to_vk(
         &self,
         command_pool_vk: vk::CommandPool,
@@ -472,25 +489,6 @@ impl CommandBufferAllocateInfo {
             .command_pool(command_pool_vk)
             .level(level.into())
             .command_buffer_count(command_buffer_count)
-    }
-}
-
-impl Default for CommandBufferAllocateInfo {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl CommandBufferAllocateInfo {
-    /// Returns a default `CommandBufferAllocateInfo`.
-    #[inline]
-    pub const fn new() -> Self {
-        Self {
-            level: CommandBufferLevel::Primary,
-            command_buffer_count: 1,
-            _ne: crate::NonExhaustive(()),
-        }
     }
 }
 
@@ -541,8 +539,8 @@ mod tests {
     fn basic_create() {
         let (device, queue) = gfx_dev_and_queue!();
         let _ = CommandPool::new(
-            device,
-            CommandPoolCreateInfo {
+            &device,
+            &CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
@@ -554,8 +552,8 @@ mod tests {
     fn queue_family_getter() {
         let (device, queue) = gfx_dev_and_queue!();
         let pool = CommandPool::new(
-            device,
-            CommandPoolCreateInfo {
+            &device,
+            &CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
@@ -569,8 +567,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         match CommandPool::new(
-            device,
-            CommandPoolCreateInfo {
+            &device,
+            &CommandPoolCreateInfo {
                 ..Default::default()
             },
         ) {
@@ -586,15 +584,15 @@ mod tests {
     fn basic_alloc() {
         let (device, queue) = gfx_dev_and_queue!();
         let pool = CommandPool::new(
-            device,
-            CommandPoolCreateInfo {
+            &device,
+            &CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
         .unwrap();
         let iter = pool
-            .allocate_command_buffers(CommandBufferAllocateInfo {
+            .allocate_command_buffers(&CommandBufferAllocateInfo {
                 level: CommandBufferLevel::Primary,
                 command_buffer_count: 12,
                 ..Default::default()

@@ -1750,7 +1750,7 @@ pub struct CopyBufferInfo {
     /// of the two buffers.
     pub regions: SmallVec<[BufferCopy; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyBufferInfo {
@@ -1769,7 +1769,7 @@ impl CopyBufferInfo {
             src_buffer: src_buffer.into_bytes(),
             dst_buffer: dst_buffer.into_bytes(),
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -1998,7 +1998,7 @@ pub struct CopyBufferInfoTyped<T> {
     /// of the two buffers.
     pub regions: SmallVec<[BufferCopy; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl<T> CopyBufferInfoTyped<T> {
@@ -2015,7 +2015,7 @@ impl<T> CopyBufferInfoTyped<T> {
             src_buffer,
             dst_buffer,
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2045,7 +2045,7 @@ impl<T> From<CopyBufferInfoTyped<T>> for CopyBufferInfo {
             src_buffer: src_buffer.as_bytes().clone(),
             dst_buffer: dst_buffer.as_bytes().clone(),
             regions,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 }
@@ -2070,7 +2070,7 @@ pub struct BufferCopy {
     /// The default value is `0`, which must be overridden.
     pub size: DeviceSize,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for BufferCopy {
@@ -2088,7 +2088,7 @@ impl BufferCopy {
             src_offset: 0,
             dst_offset: 0,
             size: 0,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -2180,7 +2180,7 @@ pub struct CopyImageInfo {
     /// `plane0` if the image is multi-planar.
     pub regions: SmallVec<[ImageCopy; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyImageInfo {
@@ -2217,7 +2217,7 @@ impl CopyImageInfo {
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -3489,7 +3489,7 @@ pub struct ImageCopy {
     /// The default value is `[0; 3]`, which must be overridden.
     pub extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for ImageCopy {
@@ -3517,7 +3517,7 @@ impl ImageCopy {
             },
             dst_offset: [0; 3],
             extent: [0; 3],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -3684,7 +3684,7 @@ pub struct CopyBufferToImageInfo {
     /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
     pub regions: SmallVec<[BufferImageCopy; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyBufferToImageInfo {
@@ -3704,7 +3704,7 @@ impl CopyBufferToImageInfo {
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -4375,7 +4375,7 @@ pub struct CopyImageToBufferInfo {
     /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
     pub regions: SmallVec<[BufferImageCopy; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl CopyImageToBufferInfo {
@@ -4395,7 +4395,7 @@ impl CopyImageToBufferInfo {
             src_image_layout: ImageLayout::TransferSrcOptimal,
             dst_buffer: dst_buffer.into_bytes(),
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -5072,7 +5072,7 @@ pub struct BufferImageCopy {
     /// The default value is `[0; 3]`, which must be overridden.
     pub image_extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for BufferImageCopy {
@@ -5097,7 +5097,7 @@ impl BufferImageCopy {
             },
             image_offset: [0; 3],
             image_extent: [0; 3],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -5324,7 +5324,7 @@ pub struct BlitImageInfo {
     /// The default value is [`Filter::Nearest`].
     pub filter: Filter,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl BlitImageInfo {
@@ -5354,7 +5354,7 @@ impl BlitImageInfo {
             dst_image_layout: ImageLayout::TransferDstOptimal,
             regions: smallvec![region],
             filter: Filter::Nearest,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -6185,7 +6185,7 @@ pub struct ImageBlit {
     /// The default value is `[[0; 3]; 2]`, which must be overridden.
     pub dst_offsets: [[u32; 3]; 2],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for ImageBlit {
@@ -6212,7 +6212,7 @@ impl ImageBlit {
                 array_layers: 0..0,
             },
             dst_offsets: [[0; 3]; 2],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -6371,7 +6371,7 @@ pub struct ResolveImageInfo {
     /// `plane0` if the image is multi-planar.
     pub regions: SmallVec<[ImageResolve; 1]>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ResolveImageInfo {
@@ -6408,7 +6408,7 @@ impl ResolveImageInfo {
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
             regions: smallvec![region],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -7010,7 +7010,7 @@ pub struct ImageResolve {
     /// The default value is `[0; 3]`, which must be overridden.
     pub extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl Default for ImageResolve {
@@ -7038,7 +7038,7 @@ impl ImageResolve {
             },
             dst_offset: [0; 3],
             extent: [0; 3],
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 

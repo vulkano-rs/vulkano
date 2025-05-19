@@ -79,10 +79,10 @@ impl App {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
+            &library,
+            &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: required_extensions,
+                enabled_extensions: &required_extensions,
                 ..Default::default()
             },
         )
@@ -141,11 +141,11 @@ impl App {
         }
 
         let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                enabled_features: device_features,
-                queue_create_infos: vec![QueueCreateInfo {
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_extensions: &device_extensions,
+                enabled_features: &device_features,
+                queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
                 }],
@@ -187,7 +187,7 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let surface = Surface::from_window(&self.instance, &window).unwrap();
         let window_size = window.inner_size();
 
         let swapchain_format;
@@ -195,12 +195,12 @@ impl ApplicationHandler for App {
             let surface_capabilities = self
                 .device
                 .physical_device()
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&surface, &Default::default())
                 .unwrap();
             (swapchain_format, _) = self
                 .device
                 .physical_device()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&surface, &Default::default())
                 .unwrap()
                 .into_iter()
                 .find(|&(format, color_space)| {
@@ -212,8 +212,8 @@ impl ApplicationHandler for App {
             self.resources
                 .create_swapchain(
                     self.flight_id,
-                    surface,
-                    SwapchainCreateInfo {
+                    &surface,
+                    &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
@@ -239,7 +239,7 @@ impl ApplicationHandler for App {
 
         let bloom_sampler_id = bcx
             .global_set()
-            .create_sampler(SamplerCreateInfo {
+            .create_sampler(&SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 mipmap_mode: SamplerMipmapMode::Nearest,
@@ -329,14 +329,14 @@ impl ApplicationHandler for App {
             .task_mut()
             .downcast_mut::<SceneTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
         let tonemap_node = task_graph.task_node_mut(tonemap_node_id).unwrap();
         let subpass = tonemap_node.subpass().unwrap().clone();
         tonemap_node
             .task_mut()
             .downcast_mut::<TonemapTask>()
             .unwrap()
-            .create_pipeline(self, subpass);
+            .create_pipeline(self, &subpass);
 
         self.rcx = Some(RenderContext {
             window,
@@ -360,7 +360,6 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         let rcx = self.rcx.as_mut().unwrap();
-        let bcx = self.resources.bindless_context().unwrap();
 
         match event {
             WindowEvent::CloseRequested => {
@@ -383,28 +382,21 @@ impl ApplicationHandler for App {
                         .resources
                         .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
                             image_extent: window_size.into(),
-                            ..create_info
+                            ..*create_info
                         })
                         .expect("failed to recreate swapchain");
 
                     rcx.viewport.extent = window_size.into();
 
-                    // FIXME(taskgraph): safe resource destruction
-                    flight
-                        .wait_for_frame(flight.current_frame() - 1, None)
-                        .unwrap();
-
-                    unsafe { self.resources.remove_image(rcx.bloom_image_id) }.unwrap();
-
-                    unsafe {
-                        bcx.global_set()
-                            .remove_sampled_image(rcx.bloom_sampled_image_id)
-                    }
-                    .unwrap();
+                    let mut batch = self.resources.create_deferred_batch();
+                    batch.destroy_image(rcx.bloom_image_id);
+                    batch.destroy_sampled_image(rcx.bloom_sampled_image_id);
 
                     for &id in &rcx.bloom_storage_image_ids {
-                        let _ = unsafe { bcx.global_set().remove_storage_image(id) };
+                        batch.destroy_storage_image(id);
                     }
+
+                    batch.enqueue();
 
                     (
                         rcx.bloom_image_id,
@@ -471,14 +463,14 @@ fn window_size_dependent_setup(
         let view_formats = if device.api_version() >= Version::V1_2
             || device.enabled_extensions().khr_image_format_list
         {
-            vec![Format::R32_UINT, Format::E5B9G9R9_UFLOAT_PACK32]
+            &[Format::R32_UINT, Format::E5B9G9R9_UFLOAT_PACK32] as &[_]
         } else {
-            Vec::new()
+            &[]
         };
 
         resources
             .create_image(
-                ImageCreateInfo {
+                &ImageCreateInfo {
                     flags: ImageCreateFlags::MUTABLE_FORMAT,
                     image_type: ImageType::Dim2d,
                     format: Format::R32_UINT,
@@ -491,7 +483,7 @@ fn window_size_dependent_setup(
                         | ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap()
     };
@@ -503,7 +495,7 @@ fn window_size_dependent_setup(
         .global_set()
         .create_sampled_image(
             bloom_image_id,
-            ImageViewCreateInfo {
+            &ImageViewCreateInfo {
                 format: Format::E5B9G9R9_UFLOAT_PACK32,
                 subresource_range: bloom_image.subresource_range(),
                 usage: ImageUsage::SAMPLED,
@@ -519,7 +511,7 @@ fn window_size_dependent_setup(
         bcx.global_set()
             .create_storage_image(
                 bloom_image_id,
-                ImageViewCreateInfo {
+                &ImageViewCreateInfo {
                     format: Format::R32_UINT,
                     subresource_range: ImageSubresourceRange {
                         aspects: ImageAspects::COLOR,

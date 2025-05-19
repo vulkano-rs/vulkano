@@ -3,14 +3,14 @@
 #[allow(unused_imports)] // everything is exported for future-proofing
 pub use self::commands::{clear::*, copy::*, dynamic_state::*, pipeline::*, sync::*};
 use crate::{
+    collector::Deferred,
     descriptor_set::{LocalDescriptorSet, GLOBAL_SET, LOCAL_SET},
     graph::ResourceMap,
-    resource::DeathRow,
     Id,
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::Buffer,
     command_buffer as raw,
@@ -33,7 +33,7 @@ pub struct RecordingCommandBuffer<'a> {
     inner: &'a mut raw::RecordingCommandBuffer,
     state: &'a mut CommandBufferState,
     accesses: ResourceAccesses<'a>,
-    death_row: &'a mut DeathRow,
+    deferreds: &'a mut Vec<Deferred>,
 }
 
 struct ResourceAccesses<'a> {
@@ -57,13 +57,13 @@ impl<'a> RecordingCommandBuffer<'a> {
         inner: &'a mut raw::RecordingCommandBuffer,
         state: &'a mut CommandBufferState,
         resource_map: &'a ResourceMap<'a>,
-        death_row: &'a mut DeathRow,
+        deferreds: &'a mut Vec<Deferred>,
     ) -> Self {
         RecordingCommandBuffer {
             inner,
             state,
             accesses: ResourceAccesses { resource_map },
-            death_row,
+            deferreds,
         }
     }
 
@@ -81,18 +81,15 @@ impl<'a> RecordingCommandBuffer<'a> {
 
     /// Queues the destruction of the given `object` after the destruction of the command buffer.
     #[inline]
-    pub fn destroy_object(&mut self, object: Arc<impl Any + Send + Sync>) {
-        self.death_row.push(object);
+    pub fn destroy_object(&mut self, object: impl Send + 'static) {
+        self.deferreds.push(Deferred::destroy(object));
     }
 
     /// Queues the destruction of the given `objects` after the destruction of the command buffer.
     #[inline]
-    pub fn destroy_objects(
-        &mut self,
-        objects: impl IntoIterator<Item = Arc<impl Any + Send + Sync>>,
-    ) {
-        self.death_row
-            .extend(objects.into_iter().map(|object| object as _));
+    pub fn destroy_objects(&mut self, objects: impl IntoIterator<Item = impl Send + 'static>) {
+        self.deferreds
+            .extend(objects.into_iter().map(Deferred::destroy));
     }
 
     fn bind_bindless_sets(
@@ -168,10 +165,8 @@ impl<'a> ResourceAccesses<'a> {
         } else {
             let resources = self.resource_map.resources();
 
-            // SAFETY:
-            // * `ResourceMap` owns an `epoch::Guard`.
-            // * The caller must ensure that `id` is valid.
-            unsafe { resources.buffer_unchecked_unprotected(id) }.buffer()
+            // SAFETY: The caller must ensure that `id` is valid.
+            unsafe { resources.buffer_unchecked_protected(id, self.resource_map.guard()) }.buffer()
         }
     }
 
@@ -185,10 +180,8 @@ impl<'a> ResourceAccesses<'a> {
         } else {
             let resources = self.resource_map.resources();
 
-            // SAFETY:
-            // * The caller must ensure that `id` is valid.
-            // * `ResourceMap` owns an `epoch::Guard`.
-            unsafe { resources.image_unchecked_unprotected(id) }.image()
+            // SAFETY: The caller must ensure that `id` is valid.
+            unsafe { resources.image_unchecked_protected(id, self.resource_map.guard()) }.image()
         }
     }
 }
@@ -255,7 +248,7 @@ impl CommandBufferState {
     pub(crate) unsafe fn set_local_set(
         &mut self,
         resource_map: &ResourceMap<'_>,
-        death_row: &mut DeathRow,
+        deferreds: &mut Vec<Deferred>,
         framebuffer: &Framebuffer,
         subpass_index: usize,
     ) -> Result<(), VulkanError> {
@@ -280,7 +273,7 @@ impl CommandBufferState {
         }?;
 
         self.local_descriptor_set = Some(local_set.clone());
-        death_row.push(local_set);
+        deferreds.push(Deferred::destroy(local_set));
 
         Ok(())
     }

@@ -1,7 +1,7 @@
 use crate::App;
 use glam::IVec2;
 use rand::Rng;
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -16,9 +16,8 @@ use vulkano::{
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout, PipelineShaderStageCreateInfo,
     },
     sync::GpuFuture,
 };
@@ -37,14 +36,14 @@ pub struct GameOfLifeComputePipeline {
     image: Arc<ImageView>,
 }
 
-fn rand_grid(memory_allocator: Arc<StandardMemoryAllocator>, size: [u32; 2]) -> Subbuffer<[u32]> {
+fn rand_grid(memory_allocator: &Arc<StandardMemoryAllocator>, size: [u32; 2]) -> Subbuffer<[u32]> {
     Buffer::from_iter(
         memory_allocator,
-        BufferCreateInfo {
+        &BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -55,52 +54,46 @@ fn rand_grid(memory_allocator: Arc<StandardMemoryAllocator>, size: [u32; 2]) -> 
 }
 
 impl GameOfLifeComputePipeline {
-    pub fn new(app: &App, compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
+    pub fn new(app: &App, compute_queue: &Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
         let memory_allocator = app.context.memory_allocator();
-        let life_in = rand_grid(memory_allocator.clone(), size);
-        let life_out = rand_grid(memory_allocator.clone(), size);
+        let life_in = rand_grid(memory_allocator, size);
+        let life_out = rand_grid(memory_allocator, size);
 
         let compute_life_pipeline = {
             let device = compute_queue.device();
-            let cs = compute_life_cs::load(device.clone())
+            let cs = compute_life_cs::load(device)
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let stage = PipelineShaderStageCreateInfo::new(cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(&cs);
+            let layout = PipelineLayout::from_stages(device, slice::from_ref(&stage)).unwrap();
 
             ComputePipeline::new(
-                device.clone(),
+                device,
                 None,
-                ComputePipelineCreateInfo::new(stage, layout),
+                &ComputePipelineCreateInfo::new(stage, &layout),
             )
             .unwrap()
         };
 
         let image = ImageView::new_default(
-            Image::new(
-                memory_allocator.clone(),
-                ImageCreateInfo {
+            &Image::new(
+                memory_allocator,
+                &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
                     extent: [size[0], size[1], 1],
                     usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED | ImageUsage::STORAGE,
                     ..Default::default()
                 },
-                AllocationCreateInfo::default(),
+                &AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
 
         GameOfLifeComputePipeline {
-            compute_queue,
+            compute_queue: compute_queue.clone(),
             compute_life_pipeline,
             command_buffer_allocator: app.command_buffer_allocator.clone(),
             descriptor_set_allocator: app.descriptor_set_allocator.clone(),

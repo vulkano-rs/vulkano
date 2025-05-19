@@ -31,7 +31,6 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{
@@ -46,10 +45,10 @@ use vulkano::{
 fn main() {
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
+        &library,
+        &InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: InstanceExtensions {
+            enabled_extensions: &InstanceExtensions {
                 // Required to get multiview limits.
                 khr_get_physical_device_properties2: true,
                 ..InstanceExtensions::empty()
@@ -62,7 +61,7 @@ fn main() {
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::empty()
     };
-    let features = DeviceFeatures {
+    let device_features = DeviceFeatures {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on Vulkan 1.0
         // and the device feature on Vulkan 1.1+.
         multiview: true,
@@ -71,8 +70,10 @@ fn main() {
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
         .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter(|p| p.supported_features().contains(&features))
+        .filter(|p| {
+            p.supported_extensions().contains(&device_extensions)
+                && p.supported_features().contains(&device_features)
+        })
         .filter(|p| {
             // This example renders to two layers of the framebuffer using the multiview extension
             // so we check that at least two views are supported by the device. Not checking this
@@ -110,14 +111,14 @@ fn main() {
     );
 
     let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            queue_create_infos: vec![QueueCreateInfo {
+        &physical_device,
+        &DeviceCreateInfo {
+            queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
-            enabled_extensions: device_extensions,
-            enabled_features: features,
+            enabled_extensions: &device_extensions,
+            enabled_features: &device_features,
             ..Default::default()
         },
     )
@@ -125,11 +126,11 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
     let image = Image::new(
-        memory_allocator.clone(),
-        ImageCreateInfo {
+        &memory_allocator,
+        &ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::B8G8R8A8_SRGB,
             extent: [512, 512, 1],
@@ -137,11 +138,11 @@ fn main() {
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
             ..Default::default()
         },
-        AllocationCreateInfo::default(),
+        &AllocationCreateInfo::default(),
     )
     .unwrap();
 
-    let image_view = ImageView::new_default(image.clone()).unwrap();
+    let image_view = ImageView::new_default(&image).unwrap();
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -162,12 +163,12 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
+        &memory_allocator,
+        &BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },
-        AllocationCreateInfo {
+        &AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
@@ -212,110 +213,98 @@ fn main() {
         }
     }
 
-    let render_pass_description = RenderPassCreateInfo {
-        attachments: vec![AttachmentDescription {
-            format: image.format(),
-            samples: SampleCount::Sample1,
-            load_op: AttachmentLoadOp::Clear,
-            store_op: AttachmentStoreOp::Store,
-            initial_layout: ImageLayout::ColorAttachmentOptimal,
-            final_layout: ImageLayout::ColorAttachmentOptimal,
-            ..Default::default()
-        }],
-        subpasses: vec![SubpassDescription {
-            // The view mask indicates which layers of the framebuffer should be rendered for each
-            // subpass.
-            view_mask: 0b11,
-            color_attachments: vec![Some(AttachmentReference {
-                attachment: 0,
-                layout: ImageLayout::ColorAttachmentOptimal,
+    let render_pass = RenderPass::new(
+        &device,
+        &RenderPassCreateInfo {
+            attachments: &[AttachmentDescription {
+                format: image.format(),
+                samples: SampleCount::Sample1,
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+                initial_layout: ImageLayout::ColorAttachmentOptimal,
+                final_layout: ImageLayout::ColorAttachmentOptimal,
                 ..Default::default()
-            })],
+            }],
+            subpasses: &[SubpassDescription {
+                // The view mask indicates which layers of the framebuffer should be rendered for
+                // each subpass.
+                view_mask: 0b11,
+                color_attachments: &[Some(AttachmentReference {
+                    attachment: 0,
+                    layout: ImageLayout::ColorAttachmentOptimal,
+                    ..Default::default()
+                })],
+                ..Default::default()
+            }],
+            // The correlated view masks indicate sets of views that may be more efficient to render
+            // concurrently.
+            correlated_view_masks: &[0b11],
             ..Default::default()
-        }],
-        // The correlated view masks indicate sets of views that may be more efficient to render
-        // concurrently.
-        correlated_view_masks: vec![0b11],
-        ..Default::default()
-    };
-
-    let render_pass = RenderPass::new(device.clone(), render_pass_description).unwrap();
+        },
+    )
+    .unwrap();
 
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-            attachments: vec![image_view],
+        &render_pass,
+        &FramebufferCreateInfo {
+            attachments: &[&image_view],
             ..Default::default()
         },
     )
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
+        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
+        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(&vs),
+            PipelineShaderStageCreateInfo::new(&fs),
         ];
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass, 0).unwrap();
+        let layout = PipelineLayout::from_stages(&device, &stages).unwrap();
+        let subpass = Subpass::new(&render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            &device,
             None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState {
-                    viewports: [Viewport {
+            &GraphicsPipelineCreateInfo {
+                stages: &stages,
+                vertex_input_state: Some(&vertex_input_state),
+                input_assembly_state: Some(&InputAssemblyState::default()),
+                viewport_state: Some(&ViewportState {
+                    viewports: &[Viewport {
                         offset: [0.0, 0.0],
                         extent: [image.extent()[0] as f32, image.extent()[1] as f32],
                         depth_range: 0.0..=1.0,
-                    }]
-                    .into_iter()
-                    .collect(),
+                    }],
                     ..Default::default()
                 }),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::new(layout)
+                rasterization_state: Some(&RasterizationState::default()),
+                multisample_state: Some(&MultisampleState::default()),
+                color_blend_state: Some(&ColorBlendState {
+                    attachments: &[ColorBlendAttachmentState::default()],
+                    ..Default::default()
+                }),
+                subpass: Some((&subpass).into()),
+                ..GraphicsPipelineCreateInfo::new(&layout)
             },
         )
         .unwrap()
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
+        &device,
+        &Default::default(),
     ));
 
     let create_buffer = || {
         Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
+            &memory_allocator,
+            &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
-            AllocationCreateInfo {
+            &AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()

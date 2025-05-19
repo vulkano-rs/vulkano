@@ -63,9 +63,10 @@ pub mod ycbcr;
 /// use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// #
 /// let _sampler = Sampler::new(
-///     device.clone(),
-///     SamplerCreateInfo::simple_repeat_linear_no_mipmap(),
+///     &device,
+///     &SamplerCreateInfo::simple_repeat_linear_no_mipmap(),
 /// );
 /// ```
 ///
@@ -75,9 +76,10 @@ pub mod ycbcr;
 /// use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// #
 /// let _sampler = Sampler::new(
-///     device.clone(),
-///     SamplerCreateInfo {
+///     &device,
+///     &SamplerCreateInfo {
 ///         mag_filter: Filter::Linear,
 ///         min_filter: Filter::Linear,
 ///         address_mode: [SamplerAddressMode::Repeat; 3],
@@ -112,17 +114,17 @@ impl Sampler {
     /// Creates a new `Sampler`.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
-        create_info: SamplerCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Result<Arc<Sampler>, Validated<VulkanError>> {
-        Self::validate_new(&device, &create_info)?;
+        Self::validate_new(device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &SamplerCreateInfo,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
@@ -133,8 +135,8 @@ impl Sampler {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: SamplerCreateInfo,
+        device: &Arc<Device>,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Result<Arc<Sampler>, VulkanError> {
         let mut create_info_extensions_vk = create_info.to_vk_extensions();
         let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
@@ -166,11 +168,11 @@ impl Sampler {
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
-        device: Arc<Device>,
+        device: &Arc<Device>,
         handle: vk::Sampler,
-        create_info: SamplerCreateInfo,
+        create_info: &SamplerCreateInfo<'_>,
     ) -> Arc<Sampler> {
-        let SamplerCreateInfo {
+        let &SamplerCreateInfo {
             mag_filter,
             min_filter,
             mipmap_mode,
@@ -178,7 +180,7 @@ impl Sampler {
             mip_lod_bias,
             anisotropy,
             compare,
-            lod,
+            ref lod,
             border_color,
             unnormalized_coordinates,
             reduction_mode,
@@ -188,7 +190,7 @@ impl Sampler {
 
         Arc::new(Sampler {
             handle,
-            device: InstanceOwnedDebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: Self::next_id(),
             address_mode,
             anisotropy,
@@ -197,13 +199,15 @@ impl Sampler {
                 .any(|mode| mode == SamplerAddressMode::ClampToBorder)
                 .then_some(border_color),
             compare,
-            lod,
+            lod: lod.clone(),
             mag_filter,
             min_filter,
             mip_lod_bias,
             mipmap_mode,
             reduction_mode,
-            sampler_ycbcr_conversion: sampler_ycbcr_conversion.map(DeviceOwnedDebugWrapper),
+            sampler_ycbcr_conversion: sampler_ycbcr_conversion
+                .cloned()
+                .map(DeviceOwnedDebugWrapper),
             unnormalized_coordinates,
         })
     }
@@ -535,7 +539,7 @@ impl_id_counter!(Sampler);
 
 /// Parameters to create a new `Sampler`.
 #[derive(Clone, Debug)]
-pub struct SamplerCreateInfo {
+pub struct SamplerCreateInfo<'a> {
     /// How the sampled value of a single mipmap should be calculated,
     /// when magnification is applied (LOD <= 0.0).
     ///
@@ -672,19 +676,19 @@ pub struct SamplerCreateInfo {
     /// layout, and only in a combined image sampler descriptor.
     ///
     /// The default value is `None`.
-    pub sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+    pub sampler_ycbcr_conversion: Option<&'a Arc<SamplerYcbcrConversion>>,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SamplerCreateInfo {
+impl Default for SamplerCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SamplerCreateInfo {
+impl<'a> SamplerCreateInfo<'a> {
     /// Returns a default `SamplerCreateInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -701,7 +705,7 @@ impl SamplerCreateInfo {
             unnormalized_coordinates: false,
             reduction_mode: SamplerReductionMode::WeightedAverage,
             sampler_ycbcr_conversion: None,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -745,7 +749,7 @@ impl SamplerCreateInfo {
             border_color,
             unnormalized_coordinates,
             reduction_mode,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             _ne: _,
         } = self;
 
@@ -1060,7 +1064,7 @@ impl SamplerCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         extensions_vk: &'a mut SamplerCreateInfoExtensionsVk,
     ) -> vk::SamplerCreateInfo<'a> {
@@ -1129,7 +1133,7 @@ impl SamplerCreateInfo {
     pub(crate) fn to_vk_extensions(&self) -> SamplerCreateInfoExtensionsVk {
         let &Self {
             reduction_mode,
-            ref sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion,
             ..
         } = self;
 
@@ -1514,8 +1518,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1534,8 +1538,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1555,8 +1559,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 unnormalized_coordinates: true,
@@ -1571,22 +1575,25 @@ mod tests {
     #[test]
     fn simple_repeat_linear() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear());
+        let _ = Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear());
     }
 
     #[test]
     fn simple_repeat_linear_no_mipmap() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear_no_mipmap());
+        let _ = Sampler::new(
+            &device,
+            &SamplerCreateInfo::simple_repeat_linear_no_mipmap(),
+        );
     }
 
     #[test]
     fn min_lod_inferior() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        if Sampler::new(
-            device,
-            SamplerCreateInfo {
+        Sampler::new(
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1595,19 +1602,16 @@ mod tests {
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .unwrap_err();
     }
 
     #[test]
     fn max_anisotropy() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        if Sampler::new(
-            device,
-            SamplerCreateInfo {
+        Sampler::new(
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1617,10 +1621,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .unwrap_err();
     }
 
     #[test]
@@ -1628,8 +1629,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1640,10 +1641,7 @@ mod tests {
             },
         );
 
-        match r {
-            Err(Validated::ValidationError(_)) => (),
-            _ => panic!(),
-        }
+        assert!(matches!(r, Err(Validated::ValidationError(_))));
     }
 
     #[test]
@@ -1651,8 +1649,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!(sampler_anisotropy);
 
         let r = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1663,10 +1661,7 @@ mod tests {
             },
         );
 
-        match r {
-            Err(Validated::ValidationError(_)) => (),
-            _ => panic!(),
-        }
+        assert!(matches!(r, Err(Validated::ValidationError(_))));
     }
 
     #[test]
@@ -1674,8 +1669,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
@@ -1685,10 +1680,7 @@ mod tests {
             },
         );
 
-        match r {
-            Err(Validated::ValidationError(_)) => (),
-            _ => panic!(),
-        }
+        assert!(matches!(r, Err(Validated::ValidationError(_))));
     }
 
     #[test]
@@ -1696,8 +1688,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::MirrorClampToEdge; 3],
@@ -1707,24 +1699,23 @@ mod tests {
             },
         );
 
-        match r {
-            Err(Validated::ValidationError(err))
-                if matches!(
-                    *err,
-                    ValidationError {
-                        requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::DeviceFeature(
-                                "sampler_mirror_clamp_to_edge"
-                            )]),
-                            RequiresAllOf([Requires::DeviceExtension(
-                                "khr_sampler_mirror_clamp_to_edge"
-                            )],)
-                        ],),
-                        ..
-                    }
-                ) => {}
-            _ => panic!(),
-        }
+        assert!(matches!(
+            r,
+            Err(Validated::ValidationError(err)) if matches!(
+                *err,
+                ValidationError {
+                    requires_one_of: RequiresOneOf([
+                        RequiresAllOf([Requires::DeviceFeature(
+                            "sampler_mirror_clamp_to_edge",
+                        )]),
+                        RequiresAllOf([Requires::DeviceExtension(
+                            "khr_sampler_mirror_clamp_to_edge",
+                        )]),
+                    ]),
+                    ..
+                },
+            ),
+        ));
     }
 
     #[test]
@@ -1732,8 +1723,8 @@ mod tests {
         let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
-            device,
-            SamplerCreateInfo {
+            &device,
+            &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 reduction_mode: SamplerReductionMode::Min,
@@ -1741,19 +1732,18 @@ mod tests {
             },
         );
 
-        match r {
-            Err(Validated::ValidationError(err))
-                if matches!(
-                    *err,
-                    ValidationError {
-                        requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::DeviceFeature("sampler_filter_minmax")]),
-                            RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")])
-                        ],),
-                        ..
-                    }
-                ) => {}
-            _ => panic!(),
-        }
+        assert!(matches!(
+            r,
+            Err(Validated::ValidationError(err)) if matches!(
+                *err,
+                ValidationError {
+                    requires_one_of: RequiresOneOf([
+                        RequiresAllOf([Requires::DeviceFeature("sampler_filter_minmax")]),
+                        RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")]),
+                    ]),
+                    ..
+                },
+            ),
+        ));
     }
 }

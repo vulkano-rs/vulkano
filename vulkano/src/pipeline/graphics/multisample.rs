@@ -10,7 +10,7 @@ use ash::vk;
 
 /// State of the multisampling.
 #[derive(Clone, Debug)]
-pub struct MultisampleState {
+pub struct MultisampleState<'a> {
     /// The number of rasterization samples to take per pixel. The GPU will pick this many
     /// different locations within each pixel and assign to each of these locations a different
     /// depth value. The depth and stencil test will then be run for each sample.
@@ -57,17 +57,17 @@ pub struct MultisampleState {
     /// The default value is `false`.
     pub alpha_to_one_enable: bool,
 
-    pub _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for MultisampleState {
+impl Default for MultisampleState<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MultisampleState {
+impl MultisampleState<'_> {
     /// Returns a default `MultisampleState`.
     #[inline]
     pub const fn new() -> Self {
@@ -77,7 +77,7 @@ impl MultisampleState {
             sample_mask: [u32::MAX; 2],
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
-            _ne: crate::NonExhaustive(()),
+            _ne: crate::NE,
         }
     }
 
@@ -160,5 +160,12 @@ impl MultisampleState {
             .sample_mask(sample_mask)
             .alpha_to_coverage_enable(alpha_to_coverage_enable)
             .alpha_to_one_enable(alpha_to_one_enable)
+    }
+
+    pub(crate) fn to_owned(&self) -> MultisampleState<'static> {
+        MultisampleState {
+            _ne: crate::NE,
+            ..*self
+        }
     }
 }

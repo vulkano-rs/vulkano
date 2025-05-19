@@ -297,11 +297,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
@@ -792,11 +795,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
@@ -1744,8 +1750,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
 
         for (&(set_num, binding_num), binding_reqs) in pipeline.descriptor_binding_requirements() {
-            let layout_binding =
-                &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
+            let layout_binding = pipeline.layout().set_layouts()[set_num as usize]
+                .binding(binding_num)
+                .unwrap();
 
             let check_buffer =
                 |_set_num: u32,
@@ -2417,11 +2424,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         for &binding_num in vertex_input_state.bindings.keys() {
             if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
@@ -3392,7 +3402,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                 RenderPassStateType::BeginRendering(_),
                 PipelineSubpassType::BeginRendering(pipeline_rendering_info),
             ) => {
-                if pipeline_rendering_info.view_mask != render_pass_state.rendering_info.view_mask {
+                if pipeline_rendering_info.view_mask
+                    != render_pass_state.rendering_info.as_ref().view_mask
+                {
                     return Err(Box::new(ValidationError {
                         problem: "the `view_mask` of the current render pass instance is not \
                             equal to the `view_mask` the bound graphics pipeline was created with"
@@ -3405,6 +3417,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 if pipeline_rendering_info.color_attachment_formats.len()
                     != render_pass_state
                         .rendering_info
+                        .as_ref()
                         .color_attachment_formats
                         .len()
                 {
@@ -3420,6 +3433,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                 for (color_attachment_index, required_format, pipeline_format) in render_pass_state
                     .rendering_info
+                    .as_ref()
                     .color_attachment_formats
                     .iter()
                     .zip(
@@ -3449,6 +3463,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                 if let Some((required_format, pipeline_format)) = render_pass_state
                     .rendering_info
+                    .as_ref()
                     .depth_attachment_format
                     .map(|r| (r, pipeline_rendering_info.depth_attachment_format))
                 {
@@ -3467,6 +3482,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                 if let Some((required_format, pipeline_format)) = render_pass_state
                     .rendering_info
+                    .as_ref()
                     .stencil_attachment_format
                     .map(|r| (r, pipeline_rendering_info.stencil_attachment_format))
                 {
@@ -3535,7 +3551,8 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
             let descriptor_type = descriptor_sets_state.pipeline_layout.set_layouts()[set as usize]
-                .bindings()[&binding]
+                .binding(binding)
+                .unwrap()
                 .descriptor_type;
 
             // TODO: Should input attachments be handled here or in attachment access?
@@ -3724,11 +3741,14 @@ impl<L> AutoCommandBufferBuilder<L> {
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
     ) {
-        let vertex_input_state = pipeline
+        let vertex_input_state = if pipeline
             .dynamic_state()
             .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+        {
+            self.builder_state.vertex_input.as_ref().unwrap()
+        } else {
+            pipeline.vertex_input_state().unwrap()
+        };
 
         used_resources.extend(vertex_input_state.bindings.iter().map(|(&binding, _)| {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding];
