@@ -105,7 +105,8 @@ impl RecordingCommandBuffer {
                 dst_access: _,
                 queue_family_ownership_transfer: _,
                 buffer: _,
-                range: _,
+                offset: _,
+                size: _,
                 _ne: _,
             } = buffer_memory_barrier;
 
@@ -358,7 +359,8 @@ impl RecordingCommandBuffer {
                 dst_access: _,
                 queue_family_ownership_transfer: _,
                 buffer: _,
-                range: _,
+                offset: _,
+                size: _,
                 _ne: _,
             } = buffer_memory_barrier;
 
@@ -585,7 +587,8 @@ impl RecordingCommandBuffer {
                     dst_access: _,
                     queue_family_ownership_transfer: _,
                     buffer: _,
-                    range: _,
+                    offset: _,
+                    size: _,
                     _ne: _,
                 } = buffer_memory_barrier;
 

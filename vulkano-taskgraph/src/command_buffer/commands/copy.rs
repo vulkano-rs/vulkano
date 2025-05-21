@@ -193,7 +193,7 @@ impl RecordingCommandBuffer<'_> {
                 let regions_vk = [vk::ImageCopy2::default()
                     .src_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..src_image.subresource_layers()
                         }
                         .to_vk(),
@@ -201,7 +201,7 @@ impl RecordingCommandBuffer<'_> {
                     .src_offset(convert_offset([0; 3]))
                     .dst_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..dst_image.subresource_layers()
                         }
                         .to_vk(),
@@ -226,9 +226,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageCopy {
-                            ref src_subresource,
+                            src_subresource,
                             src_offset,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offset,
                             extent,
                             _ne: _,
@@ -261,13 +261,13 @@ impl RecordingCommandBuffer<'_> {
                 let dst_extent = dst_image.extent();
                 let region_vk = vk::ImageCopy {
                     src_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..src_image.subresource_layers()
                     }
                     .to_vk(),
                     src_offset: convert_offset([0; 3]),
                     dst_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..dst_image.subresource_layers()
                     }
                     .to_vk(),
@@ -295,9 +295,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageCopy {
-                            ref src_subresource,
+                            src_subresource,
                             src_offset,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offset,
                             extent,
                             _ne: _,
@@ -389,7 +389,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            ref image_subresource,
+                            image_subresource,
                             image_offset,
                             image_extent,
                             _ne: _,
@@ -444,7 +444,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            ref image_subresource,
+                            image_subresource,
                             image_offset,
                             image_extent,
                             _ne: _,
@@ -536,7 +536,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            ref image_subresource,
+                            image_subresource,
                             image_offset,
                             image_extent,
                             _ne: _,
@@ -591,7 +591,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            ref image_subresource,
+                            image_subresource,
                             image_offset,
                             image_extent,
                             _ne: _,
@@ -689,7 +689,7 @@ impl RecordingCommandBuffer<'_> {
                 let regions_vk = [vk::ImageBlit2::default()
                     .src_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..src_image.subresource_layers()
                         }
                         .to_vk(),
@@ -697,7 +697,7 @@ impl RecordingCommandBuffer<'_> {
                     .src_offsets([[0; 3], src_image.extent()].map(convert_offset))
                     .dst_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..src_image.subresource_layers()
                         }
                         .to_vk(),
@@ -718,9 +718,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageBlit {
-                            ref src_subresource,
+                            src_subresource,
                             src_offsets,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offsets,
                             _ne: _,
                         } = region;
@@ -750,13 +750,13 @@ impl RecordingCommandBuffer<'_> {
                 let min_array_layers = cmp::min(src_image.array_layers(), dst_image.array_layers());
                 let region_vk = vk::ImageBlit {
                     src_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..src_image.subresource_layers()
                     }
                     .to_vk(),
                     src_offsets: [[0; 3], src_image.extent()].map(convert_offset),
                     dst_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..dst_image.subresource_layers()
                     }
                     .to_vk(),
@@ -780,9 +780,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageBlit {
-                            ref src_subresource,
+                            src_subresource,
                             src_offsets,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offsets,
                             _ne: _,
                         } = region;
@@ -858,7 +858,7 @@ impl RecordingCommandBuffer<'_> {
                 let regions_vk = [vk::ImageResolve2::default()
                     .src_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..src_image.subresource_layers()
                         }
                         .to_vk(),
@@ -866,7 +866,7 @@ impl RecordingCommandBuffer<'_> {
                     .src_offset(convert_offset([0; 3]))
                     .dst_subresource(
                         ImageSubresourceLayers {
-                            array_layers: 0..min_array_layers,
+                            layer_count: min_array_layers,
                             ..src_image.subresource_layers()
                         }
                         .to_vk(),
@@ -891,9 +891,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageResolve {
-                            ref src_subresource,
+                            src_subresource,
                             src_offset,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offset,
                             extent,
                             _ne: _,
@@ -926,13 +926,13 @@ impl RecordingCommandBuffer<'_> {
                 let dst_extent = dst_image.extent();
                 let regions_vk = [vk::ImageResolve {
                     src_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..src_image.subresource_layers()
                     }
                     .to_vk(),
                     src_offset: convert_offset([0; 3]),
                     dst_subresource: ImageSubresourceLayers {
-                        array_layers: 0..min_array_layers,
+                        layer_count: min_array_layers,
                         ..dst_image.subresource_layers()
                     }
                     .to_vk(),
@@ -960,9 +960,9 @@ impl RecordingCommandBuffer<'_> {
                     .iter()
                     .map(|region| {
                         let &ImageResolve {
-                            ref src_subresource,
+                            src_subresource,
                             src_offset,
-                            ref dst_subresource,
+                            dst_subresource,
                             dst_offset,
                             extent,
                             _ne: _,
@@ -1184,13 +1184,15 @@ impl ImageCopy<'_> {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offset: [0; 3],
             extent: [0; 3],
@@ -1353,7 +1355,8 @@ impl BufferImageCopy<'_> {
             image_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             image_offset: [0; 3],
             image_extent: [0; 3],
@@ -1472,13 +1475,15 @@ impl ImageBlit<'_> {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offsets: [[0; 3]; 2],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offsets: [[0; 3]; 2],
             _ne: crate::NE,
@@ -1587,13 +1592,15 @@ impl ImageResolve<'_> {
             src_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
                 aspects: ImageAspects::empty(),
                 mip_level: 0,
-                array_layers: 0..0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             dst_offset: [0; 3],
             extent: [0; 3],

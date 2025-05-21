@@ -174,8 +174,7 @@ impl Framebuffer {
             }
 
             let image_view_extent = image_view.image().extent();
-            let image_view_array_layers = image_view.subresource_range().array_layers.end
-                - image_view.subresource_range().array_layers.start;
+            let image_view_array_layers = image_view.subresource_range().layer_count;
 
             if attachment_use.input_attachment
                 || attachment_use.color_attachment
@@ -347,7 +346,10 @@ impl Framebuffer {
     pub fn attached_layers_ranges(&self) -> SmallVec<[Range<u32>; 4]> {
         self.attachments
             .iter()
-            .map(|img| img.subresource_range().array_layers.clone())
+            .map(|img| {
+                img.subresource_range().base_array_layer
+                    ..img.subresource_range().base_array_layer + img.subresource_range().layer_count
+            })
             .collect()
     }
 }
@@ -481,8 +483,7 @@ impl<'a> FramebufferCreateInfo<'a> {
 
             for image_view in attachments.iter() {
                 let image_view_extent = image_view.image().extent();
-                let image_view_array_layers =
-                    image_view.subresource_range().array_layers.len() as u32;
+                let image_view_array_layers = image_view.subresource_range().layer_count;
 
                 auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
                 auto_extent[1] = auto_extent[1].min(image_view_extent[1]);
@@ -516,8 +517,7 @@ impl<'a> FramebufferCreateInfo<'a> {
         for (index, image_view) in attachments.iter().enumerate() {
             assert_eq!(device, image_view.device().as_ref());
 
-            let image_view_mip_levels = image_view.subresource_range().mip_levels.end
-                - image_view.subresource_range().mip_levels.start;
+            let image_view_mip_levels = image_view.subresource_range().level_count;
 
             if image_view_mip_levels != 1 {
                 return Err(Box::new(ValidationError {

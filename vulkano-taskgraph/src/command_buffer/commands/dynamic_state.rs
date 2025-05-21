@@ -1,7 +1,6 @@
 use crate::command_buffer::{RecordingCommandBuffer, Result};
 use ash::vk;
 use smallvec::SmallVec;
-use std::ops::RangeInclusive;
 use vulkano::{
     device::DeviceOwned,
     pipeline::graphics::{
@@ -124,13 +123,23 @@ impl RecordingCommandBuffer<'_> {
     }
 
     /// Sets the dynamic depth bounds for future draw calls.
-    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) -> Result<&mut Self> {
-        Ok(unsafe { self.set_depth_bounds_unchecked(bounds.clone()) })
+    pub unsafe fn set_depth_bounds(
+        &mut self,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
+    ) -> Result<&mut Self> {
+        Ok(unsafe { self.set_depth_bounds_unchecked(min_depth_bounds, max_depth_bounds) })
     }
 
-    pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+    pub unsafe fn set_depth_bounds_unchecked(
+        &mut self,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
+    ) -> &mut Self {
         let fns = self.device().fns();
-        unsafe { (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end()) };
+        unsafe {
+            (fns.v1_0.cmd_set_depth_bounds)(self.handle(), min_depth_bounds, max_depth_bounds)
+        };
 
         self
     }

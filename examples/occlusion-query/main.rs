@@ -387,7 +387,8 @@ impl ApplicationHandler for App {
         let viewport = Viewport {
             offset: [0.0, 0.0],
             extent: window_size.into(),
-            depth_range: 0.0..=1.0,
+            min_depth: 0.0,
+            max_depth: 1.0,
         };
 
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
@@ -574,7 +575,8 @@ impl ApplicationHandler for App {
                 // operations further down the line, either in the same frame or a future frame.
                 #[rustfmt::skip]
                 self.query_pool.get_results(
-                    0..3,
+                    0,
+                    3,
                     &mut self.query_results,
                     // Block the function call until the results are available.
                     // NOTE: If not all the queries have actually been executed, then this will

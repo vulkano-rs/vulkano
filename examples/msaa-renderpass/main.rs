@@ -343,7 +343,8 @@ fn main() {
     let viewport = Viewport {
         offset: [0.0, 0.0],
         extent: [1024.0, 1024.0],
-        depth_range: 0.0..=1.0,
+        min_depth: 0.0,
+        max_depth: 1.0,
     };
 
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(

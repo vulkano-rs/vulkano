@@ -128,10 +128,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                         _ => unreachable!(),
                     };
 
-                    for (index, (&offset, element)) in
+                    for (index, (&dynamic_offset, element)) in
                         dynamic_offsets.iter().zip(elements).enumerate()
                     {
-                        if !is_aligned(offset as DeviceSize, required_alignment) {
+                        if !is_aligned(dynamic_offset as DeviceSize, required_alignment) {
                             match binding.descriptor_type {
                                 DescriptorType::UniformBufferDynamic => {
                                     return Err(Box::new(ValidationError {
@@ -174,14 +174,22 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
 
                         if let Some(buffer_info) = element {
-                            let DescriptorBufferInfo { buffer, range } = buffer_info;
+                            let &DescriptorBufferInfo {
+                                ref buffer,
+                                offset,
+                                range,
+                            } = buffer_info;
 
-                            if offset as DeviceSize + range.end > buffer.size() {
+                            if !(dynamic_offset as DeviceSize)
+                                .checked_add(offset)
+                                .and_then(|x| x.checked_add(range))
+                                .is_some_and(|end| end <= buffer.size())
+                            {
                                 return Err(Box::new(ValidationError {
                                     problem: format!(
                                         "the dynamic offset of `descriptor_sets[{}]` \
                                         (for set number {}) for binding {} index {}, when \
-                                        added to `range.end` of the descriptor write, is \
+                                        added to `offset + range` of the descriptor write, is \
                                         greater than the size of the bound buffer",
                                         descriptor_sets_index, set_num, binding_num, index,
                                     )

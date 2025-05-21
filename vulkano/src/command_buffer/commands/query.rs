@@ -279,8 +279,13 @@ impl<L> AutoCommandBufferBuilder<L> {
     where
         T: QueryResultElement,
     {
-        self.inner
-            .validate_copy_query_pool_results(query_pool, queries, destination, flags)?;
+        self.inner.validate_copy_query_pool_results(
+            query_pool,
+            queries.start,
+            queries.end - queries.start,
+            destination,
+            flags,
+        )?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -320,7 +325,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                 unsafe {
                     out.copy_query_pool_results_unchecked(
                         &query_pool,
-                        queries.clone(),
+                        queries.start,
+                        queries.end - queries.start,
                         &destination,
                         flags,
                     )
@@ -354,8 +360,11 @@ impl<L> AutoCommandBufferBuilder<L> {
         query_pool: &QueryPool,
         queries: Range<u32>,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_reset_query_pool(query_pool, queries.clone())?;
+        self.inner.validate_reset_query_pool(
+            query_pool,
+            queries.start,
+            queries.end - queries.start,
+        )?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -391,7 +400,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             "reset_query_pool",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.reset_query_pool_unchecked(&query_pool, queries.clone()) };
+                unsafe {
+                    out.reset_query_pool_unchecked(
+                        &query_pool,
+                        queries.start,
+                        queries.end - queries.start,
+                    )
+                };
             },
         );
 
@@ -911,24 +926,38 @@ impl RecordingCommandBuffer {
     pub unsafe fn copy_query_pool_results<T>(
         &mut self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
         destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, Box<ValidationError>>
     where
         T: QueryResultElement,
     {
-        self.validate_copy_query_pool_results(query_pool, queries.clone(), destination, flags)?;
+        self.validate_copy_query_pool_results(
+            query_pool,
+            first_query,
+            query_count,
+            destination,
+            flags,
+        )?;
 
         Ok(unsafe {
-            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags)
+            self.copy_query_pool_results_unchecked(
+                query_pool,
+                first_query,
+                query_count,
+                destination,
+                flags,
+            )
         })
     }
 
     fn validate_copy_query_pool_results<T>(
         &self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
         destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<(), Box<ValidationError>>
@@ -959,17 +988,13 @@ impl RecordingCommandBuffer {
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
         debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
 
-        if queries.end < queries.start {
+        if !first_query
+            .checked_add(query_count)
+            .is_some_and(|end| end <= query_pool.query_count())
+        {
             return Err(Box::new(ValidationError {
-                context: "queries".into(),
-                problem: "`end` is less than `start`".into(),
-                ..Default::default()
-            }));
-        }
-
-        if queries.end > query_pool.query_count() {
-            return Err(Box::new(ValidationError {
-                problem: "`queries.end` is greater than `query_pool.query_count()`".into(),
+                problem: "`first_query + query_count` is greater than `query_pool.query_count()`"
+                    .into(),
                 vuids: &[
                     "VUID-vkCmdCopyQueryPoolResults-firstQuery-00820",
                     "VUID-vkCmdCopyQueryPoolResults-firstQuery-00821",
@@ -978,9 +1003,8 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        let count = queries.end - queries.start;
         let per_query_len = query_pool.result_len(flags);
-        let required_len = per_query_len * count as DeviceSize;
+        let required_len = per_query_len * query_count as DeviceSize;
 
         if destination.len() < required_len {
             return Err(Box::new(ValidationError {
@@ -1023,7 +1047,8 @@ impl RecordingCommandBuffer {
     pub unsafe fn copy_query_pool_results_unchecked<T>(
         &mut self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
         destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> &mut Self
@@ -1038,8 +1063,8 @@ impl RecordingCommandBuffer {
             (fns.v1_0.cmd_copy_query_pool_results)(
                 self.handle(),
                 query_pool.handle(),
-                queries.start,
-                queries.end - queries.start,
+                first_query,
+                query_count,
                 destination.buffer().handle(),
                 destination.offset(),
                 stride,
@@ -1054,17 +1079,19 @@ impl RecordingCommandBuffer {
     pub unsafe fn reset_query_pool(
         &mut self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_reset_query_pool(query_pool, queries.clone())?;
+        self.validate_reset_query_pool(query_pool, first_query, query_count)?;
 
-        Ok(unsafe { self.reset_query_pool_unchecked(query_pool, queries) })
+        Ok(unsafe { self.reset_query_pool_unchecked(query_pool, first_query, query_count) })
     }
 
     fn validate_reset_query_pool(
         &self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
     ) -> Result<(), Box<ValidationError>> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -1089,17 +1116,13 @@ impl RecordingCommandBuffer {
         // VUID-vkCmdResetQueryPool-commonparent
         assert_eq!(device, query_pool.device());
 
-        if queries.end < queries.start {
+        if !first_query
+            .checked_add(query_count)
+            .is_some_and(|end| end <= query_pool.query_count())
+        {
             return Err(Box::new(ValidationError {
-                context: "queries".into(),
-                problem: "`end` is less than `start`".into(),
-                ..Default::default()
-            }));
-        }
-
-        if queries.end > query_pool.query_count() {
-            return Err(Box::new(ValidationError {
-                problem: "`queries.end` is greater than `query_pool.query_count()`".into(),
+                problem: "`first_query + query_count` is greater than `query_pool.query_count()`"
+                    .into(),
                 vuids: &[
                     "VUID-vkCmdResetQueryPool-firstQuery-00796",
                     "VUID-vkCmdResetQueryPool-firstQuery-00797",
@@ -1115,15 +1138,16 @@ impl RecordingCommandBuffer {
     pub unsafe fn reset_query_pool_unchecked(
         &mut self,
         query_pool: &QueryPool,
-        queries: Range<u32>,
+        first_query: u32,
+        query_count: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
         unsafe {
             (fns.v1_0.cmd_reset_query_pool)(
                 self.handle(),
                 query_pool.handle(),
-                queries.start,
-                queries.end - queries.start,
+                first_query,
+                query_count,
             )
         };
 

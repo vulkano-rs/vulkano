@@ -12,10 +12,7 @@ use crate::{
 use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
-use std::{
-    ops::Range,
-    sync::{Arc, LazyLock},
-};
+use std::sync::{Arc, LazyLock};
 
 vulkan_bitflags_enum! {
     #[non_exhaustive]
@@ -2582,8 +2579,11 @@ pub struct BufferMemoryBarrier {
     /// The buffer to apply the barrier to.
     pub buffer: Arc<Buffer>,
 
-    /// The byte range of `buffer` to apply the barrier to.
-    pub range: Range<DeviceSize>,
+    /// The byte offset from `buffer` to apply the barrier to.
+    pub offset: DeviceSize,
+
+    /// The byte size to apply the barrier to.
+    pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive<'static>,
 }
@@ -2598,7 +2598,8 @@ impl BufferMemoryBarrier {
             dst_access: AccessFlags::empty(),
             queue_family_ownership_transfer: None,
             buffer,
-            range: 0..0,
+            offset: 0,
+            size: 0,
             _ne: crate::NE,
         }
     }
@@ -2611,7 +2612,8 @@ impl BufferMemoryBarrier {
             dst_access,
             ref queue_family_ownership_transfer,
             ref buffer,
-            ref range,
+            offset,
+            size,
             _ne,
         } = self;
 
@@ -3069,18 +3071,21 @@ impl BufferMemoryBarrier {
             }));
         }
 
-        if range.is_empty() {
+        if size == 0 {
             return Err(Box::new(ValidationError {
-                context: "range".into(),
-                problem: "is empty".into(),
+                context: "size".into(),
+                problem: "is zero".into(),
                 vuids: &["VUID-VkBufferMemoryBarrier2-size-01188"],
                 ..Default::default()
             }));
         }
 
-        if range.end > buffer.size() {
+        if !offset
+            .checked_add(size)
+            .is_some_and(|end| end <= buffer.size())
+        {
             return Err(Box::new(ValidationError {
-                problem: "`range.end` is greater than `buffer.size()`".into(),
+                problem: "`offset + size` is greater than `buffer.size()`".into(),
                 vuids: &[
                     "VUID-VkBufferMemoryBarrier2-offset-01187",
                     "VUID-VkBufferMemoryBarrier2-size-01189",
@@ -3221,7 +3226,8 @@ impl BufferMemoryBarrier {
             dst_access,
             ref queue_family_ownership_transfer,
             ref buffer,
-            ref range,
+            offset,
+            size,
             _ne: _,
         } = self;
 
@@ -3239,8 +3245,8 @@ impl BufferMemoryBarrier {
             .src_queue_family_index(src_queue_family_index)
             .dst_queue_family_index(dst_queue_family_index)
             .buffer(buffer.handle())
-            .offset(range.start)
-            .size(range.end - range.start)
+            .offset(offset)
+            .size(size)
     }
 
     pub(crate) fn to_vk(&self) -> vk::BufferMemoryBarrier<'static> {
@@ -3251,7 +3257,8 @@ impl BufferMemoryBarrier {
             dst_access,
             queue_family_ownership_transfer,
             ref buffer,
-            ref range,
+            offset,
+            size,
             _ne: _,
         } = self;
 
@@ -3267,8 +3274,8 @@ impl BufferMemoryBarrier {
             .src_queue_family_index(src_queue_family_index)
             .dst_queue_family_index(dst_queue_family_index)
             .buffer(buffer.handle())
-            .offset(range.start)
-            .size(range.end - range.start)
+            .offset(offset)
+            .size(size)
     }
 }
 
@@ -3330,8 +3337,10 @@ impl ImageMemoryBarrier {
             subresource_range: ImageSubresourceRange {
                 // Can't use image format aspects because `color` can't be specified with `planeN`.
                 aspects: ImageAspects::empty(),
-                mip_levels: 0..0,
-                array_layers: 0..0,
+                base_mip_level: 0,
+                level_count: 0,
+                base_array_layer: 0,
+                layer_count: 0,
             },
             _ne: crate::NE,
         }
@@ -3347,7 +3356,7 @@ impl ImageMemoryBarrier {
             new_layout,
             ref queue_family_ownership_transfer,
             ref image,
-            ref subresource_range,
+            subresource_range,
             _ne,
         } = self;
 
@@ -3821,10 +3830,14 @@ impl ImageMemoryBarrier {
             .validate(device)
             .map_err(|err| err.add_context("subresource_range"))?;
 
-        if subresource_range.mip_levels.end > image.mip_levels() {
+        if !subresource_range
+            .base_mip_level
+            .checked_add(subresource_range.level_count)
+            .is_some_and(|end| end <= image.mip_levels())
+        {
             return Err(Box::new(ValidationError {
-                problem: "`subresource_range.mip_levels.end` is greater than \
-                    `image.mip_levels()`"
+                problem: "`subresource_range.base_mip_level + subresource_range.level_count` \
+                    is greater than `image.mip_levels()`"
                     .into(),
                 vuids: &[
                     "VUID-VkImageMemoryBarrier2-subresourceRange-01486",
@@ -3834,10 +3847,14 @@ impl ImageMemoryBarrier {
             }));
         }
 
-        if subresource_range.array_layers.end > image.array_layers() {
+        if !subresource_range
+            .base_array_layer
+            .checked_add(subresource_range.layer_count)
+            .is_some_and(|end| end <= image.array_layers())
+        {
             return Err(Box::new(ValidationError {
-                problem: "`subresource_range.array_layers.end` is greater than \
-                    `image.array_layers()`"
+                problem: "`subresource_range.base_array_layer + subresource_range.layer_count` \
+                    is greater than `image.array_layers()`"
                     .into(),
                 vuids: &[
                     "VUID-VkImageMemoryBarrier2-subresourceRange-01488",
@@ -4336,7 +4353,7 @@ impl ImageMemoryBarrier {
             new_layout,
             ref queue_family_ownership_transfer,
             ref image,
-            ref subresource_range,
+            subresource_range,
             _ne: _,
         } = self;
 
@@ -4369,7 +4386,7 @@ impl ImageMemoryBarrier {
             new_layout,
             ref queue_family_ownership_transfer,
             ref image,
-            ref subresource_range,
+            subresource_range,
             _ne: _,
         } = self;
 

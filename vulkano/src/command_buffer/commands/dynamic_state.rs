@@ -267,7 +267,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         bounds: RangeInclusive<f32>,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_set_depth_bounds(bounds)?;
+        self.inner
+            .validate_set_depth_bounds(*bounds.start(), *bounds.end())?;
 
         self.validate_graphics_pipeline_fixed_state(DynamicState::DepthBounds)?;
 
@@ -281,7 +282,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "set_depth_bounds",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.set_depth_bounds_unchecked(bounds.clone()) };
+                unsafe { out.set_depth_bounds_unchecked(*bounds.start(), *bounds.end()) };
             },
         );
 
@@ -1630,16 +1631,18 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn set_depth_bounds(
         &mut self,
-        bounds: RangeInclusive<f32>,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_set_depth_bounds(bounds.clone())?;
+        self.validate_set_depth_bounds(min_depth_bounds, max_depth_bounds)?;
 
-        Ok(unsafe { self.set_depth_bounds_unchecked(bounds) })
+        Ok(unsafe { self.set_depth_bounds_unchecked(min_depth_bounds, max_depth_bounds) })
     }
 
     fn validate_set_depth_bounds(
         &self,
-        bounds: RangeInclusive<f32>,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -1660,7 +1663,7 @@ impl RecordingCommandBuffer {
             .enabled_extensions()
             .ext_depth_range_unrestricted
         {
-            if !(0.0..=1.0).contains(bounds.start()) {
+            if !(0.0..=1.0).contains(&min_depth_bounds) {
                 return Err(Box::new(ValidationError {
                     context: "bounds.start()".into(),
                     problem: "is not between `0.0` and `1.0` inclusive".into(),
@@ -1671,7 +1674,7 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if !(0.0..=1.0).contains(bounds.end()) {
+            if !(0.0..=1.0).contains(&max_depth_bounds) {
                 return Err(Box::new(ValidationError {
                     context: "bounds.end()".into(),
                     problem: "is not between `0.0` and `1.0` inclusive".into(),
@@ -1687,9 +1690,15 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+    pub unsafe fn set_depth_bounds_unchecked(
+        &mut self,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
+    ) -> &mut Self {
         let fns = self.device().fns();
-        unsafe { (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end()) };
+        unsafe {
+            (fns.v1_0.cmd_set_depth_bounds)(self.handle(), min_depth_bounds, max_depth_bounds)
+        };
 
         self
     }
