@@ -2589,8 +2589,9 @@ pub struct BufferMemoryBarrier {
 }
 
 impl BufferMemoryBarrier {
+    /// Returns a default `BufferMemoryBarrier` with the provided `buffer`.
     #[inline]
-    pub fn buffer(buffer: Arc<Buffer>) -> Self {
+    pub const fn new(buffer: Arc<Buffer>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -2602,6 +2603,12 @@ impl BufferMemoryBarrier {
             size: 0,
             _ne: crate::NE,
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn buffer(buffer: Arc<Buffer>) -> Self {
+        Self::new(buffer)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -3335,9 +3342,10 @@ pub struct ImageMemoryBarrier {
 }
 
 impl ImageMemoryBarrier {
+    /// Returns a default `ImageMemoryBarrier` with the provided `image`.
     // TODO: make const
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub fn new(image: Arc<Image>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -3350,6 +3358,12 @@ impl ImageMemoryBarrier {
             subresource_range: ImageSubresourceRange::default(),
             _ne: crate::NE,
         }
+    }
+
+    #[inline]
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
