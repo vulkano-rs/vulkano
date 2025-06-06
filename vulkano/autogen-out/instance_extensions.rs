@@ -2,166 +2,160 @@
 // It should not be edited manually. Changes should be made by editing autogen.
 
 
-/// List of extensions that are enabled or available.
+///List of instance extensions that are enabled or available
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct InstanceExtensions {
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_android_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group_creation.html)
-- Promoted to Vulkan 1.1*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group_creation.html)
+    ///- Promoted to Vulkan 1.1
     pub khr_device_group_creation: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_display: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_capabilities.html)
-- Promoted to Vulkan 1.1
-- Requires all of:
-  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_capabilities.html)
+    ///- Promoted to Vulkan 1.1
+    ///- Requires:
+    ///  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](InstanceExtensions::khr_get_physical_device_properties2)
     pub khr_external_fence_capabilities: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_capabilities.html)
-- Promoted to Vulkan 1.1
-- Requires all of:
-  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_capabilities.html)
+    ///- Promoted to Vulkan 1.1
+    ///- Requires:
+    ///  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](InstanceExtensions::khr_get_physical_device_properties2)
     pub khr_external_memory_capabilities: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
-- Promoted to Vulkan 1.1
-- Requires all of:
-  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
+    ///- Promoted to Vulkan 1.1
+    ///- Requires:
+    ///  - Vulkan API version 1.1 or instance extension [`khr_get_physical_device_properties2`](InstanceExtensions::khr_get_physical_device_properties2)
     pub khr_external_semaphore_capabilities: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_display_properties2.html)
-- Requires all of:
-  - instance extension [`khr_display`](crate::instance::InstanceExtensions::khr_display)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_display_properties2.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_display`](InstanceExtensions::khr_display)
     pub khr_get_display_properties2: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
-- Promoted to Vulkan 1.1*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
+    ///- Promoted to Vulkan 1.1
     pub khr_get_physical_device_properties2: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_surface_capabilities2.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_surface_capabilities2.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_get_surface_capabilities2: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_enumeration.html)
     pub khr_portability_enumeration: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface.html)
     pub khr_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface_protected_capabilities.html)
-- Requires all of:
-  - Vulkan API version 1.1
-  - instance extension [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface_protected_capabilities.html)
+    ///- Requires all of:
+    ///  - Vulkan API version 1.1
+    ///  - Instance extension [`khr_get_surface_capabilities2`](InstanceExtensions::khr_get_surface_capabilities2)
     pub khr_surface_protected_capabilities: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_wayland_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_wayland_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_wayland_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_win32_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_win32_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_win32_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_xcb_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_xcb_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_xcb_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_xlib_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_xlib_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub khr_xlib_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_acquire_drm_display.html)
-- Requires all of:
-  - instance extension [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_acquire_drm_display.html)
+    ///- Requires:
+    ///  - Instance extension [`ext_direct_mode_display`](InstanceExtensions::ext_direct_mode_display)
     pub ext_acquire_drm_display: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_acquire_xlib_display.html)
-- Requires all of:
-  - instance extension [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_acquire_xlib_display.html)
+    ///- Requires:
+    ///  - Instance extension [`ext_direct_mode_display`](InstanceExtensions::ext_direct_mode_display)
     pub ext_acquire_xlib_display: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_debug_report.html)
-- Deprecated by [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_debug_report.html)
+    ///- Deprecated by [`ext_debug_utils`](InstanceExtensions::ext_debug_utils)
     pub ext_debug_report: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_debug_utils.html)
     pub ext_debug_utils: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_direct_mode_display.html)
-- Requires all of:
-  - instance extension [`khr_display`](crate::instance::InstanceExtensions::khr_display)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_direct_mode_display.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_display`](InstanceExtensions::khr_display)
     pub ext_direct_mode_display: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_directfb_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_directfb_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub ext_directfb_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_display_surface_counter.html)
-- Requires all of:
-  - instance extension [`khr_display`](crate::instance::InstanceExtensions::khr_display)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_display_surface_counter.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_display`](InstanceExtensions::khr_display)
     pub ext_display_surface_counter: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_headless_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_headless_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub ext_headless_surface: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_layer_settings.html)
     pub ext_layer_settings: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_metal_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_metal_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub ext_metal_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_surface_maintenance1.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
-  - instance extension [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_surface_maintenance1.html)
+    ///- Requires all of:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
+    ///  - Instance extension [`khr_get_surface_capabilities2`](InstanceExtensions::khr_get_surface_capabilities2)
     pub ext_surface_maintenance1: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_colorspace.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_colorspace.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub ext_swapchain_colorspace: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_features.html)
-- Deprecated by [`ext_layer_settings`](crate::instance::InstanceExtensions::ext_layer_settings)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_features.html)
+    ///- Deprecated by [`ext_layer_settings`](InstanceExtensions::ext_layer_settings)
     pub ext_validation_features: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_flags.html)
-- Deprecated by [`ext_layer_settings`](crate::instance::InstanceExtensions::ext_layer_settings)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_flags.html)
+    ///- Deprecated by [`ext_layer_settings`](InstanceExtensions::ext_layer_settings)
     pub ext_validation_flags: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub fuchsia_imagepipe_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_stream_descriptor_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_stream_descriptor_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub ggp_stream_descriptor_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GOOGLE_surfaceless_query.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GOOGLE_surfaceless_query.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub google_surfaceless_query: bool,
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_LUNARG_direct_driver_loading.html)
     pub lunarg_direct_driver_loading: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_MVK_ios_surface.html)
-- Deprecated by [`ext_metal_surface`](crate::instance::InstanceExtensions::ext_metal_surface)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_MVK_ios_surface.html)
+    ///- Deprecated by [`ext_metal_surface`](InstanceExtensions::ext_metal_surface)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub mvk_ios_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_MVK_macos_surface.html)
-- Deprecated by [`ext_metal_surface`](crate::instance::InstanceExtensions::ext_metal_surface)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_MVK_macos_surface.html)
+    ///- Deprecated by [`ext_metal_surface`](InstanceExtensions::ext_metal_surface)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub mvk_macos_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_NN_vi_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_NN_vi_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub nn_vi_surface: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_NV_external_memory_capabilities.html)
-- Deprecated by [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_NV_external_memory_capabilities.html)
+    ///- Deprecated by [`khr_external_memory_capabilities`](InstanceExtensions::khr_external_memory_capabilities)
     pub nv_external_memory_capabilities: bool,
-    /**- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_QNX_screen_surface.html)
-- Requires all of:
-  - instance extension [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)*/
+    ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_QNX_screen_surface.html)
+    ///- Requires:
+    ///  - Instance extension [`khr_surface`](InstanceExtensions::khr_surface)
     pub qnx_screen_surface: bool,
     pub _ne: crate::NonExhaustive<'static>,
 }
-impl Default for InstanceExtensions {
-    #[inline]
-    fn default() -> Self {
-        Self::empty()
-    }
-}
 impl InstanceExtensions {
-    /// Returns an `Extensions` object with none of the members set.
+    ///Returns a `instance` with none of the members set.
     #[inline]
     pub const fn empty() -> Self {
         Self {
@@ -640,57 +634,863 @@ impl InstanceExtensions {
             _ne: crate::NE,
         }
     }
-}
-impl std::ops::BitAnd for InstanceExtensions {
-    type Output = InstanceExtensions;
-    #[inline]
-    fn bitand(self, rhs: Self) -> Self::Output {
-        self.intersection(&rhs)
+    pub(crate) fn validate(
+        &self,
+        supported: &Self,
+        api_version: Version,
+    ) -> Result<(), Box<ValidationError>> {
+        if self.khr_android_surface {
+            if !supported.khr_android_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_android_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_device_group_creation {
+            if !supported.khr_device_group_creation {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_device_group_creation`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_display {
+            if !supported.khr_display {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_display`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_external_fence_capabilities {
+            if !supported.khr_external_fence_capabilities {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_external_fence_capabilities`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_external_memory_capabilities {
+            if !supported.khr_external_memory_capabilities {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_external_memory_capabilities`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_external_semaphore_capabilities {
+            if !supported.khr_external_semaphore_capabilities {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_external_semaphore_capabilities`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_get_display_properties2 {
+            if !supported.khr_get_display_properties2 {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_get_display_properties2`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_get_physical_device_properties2 {
+            if !supported.khr_get_physical_device_properties2 {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_get_physical_device_properties2`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_get_surface_capabilities2 {
+            if !supported.khr_get_surface_capabilities2 {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_get_surface_capabilities2`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_portability_enumeration {
+            if !supported.khr_portability_enumeration {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_portability_enumeration`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_surface {
+            if !supported.khr_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_surface_protected_capabilities {
+            if !supported.khr_surface_protected_capabilities {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_surface_protected_capabilities`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+            if !(api_version >= crate::Version::V1_1) {
+                return Err(
+                    Box::new(crate::ValidationError {
+                        problem: "contains `khr_surface_protected_capabilities`".into(),
+                        requires_one_of: crate::RequiresOneOf(
+                            &[
+                                crate::RequiresAllOf(
+                                    &[crate::Requires::APIVersion(crate::Version::V1_1)],
+                                ),
+                            ],
+                        ),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_wayland_surface {
+            if !supported.khr_wayland_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_wayland_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_win32_surface {
+            if !supported.khr_win32_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_win32_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_xcb_surface {
+            if !supported.khr_xcb_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_xcb_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.khr_xlib_surface {
+            if !supported.khr_xlib_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `khr_xlib_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_acquire_drm_display {
+            if !supported.ext_acquire_drm_display {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_acquire_drm_display`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_acquire_xlib_display {
+            if !supported.ext_acquire_xlib_display {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_acquire_xlib_display`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_debug_report {
+            if !supported.ext_debug_report {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_debug_report`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_debug_utils {
+            if !supported.ext_debug_utils {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_debug_utils`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_direct_mode_display {
+            if !supported.ext_direct_mode_display {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_direct_mode_display`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_directfb_surface {
+            if !supported.ext_directfb_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_directfb_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_display_surface_counter {
+            if !supported.ext_display_surface_counter {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_display_surface_counter`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_headless_surface {
+            if !supported.ext_headless_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_headless_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_layer_settings {
+            if !supported.ext_layer_settings {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_layer_settings`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_metal_surface {
+            if !supported.ext_metal_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_metal_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_surface_maintenance1 {
+            if !supported.ext_surface_maintenance1 {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_surface_maintenance1`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_swapchain_colorspace {
+            if !supported.ext_swapchain_colorspace {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_swapchain_colorspace`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_validation_features {
+            if !supported.ext_validation_features {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_validation_features`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ext_validation_flags {
+            if !supported.ext_validation_flags {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ext_validation_flags`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.fuchsia_imagepipe_surface {
+            if !supported.fuchsia_imagepipe_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `fuchsia_imagepipe_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.ggp_stream_descriptor_surface {
+            if !supported.ggp_stream_descriptor_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `ggp_stream_descriptor_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.google_surfaceless_query {
+            if !supported.google_surfaceless_query {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `google_surfaceless_query`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.lunarg_direct_driver_loading {
+            if !supported.lunarg_direct_driver_loading {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `lunarg_direct_driver_loading`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.mvk_ios_surface {
+            if !supported.mvk_ios_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `mvk_ios_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.mvk_macos_surface {
+            if !supported.mvk_macos_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `mvk_macos_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.nn_vi_surface {
+            if !supported.nn_vi_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `nn_vi_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.nv_external_memory_capabilities {
+            if !supported.nv_external_memory_capabilities {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `nv_external_memory_capabilities`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        if self.qnx_screen_surface {
+            if !supported.qnx_screen_surface {
+                return Err(
+                    Box::new(ValidationError {
+                        problem: "contains `qnx_screen_surface`, but this extension is not supported by the library"
+                            .into(),
+                        ..Default::default()
+                    }),
+                );
+            }
+        }
+        Ok(())
     }
-}
-impl std::ops::BitAndAssign for InstanceExtensions {
-    #[inline]
-    fn bitand_assign(&mut self, rhs: Self) {
-        *self = self.intersection(&rhs);
+    pub(crate) fn enable_dependencies(
+        &self,
+        #[allow(unused_variables)]
+        api_version: Version,
+        #[allow(unused_variables)]
+        supported: &Self,
+    ) -> Self {
+        let mut enabled = *self;
+        if self.khr_android_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_display {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_external_fence_capabilities {
+            if !(api_version >= crate::Version::V1_1
+                || self.khr_get_physical_device_properties2)
+            {
+                enabled.khr_get_physical_device_properties2 = true;
+            }
+        }
+        if self.khr_external_memory_capabilities {
+            if !(api_version >= crate::Version::V1_1
+                || self.khr_get_physical_device_properties2)
+            {
+                enabled.khr_get_physical_device_properties2 = true;
+            }
+        }
+        if self.khr_external_semaphore_capabilities {
+            if !(api_version >= crate::Version::V1_1
+                || self.khr_get_physical_device_properties2)
+            {
+                enabled.khr_get_physical_device_properties2 = true;
+            }
+        }
+        if self.khr_get_display_properties2 {
+            if !(self.khr_display) {
+                enabled.khr_display = true;
+            }
+        }
+        if self.khr_get_surface_capabilities2 {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_surface_protected_capabilities {
+            if !(self.khr_get_surface_capabilities2) {
+                enabled.khr_get_surface_capabilities2 = true;
+            }
+        }
+        if self.khr_wayland_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_win32_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_xcb_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.khr_xlib_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.ext_acquire_drm_display {
+            if !(self.ext_direct_mode_display) {
+                enabled.ext_direct_mode_display = true;
+            }
+        }
+        if self.ext_acquire_xlib_display {
+            if !(self.ext_direct_mode_display) {
+                enabled.ext_direct_mode_display = true;
+            }
+        }
+        if self.ext_direct_mode_display {
+            if !(self.khr_display) {
+                enabled.khr_display = true;
+            }
+        }
+        if self.ext_directfb_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.ext_display_surface_counter {
+            if !(self.khr_display) {
+                enabled.khr_display = true;
+            }
+        }
+        if self.ext_headless_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.ext_metal_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.ext_surface_maintenance1 {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+            if !(self.khr_get_surface_capabilities2) {
+                enabled.khr_get_surface_capabilities2 = true;
+            }
+        }
+        if self.ext_swapchain_colorspace {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.fuchsia_imagepipe_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.ggp_stream_descriptor_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.google_surfaceless_query {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.mvk_ios_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.mvk_macos_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.nn_vi_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        if self.qnx_screen_surface {
+            if !(self.khr_surface) {
+                enabled.khr_surface = true;
+            }
+        }
+        enabled
     }
-}
-impl std::ops::BitOr for InstanceExtensions {
-    type Output = InstanceExtensions;
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        self.union(&rhs)
+    pub(crate) fn from_vk<'a>(iter: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut val = Self::empty();
+        for name in iter {
+            match name {
+                "VK_KHR_android_surface" => {
+                    val.khr_android_surface = true;
+                }
+                "VK_KHR_device_group_creation" => {
+                    val.khr_device_group_creation = true;
+                }
+                "VK_KHR_display" => {
+                    val.khr_display = true;
+                }
+                "VK_KHR_external_fence_capabilities" => {
+                    val.khr_external_fence_capabilities = true;
+                }
+                "VK_KHR_external_memory_capabilities" => {
+                    val.khr_external_memory_capabilities = true;
+                }
+                "VK_KHR_external_semaphore_capabilities" => {
+                    val.khr_external_semaphore_capabilities = true;
+                }
+                "VK_KHR_get_display_properties2" => {
+                    val.khr_get_display_properties2 = true;
+                }
+                "VK_KHR_get_physical_device_properties2" => {
+                    val.khr_get_physical_device_properties2 = true;
+                }
+                "VK_KHR_get_surface_capabilities2" => {
+                    val.khr_get_surface_capabilities2 = true;
+                }
+                "VK_KHR_portability_enumeration" => {
+                    val.khr_portability_enumeration = true;
+                }
+                "VK_KHR_surface" => {
+                    val.khr_surface = true;
+                }
+                "VK_KHR_surface_protected_capabilities" => {
+                    val.khr_surface_protected_capabilities = true;
+                }
+                "VK_KHR_wayland_surface" => {
+                    val.khr_wayland_surface = true;
+                }
+                "VK_KHR_win32_surface" => {
+                    val.khr_win32_surface = true;
+                }
+                "VK_KHR_xcb_surface" => {
+                    val.khr_xcb_surface = true;
+                }
+                "VK_KHR_xlib_surface" => {
+                    val.khr_xlib_surface = true;
+                }
+                "VK_EXT_acquire_drm_display" => {
+                    val.ext_acquire_drm_display = true;
+                }
+                "VK_EXT_acquire_xlib_display" => {
+                    val.ext_acquire_xlib_display = true;
+                }
+                "VK_EXT_debug_report" => {
+                    val.ext_debug_report = true;
+                }
+                "VK_EXT_debug_utils" => {
+                    val.ext_debug_utils = true;
+                }
+                "VK_EXT_direct_mode_display" => {
+                    val.ext_direct_mode_display = true;
+                }
+                "VK_EXT_directfb_surface" => {
+                    val.ext_directfb_surface = true;
+                }
+                "VK_EXT_display_surface_counter" => {
+                    val.ext_display_surface_counter = true;
+                }
+                "VK_EXT_headless_surface" => {
+                    val.ext_headless_surface = true;
+                }
+                "VK_EXT_layer_settings" => {
+                    val.ext_layer_settings = true;
+                }
+                "VK_EXT_metal_surface" => {
+                    val.ext_metal_surface = true;
+                }
+                "VK_EXT_surface_maintenance1" => {
+                    val.ext_surface_maintenance1 = true;
+                }
+                "VK_EXT_swapchain_colorspace" => {
+                    val.ext_swapchain_colorspace = true;
+                }
+                "VK_EXT_validation_features" => {
+                    val.ext_validation_features = true;
+                }
+                "VK_EXT_validation_flags" => {
+                    val.ext_validation_flags = true;
+                }
+                "VK_FUCHSIA_imagepipe_surface" => {
+                    val.fuchsia_imagepipe_surface = true;
+                }
+                "VK_GGP_stream_descriptor_surface" => {
+                    val.ggp_stream_descriptor_surface = true;
+                }
+                "VK_GOOGLE_surfaceless_query" => {
+                    val.google_surfaceless_query = true;
+                }
+                "VK_LUNARG_direct_driver_loading" => {
+                    val.lunarg_direct_driver_loading = true;
+                }
+                "VK_MVK_ios_surface" => {
+                    val.mvk_ios_surface = true;
+                }
+                "VK_MVK_macos_surface" => {
+                    val.mvk_macos_surface = true;
+                }
+                "VK_NN_vi_surface" => {
+                    val.nn_vi_surface = true;
+                }
+                "VK_NV_external_memory_capabilities" => {
+                    val.nv_external_memory_capabilities = true;
+                }
+                "VK_QNX_screen_surface" => {
+                    val.qnx_screen_surface = true;
+                }
+                _ => {}
+            }
+        }
+        val
     }
-}
-impl std::ops::BitOrAssign for InstanceExtensions {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = self.union(&rhs);
-    }
-}
-impl std::ops::BitXor for InstanceExtensions {
-    type Output = InstanceExtensions;
-    #[inline]
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        self.symmetric_difference(&rhs)
-    }
-}
-impl std::ops::BitXorAssign for InstanceExtensions {
-    #[inline]
-    fn bitxor_assign(&mut self, rhs: Self) {
-        *self = self.symmetric_difference(&rhs);
-    }
-}
-impl std::ops::Sub for InstanceExtensions {
-    type Output = InstanceExtensions;
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.difference(&rhs)
-    }
-}
-impl std::ops::SubAssign for InstanceExtensions {
-    #[inline]
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = self.difference(&rhs);
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> Vec<&'static CStr> {
+        let mut val_vk = Vec::new();
+        if self.khr_android_surface {
+            val_vk.push(c"VK_KHR_android_surface");
+        }
+        if self.khr_device_group_creation {
+            val_vk.push(c"VK_KHR_device_group_creation");
+        }
+        if self.khr_display {
+            val_vk.push(c"VK_KHR_display");
+        }
+        if self.khr_external_fence_capabilities {
+            val_vk.push(c"VK_KHR_external_fence_capabilities");
+        }
+        if self.khr_external_memory_capabilities {
+            val_vk.push(c"VK_KHR_external_memory_capabilities");
+        }
+        if self.khr_external_semaphore_capabilities {
+            val_vk.push(c"VK_KHR_external_semaphore_capabilities");
+        }
+        if self.khr_get_display_properties2 {
+            val_vk.push(c"VK_KHR_get_display_properties2");
+        }
+        if self.khr_get_physical_device_properties2 {
+            val_vk.push(c"VK_KHR_get_physical_device_properties2");
+        }
+        if self.khr_get_surface_capabilities2 {
+            val_vk.push(c"VK_KHR_get_surface_capabilities2");
+        }
+        if self.khr_portability_enumeration {
+            val_vk.push(c"VK_KHR_portability_enumeration");
+        }
+        if self.khr_surface {
+            val_vk.push(c"VK_KHR_surface");
+        }
+        if self.khr_surface_protected_capabilities {
+            val_vk.push(c"VK_KHR_surface_protected_capabilities");
+        }
+        if self.khr_wayland_surface {
+            val_vk.push(c"VK_KHR_wayland_surface");
+        }
+        if self.khr_win32_surface {
+            val_vk.push(c"VK_KHR_win32_surface");
+        }
+        if self.khr_xcb_surface {
+            val_vk.push(c"VK_KHR_xcb_surface");
+        }
+        if self.khr_xlib_surface {
+            val_vk.push(c"VK_KHR_xlib_surface");
+        }
+        if self.ext_acquire_drm_display {
+            val_vk.push(c"VK_EXT_acquire_drm_display");
+        }
+        if self.ext_acquire_xlib_display {
+            val_vk.push(c"VK_EXT_acquire_xlib_display");
+        }
+        if self.ext_debug_report {
+            val_vk.push(c"VK_EXT_debug_report");
+        }
+        if self.ext_debug_utils {
+            val_vk.push(c"VK_EXT_debug_utils");
+        }
+        if self.ext_direct_mode_display {
+            val_vk.push(c"VK_EXT_direct_mode_display");
+        }
+        if self.ext_directfb_surface {
+            val_vk.push(c"VK_EXT_directfb_surface");
+        }
+        if self.ext_display_surface_counter {
+            val_vk.push(c"VK_EXT_display_surface_counter");
+        }
+        if self.ext_headless_surface {
+            val_vk.push(c"VK_EXT_headless_surface");
+        }
+        if self.ext_layer_settings {
+            val_vk.push(c"VK_EXT_layer_settings");
+        }
+        if self.ext_metal_surface {
+            val_vk.push(c"VK_EXT_metal_surface");
+        }
+        if self.ext_surface_maintenance1 {
+            val_vk.push(c"VK_EXT_surface_maintenance1");
+        }
+        if self.ext_swapchain_colorspace {
+            val_vk.push(c"VK_EXT_swapchain_colorspace");
+        }
+        if self.ext_validation_features {
+            val_vk.push(c"VK_EXT_validation_features");
+        }
+        if self.ext_validation_flags {
+            val_vk.push(c"VK_EXT_validation_flags");
+        }
+        if self.fuchsia_imagepipe_surface {
+            val_vk.push(c"VK_FUCHSIA_imagepipe_surface");
+        }
+        if self.ggp_stream_descriptor_surface {
+            val_vk.push(c"VK_GGP_stream_descriptor_surface");
+        }
+        if self.google_surfaceless_query {
+            val_vk.push(c"VK_GOOGLE_surfaceless_query");
+        }
+        if self.lunarg_direct_driver_loading {
+            val_vk.push(c"VK_LUNARG_direct_driver_loading");
+        }
+        if self.mvk_ios_surface {
+            val_vk.push(c"VK_MVK_ios_surface");
+        }
+        if self.mvk_macos_surface {
+            val_vk.push(c"VK_MVK_macos_surface");
+        }
+        if self.nn_vi_surface {
+            val_vk.push(c"VK_NN_vi_surface");
+        }
+        if self.nv_external_memory_capabilities {
+            val_vk.push(c"VK_NV_external_memory_capabilities");
+        }
+        if self.qnx_screen_surface {
+            val_vk.push(c"VK_QNX_screen_surface");
+        }
+        val_vk
     }
 }
 impl std::fmt::Debug for InstanceExtensions {
@@ -1013,276 +1813,62 @@ impl std::fmt::Debug for InstanceExtensions {
         write!(f, "]")
     }
 }
-impl<'a> FromIterator<&'a str> for InstanceExtensions {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = &'a str>,
-    {
-        let mut extensions = Self::empty();
-        for name in iter {
-            match name {
-                "VK_KHR_android_surface" => {
-                    extensions.khr_android_surface = true;
-                }
-                "VK_KHR_device_group_creation" => {
-                    extensions.khr_device_group_creation = true;
-                }
-                "VK_KHR_display" => {
-                    extensions.khr_display = true;
-                }
-                "VK_KHR_external_fence_capabilities" => {
-                    extensions.khr_external_fence_capabilities = true;
-                }
-                "VK_KHR_external_memory_capabilities" => {
-                    extensions.khr_external_memory_capabilities = true;
-                }
-                "VK_KHR_external_semaphore_capabilities" => {
-                    extensions.khr_external_semaphore_capabilities = true;
-                }
-                "VK_KHR_get_display_properties2" => {
-                    extensions.khr_get_display_properties2 = true;
-                }
-                "VK_KHR_get_physical_device_properties2" => {
-                    extensions.khr_get_physical_device_properties2 = true;
-                }
-                "VK_KHR_get_surface_capabilities2" => {
-                    extensions.khr_get_surface_capabilities2 = true;
-                }
-                "VK_KHR_portability_enumeration" => {
-                    extensions.khr_portability_enumeration = true;
-                }
-                "VK_KHR_surface" => {
-                    extensions.khr_surface = true;
-                }
-                "VK_KHR_surface_protected_capabilities" => {
-                    extensions.khr_surface_protected_capabilities = true;
-                }
-                "VK_KHR_wayland_surface" => {
-                    extensions.khr_wayland_surface = true;
-                }
-                "VK_KHR_win32_surface" => {
-                    extensions.khr_win32_surface = true;
-                }
-                "VK_KHR_xcb_surface" => {
-                    extensions.khr_xcb_surface = true;
-                }
-                "VK_KHR_xlib_surface" => {
-                    extensions.khr_xlib_surface = true;
-                }
-                "VK_EXT_acquire_drm_display" => {
-                    extensions.ext_acquire_drm_display = true;
-                }
-                "VK_EXT_acquire_xlib_display" => {
-                    extensions.ext_acquire_xlib_display = true;
-                }
-                "VK_EXT_debug_report" => {
-                    extensions.ext_debug_report = true;
-                }
-                "VK_EXT_debug_utils" => {
-                    extensions.ext_debug_utils = true;
-                }
-                "VK_EXT_direct_mode_display" => {
-                    extensions.ext_direct_mode_display = true;
-                }
-                "VK_EXT_directfb_surface" => {
-                    extensions.ext_directfb_surface = true;
-                }
-                "VK_EXT_display_surface_counter" => {
-                    extensions.ext_display_surface_counter = true;
-                }
-                "VK_EXT_headless_surface" => {
-                    extensions.ext_headless_surface = true;
-                }
-                "VK_EXT_layer_settings" => {
-                    extensions.ext_layer_settings = true;
-                }
-                "VK_EXT_metal_surface" => {
-                    extensions.ext_metal_surface = true;
-                }
-                "VK_EXT_surface_maintenance1" => {
-                    extensions.ext_surface_maintenance1 = true;
-                }
-                "VK_EXT_swapchain_colorspace" => {
-                    extensions.ext_swapchain_colorspace = true;
-                }
-                "VK_EXT_validation_features" => {
-                    extensions.ext_validation_features = true;
-                }
-                "VK_EXT_validation_flags" => {
-                    extensions.ext_validation_flags = true;
-                }
-                "VK_FUCHSIA_imagepipe_surface" => {
-                    extensions.fuchsia_imagepipe_surface = true;
-                }
-                "VK_GGP_stream_descriptor_surface" => {
-                    extensions.ggp_stream_descriptor_surface = true;
-                }
-                "VK_GOOGLE_surfaceless_query" => {
-                    extensions.google_surfaceless_query = true;
-                }
-                "VK_LUNARG_direct_driver_loading" => {
-                    extensions.lunarg_direct_driver_loading = true;
-                }
-                "VK_MVK_ios_surface" => {
-                    extensions.mvk_ios_surface = true;
-                }
-                "VK_MVK_macos_surface" => {
-                    extensions.mvk_macos_surface = true;
-                }
-                "VK_NN_vi_surface" => {
-                    extensions.nn_vi_surface = true;
-                }
-                "VK_NV_external_memory_capabilities" => {
-                    extensions.nv_external_memory_capabilities = true;
-                }
-                "VK_QNX_screen_surface" => {
-                    extensions.qnx_screen_surface = true;
-                }
-                _ => {}
-            }
-        }
-        extensions
+impl Default for InstanceExtensions {
+    #[inline]
+    fn default() -> Self {
+        Self::empty()
     }
 }
-impl<'a> From<&'a InstanceExtensions> for Vec<std::ffi::CString> {
-    fn from(x: &'a InstanceExtensions) -> Self {
-        let mut data = Self::new();
-        if x.khr_android_surface {
-            data.push(std::ffi::CString::new("VK_KHR_android_surface").unwrap());
-        }
-        if x.khr_device_group_creation {
-            data.push(std::ffi::CString::new("VK_KHR_device_group_creation").unwrap());
-        }
-        if x.khr_display {
-            data.push(std::ffi::CString::new("VK_KHR_display").unwrap());
-        }
-        if x.khr_external_fence_capabilities {
-            data.push(
-                std::ffi::CString::new("VK_KHR_external_fence_capabilities").unwrap(),
-            );
-        }
-        if x.khr_external_memory_capabilities {
-            data.push(
-                std::ffi::CString::new("VK_KHR_external_memory_capabilities").unwrap(),
-            );
-        }
-        if x.khr_external_semaphore_capabilities {
-            data.push(
-                std::ffi::CString::new("VK_KHR_external_semaphore_capabilities").unwrap(),
-            );
-        }
-        if x.khr_get_display_properties2 {
-            data.push(std::ffi::CString::new("VK_KHR_get_display_properties2").unwrap());
-        }
-        if x.khr_get_physical_device_properties2 {
-            data.push(
-                std::ffi::CString::new("VK_KHR_get_physical_device_properties2").unwrap(),
-            );
-        }
-        if x.khr_get_surface_capabilities2 {
-            data.push(
-                std::ffi::CString::new("VK_KHR_get_surface_capabilities2").unwrap(),
-            );
-        }
-        if x.khr_portability_enumeration {
-            data.push(std::ffi::CString::new("VK_KHR_portability_enumeration").unwrap());
-        }
-        if x.khr_surface {
-            data.push(std::ffi::CString::new("VK_KHR_surface").unwrap());
-        }
-        if x.khr_surface_protected_capabilities {
-            data.push(
-                std::ffi::CString::new("VK_KHR_surface_protected_capabilities").unwrap(),
-            );
-        }
-        if x.khr_wayland_surface {
-            data.push(std::ffi::CString::new("VK_KHR_wayland_surface").unwrap());
-        }
-        if x.khr_win32_surface {
-            data.push(std::ffi::CString::new("VK_KHR_win32_surface").unwrap());
-        }
-        if x.khr_xcb_surface {
-            data.push(std::ffi::CString::new("VK_KHR_xcb_surface").unwrap());
-        }
-        if x.khr_xlib_surface {
-            data.push(std::ffi::CString::new("VK_KHR_xlib_surface").unwrap());
-        }
-        if x.ext_acquire_drm_display {
-            data.push(std::ffi::CString::new("VK_EXT_acquire_drm_display").unwrap());
-        }
-        if x.ext_acquire_xlib_display {
-            data.push(std::ffi::CString::new("VK_EXT_acquire_xlib_display").unwrap());
-        }
-        if x.ext_debug_report {
-            data.push(std::ffi::CString::new("VK_EXT_debug_report").unwrap());
-        }
-        if x.ext_debug_utils {
-            data.push(std::ffi::CString::new("VK_EXT_debug_utils").unwrap());
-        }
-        if x.ext_direct_mode_display {
-            data.push(std::ffi::CString::new("VK_EXT_direct_mode_display").unwrap());
-        }
-        if x.ext_directfb_surface {
-            data.push(std::ffi::CString::new("VK_EXT_directfb_surface").unwrap());
-        }
-        if x.ext_display_surface_counter {
-            data.push(std::ffi::CString::new("VK_EXT_display_surface_counter").unwrap());
-        }
-        if x.ext_headless_surface {
-            data.push(std::ffi::CString::new("VK_EXT_headless_surface").unwrap());
-        }
-        if x.ext_layer_settings {
-            data.push(std::ffi::CString::new("VK_EXT_layer_settings").unwrap());
-        }
-        if x.ext_metal_surface {
-            data.push(std::ffi::CString::new("VK_EXT_metal_surface").unwrap());
-        }
-        if x.ext_surface_maintenance1 {
-            data.push(std::ffi::CString::new("VK_EXT_surface_maintenance1").unwrap());
-        }
-        if x.ext_swapchain_colorspace {
-            data.push(std::ffi::CString::new("VK_EXT_swapchain_colorspace").unwrap());
-        }
-        if x.ext_validation_features {
-            data.push(std::ffi::CString::new("VK_EXT_validation_features").unwrap());
-        }
-        if x.ext_validation_flags {
-            data.push(std::ffi::CString::new("VK_EXT_validation_flags").unwrap());
-        }
-        if x.fuchsia_imagepipe_surface {
-            data.push(std::ffi::CString::new("VK_FUCHSIA_imagepipe_surface").unwrap());
-        }
-        if x.ggp_stream_descriptor_surface {
-            data.push(
-                std::ffi::CString::new("VK_GGP_stream_descriptor_surface").unwrap(),
-            );
-        }
-        if x.google_surfaceless_query {
-            data.push(std::ffi::CString::new("VK_GOOGLE_surfaceless_query").unwrap());
-        }
-        if x.lunarg_direct_driver_loading {
-            data.push(
-                std::ffi::CString::new("VK_LUNARG_direct_driver_loading").unwrap(),
-            );
-        }
-        if x.mvk_ios_surface {
-            data.push(std::ffi::CString::new("VK_MVK_ios_surface").unwrap());
-        }
-        if x.mvk_macos_surface {
-            data.push(std::ffi::CString::new("VK_MVK_macos_surface").unwrap());
-        }
-        if x.nn_vi_surface {
-            data.push(std::ffi::CString::new("VK_NN_vi_surface").unwrap());
-        }
-        if x.nv_external_memory_capabilities {
-            data.push(
-                std::ffi::CString::new("VK_NV_external_memory_capabilities").unwrap(),
-            );
-        }
-        if x.qnx_screen_surface {
-            data.push(std::ffi::CString::new("VK_QNX_screen_surface").unwrap());
-        }
-        data
+impl std::ops::BitAnd for InstanceExtensions {
+    type Output = InstanceExtensions;
+    #[inline]
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersection(&rhs)
+    }
+}
+impl std::ops::BitAndAssign for InstanceExtensions {
+    #[inline]
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = self.intersection(&rhs);
+    }
+}
+impl std::ops::BitOr for InstanceExtensions {
+    type Output = InstanceExtensions;
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(&rhs)
+    }
+}
+impl std::ops::BitOrAssign for InstanceExtensions {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = self.union(&rhs);
+    }
+}
+impl std::ops::BitXor for InstanceExtensions {
+    type Output = InstanceExtensions;
+    #[inline]
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        self.symmetric_difference(&rhs)
+    }
+}
+impl std::ops::BitXorAssign for InstanceExtensions {
+    #[inline]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self = self.symmetric_difference(&rhs);
+    }
+}
+impl std::ops::Sub for InstanceExtensions {
+    type Output = InstanceExtensions;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.difference(&rhs)
+    }
+}
+impl std::ops::SubAssign for InstanceExtensions {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = self.difference(&rhs);
     }
 }
 impl IntoIterator for InstanceExtensions {
@@ -1344,854 +1930,5 @@ impl IntoIterator for InstanceExtensions {
             ("VK_QNX_screen_surface", self.qnx_screen_surface),
         ]
             .into_iter()
-    }
-}
-impl InstanceExtensions {
-    /// Checks enabled extensions against the library support,
-    /// and checks for required API version.
-    pub(super) fn check_requirements(
-        &self,
-        supported: &InstanceExtensions,
-        api_version: crate::Version,
-    ) -> Result<(), Box<crate::ValidationError>> {
-        if self.khr_android_surface {
-            if !supported.khr_android_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_android_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_device_group_creation {
-            if !supported.khr_device_group_creation {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_device_group_creation`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_display {
-            if !supported.khr_display {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_display`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_external_fence_capabilities {
-            if !supported.khr_external_fence_capabilities {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_external_fence_capabilities`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_external_memory_capabilities {
-            if !supported.khr_external_memory_capabilities {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_external_memory_capabilities`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_external_semaphore_capabilities {
-            if !supported.khr_external_semaphore_capabilities {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_external_semaphore_capabilities`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_get_display_properties2 {
-            if !supported.khr_get_display_properties2 {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_get_display_properties2`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_get_physical_device_properties2 {
-            if !supported.khr_get_physical_device_properties2 {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_get_physical_device_properties2`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_get_surface_capabilities2 {
-            if !supported.khr_get_surface_capabilities2 {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_get_surface_capabilities2`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_portability_enumeration {
-            if !supported.khr_portability_enumeration {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_portability_enumeration`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_surface {
-            if !supported.khr_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_surface_protected_capabilities {
-            if !supported.khr_surface_protected_capabilities {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_surface_protected_capabilities`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-            if !(api_version >= crate::Version::V1_1) {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_surface_protected_capabilities`".into(),
-                        requires_one_of: crate::RequiresOneOf(
-                            &[
-                                crate::RequiresAllOf(
-                                    &[crate::Requires::APIVersion(crate::Version::V1_1)],
-                                ),
-                            ],
-                        ),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_wayland_surface {
-            if !supported.khr_wayland_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_wayland_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_win32_surface {
-            if !supported.khr_win32_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_win32_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_xcb_surface {
-            if !supported.khr_xcb_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_xcb_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.khr_xlib_surface {
-            if !supported.khr_xlib_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `khr_xlib_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_acquire_drm_display {
-            if !supported.ext_acquire_drm_display {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_acquire_drm_display`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_acquire_xlib_display {
-            if !supported.ext_acquire_xlib_display {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_acquire_xlib_display`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_debug_report {
-            if !supported.ext_debug_report {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_debug_report`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_debug_utils {
-            if !supported.ext_debug_utils {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_debug_utils`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_direct_mode_display {
-            if !supported.ext_direct_mode_display {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_direct_mode_display`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_directfb_surface {
-            if !supported.ext_directfb_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_directfb_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_display_surface_counter {
-            if !supported.ext_display_surface_counter {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_display_surface_counter`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_headless_surface {
-            if !supported.ext_headless_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_headless_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_layer_settings {
-            if !supported.ext_layer_settings {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_layer_settings`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_metal_surface {
-            if !supported.ext_metal_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_metal_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_surface_maintenance1 {
-            if !supported.ext_surface_maintenance1 {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_surface_maintenance1`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_swapchain_colorspace {
-            if !supported.ext_swapchain_colorspace {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_swapchain_colorspace`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_validation_features {
-            if !supported.ext_validation_features {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_validation_features`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ext_validation_flags {
-            if !supported.ext_validation_flags {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ext_validation_flags`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.fuchsia_imagepipe_surface {
-            if !supported.fuchsia_imagepipe_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `fuchsia_imagepipe_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.ggp_stream_descriptor_surface {
-            if !supported.ggp_stream_descriptor_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `ggp_stream_descriptor_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.google_surfaceless_query {
-            if !supported.google_surfaceless_query {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `google_surfaceless_query`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.lunarg_direct_driver_loading {
-            if !supported.lunarg_direct_driver_loading {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `lunarg_direct_driver_loading`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.mvk_ios_surface {
-            if !supported.mvk_ios_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `mvk_ios_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.mvk_macos_surface {
-            if !supported.mvk_macos_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `mvk_macos_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.nn_vi_surface {
-            if !supported.nn_vi_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `nn_vi_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.nv_external_memory_capabilities {
-            if !supported.nv_external_memory_capabilities {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `nv_external_memory_capabilities`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        if self.qnx_screen_surface {
-            if !supported.qnx_screen_surface {
-                return Err(
-                    Box::new(crate::ValidationError {
-                        problem: "contains `qnx_screen_surface`, but this extension is not supported by the library"
-                            .into(),
-                        ..Default::default()
-                    }),
-                );
-            }
-        }
-        Ok(())
-    }
-    /// Enables all the extensions that the extensions in `self` currently depend on.
-    pub(super) fn enable_dependencies(
-        &mut self,
-        #[allow(unused_variables)]
-        api_version: crate::Version,
-        #[allow(unused_variables)]
-        supported: &InstanceExtensions,
-    ) {
-        if self.khr_android_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_android_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_display {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_display", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_external_fence_capabilities {
-            if !(api_version >= crate::Version::V1_1
-                || self.khr_get_physical_device_properties2)
-            {
-                assert!(
-                    supported.khr_get_physical_device_properties2,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_external_fence_capabilities",
-                    "khr_get_physical_device_properties2",
-                );
-                self.khr_get_physical_device_properties2 = true;
-            }
-        }
-        if self.khr_external_memory_capabilities {
-            if !(api_version >= crate::Version::V1_1
-                || self.khr_get_physical_device_properties2)
-            {
-                assert!(
-                    supported.khr_get_physical_device_properties2,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_external_memory_capabilities",
-                    "khr_get_physical_device_properties2",
-                );
-                self.khr_get_physical_device_properties2 = true;
-            }
-        }
-        if self.khr_external_semaphore_capabilities {
-            if !(api_version >= crate::Version::V1_1
-                || self.khr_get_physical_device_properties2)
-            {
-                assert!(
-                    supported.khr_get_physical_device_properties2,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_external_semaphore_capabilities",
-                    "khr_get_physical_device_properties2",
-                );
-                self.khr_get_physical_device_properties2 = true;
-            }
-        }
-        if self.khr_get_display_properties2 {
-            if !(self.khr_display) {
-                assert!(
-                    supported.khr_display,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_get_display_properties2", "khr_display",
-                );
-                self.khr_display = true;
-            }
-        }
-        if self.khr_get_surface_capabilities2 {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_get_surface_capabilities2", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_surface_protected_capabilities {
-            if !(self.khr_get_surface_capabilities2) {
-                assert!(
-                    supported.khr_get_surface_capabilities2,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_surface_protected_capabilities",
-                    "khr_get_surface_capabilities2",
-                );
-                self.khr_get_surface_capabilities2 = true;
-            }
-        }
-        if self.khr_wayland_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_wayland_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_win32_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_win32_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_xcb_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_xcb_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.khr_xlib_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "khr_xlib_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.ext_acquire_drm_display {
-            if !(self.ext_direct_mode_display) {
-                assert!(
-                    supported.ext_direct_mode_display,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_acquire_drm_display", "ext_direct_mode_display",
-                );
-                self.ext_direct_mode_display = true;
-            }
-        }
-        if self.ext_acquire_xlib_display {
-            if !(self.ext_direct_mode_display) {
-                assert!(
-                    supported.ext_direct_mode_display,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_acquire_xlib_display", "ext_direct_mode_display",
-                );
-                self.ext_direct_mode_display = true;
-            }
-        }
-        if self.ext_direct_mode_display {
-            if !(self.khr_display) {
-                assert!(
-                    supported.khr_display,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_direct_mode_display", "khr_display",
-                );
-                self.khr_display = true;
-            }
-        }
-        if self.ext_directfb_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_directfb_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.ext_display_surface_counter {
-            if !(self.khr_display) {
-                assert!(
-                    supported.khr_display,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_display_surface_counter", "khr_display",
-                );
-                self.khr_display = true;
-            }
-        }
-        if self.ext_headless_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_headless_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.ext_metal_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_metal_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.ext_surface_maintenance1 {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_surface_maintenance1", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-            if !(self.khr_get_surface_capabilities2) {
-                assert!(
-                    supported.khr_get_surface_capabilities2,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_surface_maintenance1", "khr_get_surface_capabilities2",
-                );
-                self.khr_get_surface_capabilities2 = true;
-            }
-        }
-        if self.ext_swapchain_colorspace {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ext_swapchain_colorspace", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.fuchsia_imagepipe_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "fuchsia_imagepipe_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.ggp_stream_descriptor_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "ggp_stream_descriptor_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.google_surfaceless_query {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "google_surfaceless_query", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.mvk_ios_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "mvk_ios_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.mvk_macos_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "mvk_macos_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.nn_vi_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "nn_vi_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
-        if self.qnx_screen_surface {
-            if !(self.khr_surface) {
-                assert!(
-                    supported.khr_surface,
-                    "The instance extension `{}` is enabled, and it requires \
-                                        the `{}` extension to be also enabled, but the device \
-                                        does not support the required extension. \
-                                        This is a bug in the Vulkan driver.",
-                    "qnx_screen_surface", "khr_surface",
-                );
-                self.khr_surface = true;
-            }
-        }
     }
 }

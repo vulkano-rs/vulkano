@@ -97,10 +97,11 @@ impl PhysicalDevice {
     ) -> Result<Arc<Self>, VulkanError> {
         let api_version = unsafe { Self::get_api_version(handle, instance) };
         let extension_properties = unsafe { Self::get_extension_properties(handle, instance) }?;
-        let supported_extensions: DeviceExtensions = extension_properties
-            .iter()
-            .map(|property| property.extension_name.as_str())
-            .collect();
+        let supported_extensions = DeviceExtensions::from_vk(
+            extension_properties
+                .iter()
+                .map(|property| property.extension_name.as_str()),
+        );
 
         let supported_features;
         let properties;

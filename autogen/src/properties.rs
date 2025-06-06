@@ -14,7 +14,7 @@ use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 pub fn write(vk_data: &VkRegistryData<'_>) {
     let device_properties = DeviceProperties::new(&vk_data.types, &vk_data.extensions);
-    let device_properties_output = device_properties.to_definitions();
+    let device_properties_output = device_properties.to_output();
 
     write_file(
         "properties.rs",
@@ -83,7 +83,7 @@ impl DeviceProperties {
         }
     }
 
-    fn to_definitions(&self) -> TokenStream {
+    fn to_output(&self) -> TokenStream {
         let Self {
             properties,
             structs,
