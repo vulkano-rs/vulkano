@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 use vulkano::{
     buffer::Buffer,
     device::DeviceOwned,
-    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange},
+    image::{Image, ImageLayout, ImageSubresourceRange},
     sync::{AccessFlags, DependencyFlags, PipelineStages},
     DeviceSize, Version, VulkanObject,
 };
@@ -465,7 +465,7 @@ pub struct ImageMemoryBarrier<'a> {
     /// The layout that the specified `subresource_range` of `image` will be transitioned to before
     /// the destination scope begins.
     ///
-    /// The default value is [`ImageLayout::Undefined`].
+    /// The default value is [`ImageLayout::Undefined`], which must be overridden.
     pub new_layout: ImageLayout,
 
     /// The image to apply the barrier to.
@@ -475,7 +475,7 @@ pub struct ImageMemoryBarrier<'a> {
 
     /// The subresource range of `image` to apply the barrier to.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceRange::default()`].
     pub subresource_range: ImageSubresourceRange,
 
     pub _ne: crate::NonExhaustive<'a>,
@@ -490,8 +490,9 @@ impl Default for ImageMemoryBarrier<'_> {
 
 impl ImageMemoryBarrier<'_> {
     /// Returns a default `ImageMemoryBarrier`.
+    // TODO: make const
     #[inline]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -500,13 +501,7 @@ impl ImageMemoryBarrier<'_> {
             old_layout: ImageLayout::Undefined,
             new_layout: ImageLayout::Undefined,
             image: Id::INVALID,
-            subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::empty(),
-                base_mip_level: 0,
-                level_count: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            subresource_range: ImageSubresourceRange::default(),
             _ne: crate::NE,
         }
     }
