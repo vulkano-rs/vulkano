@@ -152,9 +152,9 @@ pub(super) fn compile(
     shader_kind: ShaderKind,
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
     let includes = RefCell::new(Vec::new());
-    let compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
+    let compiler = Compiler::new().or(Err("failed to create GLSL compiler"))?;
     let mut compile_options =
-        CompileOptions::new().ok_or("failed to initialize compile options")?;
+        CompileOptions::new().or(Err("failed to initialize compile options"))?;
 
     compile_options.set_target_env(
         TargetEnv::Vulkan,
