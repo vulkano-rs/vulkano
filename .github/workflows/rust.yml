@@ -48,14 +48,10 @@ jobs:
       run: nix develop .#CI -c cargo clippy ${{ env.common_args }} -- -Dwarnings
     - name: Build tests
       run: nix develop .#CI -c cargo build ${{ env.common_args }} --tests
-    - name: Build examples
-      run: nix develop .#CI -c cargo build ${{ env.common_args }} --bins
-    # HACK: rustc's MSVC target doesn't set the generated `exe`s' executable bit even though the
-    # Windows runner is cross-compiling from within WSL and can't run the `exe`s otherwise.
-    - run: .ci/set-executable.sh
-      if: ${{ matrix.self-hosted }}
     - name: Run tests
       run: nix develop .#CI -c cargo test ${{ env.common_args }}
+    - name: Build examples
+      run: nix develop .#CI -c cargo build ${{ env.common_args }} --bins
   fmt:
     runs-on: ubuntu-latest
     steps:
