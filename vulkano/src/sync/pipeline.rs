@@ -1828,11 +1828,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk2_fields1(&self) -> DependencyInfo2Fields1Vk {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 
@@ -1858,11 +1858,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> DependencyInfoFields1Vk {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 
@@ -1916,11 +1916,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk_src_stage_mask(&self) -> vk::PipelineStageFlags {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 

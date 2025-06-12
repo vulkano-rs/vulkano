@@ -52,7 +52,7 @@ pub struct VertexBufferDescription {
 impl VertexBufferDescription {
     #[inline]
     pub fn per_vertex(self) -> VertexBufferDescription {
-        let VertexBufferDescription {
+        let Self {
             members, stride, ..
         } = self;
         VertexBufferDescription {
@@ -69,7 +69,7 @@ impl VertexBufferDescription {
 
     #[inline]
     pub fn per_instance_with_divisor(self, divisor: u32) -> VertexBufferDescription {
-        let VertexBufferDescription {
+        let Self {
             members, stride, ..
         } = self;
         VertexBufferDescription {

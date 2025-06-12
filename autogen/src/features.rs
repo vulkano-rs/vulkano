@@ -648,10 +648,8 @@ impl FeaturesStruct {
     }
 
     fn to_vulkano_from_extension(&self) -> TokenStream {
-        let &Self {
-            ref var_name,
-            ref members,
-            ..
+        let Self {
+            var_name, members, ..
         } = self;
 
         let destructure = self.to_destructure_members();

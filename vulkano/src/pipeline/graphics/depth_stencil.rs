@@ -345,10 +345,7 @@ impl StencilState {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &StencilState {
-            ref front,
-            ref back,
-        } = self;
+        let Self { front, back } = self;
 
         front
             .ops

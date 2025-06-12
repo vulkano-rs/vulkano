@@ -701,12 +701,12 @@ impl RecordingCommandBuffer {
             .validate(self.device())
             .map_err(|err| err.add_context("copy_image_info"))?;
 
-        let &CopyImageInfo {
-            ref src_image,
+        let CopyImageInfo {
+            src_image,
             src_image_layout: _,
-            ref dst_image,
+            dst_image,
             dst_image_layout: _,
-            ref regions,
+            regions,
             _ne: _,
         } = copy_image_info;
 
@@ -1780,10 +1780,10 @@ impl CopyBufferInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref src_buffer,
-            ref dst_buffer,
-            ref regions,
+        let Self {
+            src_buffer,
+            dst_buffer,
+            regions,
             _ne: _,
         } = self;
 
@@ -1906,9 +1906,9 @@ impl CopyBufferInfo {
         &self,
         regions_vk: &'a [vk::BufferCopy2<'static>],
     ) -> vk::CopyBufferInfo2<'a> {
-        let &Self {
-            ref src_buffer,
-            ref dst_buffer,
+        let Self {
+            src_buffer,
+            dst_buffer,
             regions: _,
             _ne: _,
         } = self;
@@ -1920,10 +1920,10 @@ impl CopyBufferInfo {
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferCopy2<'static>; 8]> {
-        let &Self {
-            ref src_buffer,
-            ref dst_buffer,
-            ref regions,
+        let Self {
+            src_buffer,
+            dst_buffer,
+            regions,
             _ne: _,
         } = self;
 
@@ -1939,9 +1939,9 @@ impl CopyBufferInfo {
     }
 
     pub(crate) fn to_vk(&self) -> CopyBufferInfoVk {
-        let &Self {
-            ref src_buffer,
-            ref dst_buffer,
+        let Self {
+            src_buffer,
+            dst_buffer,
             regions: _,
             _ne: _,
         } = self;
@@ -1953,10 +1953,10 @@ impl CopyBufferInfo {
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferCopy; 8]> {
-        let &Self {
-            ref src_buffer,
-            ref dst_buffer,
-            ref regions,
+        let Self {
+            src_buffer,
+            dst_buffer,
+            regions,
             _ne: _,
         } = self;
 
@@ -5138,7 +5138,7 @@ impl BufferImageCopy {
     // Following
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
     pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
-        let &BufferImageCopy {
+        let &Self {
             buffer_offset: _,
             mut buffer_row_length,
             mut buffer_image_height,

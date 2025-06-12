@@ -600,8 +600,8 @@ pub(crate) unsafe fn queue_submit(
 
     for submit_info in &submit_infos {
         for command_buffer_submit_info in &submit_info.command_buffers {
-            let &CommandBufferSubmitInfo {
-                ref command_buffer,
+            let CommandBufferSubmitInfo {
+                command_buffer,
                 _ne: _,
             } = command_buffer_submit_info;
 
@@ -828,8 +828,8 @@ impl<'a> States<'a> {
             } = submit_info;
 
             for command_buffer_submit_info in info_command_buffers {
-                let &CommandBufferSubmitInfo {
-                    ref command_buffer,
+                let CommandBufferSubmitInfo {
+                    command_buffer,
                     _ne: _,
                 } = command_buffer_submit_info;
 
