@@ -241,7 +241,7 @@ impl VulkanoWindowRenderer {
 
     /// Get additional image view by key.
     #[inline]
-    pub fn get_additional_image_view(&mut self, key: usize) -> Arc<ImageView> {
+    pub fn get_additional_image_view(&self, key: usize) -> Arc<ImageView> {
         self.additional_image_views.get(&key).unwrap().clone()
     }
 
