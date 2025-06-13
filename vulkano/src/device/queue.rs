@@ -399,15 +399,15 @@ impl QueueGuard<'_> {
             .validate(device)
             .map_err(|err| err.add_context("present_info"))?;
 
-        let &PresentInfo {
+        let PresentInfo {
             wait_semaphores: _,
-            swapchain_infos: ref swapchains,
+            swapchain_infos: swapchains,
             _ne: _,
         } = present_info;
 
         for (index, swapchain_info) in swapchains.iter().enumerate() {
-            let &SwapchainPresentInfo {
-                ref swapchain,
+            let SwapchainPresentInfo {
+                swapchain,
                 image_index: _,
                 present_id: _,
                 present_mode: _,
@@ -556,10 +556,10 @@ impl QueueGuard<'_> {
                 .validate(device)
                 .map_err(|err| err.add_context(format!("submit_infos[{}]", index)))?;
 
-            let &SubmitInfo {
-                ref wait_semaphores,
-                ref command_buffers,
-                ref signal_semaphores,
+            let SubmitInfo {
+                wait_semaphores,
+                command_buffers,
+                signal_semaphores,
                 _ne: _,
             } = submit_info;
 
@@ -590,8 +590,8 @@ impl QueueGuard<'_> {
             for (command_buffer_index, command_buffer_submit_info) in
                 command_buffers.iter().enumerate()
             {
-                let &CommandBufferSubmitInfo {
-                    ref command_buffer,
+                let CommandBufferSubmitInfo {
+                    command_buffer,
                     _ne: _,
                 } = command_buffer_submit_info;
 
@@ -925,8 +925,8 @@ impl QueueFamilyProperties {
     }
 
     pub(crate) fn from_vk2(val_vk: &vk::QueueFamilyProperties2<'_>) -> Self {
-        let &vk::QueueFamilyProperties2 {
-            ref queue_family_properties,
+        let vk::QueueFamilyProperties2 {
+            queue_family_properties,
             ..
         } = val_vk;
 

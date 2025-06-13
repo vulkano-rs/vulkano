@@ -378,12 +378,12 @@ fn are_interface_types_compatible(
                 )
         }
         (
-            &Instruction::TypeStruct {
-                member_types: ref out_member_types,
+            Instruction::TypeStruct {
+                member_types: out_member_types,
                 ..
             },
-            &Instruction::TypeStruct {
-                member_types: ref in_member_types,
+            Instruction::TypeStruct {
+                member_types: in_member_types,
                 ..
             },
         ) => {

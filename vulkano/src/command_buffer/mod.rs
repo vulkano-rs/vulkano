@@ -415,9 +415,9 @@ impl CommandBufferInheritanceInfo {
             .as_ref()
             .and_then(|render_pass| match render_pass {
                 CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
-                    let &CommandBufferInheritanceRenderPassInfo {
-                        ref subpass,
-                        ref framebuffer,
+                    let CommandBufferInheritanceRenderPassInfo {
+                        subpass,
+                        framebuffer,
                     } = render_pass_info;
 
                     Some((
@@ -570,9 +570,9 @@ impl CommandBufferInheritanceRenderPassInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref subpass,
-            ref framebuffer,
+        let Self {
+            subpass,
+            framebuffer,
         } = self;
 
         // VUID-VkCommandBufferInheritanceInfo-commonparent
@@ -976,10 +976,10 @@ impl SubmitInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref wait_semaphores,
-            ref command_buffers,
-            ref signal_semaphores,
+        let Self {
+            wait_semaphores,
+            command_buffers,
+            signal_semaphores,
             _ne: _,
         } = self;
 
@@ -1043,10 +1043,10 @@ impl SubmitInfo {
     }
 
     pub(crate) fn to_vk2_fields1(&self) -> SubmitInfo2Fields1Vk {
-        let &Self {
-            ref wait_semaphores,
-            ref command_buffers,
-            ref signal_semaphores,
+        let Self {
+            wait_semaphores,
+            command_buffers,
+            signal_semaphores,
             _ne: _,
         } = self;
 
@@ -1229,8 +1229,8 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref command_buffer,
+        let Self {
+            command_buffer,
             _ne: _,
         } = self;
 
@@ -1241,8 +1241,8 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn to_vk2(&self) -> vk::CommandBufferSubmitInfo<'static> {
-        let &Self {
-            ref command_buffer,
+        let Self {
+            command_buffer,
             _ne: _,
         } = self;
 
@@ -1252,8 +1252,8 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn to_vk(&self) -> vk::CommandBuffer {
-        let &Self {
-            ref command_buffer,
+        let Self {
+            command_buffer,
             _ne: _,
         } = self;
 

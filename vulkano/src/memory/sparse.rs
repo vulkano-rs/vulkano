@@ -77,12 +77,12 @@ impl BindSparseInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref wait_semaphores,
-            ref buffer_binds,
-            ref image_opaque_binds,
-            ref image_binds,
-            ref signal_semaphores,
+        let Self {
+            wait_semaphores,
+            buffer_binds,
+            image_opaque_binds,
+            image_binds,
+            signal_semaphores,
             _ne: _,
         } = self;
 
@@ -139,12 +139,12 @@ impl BindSparseInfo {
         &self,
         fields2_vk: &'a BindSparseInfoFields2Vk,
     ) -> BindSparseInfoFields1Vk<'a> {
-        let &BindSparseInfo {
-            ref wait_semaphores,
-            ref buffer_binds,
-            ref image_opaque_binds,
-            ref image_binds,
-            ref signal_semaphores,
+        let Self {
+            wait_semaphores,
+            buffer_binds,
+            image_opaque_binds,
+            image_binds,
+            signal_semaphores,
             _ne: _,
         } = self;
         let BindSparseInfoFields2Vk {
@@ -191,11 +191,11 @@ impl BindSparseInfo {
     }
 
     pub(crate) fn to_vk_fields2(&self) -> BindSparseInfoFields2Vk {
-        let &Self {
+        let Self {
             wait_semaphores: _,
-            ref buffer_binds,
-            ref image_opaque_binds,
-            ref image_binds,
+            buffer_binds,
+            image_opaque_binds,
+            image_binds,
             signal_semaphores: _,
             _ne: _,
         } = self;
@@ -266,9 +266,9 @@ impl SparseBufferMemoryBindInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref buffer,
-            ref binds,
+        let Self {
+            buffer,
+            binds,
             _ne: _,
         } = self;
 
@@ -606,9 +606,9 @@ impl SparseImageOpaqueMemoryBindInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref image,
-            ref binds,
+        let Self {
+            image,
+            binds,
             _ne: _,
         } = self;
 
@@ -1081,9 +1081,9 @@ impl SparseImageMemoryBindInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref image,
-            ref binds,
+        let Self {
+            image,
+            binds,
             _ne: _,
         } = self;
 

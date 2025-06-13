@@ -985,7 +985,7 @@ impl AccelerationStructureGeometryTrianglesData {
     }
 
     pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
-        let &AccelerationStructureGeometryTrianglesData {
+        let &Self {
             flags,
             vertex_format,
             ref vertex_data,

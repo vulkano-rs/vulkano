@@ -307,9 +307,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         info: CopyAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureInfo {
-            ref src,
-            ref dst,
+        let CopyAccelerationStructureInfo {
+            src,
+            dst,
             mode: _,
             _ne: _,
         } = &info;
@@ -392,9 +392,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         info: CopyAccelerationStructureToMemoryInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureToMemoryInfo {
-            ref src,
-            ref dst,
+        let CopyAccelerationStructureToMemoryInfo {
+            src,
+            dst,
             mode: _,
             _ne: _,
         } = &info;
@@ -479,9 +479,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         info: CopyMemoryToAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyMemoryToAccelerationStructureInfo {
-            ref src,
-            ref dst,
+        let CopyMemoryToAccelerationStructureInfo {
+            src,
+            dst,
             mode: _,
             _ne: _,
         } = &info;
@@ -694,9 +694,9 @@ fn add_build_geometry_resources(
         AccelerationStructureGeometries::Aabbs(geometries) => {
             used_resources.extend(geometries.iter().enumerate().map(|(index, aabbs_data)| {
                 let index = index as u32;
-                let &AccelerationStructureGeometryAabbsData {
+                let AccelerationStructureGeometryAabbsData {
                     flags: _,
-                    ref data,
+                    data,
                     stride: _,
                     _ne: _,
                 } = aabbs_data;
@@ -715,9 +715,9 @@ fn add_build_geometry_resources(
             }));
         }
         AccelerationStructureGeometries::Instances(instances_data) => {
-            let &AccelerationStructureGeometryInstancesData {
+            let AccelerationStructureGeometryInstancesData {
                 flags: _,
-                ref data,
+                data,
                 _ne: _,
             } = instances_data;
 

@@ -479,9 +479,9 @@ impl PresentInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref wait_semaphores,
-            ref swapchain_infos,
+        let Self {
+            wait_semaphores,
+            swapchain_infos,
             _ne: _,
         } = self;
 
@@ -643,9 +643,9 @@ impl PresentInfo {
         &self,
         fields2_vk: &'a PresentInfoFields2Vk,
     ) -> PresentInfoFields1Vk<'a> {
-        let &Self {
-            ref wait_semaphores,
-            ref swapchain_infos,
+        let Self {
+            wait_semaphores,
+            swapchain_infos,
             _ne: _,
         } = self;
         let PresentInfoFields2Vk {
@@ -1002,10 +1002,7 @@ impl SemaphorePresentInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            ref semaphore,
-            _ne: _,
-        } = self;
+        let Self { semaphore, _ne: _ } = self;
 
         // VUID-VkPresentInfoKHR-commonparent
         assert_eq!(device, semaphore.device().as_ref());
@@ -1023,10 +1020,7 @@ impl SemaphorePresentInfo {
     }
 
     pub(crate) fn to_vk(&self) -> vk::Semaphore {
-        let &Self {
-            ref semaphore,
-            _ne: _,
-        } = self;
+        let Self { semaphore, _ne: _ } = self;
 
         semaphore.handle()
     }

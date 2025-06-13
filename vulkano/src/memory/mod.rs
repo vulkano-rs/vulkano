@@ -547,9 +547,8 @@ impl MemoryProperties {
     }
 
     pub(crate) fn from_vk2(val_vk: &vk::PhysicalDeviceMemoryProperties2<'_>) -> Self {
-        let &vk::PhysicalDeviceMemoryProperties2 {
-            ref memory_properties,
-            ..
+        let vk::PhysicalDeviceMemoryProperties2 {
+            memory_properties, ..
         } = val_vk;
 
         Self::from_vk(memory_properties)

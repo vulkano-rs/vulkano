@@ -668,7 +668,7 @@ impl InvalidSlotError {
 
 impl fmt::Display for InvalidSlotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let &InvalidSlotError { id } = self;
+        let &Self { id } = self;
         let object_type = id.object_type();
 
         write!(f, "invalid slot for object type `{object_type:?}`: {id:?}")

@@ -632,10 +632,10 @@ impl PropertiesStruct {
     }
 
     fn to_from_vk2_extension(&self) -> TokenStream {
-        let &Self {
-            ref var_name,
-            ref fields_struct,
-            ref members,
+        let Self {
+            var_name,
+            fields_struct,
+            members,
             ..
         } = self;
 

@@ -201,7 +201,7 @@ impl<'a> DebugUtilsMessengerCreateInfo<'a> {
         instance_api_version: Version,
         instance_extensions: &InstanceExtensions,
     ) -> Result<(), Box<ValidationError>> {
-        let &DebugUtilsMessengerCreateInfo {
+        let &Self {
             message_severity,
             message_type,
             user_callback: _,
