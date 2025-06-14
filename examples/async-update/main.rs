@@ -965,9 +965,7 @@ impl Task for UploadTask {
             regions: &[BufferImageCopy {
                 image_subresource: ImageSubresourceLayers {
                     aspects: ImageAspects::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
+                    ..Default::default()
                 },
                 image_offset: CORNER_OFFSETS[current_corner % 4],
                 image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],
@@ -983,9 +981,7 @@ impl Task for UploadTask {
                 regions: &[BufferImageCopy {
                     image_subresource: ImageSubresourceLayers {
                         aspects: ImageAspects::COLOR,
-                        mip_level: 0,
-                        base_array_layer: 0,
-                        layer_count: 1,
+                        ..Default::default()
                     },
                     image_offset: CORNER_OFFSETS[(current_corner - 1) % 4],
                     image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],

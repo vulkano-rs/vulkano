@@ -1175,23 +1175,21 @@ impl RawImage {
                     aspects
                 }
             },
-            mip_level: 0,
-            base_array_layer: 0,
             layer_count: self.array_layers,
+            ..Default::default()
         }
     }
 
     /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
-    /// only the `color` aspect is selected.
+    /// only the `COLOR` aspect is selected.
     #[inline]
     pub fn subresource_range(&self) -> ImageSubresourceRange {
         ImageSubresourceRange {
             aspects: self.format.aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
-            base_mip_level: 0,
             level_count: self.mip_levels,
-            base_array_layer: 0,
             layer_count: self.array_layers,
+            ..Default::default()
         }
     }
 
@@ -1201,7 +1199,7 @@ impl RawImage {
     /// depth and a stencil format. Images with optimal tiling have an opaque image layout that is
     /// not suitable for direct memory accesses, and likewise for combined depth/stencil formats.
     /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
-    /// not [`ImageAspect::Color`].
+    /// not [`ImageAspect::COLOR`].
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
@@ -3331,10 +3329,9 @@ mod tests {
                     | ImageAspects::DEPTH
                     | ImageAspects::STENCIL
                     | ImageAspects::PLANE_0,
-                base_mip_level: 0,
                 level_count: 6,
-                base_array_layer: 0,
                 layer_count: 8,
+                ..Default::default()
             },
             &image_aspect_list,
             asp,
@@ -3350,10 +3347,9 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR | ImageAspects::DEPTH | ImageAspects::PLANE_0,
-                base_mip_level: 0,
                 level_count: 6,
-                base_array_layer: 0,
                 layer_count: 8,
+                ..Default::default()
             },
             &image_aspect_list,
             asp,
@@ -3372,8 +3368,8 @@ mod tests {
                 aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
                 base_mip_level: 2,
                 level_count: 2,
-                base_array_layer: 0,
                 layer_count: 8,
+                ..Default::default()
             },
             &image_aspect_list,
             asp,
@@ -3389,10 +3385,10 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR,
-                base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 2,
                 layer_count: 2,
+                ..Default::default()
             },
             &image_aspect_list,
             asp,
