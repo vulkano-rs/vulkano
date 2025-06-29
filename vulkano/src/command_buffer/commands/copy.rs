@@ -5107,7 +5107,6 @@ impl Default for BufferImageCopy {
 
 impl BufferImageCopy {
     /// Returns a default `BufferImageCopy`.
-    // TODO: make const
     #[inline]
     pub const fn new() -> Self {
         Self {

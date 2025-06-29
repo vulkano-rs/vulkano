@@ -1178,7 +1178,6 @@ impl Default for ImageCopy<'_> {
 
 impl ImageCopy<'_> {
     /// Returns a default `ImageCopy`.
-    // TODO: make const
     #[inline]
     pub const fn new() -> Self {
         Self {
