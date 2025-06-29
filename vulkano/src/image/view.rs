@@ -818,7 +818,7 @@ pub struct ImageViewCreateInfo<'a> {
 
     /// The subresource range of the image that the view should cover.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceRange::default()`].
     pub subresource_range: ImageSubresourceRange,
 
     /// How the image view is going to be used.
@@ -867,13 +867,7 @@ impl<'a> ImageViewCreateInfo<'a> {
             view_type: ImageViewType::Dim2d,
             format: Format::UNDEFINED,
             component_mapping: ComponentMapping::identity(),
-            subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::empty(),
-                base_mip_level: 0,
-                level_count: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            subresource_range: ImageSubresourceRange::new(),
             usage: ImageUsage::empty(),
             sampler_ycbcr_conversion: None,
             _ne: crate::NE,

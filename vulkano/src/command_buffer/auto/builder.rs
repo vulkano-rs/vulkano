@@ -510,7 +510,7 @@ impl AutoSyncState {
                             old_layout: state.current_layout,
                             new_layout: state.final_layout,
                             subresource_range: image.range_to_subresources(range.clone()),
-                            ..ImageMemoryBarrier::image(image.clone())
+                            ..ImageMemoryBarrier::new(image.clone())
                         });
 
                     state.is_written = true;
@@ -926,7 +926,7 @@ impl AutoSyncState {
                             dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                             offset: range.start,
                             size: range.end - range.start,
-                            ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
+                            ..BufferMemoryBarrier::new(buffer.buffer().clone())
                         };
 
                         self.pending_barrier.buffer_memory_barriers.push(barrier);
@@ -971,7 +971,7 @@ impl AutoSyncState {
                                 .into_supported(&self.device),
                             offset: range.start,
                             size: range.end - range.start,
-                            ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
+                            ..BufferMemoryBarrier::new(buffer.buffer().clone())
                         });
 
                     // Update state.
@@ -1100,7 +1100,7 @@ impl AutoSyncState {
                                 old_layout: state.initial_layout,
                                 new_layout: start_layout,
                                 subresource_range: image.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(image.clone())
+                                ..ImageMemoryBarrier::new(image.clone())
                             };
 
                             // If the `new_layout` is Undefined or Preinitialized, this requires
@@ -1215,7 +1215,7 @@ impl AutoSyncState {
                                 old_layout: state.current_layout,
                                 new_layout: start_layout,
                                 subresource_range: image.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(image.clone())
+                                ..ImageMemoryBarrier::new(image.clone())
                             });
 
                         // Update state.
