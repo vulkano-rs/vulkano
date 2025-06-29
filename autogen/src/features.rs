@@ -9,7 +9,7 @@ use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 pub fn write(vk_data: &VkRegistryData<'_>) {
     let device_features = DeviceFeatures::new(&vk_data.types, &vk_data.extensions);
-    let device_features_output = device_features.to_items();
+    let device_features_output = device_features.to_output();
 
     write_file(
         "features.rs",
@@ -107,7 +107,7 @@ impl DeviceFeatures {
         }
     }
 
-    fn to_items(&self) -> TokenStream {
+    fn to_output(&self) -> TokenStream {
         let struct_definition = self.to_struct_definition();
         let helpers = self.to_helpers();
         let validate = self.to_validate();
