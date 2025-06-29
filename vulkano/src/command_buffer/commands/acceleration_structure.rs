@@ -1563,7 +1563,7 @@ impl RecordingCommandBuffer {
                 .cmd_build_acceleration_structures_khr)(
                 self.handle(),
                 1,
-                &info_vk,
+                &raw const info_vk,
                 build_range_info_pointers_vk.as_ptr(),
             )
         };
@@ -2183,9 +2183,9 @@ impl RecordingCommandBuffer {
                 .cmd_build_acceleration_structures_indirect_khr)(
                 self.handle(),
                 1,
-                &info_vk,
+                &raw const info_vk,
                 &indirect_buffer.device_address().unwrap().get(),
-                &stride,
+                &raw const stride,
                 &max_primitive_counts.as_ptr(),
             )
         };
@@ -2237,7 +2237,7 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
         unsafe {
             (fns.khr_acceleration_structure
-                .cmd_copy_acceleration_structure_khr)(self.handle(), &info_vk)
+                .cmd_copy_acceleration_structure_khr)(self.handle(), &raw const info_vk)
         };
 
         self
@@ -2296,7 +2296,9 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
         unsafe {
             (fns.khr_acceleration_structure
-                .cmd_copy_acceleration_structure_to_memory_khr)(self.handle(), &info_vk)
+                .cmd_copy_acceleration_structure_to_memory_khr)(
+                self.handle(), &raw const info_vk
+            )
         };
 
         self
@@ -2355,7 +2357,9 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
         unsafe {
             (fns.khr_acceleration_structure
-                .cmd_copy_memory_to_acceleration_structure_khr)(self.handle(), &info_vk)
+                .cmd_copy_memory_to_acceleration_structure_khr)(
+                self.handle(), &raw const info_vk
+            )
         };
 
         self

@@ -124,7 +124,7 @@ impl VulkanLibrary {
         let version = if let Some(func) = func {
             let func: vk::PFN_vkEnumerateInstanceVersion = unsafe { transmute(func) };
             let mut api_version = 0;
-            unsafe { func(&mut api_version) }
+            unsafe { func(&raw mut api_version) }
                 .result()
                 .map_err(VulkanError::from)?;
             Version::from(api_version)
@@ -152,7 +152,7 @@ impl VulkanLibrary {
                     layer_vk
                         .as_ref()
                         .map_or(ptr::null(), |layer| layer.as_ptr()),
-                    &mut count,
+                    &raw mut count,
                     ptr::null_mut(),
                 )
             }
@@ -165,7 +165,7 @@ impl VulkanLibrary {
                     layer_vk
                         .as_ref()
                         .map_or(ptr::null(), |layer| layer.as_ptr()),
-                    &mut count,
+                    &raw mut count,
                     output.as_mut_ptr(),
                 )
             };
@@ -235,13 +235,18 @@ impl VulkanLibrary {
 
         let layer_properties = loop {
             let mut count = 0;
-            unsafe { (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut()) }
-                .result()
-                .map_err(VulkanError::from)?;
+            unsafe {
+                (fns.v1_0.enumerate_instance_layer_properties)(&raw mut count, ptr::null_mut())
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
             let mut properties = Vec::with_capacity(count as usize);
             let result = unsafe {
-                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, properties.as_mut_ptr())
+                (fns.v1_0.enumerate_instance_layer_properties)(
+                    &raw mut count,
+                    properties.as_mut_ptr(),
+                )
             };
 
             match result {

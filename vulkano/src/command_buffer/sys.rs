@@ -103,9 +103,11 @@ impl RecordingCommandBuffer {
             let begin_info_vk = begin_info.to_vk(&begin_info_fields1_vk);
 
             let fns = allocation.inner.device().fns();
-            unsafe { (fns.v1_0.begin_command_buffer)(allocation.inner.handle(), &begin_info_vk) }
-                .result()
-                .map_err(VulkanError::from)?;
+            unsafe {
+                (fns.v1_0.begin_command_buffer)(allocation.inner.handle(), &raw const begin_info_vk)
+            }
+            .result()
+            .map_err(VulkanError::from)?;
         }
 
         let &CommandBufferBeginInfo {

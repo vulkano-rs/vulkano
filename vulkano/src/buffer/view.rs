@@ -296,7 +296,7 @@ impl BufferView {
             unsafe {
                 (fns.v1_0.create_buffer_view)(
                     device.handle(),
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

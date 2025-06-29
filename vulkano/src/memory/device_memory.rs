@@ -152,7 +152,7 @@ impl DeviceMemory {
             unsafe {
                 (fns.v1_0.allocate_memory)(
                     device.handle(),
-                    &allocate_info_vk,
+                    &raw const allocate_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -417,7 +417,7 @@ impl DeviceMemory {
                 unsafe {
                     (fns.khr_map_memory2.map_memory2_khr)(
                         device.handle(),
-                        &map_info_vk,
+                        &raw const map_info_vk,
                         output.as_mut_ptr(),
                     )
                 }
@@ -503,9 +503,11 @@ impl DeviceMemory {
         let fns = device.fns();
 
         if device.enabled_extensions().khr_map_memory2 {
-            unsafe { (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &unmap_info_vk) }
-                .result()
-                .map_err(VulkanError::from)?;
+            unsafe {
+                (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &raw const unmap_info_vk)
+            }
+            .result()
+            .map_err(VulkanError::from)?;
         } else {
             unsafe { (fns.v1_0.unmap_memory)(device.handle(), unmap_info_vk.memory) };
         }
@@ -554,7 +556,11 @@ impl DeviceMemory {
 
         let fns = self.device().fns();
         unsafe {
-            (fns.v1_0.invalidate_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+            (fns.v1_0.invalidate_mapped_memory_ranges)(
+                self.device().handle(),
+                1,
+                &raw const memory_range_vk,
+            )
         }
         .result()
         .map_err(VulkanError::from)?;
@@ -600,7 +606,11 @@ impl DeviceMemory {
 
         let fns = self.device().fns();
         unsafe {
-            (fns.v1_0.flush_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+            (fns.v1_0.flush_mapped_memory_ranges)(
+                self.device().handle(),
+                1,
+                &raw const memory_range_vk,
+            )
         }
         .result()
         .map_err(VulkanError::from)?;
@@ -669,7 +679,11 @@ impl DeviceMemory {
 
         let fns = self.device.fns();
         unsafe {
-            (fns.v1_0.get_device_memory_commitment)(self.device.handle(), self.handle, &mut output)
+            (fns.v1_0.get_device_memory_commitment)(
+                self.device.handle(),
+                self.handle,
+                &raw mut output,
+            )
         };
 
         output
@@ -741,7 +755,7 @@ impl DeviceMemory {
             unsafe {
                 (fns.khr_external_memory_fd.get_memory_fd_khr)(
                     self.device.handle(),
-                    &info_vk,
+                    &raw const info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -2213,7 +2227,11 @@ impl MappedDeviceMemory {
 
         let fns = self.memory.device().fns();
         unsafe {
-            (fns.v1_0.invalidate_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
+            (fns.v1_0.invalidate_mapped_memory_ranges)(
+                self.memory.device().handle(),
+                1,
+                &raw const range_vk,
+            )
         }
         .result()
         .map_err(VulkanError::from)?;
@@ -2269,7 +2287,11 @@ impl MappedDeviceMemory {
 
         let fns = self.device().fns();
         unsafe {
-            (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
+            (fns.v1_0.flush_mapped_memory_ranges)(
+                self.memory.device().handle(),
+                1,
+                &raw const range_vk,
+            )
         }
         .result()
         .map_err(VulkanError::from)?;

@@ -1258,7 +1258,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }));
             }
 
-            if group_counts_product.map_or(true, |size| {
+            if group_counts_product.is_none_or(|size| {
                 size > properties
                     .max_task_work_group_total_count
                     .unwrap_or_default()
@@ -1303,7 +1303,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }));
             }
 
-            if group_counts_product.map_or(true, |size| {
+            if group_counts_product.is_none_or(|size| {
                 size > properties
                     .max_mesh_work_group_total_count
                     .unwrap_or_default()
@@ -5188,10 +5188,10 @@ impl RecordingCommandBuffer {
         unsafe {
             (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
                 self.handle(),
-                &raygen,
-                &miss,
-                &hit,
-                &callable,
+                &raw const raygen,
+                &raw const miss,
+                &raw const hit,
+                &raw const callable,
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],

@@ -265,9 +265,7 @@ impl<'a> PipelineShaderStageCreateInfo<'a> {
 
         if clip_distance_array_size
             .checked_add(cull_distance_array_size)
-            .map_or(true, |sum| {
-                sum > properties.max_combined_clip_and_cull_distances
-            })
+            .is_none_or(|sum| sum > properties.max_combined_clip_and_cull_distances)
         {
             return Err(Box::new(ValidationError {
                 context: "entry_point".into(),
