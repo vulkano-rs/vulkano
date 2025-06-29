@@ -97,7 +97,7 @@ impl Fence {
             unsafe {
                 (fns.v1_0.create_fence)(
                     device.handle(),
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -124,7 +124,7 @@ impl Fence {
             Some(handle) => {
                 // Make sure the fence isn't signaled
                 let fns = device.fns();
-                unsafe { (fns.v1_0.reset_fences)(device.handle(), 1, &handle) }
+                unsafe { (fns.v1_0.reset_fences)(device.handle(), 1, &raw const handle) }
                     .result()
                     .map_err(VulkanError::from)?;
 
@@ -218,7 +218,13 @@ impl Fence {
 
         let fns = self.device.fns();
         let result = unsafe {
-            (fns.v1_0.wait_for_fences)(self.device.handle(), 1, &self.handle, vk::TRUE, timeout_ns)
+            (fns.v1_0.wait_for_fences)(
+                self.device.handle(),
+                1,
+                &raw const self.handle,
+                vk::TRUE,
+                timeout_ns,
+            )
         };
 
         match result {
@@ -325,7 +331,7 @@ impl Fence {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        unsafe { (fns.v1_0.reset_fences)(self.device.handle(), 1, &self.handle) }
+        unsafe { (fns.v1_0.reset_fences)(self.device.handle(), 1, &raw const self.handle) }
             .result()
             .map_err(VulkanError::from)?;
 
@@ -458,7 +464,7 @@ impl Fence {
             unsafe {
                 (fns.khr_external_fence_fd.get_fence_fd_khr)(
                     self.device.handle(),
-                    &info_vk,
+                    &raw const info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -553,7 +559,7 @@ impl Fence {
             unsafe {
                 (fns.khr_external_fence_win32.get_fence_win32_handle_khr)(
                     self.device.handle(),
-                    &info_vk,
+                    &raw const info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -614,9 +620,14 @@ impl Fence {
         let info_vk = import_fence_fd_info.to_vk(self.handle());
 
         let fns = self.device.fns();
-        unsafe { (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk) }
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.khr_external_fence_fd.import_fence_fd_khr)(
+                self.device.handle(),
+                &raw const info_vk,
+            )
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -673,7 +684,7 @@ impl Fence {
         unsafe {
             (fns.khr_external_fence_win32.import_fence_win32_handle_khr)(
                 self.device.handle(),
-                &info_vk,
+                &raw const info_vk,
             )
         }
         .result()

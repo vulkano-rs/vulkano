@@ -806,7 +806,9 @@ impl RecordingCommandBuffer<'_> {
         unsafe {
             (fns.khr_fragment_shading_rate
                 .cmd_set_fragment_shading_rate_khr)(
-                self.handle(), &fragment_size, &combiner_ops
+                self.handle(),
+                &raw const fragment_size,
+                &raw const combiner_ops,
             )
         }
 

@@ -79,7 +79,7 @@ impl PrivateDataSlot {
                 unsafe {
                     (fns.v1_3.create_private_data_slot)(
                         device.handle(),
-                        &create_info_vk,
+                        &raw const create_info_vk,
                         ptr::null(),
                         output.as_mut_ptr(),
                     )
@@ -88,7 +88,7 @@ impl PrivateDataSlot {
                 unsafe {
                     (fns.ext_private_data.create_private_data_slot_ext)(
                         device.handle(),
-                        &create_info_vk,
+                        &raw const create_info_vk,
                         ptr::null(),
                         output.as_mut_ptr(),
                     )

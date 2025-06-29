@@ -1267,16 +1267,16 @@ impl RecordingCommandBuffer {
                 unsafe {
                     (fns.v1_2.cmd_begin_render_pass2)(
                         self.handle(),
-                        &render_pass_begin_info_vk,
-                        &subpass_begin_info_vk,
+                        &raw const render_pass_begin_info_vk,
+                        &raw const subpass_begin_info_vk,
                     )
                 };
             } else {
                 unsafe {
                     (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
                         self.handle(),
-                        &render_pass_begin_info_vk,
-                        &subpass_begin_info_vk,
+                        &raw const render_pass_begin_info_vk,
+                        &raw const subpass_begin_info_vk,
                     )
                 };
             }
@@ -1286,7 +1286,7 @@ impl RecordingCommandBuffer {
             unsafe {
                 (fns.v1_0.cmd_begin_render_pass)(
                     self.handle(),
-                    &render_pass_begin_info_vk,
+                    &raw const render_pass_begin_info_vk,
                     subpass_begin_info_vk.contents,
                 )
             };
@@ -1362,16 +1362,16 @@ impl RecordingCommandBuffer {
                 unsafe {
                     (fns.v1_2.cmd_next_subpass2)(
                         self.handle(),
-                        &subpass_begin_info_vk,
-                        &subpass_end_info_vk,
+                        &raw const subpass_begin_info_vk,
+                        &raw const subpass_end_info_vk,
                     )
                 };
             } else {
                 unsafe {
                     (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
                         self.handle(),
-                        &subpass_begin_info_vk,
-                        &subpass_end_info_vk,
+                        &raw const subpass_begin_info_vk,
+                        &raw const subpass_end_info_vk,
                     )
                 };
             }
@@ -1441,12 +1441,14 @@ impl RecordingCommandBuffer {
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                unsafe { (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info_vk) };
+                unsafe {
+                    (fns.v1_2.cmd_end_render_pass2)(self.handle(), &raw const subpass_end_info_vk)
+                };
             } else {
                 unsafe {
                     (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
                         self.handle(),
-                        &subpass_end_info_vk,
+                        &raw const subpass_end_info_vk,
                     )
                 };
             }
@@ -1541,12 +1543,12 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            unsafe { (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info_vk) };
+            unsafe { (fns.v1_3.cmd_begin_rendering)(self.handle(), &raw const rendering_info_vk) };
         } else {
             unsafe {
                 (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(
                     self.handle(),
-                    &rendering_info_vk,
+                    &raw const rendering_info_vk,
                 )
             };
         }

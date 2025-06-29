@@ -392,7 +392,11 @@ impl Instance {
             let mut output = MaybeUninit::uninit();
             let fns = library.fns();
             unsafe {
-                (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
+                (fns.v1_0.create_instance)(
+                    &raw const create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
             }
             .result()
             .map_err(VulkanError::from)?;
@@ -568,14 +572,18 @@ impl Instance {
         let handles = loop {
             let mut count = 0;
             unsafe {
-                (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
+                (fns.v1_0.enumerate_physical_devices)(self.handle, &raw mut count, ptr::null_mut())
             }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut handles = Vec::with_capacity(count as usize);
             let result = unsafe {
-                (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, handles.as_mut_ptr())
+                (fns.v1_0.enumerate_physical_devices)(
+                    self.handle,
+                    &raw mut count,
+                    handles.as_mut_ptr(),
+                )
             };
 
             match result {
@@ -657,13 +665,19 @@ impl Instance {
         let properties_vk = loop {
             let mut count = 0;
 
-            unsafe { enumerate_physical_device_groups(self.handle, &mut count, ptr::null_mut()) }
-                .result()
-                .map_err(VulkanError::from)?;
+            unsafe {
+                enumerate_physical_device_groups(self.handle, &raw mut count, ptr::null_mut())
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
             let mut properties = Vec::with_capacity(count as usize);
             let result = unsafe {
-                enumerate_physical_device_groups(self.handle, &mut count, properties.as_mut_ptr())
+                enumerate_physical_device_groups(
+                    self.handle,
+                    &raw mut count,
+                    properties.as_mut_ptr(),
+                )
             };
 
             match result {

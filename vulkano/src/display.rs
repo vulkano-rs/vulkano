@@ -149,7 +149,7 @@ impl Display {
                         .get_display_mode_properties2_khr)(
                         self.physical_device.handle(),
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -163,7 +163,7 @@ impl Display {
                         .get_display_mode_properties2_khr)(
                         self.physical_device.handle(),
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties_vk.as_mut_ptr(),
                     )
                 };
@@ -201,7 +201,7 @@ impl Display {
                     (fns.khr_display.get_display_mode_properties_khr)(
                         self.physical_device.handle(),
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -213,7 +213,7 @@ impl Display {
                     (fns.khr_display.get_display_mode_properties_khr)(
                         self.physical_device.handle(),
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties.as_mut_ptr(),
                     )
                 };
@@ -389,7 +389,7 @@ impl DisplayMode {
                 (fns.khr_display.create_display_mode_khr)(
                     physical_device.handle(),
                     display.handle,
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -513,8 +513,8 @@ impl DisplayMode {
                         (fns.khr_get_display_properties2
                             .get_display_plane_capabilities2_khr)(
                             self.display.physical_device.handle(),
-                            &info_vk,
-                            &mut capabilities_vk,
+                            &raw const info_vk,
+                            &raw mut capabilities_vk,
                         )
                     }
                     .result()
@@ -525,7 +525,7 @@ impl DisplayMode {
                             self.display.physical_device.handle(),
                             self.handle,
                             plane_index,
-                            &mut capabilities_vk.capabilities,
+                            &raw mut capabilities_vk.capabilities,
                         )
                     }
                     .result()

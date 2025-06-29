@@ -112,7 +112,7 @@ impl PipelineCache {
             unsafe {
                 (fns.v1_0.create_pipeline_cache)(
                     device.handle(),
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -189,7 +189,7 @@ impl PipelineCache {
                 (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
-                    &mut count,
+                    &raw mut count,
                     ptr::null_mut(),
                 )
             }
@@ -201,7 +201,7 @@ impl PipelineCache {
                 (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
-                    &mut count,
+                    &raw mut count,
                     data.as_mut_ptr().cast(),
                 )
             };

@@ -149,7 +149,7 @@ impl RayTracingPipeline {
                     vk::DeferredOperationKHR::null(), // TODO: RayTracing: deferred_operation
                     cache.map_or(vk::PipelineCache::null(), |c| c.handle()),
                     1,
-                    &create_infos_vk,
+                    &raw const create_infos_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

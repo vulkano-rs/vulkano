@@ -98,7 +98,7 @@ impl ComputePipeline {
                     device.handle(),
                     cache.as_ref().map_or_else(Default::default, |c| c.handle()),
                     1,
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
