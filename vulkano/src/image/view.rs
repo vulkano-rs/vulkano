@@ -862,12 +862,12 @@ impl Default for ImageViewCreateInfo<'_> {
 impl<'a> ImageViewCreateInfo<'a> {
     /// Returns a default `ImageViewCreateInfo`.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             view_type: ImageViewType::Dim2d,
             format: Format::UNDEFINED,
             component_mapping: ComponentMapping::identity(),
-            subresource_range: ImageSubresourceRange::default(),
+            subresource_range: ImageSubresourceRange::new(),
             usage: ImageUsage::empty(),
             sampler_ycbcr_conversion: None,
             _ne: crate::NE,

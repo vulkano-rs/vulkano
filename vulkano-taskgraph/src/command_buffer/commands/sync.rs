@@ -490,9 +490,8 @@ impl Default for ImageMemoryBarrier<'_> {
 
 impl ImageMemoryBarrier<'_> {
     /// Returns a default `ImageMemoryBarrier`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -501,7 +500,7 @@ impl ImageMemoryBarrier<'_> {
             old_layout: ImageLayout::Undefined,
             new_layout: ImageLayout::Undefined,
             image: Id::INVALID,
-            subresource_range: ImageSubresourceRange::default(),
+            subresource_range: ImageSubresourceRange::new(),
             _ne: crate::NE,
         }
     }

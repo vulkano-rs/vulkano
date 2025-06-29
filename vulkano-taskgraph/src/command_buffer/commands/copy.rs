@@ -1180,11 +1180,11 @@ impl ImageCopy<'_> {
     /// Returns a default `ImageCopy`.
     // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers::default(),
+            src_subresource: ImageSubresourceLayers::new(),
             src_offset: [0; 3],
-            dst_subresource: ImageSubresourceLayers::default(),
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offset: [0; 3],
             extent: [0; 3],
             _ne: crate::NE,
@@ -1337,14 +1337,13 @@ impl Default for BufferImageCopy<'_> {
 
 impl BufferImageCopy<'_> {
     /// Returns a default `BufferImageCopy`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             buffer_offset: 0,
             buffer_row_length: 0,
             buffer_image_height: 0,
-            image_subresource: ImageSubresourceLayers::default(),
+            image_subresource: ImageSubresourceLayers::new(),
             image_offset: [0; 3],
             image_extent: [0; 3],
             _ne: crate::NE,
@@ -1456,13 +1455,12 @@ impl Default for ImageBlit<'_> {
 
 impl ImageBlit<'_> {
     /// Returns a default `ImageBlit`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers::default(),
+            src_subresource: ImageSubresourceLayers::new(),
             src_offsets: [[0; 3]; 2],
-            dst_subresource: ImageSubresourceLayers::default(),
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offsets: [[0; 3]; 2],
             _ne: crate::NE,
         }
@@ -1564,13 +1562,12 @@ impl Default for ImageResolve<'_> {
 
 impl ImageResolve<'_> {
     /// Returns a default `ImageResolve`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers::default(),
+            src_subresource: ImageSubresourceLayers::new(),
             src_offset: [0; 3],
-            dst_subresource: ImageSubresourceLayers::default(),
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offset: [0; 3],
             extent: [0; 3],
             _ne: crate::NE,

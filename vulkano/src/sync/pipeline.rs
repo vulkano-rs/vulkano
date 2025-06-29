@@ -3343,9 +3343,8 @@ pub struct ImageMemoryBarrier {
 
 impl ImageMemoryBarrier {
     /// Returns a default `ImageMemoryBarrier` with the provided `image`.
-    // TODO: make const
     #[inline]
-    pub fn new(image: Arc<Image>) -> Self {
+    pub const fn new(image: Arc<Image>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -3355,7 +3354,7 @@ impl ImageMemoryBarrier {
             new_layout: ImageLayout::Undefined,
             queue_family_ownership_transfer: None,
             image,
-            subresource_range: ImageSubresourceRange::default(),
+            subresource_range: ImageSubresourceRange::new(),
             _ne: crate::NE,
         }
     }

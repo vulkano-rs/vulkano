@@ -1404,8 +1404,10 @@ pub struct ImageSubresourceLayers {
     pub layer_count: u32,
 }
 
-impl Default for ImageSubresourceLayers {
-    fn default() -> Self {
+impl ImageSubresourceLayers {
+    /// Returns a default `ImageSubresourceLayers`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             aspects: ImageAspects::empty(),
             mip_level: 0,
@@ -1413,9 +1415,7 @@ impl Default for ImageSubresourceLayers {
             layer_count: 1,
         }
     }
-}
 
-impl ImageSubresourceLayers {
     /// Returns an `ImageSubresourceLayers` from the given image parameters, covering the first
     /// mip level of the image. All aspects of the image are selected, or `PLANE_0` if the image
     /// is multi-planar.
@@ -1437,9 +1437,7 @@ impl ImageSubresourceLayers {
             layer_count,
         }
     }
-}
 
-impl ImageSubresourceLayers {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,
@@ -1512,9 +1510,7 @@ impl ImageSubresourceLayers {
 
         Ok(())
     }
-}
 
-impl ImageSubresourceLayers {
     #[doc(hidden)]
     pub fn to_vk(&self) -> vk::ImageSubresourceLayers {
         let &Self {
@@ -1530,6 +1526,12 @@ impl ImageSubresourceLayers {
             base_array_layer,
             layer_count,
         }
+    }
+}
+
+impl Default for ImageSubresourceLayers {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1569,8 +1571,10 @@ pub struct ImageSubresourceRange {
     pub layer_count: u32,
 }
 
-impl Default for ImageSubresourceRange {
-    fn default() -> Self {
+impl ImageSubresourceRange {
+    /// Returns a default `ImageSubresourceRange`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             aspects: ImageAspects::empty(),
             base_mip_level: 0,
@@ -1579,9 +1583,7 @@ impl Default for ImageSubresourceRange {
             layer_count: 1,
         }
     }
-}
 
-impl ImageSubresourceRange {
     /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
     /// image. If the image is multi-planar, only the `COLOR` aspect is selected.
     #[inline]
@@ -1689,6 +1691,12 @@ impl ImageSubresourceRange {
             base_array_layer,
             layer_count,
         }
+    }
+}
+
+impl Default for ImageSubresourceRange {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
