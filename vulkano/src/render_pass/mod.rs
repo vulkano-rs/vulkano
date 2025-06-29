@@ -2067,12 +2067,16 @@ impl<'a> RenderPassCreateInfo<'a> {
             subpasses_vk,
             dependencies_vk,
             input_attachments_aspect_reference_vk,
-            multiview_view_masks_vk: is_multiview
-                .then_some(multiview_view_masks_vk)
-                .unwrap_or_default(),
-            multiview_view_offsets_vk: is_multiview
-                .then_some(multiview_view_offsets_vk)
-                .unwrap_or_default(),
+            multiview_view_masks_vk: if is_multiview {
+                multiview_view_masks_vk
+            } else {
+                Default::default()
+            },
+            multiview_view_offsets_vk: if is_multiview {
+                multiview_view_offsets_vk
+            } else {
+                Default::default()
+            },
         }
     }
 
