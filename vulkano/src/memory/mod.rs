@@ -957,7 +957,7 @@ impl MemoryFdProperties {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct MemoryWin32HandleProperties {
-    /// A bitmask of the indices of memory types that can be used with the file.
+    /// A bitmask of the indices of memory types that can be used with the handle.
     pub memory_type_bits: u32,
 }
 
