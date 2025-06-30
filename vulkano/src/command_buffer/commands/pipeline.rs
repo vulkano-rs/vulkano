@@ -2173,7 +2173,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     } else if let Some(&sampler) =
                         layout_binding.immutable_samplers.get(index as usize)
                     {
-                        check_sampler(set_num, binding_num, index, &sampler)?;
+                        check_sampler(set_num, binding_num, index, sampler)?;
                     }
 
                     if let Some(image_view) = &image_info.image_view {

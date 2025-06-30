@@ -39,14 +39,13 @@ pub struct WriteDescriptorSet {
 }
 
 impl WriteDescriptorSet {
-    /// Write a single image to array element 0, specifying the layout of the image to be bound.
+    /// Write a single image to array element 0.
     #[inline]
     pub fn image(binding: u32, image_info: DescriptorImageInfo) -> Self {
         Self::image_array(binding, 0, [image_info])
     }
 
-    /// Write a number of consecutive image elements, specifying the layouts of the images to be
-    /// bound.
+    /// Write a number of consecutive image elements.
     #[inline]
     pub fn image_array(
         binding: u32,
@@ -95,9 +94,7 @@ impl WriteDescriptorSet {
             binding,
             first_array_element,
             elements.into_iter().map(|buffer| {
-                let Some(buffer) = buffer else {
-                    return None;
-                };
+                let buffer = buffer?;
 
                 Some(DescriptorBufferInfo {
                     range: buffer.size(),
@@ -162,6 +159,8 @@ impl WriteDescriptorSet {
 
     /// Write a single image view to array element 0, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
+    ///
+    /// The image view may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn image_view(binding: u32, image_view: impl Into<Option<Arc<ImageView>>>) -> Self {
         let image_view = image_view.into();
@@ -170,6 +169,8 @@ impl WriteDescriptorSet {
 
     /// Write a number of consecutive image view elements, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
+    ///
+    /// The image views may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn image_view_array(
         binding: u32,
@@ -187,6 +188,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single sampler to array element 0.
+    ///
+    /// Samplers must always be provided if immutable samplers are not used.
     #[inline]
     pub fn sampler(binding: u32, sampler: impl Into<Option<Arc<Sampler>>>) -> Self {
         let sampler = sampler.into();
@@ -194,6 +197,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive sampler elements.
+    ///
+    /// Samplers must always be provided if immutable samplers are not used.
     pub fn sampler_array(
         binding: u32,
         first_array_element: u32,
@@ -221,6 +226,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single acceleration structure to array element 0.
+    ///
+    /// The acceleration structure may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn acceleration_structure(
         binding: u32,
@@ -231,6 +238,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive acceleration structure elements.
+    ///
+    /// The acceleration structures may be `None` if `null_descriptor` feature is enabled.
     pub fn acceleration_structure_array(
         binding: u32,
         first_array_element: u32,
@@ -435,7 +444,8 @@ impl WriteDescriptorSet {
                     for (index, image_info) in elements.iter().enumerate() {
                         let Some(ref sampler) = image_info.sampler else {
                             // For Sampler descriptor type without immutable samplers,
-                            // samplers must always be provided (can't be None even with null descriptor)
+                            // samplers must always be provided (can't be None even with null
+                            // descriptor)
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
                                 problem: "is `None`, but samplers must be provided for \
@@ -538,7 +548,8 @@ impl WriteDescriptorSet {
                             mut image_layout,
                         } = image_info;
 
-                        // For CombinedImageSampler without immutable samplers, sampler must always be provided
+                        // For CombinedImageSampler without immutable samplers, sampler must always
+                        // be provided
                         let Some(sampler) = sampler else {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
@@ -680,7 +691,8 @@ impl WriteDescriptorSet {
                             sampler: ref image_info_sampler,
                         } = image_info;
 
-                        // For immutable samplers, the sampler field in DescriptorImageInfo should be None
+                        // For immutable samplers, the sampler field in DescriptorImageInfo should
+                        // be None
                         if image_info_sampler.is_some() {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),

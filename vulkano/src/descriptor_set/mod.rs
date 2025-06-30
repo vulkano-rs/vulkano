@@ -426,8 +426,8 @@ impl DescriptorSetResources {
                     //         .flags()
                     //         .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
                     //     {
-                    //         // For push descriptors, no resource is written by default, this needs
-                    //         // to be done explicitly via a dummy write.
+                    //         // For push descriptors, no resource is written by default, this
+                    // needs         // to be done explicitly via a dummy write.
                     //         DescriptorBindingResources::None(smallvec![None; count])
                     //     } else {
                     //         // For regular descriptor sets, all descriptors are considered valid
