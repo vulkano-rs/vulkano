@@ -39,6 +39,7 @@ Changes to external memory and external sync:
 
 ### Additions
 
+- `ash` is now re-exported.
 - Added `new` constructors to all `*Info`-like structs.
 - Added `Instance::from_handle_borrowed` and `Device::from_handle_borrowed`.
 - Added a safe `PipelineCacheData` binary data wrapper.
