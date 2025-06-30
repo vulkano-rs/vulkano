@@ -850,17 +850,6 @@ impl MemoryRequirements {
     }
 }
 
-/// Returned via
-/// [`khr_external_memory_win32::get_memory_win32_handle_properties_khr`] when querying
-/// the properties of a memory object's external Win32 handle.
-#[derive(Clone, Copy, Debug)]
-pub struct MemoryWin32HandleProperties {
-    /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
-    /// type whose index is the same as the position of the bit can be used.
-    /// Corresponds to `memory_type_bits` in the original Vulkan struct.
-    pub memory_type_bits: u32,
-}
-
 pub(crate) struct MemoryRequirements2ExtensionsVk {
     pub(crate) dedicated_vk: Option<vk::MemoryDedicatedRequirements<'static>>,
 }
@@ -957,6 +946,28 @@ impl MemoryFdProperties {
 
     pub(crate) fn from_vk(val_vk: &vk::MemoryFdPropertiesKHR<'_>) -> Self {
         let &vk::MemoryFdPropertiesKHR {
+            memory_type_bits, ..
+        } = val_vk;
+
+        Self { memory_type_bits }
+    }
+}
+
+/// The properties of a Windows handle when it is imported.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryWin32HandleProperties {
+    /// A bitmask of the indices of memory types that can be used with the file.
+    pub memory_type_bits: u32,
+}
+
+impl MemoryWin32HandleProperties {
+    pub(crate) fn to_mut_vk() -> vk::MemoryWin32HandlePropertiesKHR<'static> {
+        vk::MemoryWin32HandlePropertiesKHR::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::MemoryWin32HandlePropertiesKHR<'_>) -> Self {
+        let &vk::MemoryWin32HandlePropertiesKHR {
             memory_type_bits, ..
         } = val_vk;
 
