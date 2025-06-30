@@ -3481,7 +3481,7 @@ pub(crate) struct CopyImageInfoVk {
 pub struct ImageCopy {
     /// The subresource of `src_image` to copy from.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub src_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of `src_image` that copying will start from.
@@ -3491,7 +3491,7 @@ pub struct ImageCopy {
 
     /// The subresource of `dst_image` to copy to.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub dst_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of `dst_image` that copying will start from.
@@ -3519,19 +3519,9 @@ impl ImageCopy {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            src_subresource: ImageSubresourceLayers::new(),
             src_offset: [0; 3],
-            dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offset: [0; 3],
             extent: [0; 3],
             _ne: crate::NE,
@@ -5092,7 +5082,7 @@ pub struct BufferImageCopy {
 
     /// The subresource of the image to copy from/to.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub image_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of the image that copying will start from.
@@ -5123,12 +5113,7 @@ impl BufferImageCopy {
             buffer_offset: 0,
             buffer_row_length: 0,
             buffer_image_height: 0,
-            image_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            image_subresource: ImageSubresourceLayers::new(),
             image_offset: [0; 3],
             image_extent: [0; 3],
             _ne: crate::NE,
@@ -6208,7 +6193,7 @@ pub(crate) struct BlitImageInfoVk {
 pub struct ImageBlit {
     /// The subresource of `src_image` to blit from.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub src_subresource: ImageSubresourceLayers,
 
     /// The offsets from the zero coordinate of `src_image`, defining two corners of the region
@@ -6221,7 +6206,7 @@ pub struct ImageBlit {
 
     /// The subresource of `dst_image` to blit to.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub dst_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of `dst_image` defining two corners of the
@@ -6247,19 +6232,9 @@ impl ImageBlit {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            src_subresource: ImageSubresourceLayers::new(),
             src_offsets: [[0; 3]; 2],
-            dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offsets: [[0; 3]; 2],
             _ne: crate::NE,
         }
@@ -7050,7 +7025,7 @@ pub(crate) struct ResolveImageInfoVk {
 pub struct ImageResolve {
     /// The subresource of `src_image` to resolve from.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub src_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of `src_image` that resolving will start from.
@@ -7060,7 +7035,7 @@ pub struct ImageResolve {
 
     /// The subresource of `dst_image` to resolve into.
     ///
-    /// The default value is empty, which must be overridden.
+    /// The default value is [`ImageSubresourceLayers::default()`].
     pub dst_subresource: ImageSubresourceLayers,
 
     /// The offset from the zero coordinate of `dst_image` that resolving will start from.
@@ -7088,19 +7063,9 @@ impl ImageResolve {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            src_subresource: ImageSubresourceLayers::new(),
             src_offset: [0; 3],
-            dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::empty(),
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            dst_subresource: ImageSubresourceLayers::new(),
             dst_offset: [0; 3],
             extent: [0; 3],
             _ne: crate::NE,
