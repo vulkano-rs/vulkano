@@ -534,7 +534,7 @@ mod tests {
         let set = DescriptorSet::new(
             ds_allocator,
             pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, Some(data_buffer.clone()))],
+            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
             [],
         )
         .unwrap();
@@ -678,7 +678,7 @@ mod tests {
         let set = DescriptorSet::new(
             ds_allocator,
             pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, Some(data_buffer.clone()))],
+            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
             [],
         )
         .unwrap();

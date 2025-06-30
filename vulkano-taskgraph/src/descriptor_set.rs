@@ -539,8 +539,7 @@ impl GlobalDescriptorSet {
             STORAGE_BUFFER_BINDING,
             id.index,
             iter::once(
-                descriptor
-                    .map(|d| Subbuffer::from(d.buffer.clone()).slice(d.offset..d.offset + d.size)),
+                descriptor.map(|d| Subbuffer::from(d.buffer).slice(d.offset..d.offset + d.size)),
             ),
         );
 

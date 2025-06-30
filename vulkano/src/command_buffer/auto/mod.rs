@@ -335,7 +335,7 @@ mod tests {
                 DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
                 DescriptorType,
             },
-            DescriptorImageInfo, DescriptorSet, WriteDescriptorSet,
+            DescriptorSet, WriteDescriptorSet,
         },
         device::{Device, DeviceCreateInfo, QueueCreateInfo},
         image::sampler::{Sampler, SamplerCreateInfo},
@@ -808,14 +808,9 @@ mod tests {
         let set = DescriptorSet::new(
             ds_allocator.clone(),
             set_layout.clone(),
-            [WriteDescriptorSet::image(
+            [WriteDescriptorSet::sampler(
                 0,
-                DescriptorImageInfo {
-                    sampler: Some(
-                        Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
-                    ),
-                    ..Default::default()
-                },
+                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
             )],
             [],
         )
@@ -888,7 +883,7 @@ mod tests {
             set_layout,
             [WriteDescriptorSet::sampler(
                 0,
-                Some(Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap()),
+                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
             )],
             [],
         )
