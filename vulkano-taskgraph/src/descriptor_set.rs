@@ -21,7 +21,7 @@ use vulkano::{
             DescriptorSetAllocateInfo,
         },
         sys::RawDescriptorSet,
-        DescriptorImageViewInfo, WriteDescriptorSet,
+        DescriptorImageInfo, WriteDescriptorSet,
     },
     device::{Device, DeviceExtensions, DeviceFeatures, DeviceOwned},
     image::{
@@ -397,7 +397,10 @@ impl GlobalDescriptorSet {
         let image_state = self.resources.image(image_id).unwrap();
         let image_view = ImageView::new(image_state.image(), create_info)?;
 
-        Ok(self.add_sampled_image(image_view, image_layout))
+        Ok(self.add_sampled_image(Some(SampledImageDescriptor {
+            image_view,
+            image_layout,
+        })))
     }
 
     pub fn create_storage_image(
@@ -409,7 +412,10 @@ impl GlobalDescriptorSet {
         let image_state = self.resources.image(image_id).unwrap();
         let image_view = ImageView::new(image_state.image(), create_info)?;
 
-        Ok(self.add_storage_image(image_view, image_layout))
+        Ok(self.add_storage_image(Some(StorageImageDescriptor {
+            image_view,
+            image_layout,
+        })))
     }
 
     pub fn create_storage_buffer(
@@ -428,7 +434,9 @@ impl GlobalDescriptorSet {
         })))
     }
 
-    pub fn add_sampler(&self, descriptor: Option<SamplerDescriptor>) -> SamplerId {
+    pub fn add_sampler(&self, descriptor: impl Into<Option<SamplerDescriptor>>) -> SamplerId {
+        let descriptor = descriptor.into();
+
         let id = self
             .samplers
             .insert(descriptor.clone(), &self.resources.pin());
@@ -446,34 +454,38 @@ impl GlobalDescriptorSet {
 
     pub fn add_sampled_image(
         &self,
-        image_view: Arc<ImageView>,
-        image_layout: ImageLayout,
+        descriptor: impl Into<Option<SampledImageDescriptor>>,
     ) -> SampledImageId {
-        assert!(matches!(
-            image_layout,
-            ImageLayout::General
-                | ImageLayout::DepthStencilReadOnlyOptimal
-                | ImageLayout::ShaderReadOnlyOptimal
-                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
-        ));
+        let descriptor = descriptor.into();
 
-        let descriptor = SampledImageDescriptor {
-            image_view: image_view.clone(),
+        let element = if let Some(SampledImageDescriptor {
             image_layout,
+            image_view,
+        }) = descriptor.clone()
+        {
+            assert!(matches!(
+                image_layout,
+                ImageLayout::General
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::ShaderReadOnlyOptimal
+                    | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+            ));
+            DescriptorImageInfo {
+                sampler: None,
+                image_view: Some(image_view),
+                image_layout,
+            }
+        } else {
+            Default::default()
         };
+
         let id = self
             .sampled_images
-            .insert(Some(descriptor), &self.resources.pin());
+            .insert(descriptor.clone(), &self.resources.pin());
 
-        let write = WriteDescriptorSet::image_view_with_layout_array(
-            SAMPLED_IMAGE_BINDING,
-            id.index,
-            iter::once(Some(DescriptorImageViewInfo {
-                image_view,
-                image_layout,
-            })),
-        );
+        let write =
+            WriteDescriptorSet::image_array(SAMPLED_IMAGE_BINDING, id.index, iter::once(element));
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
@@ -482,27 +494,31 @@ impl GlobalDescriptorSet {
 
     pub fn add_storage_image(
         &self,
-        image_view: Arc<ImageView>,
-        image_layout: ImageLayout,
+        descriptor: impl Into<Option<StorageImageDescriptor>>,
     ) -> StorageImageId {
-        assert_eq!(image_layout, ImageLayout::General);
+        let descriptor = descriptor.into();
 
-        let descriptor = StorageImageDescriptor {
-            image_view: image_view.clone(),
+        let element = if let Some(StorageImageDescriptor {
             image_layout,
+            image_view,
+        }) = descriptor.clone()
+        {
+            assert_eq!(image_layout, ImageLayout::General);
+            DescriptorImageInfo {
+                sampler: None,
+                image_view: Some(image_view),
+                image_layout,
+            }
+        } else {
+            Default::default()
         };
+
         let id = self
             .storage_images
-            .insert(Some(descriptor), &self.resources.pin());
+            .insert(descriptor.clone(), &self.resources.pin());
 
-        let write = WriteDescriptorSet::image_view_with_layout_array(
-            STORAGE_IMAGE_BINDING,
-            id.index,
-            iter::once(Some(DescriptorImageViewInfo {
-                image_view,
-                image_layout,
-            })),
-        );
+        let write =
+            WriteDescriptorSet::image_array(STORAGE_IMAGE_BINDING, id.index, iter::once(element));
 
         unsafe { self.inner.update_unchecked(&[write], &[]) };
 
@@ -511,8 +527,10 @@ impl GlobalDescriptorSet {
 
     pub fn add_storage_buffer(
         &self,
-        descriptor: Option<StorageBufferDescriptor>,
+        descriptor: impl Into<Option<StorageBufferDescriptor>>,
     ) -> StorageBufferId {
+        let descriptor = descriptor.into();
+
         let id = self
             .storage_buffers
             .insert(descriptor.clone(), &self.resources.pin());
@@ -533,8 +551,10 @@ impl GlobalDescriptorSet {
 
     pub fn add_acceleration_structure(
         &self,
-        descriptor: Option<AccelerationStructureDescriptor>,
+        descriptor: impl Into<Option<AccelerationStructureDescriptor>>,
     ) -> AccelerationStructureId {
+        let descriptor = descriptor.into();
+
         let id = self
             .acceleration_structures
             .insert(descriptor.clone(), &self.resources.pin());
@@ -931,13 +951,14 @@ impl LocalDescriptorSet {
             };
             let attachment = &framebuffer.attachments()[attachment_reference.attachment as usize];
 
-            writes.push(WriteDescriptorSet::image_view_with_layout_array(
+            writes.push(WriteDescriptorSet::image_array(
                 INPUT_ATTACHMENT_BINDING,
                 input_attachment_index as u32,
-                iter::once(Some(DescriptorImageViewInfo {
-                    image_view: attachment.clone(),
+                iter::once(DescriptorImageInfo {
+                    sampler: None,
+                    image_view: Some(attachment.clone()),
                     image_layout: attachment_reference.layout,
-                })),
+                }),
             ));
         }
 
