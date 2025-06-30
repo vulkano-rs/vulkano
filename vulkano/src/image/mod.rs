@@ -1530,6 +1530,7 @@ impl ImageSubresourceLayers {
 }
 
 impl Default for ImageSubresourceLayers {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -1695,6 +1696,7 @@ impl ImageSubresourceRange {
 }
 
 impl Default for ImageSubresourceRange {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
