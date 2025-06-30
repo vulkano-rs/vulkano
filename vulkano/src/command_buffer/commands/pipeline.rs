@@ -1758,10 +1758,18 @@ impl<L> AutoCommandBufferBuilder<L> {
                 |_set_num: u32,
                  _binding_num: u32,
                  _index: u32,
-                 _buffer_info: &DescriptorBufferInfo| Ok(());
+                 _buffer_info: &Option<DescriptorBufferInfo>| Ok(());
 
             let check_buffer_view =
-                |set_num: u32, binding_num: u32, index: u32, buffer_view: &Arc<BufferView>| {
+                |set_num: u32,
+                 binding_num: u32,
+                 index: u32,
+                 buffer_view: &Option<Arc<BufferView>>| {
+                    let Some(buffer_view) = buffer_view else {
+                        todo!();
+                        return Ok(());
+                    };
+
                     for desc_reqs in binding_reqs
                         .descriptors
                         .get(&Some(index))
@@ -2100,7 +2108,12 @@ impl<L> AutoCommandBufferBuilder<L> {
                 |set_num: u32,
                  binding_num: u32,
                  index: u32,
-                 image_view_info: &DescriptorImageViewInfo| {
+                 image_view_info: &Option<DescriptorImageViewInfo>| {
+                    let Some(image_view_info) = image_view_info else {
+                        todo!();
+                        return Ok(());
+                    };
+
                     let DescriptorImageViewInfo {
                         image_view,
                         image_layout: _,
@@ -2134,7 +2147,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             };
 
             let check_sampler =
-                |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
+                |set_num: u32, binding_num: u32, index: u32, sampler: &Option<Arc<Sampler>>| {
+                    let Some(sampler) = sampler else {
+                        todo!();
+                        return Ok(());
+                    };
+
                     check_sampler_common(set_num, binding_num, index, sampler)?;
 
                     for desc_reqs in binding_reqs
@@ -2164,7 +2182,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                             else {
                                 continue;
                             };
-                            let Some(Some(image_view_info)) = elements.get(*iindex as usize) else {
+                            let Some(Some(Some(image_view_info))) = elements.get(*iindex as usize)
+                            else {
                                 continue;
                             };
 
@@ -2195,15 +2214,16 @@ impl<L> AutoCommandBufferBuilder<L> {
                     Ok(())
                 };
 
-            let check_acceleration_structure =
-                |_set_num: u32,
-                 _binding_num: u32,
-                 _index: u32,
-                 _acceleration_structure: &Arc<AccelerationStructure>| Ok(());
+            let check_acceleration_structure = |_set_num: u32,
+                                                _binding_num: u32,
+                                                _index: u32,
+                                                _acceleration_structure: &Option<
+                Arc<AccelerationStructure>,
+            >| Ok(());
 
             let check_none = |set_num: u32, binding_num: u32, index: u32, _: &()| {
-                if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                    check_sampler(set_num, binding_num, index, sampler)?;
+                if let Some(&sampler) = layout_binding.immutable_samplers.get(index as usize) {
+                    check_sampler(set_num, binding_num, index, &Some(sampler.clone()))?;
                 }
 
                 Ok(())
@@ -2233,16 +2253,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                 let binding_resources = set_resources.binding(binding_num).unwrap();
 
                 match binding_resources {
-                    DescriptorBindingResources::None(elements) => {
-                        validate_resources(
-                            vuid_type,
-                            set_num,
-                            binding_num,
-                            binding_reqs,
-                            elements,
-                            check_none,
-                        )?;
-                    }
                     DescriptorBindingResources::Buffer(elements) => {
                         validate_resources(
                             vuid_type,
@@ -3594,7 +3604,6 @@ impl<L> AutoCommandBufferBuilder<L> {
             let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
 
             match descriptor_set_state.resources().binding(binding).unwrap() {
-                DescriptorBindingResources::None(_) => (),
                 DescriptorBindingResources::Buffer(elements) => {
                     if matches!(
                         descriptor_type,
@@ -3604,6 +3613,11 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
+                                let Some(buffer_info) = buffer_info else {
+                                    todo!();
+                                    continue;
+                                };
+
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3629,6 +3643,11 @@ impl<L> AutoCommandBufferBuilder<L> {
                     } else {
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
+                                let Some(buffer_info) = buffer_info else {
+                                    todo!();
+                                    continue;
+                                };
+
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3652,6 +3671,11 @@ impl<L> AutoCommandBufferBuilder<L> {
                 DescriptorBindingResources::BufferView(elements) => {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(buffer_view) = element {
+                            let Some(buffer_view) = buffer_view else {
+                                todo!();
+                                continue;
+                            };
+
                             let buffer = buffer_view.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
@@ -3669,6 +3693,11 @@ impl<L> AutoCommandBufferBuilder<L> {
                 DescriptorBindingResources::ImageView(elements) => {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(image_view_info) = element {
+                            let Some(image_view_info) = image_view_info else {
+                                todo!();
+                                continue;
+                            };
+
                             let &DescriptorImageViewInfo {
                                 ref image_view,
                                 mut image_layout,
@@ -3724,7 +3753,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(acceleration_structure) = element {
+                        if let Some(Some(acceleration_structure)) = element {
                             let buffer = acceleration_structure.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 

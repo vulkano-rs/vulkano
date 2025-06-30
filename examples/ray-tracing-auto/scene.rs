@@ -185,7 +185,7 @@ impl Scene {
             descriptor_set_allocator.clone(),
             pipeline_layout.set_layouts()[0].clone(),
             [
-                WriteDescriptorSet::acceleration_structure(0, tlas.clone()),
+                WriteDescriptorSet::acceleration_structure(0, Some(tlas.clone())),
                 WriteDescriptorSet::buffer(1, uniform_buffer.clone()),
             ],
             [],

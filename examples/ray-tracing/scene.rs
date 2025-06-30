@@ -205,7 +205,7 @@ impl SceneTask {
         }
         .unwrap();
 
-        let acceleration_structure_id = bcx.global_set().add_acceleration_structure(tlas);
+        let acceleration_structure_id = bcx.global_set().add_acceleration_structure(Some(tlas));
 
         let camera_storage_buffer_id = bcx
             .global_set()

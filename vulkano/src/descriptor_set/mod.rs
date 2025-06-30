@@ -505,14 +505,13 @@ impl DescriptorSetResources {
 /// The resources that are bound to a single descriptor set binding.
 #[derive(Clone, Debug)]
 pub enum DescriptorBindingResources {
-    None(Elements<()>),
-    Buffer(Elements<DescriptorBufferInfo>),
-    BufferView(Elements<Arc<BufferView>>),
-    ImageView(Elements<DescriptorImageViewInfo>),
+    Buffer(Elements<Option<DescriptorBufferInfo>>),
+    BufferView(Elements<Option<Arc<BufferView>>>),
+    ImageView(Elements<Option<DescriptorImageViewInfo>>),
     ImageViewSampler(Elements<(DescriptorImageViewInfo, Arc<Sampler>)>),
-    Sampler(Elements<Arc<Sampler>>),
+    Sampler(Elements<Option<Arc<Sampler>>>),
     InlineUniformBlock,
-    AccelerationStructure(Elements<Arc<AccelerationStructure>>),
+    AccelerationStructure(Elements<Option<Arc<AccelerationStructure>>>),
 }
 
 type Elements<T> = SmallVec<[Option<T>; 1]>;
@@ -539,21 +538,6 @@ impl DescriptorBindingResources {
         let first = write.first_array_element() as usize;
 
         match write.elements() {
-            WriteDescriptorSetElements::None(num_elements) => match self {
-                DescriptorBindingResources::None(resources) => {
-                    resources
-                        .get_mut(first..first + *num_elements as usize)
-                        .expect("descriptor write for binding out of bounds")
-                        .iter_mut()
-                        .for_each(|resource| {
-                            *resource = Some(());
-                        });
-                }
-                _ => panic!(
-                    "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
-                ),
-            },
             WriteDescriptorSetElements::Buffer(elements) => match self {
                 DescriptorBindingResources::Buffer(resources) => {
                     write_resources(first, resources, elements, Clone::clone)
@@ -575,13 +559,15 @@ impl DescriptorBindingResources {
             WriteDescriptorSetElements::ImageView(elements) => match self {
                 DescriptorBindingResources::ImageView(resources) => {
                     write_resources(first, resources, elements, |element| {
-                        let mut element = element.clone();
+                        let Some(mut element) = element.clone() else {
+                            return None;
+                        };
 
                         if element.image_layout == ImageLayout::Undefined {
                             element.image_layout = default_image_layout;
                         }
 
-                        element
+                        Some(element)
                     })
                 }
                 _ => panic!(
@@ -646,11 +632,6 @@ impl DescriptorBindingResources {
         let count = count as usize;
 
         match src {
-            DescriptorBindingResources::None(src) => match self {
-                DescriptorBindingResources::None(dst) => dst[dst_start..dst_start + count]
-                    .clone_from_slice(&src[src_start..src_start + count]),
-                _ => panic!("descriptor copy has wrong resource type"),
-            },
             DescriptorBindingResources::Buffer(src) => match self {
                 DescriptorBindingResources::Buffer(dst) => dst[dst_start..dst_start + count]
                     .clone_from_slice(&src[src_start..src_start + count]),
@@ -706,9 +687,6 @@ impl DescriptorBindingResources {
         }
 
         match self {
-            DescriptorBindingResources::None(resources) => {
-                invalidate_resources(resources, invalidate)
-            }
             DescriptorBindingResources::Buffer(resources) => {
                 invalidate_resources(resources, invalidate)
             }

@@ -810,7 +810,7 @@ mod tests {
             set_layout.clone(),
             [WriteDescriptorSet::sampler(
                 0,
-                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+                Some(Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap()),
             )],
             [],
         )
@@ -883,7 +883,7 @@ mod tests {
             set_layout,
             [WriteDescriptorSet::sampler(
                 0,
-                Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+                Some(Sampler::new(&device, &SamplerCreateInfo::simple_repeat_linear()).unwrap()),
             )],
             [],
         )
