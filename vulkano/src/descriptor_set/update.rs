@@ -39,13 +39,38 @@ pub struct WriteDescriptorSet {
 }
 
 impl WriteDescriptorSet {
+    /// Write a single image to array element 0, specifying the layout of the image to be bound.
+    #[inline]
+    pub fn image(binding: u32, image_info: DescriptorImageInfo) -> Self {
+        Self::image_array(binding, 0, [image_info])
+    }
+
+    /// Write a number of consecutive image elements, specifying the layouts of the images to be
+    /// bound.
+    #[inline]
+    pub fn image_array(
+        binding: u32,
+        first_array_element: u32,
+        elements: impl IntoIterator<Item = DescriptorImageInfo>,
+    ) -> Self {
+        let elements: SmallVec<_> = elements.into_iter().collect();
+        assert!(!elements.is_empty());
+
+        Self {
+            binding,
+            first_array_element,
+            elements: WriteDescriptorSetElements::Image(elements),
+        }
+    }
+
     /// Write a single buffer to array element 0, with the bound range covering the whole buffer.
     ///
     /// For dynamic buffer bindings, this will bind the whole buffer, and only a dynamic offset
     /// of zero will be valid, which is probably not what you want.
     /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
     #[inline]
-    pub fn buffer(binding: u32, buffer: Option<Subbuffer<impl ?Sized>>) -> Self {
+    pub fn buffer<T: ?Sized>(binding: u32, buffer: impl Into<Option<Subbuffer<T>>>) -> Self {
+        let buffer = buffer.into();
         Self::buffer_with_range_array(
             binding,
             0,
@@ -85,7 +110,11 @@ impl WriteDescriptorSet {
 
     /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
     #[inline]
-    pub fn buffer_with_range(binding: u32, buffer_info: Option<DescriptorBufferInfo>) -> Self {
+    pub fn buffer_with_range(
+        binding: u32,
+        buffer_info: impl Into<Option<DescriptorBufferInfo>>,
+    ) -> Self {
+        let buffer_info = buffer_info.into();
         Self::buffer_with_range_array(binding, 0, [buffer_info])
     }
 
@@ -110,7 +139,8 @@ impl WriteDescriptorSet {
 
     /// Write a single buffer view to array element 0.
     #[inline]
-    pub fn buffer_view(binding: u32, buffer_view: Option<Arc<BufferView>>) -> Self {
+    pub fn buffer_view(binding: u32, buffer_view: impl Into<Option<Arc<BufferView>>>) -> Self {
+        let buffer_view = buffer_view.into();
         Self::buffer_view_array(binding, 0, [buffer_view])
     }
 
@@ -133,15 +163,9 @@ impl WriteDescriptorSet {
     /// Write a single image view to array element 0, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
     #[inline]
-    pub fn image_view(binding: u32, image_view: Option<Arc<ImageView>>) -> Self {
-        Self::image_view_with_layout_array(
-            binding,
-            0,
-            [image_view.map(|image_view| DescriptorImageViewInfo {
-                image_view,
-                image_layout: ImageLayout::Undefined,
-            })],
-        )
+    pub fn image_view(binding: u32, image_view: impl Into<Option<Arc<ImageView>>>) -> Self {
+        let image_view = image_view.into();
+        Self::image_view_array(binding, 0, [image_view])
     }
 
     /// Write a number of consecutive image view elements, using the `Undefined` image layout,
@@ -152,121 +176,20 @@ impl WriteDescriptorSet {
         first_array_element: u32,
         elements: impl IntoIterator<Item = Option<Arc<ImageView>>>,
     ) -> Self {
-        Self::image_view_with_layout_array(
+        Self::image_array(
             binding,
             first_array_element,
-            elements.into_iter().map(|image_view| {
-                image_view.map(|image_view| DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: ImageLayout::Undefined,
-                })
+            elements.into_iter().map(|image_view| DescriptorImageInfo {
+                image_view,
+                ..Default::default()
             }),
         )
-    }
-
-    /// Write a single image view to array element 0, specifying the layout of the image to be
-    /// bound.
-    #[inline]
-    pub fn image_view_with_layout(
-        binding: u32,
-        image_view_info: Option<DescriptorImageViewInfo>,
-    ) -> Self {
-        Self::image_view_with_layout_array(binding, 0, [image_view_info])
-    }
-
-    /// Write a number of consecutive image view elements, specifying the layouts of the images to
-    /// be bound.
-    pub fn image_view_with_layout_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<DescriptorImageViewInfo>>,
-    ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-        Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::ImageView(elements),
-        }
-    }
-
-    /// Write a single image view and sampler to array element 0,
-    /// using the `Undefined` image layout, which will be automatically replaced with
-    /// an appropriate default layout.
-    #[inline]
-    pub fn image_view_sampler(
-        binding: u32,
-        image_view: Arc<ImageView>,
-        sampler: Arc<Sampler>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(
-            binding,
-            0,
-            [(
-                DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: ImageLayout::Undefined,
-                },
-                sampler,
-            )],
-        )
-    }
-
-    /// Write a number of consecutive image view and sampler elements,
-    /// using the `Undefined` image layout, which will be automatically replaced with
-    /// an appropriate default layout.
-    #[inline]
-    pub fn image_view_sampler_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = (Arc<ImageView>, Arc<Sampler>)>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(
-            binding,
-            first_array_element,
-            elements.into_iter().map(|(image_view, sampler)| {
-                (
-                    DescriptorImageViewInfo {
-                        image_view,
-                        image_layout: ImageLayout::Undefined,
-                    },
-                    sampler,
-                )
-            }),
-        )
-    }
-
-    /// Write a single image view and sampler to array element 0, specifying the layout of the
-    /// image to be bound.
-    #[inline]
-    pub fn image_view_with_layout_sampler(
-        binding: u32,
-        image_view_info: DescriptorImageViewInfo,
-        sampler: Arc<Sampler>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(binding, 0, [(image_view_info, sampler)])
-    }
-
-    /// Write a number of consecutive image view and sampler elements, specifying the layout of the
-    /// image to be bound.
-    pub fn image_view_with_layout_sampler_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = (DescriptorImageViewInfo, Arc<Sampler>)>,
-    ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-
-        Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::ImageViewSampler(elements),
-        }
     }
 
     /// Write a single sampler to array element 0.
     #[inline]
-    pub fn sampler(binding: u32, sampler: Option<Arc<Sampler>>) -> Self {
+    pub fn sampler(binding: u32, sampler: impl Into<Option<Arc<Sampler>>>) -> Self {
+        let sampler = sampler.into();
         Self::sampler_array(binding, 0, [sampler])
     }
 
@@ -276,14 +199,14 @@ impl WriteDescriptorSet {
         first_array_element: u32,
         elements: impl IntoIterator<Item = Option<Arc<Sampler>>>,
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-
-        Self {
+        Self::image_array(
             binding,
             first_array_element,
-            elements: WriteDescriptorSetElements::Sampler(elements),
-        }
+            elements.into_iter().map(|sampler| DescriptorImageInfo {
+                sampler,
+                ..Default::default()
+            }),
+        )
     }
 
     /// Write data to an inline uniform block.
@@ -301,8 +224,9 @@ impl WriteDescriptorSet {
     #[inline]
     pub fn acceleration_structure(
         binding: u32,
-        acceleration_structure: Option<Arc<AccelerationStructure>>,
+        acceleration_structure: impl Into<Option<Arc<AccelerationStructure>>>,
     ) -> Self {
+        let acceleration_structure = acceleration_structure.into();
         Self::acceleration_structure_array(binding, 0, [acceleration_structure])
     }
 
@@ -349,9 +273,7 @@ impl WriteDescriptorSet {
             match elements {
                 WriteDescriptorSetElements::Buffer(_) => "buffer",
                 WriteDescriptorSetElements::BufferView(_) => "buffer_view",
-                WriteDescriptorSetElements::ImageView(_) => "image_view",
-                WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
-                WriteDescriptorSetElements::Sampler(_) => "sampler",
+                WriteDescriptorSetElements::Image(_) => "image",
                 WriteDescriptorSetElements::InlineUniformBlock(_) => "inline_uniform_block",
                 WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
             }
@@ -492,7 +414,7 @@ impl WriteDescriptorSet {
 
         match layout_binding.descriptor_type {
             DescriptorType::Sampler => {
-                let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
+                let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
                 } else {
                     return Err(Box::new(ValidationError {
@@ -1457,6 +1379,12 @@ impl WriteDescriptorSet {
         default_image_layout: ImageLayout,
     ) -> WriteDescriptorSetFields1 {
         let descriptor_infos_vk = match &self.elements {
+            WriteDescriptorSetElements::Image(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|element| element.to_vk(default_image_layout))
+                    .collect(),
+            ),
             WriteDescriptorSetElements::Buffer(elements) => DescriptorInfosVk::Buffer(
                 elements
                     .iter()
@@ -1475,42 +1403,6 @@ impl WriteDescriptorSet {
                         element
                             .as_ref()
                             .map_or(vk::BufferView::null(), VulkanObject::handle)
-                    })
-                    .collect(),
-            ),
-            WriteDescriptorSetElements::ImageView(elements) => DescriptorInfosVk::Image(
-                elements
-                    .iter()
-                    .map(|element| {
-                        element
-                            .as_ref()
-                            .map_or(vk::DescriptorImageInfo::default(), |element| {
-                                element.to_vk(default_image_layout)
-                            })
-                    })
-                    .collect(),
-            ),
-            WriteDescriptorSetElements::ImageViewSampler(elements) => DescriptorInfosVk::Image(
-                elements
-                    .iter()
-                    .map(|(image_view_info, sampler)| vk::DescriptorImageInfo {
-                        sampler: sampler.handle(),
-                        ..image_view_info.to_vk(default_image_layout)
-                    })
-                    .collect(),
-            ),
-            WriteDescriptorSetElements::Sampler(elements) => DescriptorInfosVk::Image(
-                elements
-                    .iter()
-                    .map(|element| {
-                        element
-                            .as_ref()
-                            .map_or(vk::DescriptorImageInfo::default(), |element| {
-                                vk::DescriptorImageInfo {
-                                    sampler: element.handle(),
-                                    ..Default::default()
-                                }
-                            })
                     })
                     .collect(),
             ),
@@ -1561,11 +1453,9 @@ pub(crate) enum DescriptorInfosVk {
 /// The elements held by a `WriteDescriptorSet`.
 #[derive(Clone, Debug)]
 pub enum WriteDescriptorSetElements {
+    Image(SmallVec<[DescriptorImageInfo; 1]>),
     Buffer(SmallVec<[Option<DescriptorBufferInfo>; 1]>),
     BufferView(SmallVec<[Option<Arc<BufferView>>; 1]>),
-    ImageView(SmallVec<[Option<DescriptorImageViewInfo>; 1]>),
-    ImageViewSampler(SmallVec<[(DescriptorImageViewInfo, Arc<Sampler>); 1]>),
-    Sampler(SmallVec<[Option<Arc<Sampler>>; 1]>),
     InlineUniformBlock(Vec<u8>),
     AccelerationStructure(SmallVec<[Option<Arc<AccelerationStructure>>; 1]>),
 }
@@ -1575,11 +1465,9 @@ impl WriteDescriptorSetElements {
     #[inline]
     pub fn len(&self) -> u32 {
         match self {
+            Self::Image(elements) => elements.len() as u32,
             Self::Buffer(elements) => elements.len() as u32,
             Self::BufferView(elements) => elements.len() as u32,
-            Self::ImageView(elements) => elements.len() as u32,
-            Self::ImageViewSampler(elements) => elements.len() as u32,
-            Self::Sampler(elements) => elements.len() as u32,
             Self::InlineUniformBlock(data) => data.len() as u32,
             Self::AccelerationStructure(elements) => elements.len() as u32,
         }
@@ -1627,10 +1515,13 @@ impl DescriptorBufferInfo {
 }
 
 /// Parameters to write an image view reference to a descriptor.
-#[derive(Clone, Debug)]
-pub struct DescriptorImageViewInfo {
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorImageInfo {
+    /// The sampler to write to the descriptor.
+    pub sampler: Option<Arc<Sampler>>,
+
     /// The image view to write to the descriptor.
-    pub image_view: Arc<ImageView>,
+    pub image_view: Option<Arc<ImageView>>,
 
     /// The layout that the image is expected to be in when it's accessed in the shader.
     ///
@@ -1652,16 +1543,21 @@ pub struct DescriptorImageViewInfo {
     pub image_layout: ImageLayout,
 }
 
-impl DescriptorImageViewInfo {
+impl DescriptorImageInfo {
     pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> vk::DescriptorImageInfo {
         let &Self {
             ref image_view,
+            ref sampler,
             image_layout,
         } = self;
 
         vk::DescriptorImageInfo {
-            sampler: vk::Sampler::null(),
-            image_view: image_view.handle(),
+            sampler: sampler
+                .as_ref()
+                .map_or(vk::Sampler::null(), VulkanObject::handle),
+            image_view: image_view
+                .as_ref()
+                .map_or(vk::ImageView::null(), VulkanObject::handle),
             image_layout: if image_layout == ImageLayout::Undefined {
                 default_image_layout.into()
             } else {

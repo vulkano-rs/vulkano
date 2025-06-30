@@ -74,21 +74,19 @@ use self::{
 pub use self::{
     collection::DescriptorSetsCollection,
     update::{
-        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, InvalidateDescriptorSet,
+        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageInfo, InvalidateDescriptorSet,
         WriteDescriptorSet, WriteDescriptorSetElements,
     },
 };
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::view::BufferView,
-    descriptor_set::layout::{
-        DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
-    },
+    descriptor_set::layout::{DescriptorBindingFlags, DescriptorType},
     device::{Device, DeviceOwned},
-    image::{sampler::Sampler, ImageLayout},
+    image::ImageLayout,
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ash::vk;
+use ash::vk::{self};
 use foldhash::HashMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use smallvec::{smallvec, SmallVec};
@@ -415,32 +413,28 @@ impl DescriptorSetResources {
                     }
                     DescriptorType::SampledImage
                     | DescriptorType::StorageImage
-                    | DescriptorType::InputAttachment => {
-                        DescriptorBindingResources::ImageView(smallvec![None; count])
+                    | DescriptorType::InputAttachment
+                    | DescriptorType::CombinedImageSampler
+                    | DescriptorType::Sampler => {
+                        DescriptorBindingResources::Image(smallvec![None; count])
                     }
-                    DescriptorType::CombinedImageSampler => {
-                        if binding.immutable_samplers.is_empty() {
-                            DescriptorBindingResources::ImageViewSampler(smallvec![None; count])
-                        } else {
-                            DescriptorBindingResources::ImageView(smallvec![None; count])
-                        }
-                    }
-                    DescriptorType::Sampler => {
-                        if binding.immutable_samplers.is_empty() {
-                            DescriptorBindingResources::Sampler(smallvec![None; count])
-                        } else if layout
-                            .flags()
-                            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
-                        {
-                            // For push descriptors, no resource is written by default, this needs
-                            // to be done explicitly via a dummy write.
-                            DescriptorBindingResources::None(smallvec![None; count])
-                        } else {
-                            // For regular descriptor sets, all descriptors are considered valid
-                            // from the start.
-                            DescriptorBindingResources::None(smallvec![Some(()); count])
-                        }
-                    }
+                    // TODO(Comfy): Check if this is needed
+                    // DescriptorType::Sampler => {
+                    //     if binding.immutable_samplers.is_empty() {
+                    //         DescriptorBindingResources::Sampler(smallvec![None; count])
+                    //     } else if layout
+                    //         .flags()
+                    //         .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+                    //     {
+                    //         // For push descriptors, no resource is written by default, this needs
+                    //         // to be done explicitly via a dummy write.
+                    //         DescriptorBindingResources::None(smallvec![None; count])
+                    //     } else {
+                    //         // For regular descriptor sets, all descriptors are considered valid
+                    //         // from the start.
+                    //         DescriptorBindingResources::None(smallvec![Some(()); count])
+                    //     }
+                    // }
                     DescriptorType::InlineUniformBlock => {
                         DescriptorBindingResources::InlineUniformBlock
                     }
@@ -505,11 +499,9 @@ impl DescriptorSetResources {
 /// The resources that are bound to a single descriptor set binding.
 #[derive(Clone, Debug)]
 pub enum DescriptorBindingResources {
+    Image(Elements<DescriptorImageInfo>),
     Buffer(Elements<Option<DescriptorBufferInfo>>),
     BufferView(Elements<Option<Arc<BufferView>>>),
-    ImageView(Elements<Option<DescriptorImageViewInfo>>),
-    ImageViewSampler(Elements<(DescriptorImageViewInfo, Arc<Sampler>)>),
-    Sampler(Elements<Option<Arc<Sampler>>>),
     InlineUniformBlock,
     AccelerationStructure(Elements<Option<Arc<AccelerationStructure>>>),
 }
@@ -538,6 +530,23 @@ impl DescriptorBindingResources {
         let first = write.first_array_element() as usize;
 
         match write.elements() {
+            WriteDescriptorSetElements::Image(elements) => match self {
+                DescriptorBindingResources::Image(resources) => {
+                    write_resources(first, resources, elements, |element| {
+                        let mut element = element.clone();
+                        if element.image_view.is_some()
+                            && element.image_layout == ImageLayout::Undefined
+                        {
+                            element.image_layout = default_image_layout;
+                        }
+                        element
+                    })
+                }
+                _ => panic!(
+                    "descriptor write for binding {} has wrong resource type",
+                    write.binding(),
+                ),
+            },
             WriteDescriptorSetElements::Buffer(elements) => match self {
                 DescriptorBindingResources::Buffer(resources) => {
                     write_resources(first, resources, elements, Clone::clone)
@@ -549,51 +558,6 @@ impl DescriptorBindingResources {
             },
             WriteDescriptorSetElements::BufferView(elements) => match self {
                 DescriptorBindingResources::BufferView(resources) => {
-                    write_resources(first, resources, elements, Clone::clone)
-                }
-                _ => panic!(
-                    "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
-                ),
-            },
-            WriteDescriptorSetElements::ImageView(elements) => match self {
-                DescriptorBindingResources::ImageView(resources) => {
-                    write_resources(first, resources, elements, |element| {
-                        let Some(mut element) = element.clone() else {
-                            return None;
-                        };
-
-                        if element.image_layout == ImageLayout::Undefined {
-                            element.image_layout = default_image_layout;
-                        }
-
-                        Some(element)
-                    })
-                }
-                _ => panic!(
-                    "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
-                ),
-            },
-            WriteDescriptorSetElements::ImageViewSampler(elements) => match self {
-                DescriptorBindingResources::ImageViewSampler(resources) => {
-                    write_resources(first, resources, elements, |element| {
-                        let mut element = element.clone();
-
-                        if element.0.image_layout == ImageLayout::Undefined {
-                            element.0.image_layout = default_image_layout;
-                        }
-
-                        element
-                    })
-                }
-                _ => panic!(
-                    "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
-                ),
-            },
-            WriteDescriptorSetElements::Sampler(elements) => match self {
-                DescriptorBindingResources::Sampler(resources) => {
                     write_resources(first, resources, elements, Clone::clone)
                 }
                 _ => panic!(
@@ -632,6 +596,11 @@ impl DescriptorBindingResources {
         let count = count as usize;
 
         match src {
+            DescriptorBindingResources::Image(src) => match self {
+                DescriptorBindingResources::Image(dst) => dst[dst_start..dst_start + count]
+                    .clone_from_slice(&src[src_start..src_start + count]),
+                _ => panic!("descriptor copy has wrong resource type"),
+            },
             DescriptorBindingResources::Buffer(src) => match self {
                 DescriptorBindingResources::Buffer(dst) => dst[dst_start..dst_start + count]
                     .clone_from_slice(&src[src_start..src_start + count]),
@@ -639,22 +608,6 @@ impl DescriptorBindingResources {
             },
             DescriptorBindingResources::BufferView(src) => match self {
                 DescriptorBindingResources::BufferView(dst) => dst[dst_start..dst_start + count]
-                    .clone_from_slice(&src[src_start..src_start + count]),
-                _ => panic!("descriptor copy has wrong resource type"),
-            },
-            DescriptorBindingResources::ImageView(src) => match self {
-                DescriptorBindingResources::ImageView(dst) => dst[dst_start..dst_start + count]
-                    .clone_from_slice(&src[src_start..src_start + count]),
-                _ => panic!("descriptor copy has wrong resource type"),
-            },
-            DescriptorBindingResources::ImageViewSampler(src) => match self {
-                DescriptorBindingResources::ImageViewSampler(dst) => dst
-                    [dst_start..dst_start + count]
-                    .clone_from_slice(&src[src_start..src_start + count]),
-                _ => panic!("descriptor copy has wrong resource type"),
-            },
-            DescriptorBindingResources::Sampler(src) => match self {
-                DescriptorBindingResources::Sampler(dst) => dst[dst_start..dst_start + count]
                     .clone_from_slice(&src[src_start..src_start + count]),
                 _ => panic!("descriptor copy has wrong resource type"),
             },
@@ -687,19 +640,13 @@ impl DescriptorBindingResources {
         }
 
         match self {
+            DescriptorBindingResources::Image(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
             DescriptorBindingResources::Buffer(resources) => {
                 invalidate_resources(resources, invalidate)
             }
             DescriptorBindingResources::BufferView(resources) => {
-                invalidate_resources(resources, invalidate)
-            }
-            DescriptorBindingResources::ImageView(resources) => {
-                invalidate_resources(resources, invalidate)
-            }
-            DescriptorBindingResources::ImageViewSampler(resources) => {
-                invalidate_resources(resources, invalidate)
-            }
-            DescriptorBindingResources::Sampler(resources) => {
                 invalidate_resources(resources, invalidate)
             }
             DescriptorBindingResources::InlineUniformBlock => (),

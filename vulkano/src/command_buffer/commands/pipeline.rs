@@ -11,7 +11,7 @@ use crate::{
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
-        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageViewInfo,
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageInfo,
     },
     device::{DeviceOwned, QueueFlags},
     format::{FormatFeatures, NumericType},
@@ -3604,6 +3604,35 @@ impl<L> AutoCommandBufferBuilder<L> {
             let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
 
             match descriptor_set_state.resources().binding(binding).unwrap() {
+                DescriptorBindingResources::Image(elements) => {
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some(DescriptorImageInfo {
+                            sampler: _,
+                            image_view: Some(image_view),
+                            image_layout,
+                        }) = element
+                        {
+                            let image_layout = if *image_layout == ImageLayout::Undefined {
+                                default_image_layout
+                            } else {
+                                *image_layout
+                            };
+
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Image {
+                                    image: image_view.image().clone(),
+                                    subresource_range: *image_view.subresource_range(),
+                                    memory_access,
+                                    start_layout: image_layout,
+                                    end_layout: image_layout,
+                                },
+                            ));
+                        }
+                    }
+                }
                 DescriptorBindingResources::Buffer(elements) => {
                     if matches!(
                         descriptor_type,
@@ -3690,66 +3719,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
                     }
                 }
-                DescriptorBindingResources::ImageView(elements) => {
-                    for (index, element) in elements.iter().enumerate() {
-                        if let Some(image_view_info) = element {
-                            let Some(image_view_info) = image_view_info else {
-                                todo!();
-                                continue;
-                            };
-
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            let (use_ref, memory_access) = use_iter(index as u32);
-
-                            used_resources.push((
-                                use_ref,
-                                Resource::Image {
-                                    image: image_view.image().clone(),
-                                    subresource_range: *image_view.subresource_range(),
-                                    memory_access,
-                                    start_layout: image_layout,
-                                    end_layout: image_layout,
-                                },
-                            ));
-                        }
-                    }
-                }
-                DescriptorBindingResources::ImageViewSampler(elements) => {
-                    for (index, element) in elements.iter().enumerate() {
-                        if let Some((image_view_info, _sampler)) = element {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            let (use_ref, memory_access) = use_iter(index as u32);
-
-                            used_resources.push((
-                                use_ref,
-                                Resource::Image {
-                                    image: image_view.image().clone(),
-                                    subresource_range: *image_view.subresource_range(),
-                                    memory_access,
-                                    start_layout: image_layout,
-                                    end_layout: image_layout,
-                                },
-                            ));
-                        }
-                    }
-                }
-                DescriptorBindingResources::Sampler(_) => (),
                 DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     for (index, element) in elements.iter().enumerate() {
