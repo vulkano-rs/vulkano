@@ -1186,13 +1186,24 @@ pub enum MemoryImportInfo {
     ///
     /// - `handle` must be a valid Windows handle.
     /// - Vulkan will not take ownership of `handle`.
-    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`], it owns a reference to the
-    ///   underlying resource and must eventually be closed by the caller.
-    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32Kmt`], it does not own a
-    ///   reference to the underlying resource.
-    /// - `handle` must be created by the Vulkan API.
-    /// - [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
-    ///   must match those of the original memory allocation.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`] or
+    ///   [`ExternalMemoryHandleType::D3D11Texture`], it owns a reference to the underlying
+    ///   resource and must eventually be closed by the caller.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32Kmt`] or
+    ///   [`ExternalMemoryHandleType::D3D11TextureKmt`], it does not own a reference to the
+    ///   underlying resource.
+    /// - `handle` must refer to memory exported from the same physical device as the `device` it
+    ///   is being imported into.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`] or
+    ///   [`ExternalMemoryHandleType::OpaqueWin32Kmt`], and `handle` was created by the Vulkan API,
+    ///   [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
+    ///   must match those of the original allocation.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::D3D11Texture`] or
+    ///   [`ExternalMemoryHandleType::D3D11TextureKmt`], [`MemoryAllocateInfo::allocation_size`] is
+    ///   ignored. The implementation must query the allocation size from the OS.
+    /// - If `handle` was created outside of the Vulkan API, you must call
+    ///   [`Device::memory_win32_handle_properties`] to determine a valid value for
+    ///   [`MemoryAllocateInfo::memory_type_index`].
     /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`], the
     ///   imported one must also use it, and the associated buffer or image must be defined
     ///   identically to the original.
@@ -1269,8 +1280,10 @@ impl MemoryImportInfo {
 
                 match handle_type {
                     ExternalMemoryHandleType::OpaqueWin32
-                    | ExternalMemoryHandleType::OpaqueWin32Kmt => {
-                        // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                    | ExternalMemoryHandleType::OpaqueWin32Kmt
+                    | ExternalMemoryHandleType::D3D11TextureKmt
+                    | ExternalMemoryHandleType::D3D11Texture => {
+                        // VUID-VkMemoryAllocateInfo-allocationSize-01743
                         // Can't validate, must be ensured by user
 
                         // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
@@ -1282,8 +1295,10 @@ impl MemoryImportInfo {
                     _ => {
                         return Err(Box::new(ValidationError {
                             context: "handle_type".into(),
-                            problem: "is not `ExternalMemoryHandleType::OpaqueWin32` or \
-                                `ExternalMemoryHandleType::OpaqueWin32Kmt`"
+                            problem: "is not `ExternalMemoryHandleType::OpaqueWin32`, \
+                                `ExternalMemoryHandleType::OpaqueWin32Kmt`, \
+                                `ExternalMemoryHandleType::D3D11Texture` or \
+                                `ExternalMemoryHandleType::D3D11TextureKmt`"
                                 .into(),
                             vuids: &["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660"],
                             ..Default::default()
@@ -1295,6 +1310,12 @@ impl MemoryImportInfo {
                 // Can't validate, must be ensured by user
             }
         }
+
+        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00643
+        // Can't validate, must be ensured by user
+
+        // VUID-VkMemoryAllocateInfo-None-00644
+        // Can't validate, must be ensured by user
 
         Ok(())
     }

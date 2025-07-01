@@ -395,7 +395,7 @@ impl Default for WindowResizeConstraints {
 impl WindowResizeConstraints {
     #[must_use]
     pub fn check_constraints(&self) -> Self {
-        let &WindowResizeConstraints {
+        let &Self {
             mut min_width,
             mut min_height,
             mut max_width,

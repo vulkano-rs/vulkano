@@ -112,7 +112,10 @@ use crate::{
     image::{sys::ImageCreateInfoExtensionsVk, ImageCreateFlags, ImageCreateInfo, ImageTiling},
     instance::{Instance, InstanceExtensions, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
-    memory::{ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements},
+    memory::{
+        ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements,
+        MemoryWin32HandleProperties,
+    },
     RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
@@ -1182,6 +1185,88 @@ impl Device {
         .map_err(VulkanError::from)?;
 
         Ok(MemoryFdProperties::from_vk(&memory_fd_properties))
+    }
+
+    /// Retrieves the properties of a Windows external memory handle when imported as a given
+    /// external handle type.
+    ///
+    /// The [`khr_external_memory_fd`] extension must be enabled on the device and `handle_type`
+    /// must not be one of the `Opaque` handle types.
+    ///
+    /// # Safety
+    ///
+    /// `handle` must be a valid Windows handle to external memory.
+    ///
+    /// [`khr_external_memory_fd`]: DeviceExtensions::khr_external_memory_fd
+    #[inline]
+    pub unsafe fn memory_win32_handle_properties(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+        handle: vk::HANDLE,
+    ) -> Result<MemoryWin32HandleProperties, Validated<VulkanError>> {
+        self.validate_memory_win32_handle_properties(handle_type)?;
+
+        Ok(unsafe { self.memory_win32_handle_properties_unchecked(handle_type, handle)? })
+    }
+
+    fn validate_memory_win32_handle_properties(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+    ) -> Result<(), Box<ValidationError>> {
+        let enabled_extensions = self.enabled_extensions();
+
+        if !enabled_extensions.khr_external_memory_win32 {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_memory_win32",
+                )])]),
+                vuids: &["VUID-vkGetMemoryWin32HandlePropertiesKHR-device-parameter"],
+                ..Default::default()
+            }));
+        }
+
+        if handle_type == ExternalMemoryHandleType::OpaqueWin32
+            || handle_type == ExternalMemoryHandleType::OpaqueWin32Kmt
+            || handle_type == ExternalMemoryHandleType::OpaqueFd
+        {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is `ExternalMemoryHandleType::OpaqueWin32`, \
+                    `ExternalMemoryHandleType::OpaqueWin32Kmt` or \
+                    `ExternalMemoryHandleType::OpaqueFd`"
+                    .into(),
+                vuids: &["VUID-vkGetMemoryWin32HandlePropertiesKHR-handleType-00666"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn memory_win32_handle_properties_unchecked(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+        handle: vk::HANDLE,
+    ) -> Result<MemoryWin32HandleProperties, VulkanError> {
+        let fns = self.fns();
+        let mut memory_win32_handle_properties = MemoryWin32HandleProperties::to_mut_vk();
+
+        unsafe {
+            (fns.khr_external_memory_win32
+                .get_memory_win32_handle_properties_khr)(
+                self.handle(),
+                handle_type.into(),
+                handle,
+                &mut memory_win32_handle_properties,
+            )
+        }
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(MemoryWin32HandleProperties::from_vk(
+            &memory_win32_handle_properties,
+        ))
     }
 
     /// Assigns a human-readable name to `object` for debugging purposes.

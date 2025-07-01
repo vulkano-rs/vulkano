@@ -343,6 +343,7 @@ impl Framebuffer {
 
     /// Returns the layer ranges for all attachments.
     #[inline]
+    #[deprecated(since = "0.36.0")]
     pub fn attached_layers_ranges(&self) -> SmallVec<[Range<u32>; 4]> {
         self.attachments
             .iter()

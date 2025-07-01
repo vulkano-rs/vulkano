@@ -987,8 +987,8 @@ impl ExternalBufferProperties {
     }
 
     pub(crate) fn from_vk(val_vk: &vk::ExternalBufferProperties<'_>) -> Self {
-        let &vk::ExternalBufferProperties {
-            ref external_memory_properties,
+        let vk::ExternalBufferProperties {
+            external_memory_properties,
             ..
         } = val_vk;
 

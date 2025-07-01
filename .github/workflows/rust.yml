@@ -8,72 +8,57 @@ on:
     paths-ignore:
       - '**.md'
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
     strategy:
       matrix:
         include:
         - name: windows-latest
-          runs-on: [self-hosted, Windows]
+          runs-on: [self-hosted, Windows, 25.05]
           self-hosted: true
+          shell: wsl -e wsl-bash {0}
+          target: x86_64-pc-windows-msvc
         - name: ubuntu-latest
           runs-on: ubuntu-latest
           self-hosted: false
+          shell: bash
+          target: x86_64-unknown-linux-gnu
         - name: macos-latest
           runs-on: macos-latest
           self-hosted: false
+          shell: bash
+          target: aarch64-apple-darwin
       fail-fast: false
     name: build / ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      common_args: --target ${{ matrix.target }} --profile CI --color always --verbose
     steps:
     - uses: actions/checkout@v4
-    - run: rustup toolchain install stable
+    - uses: cachix/install-nix-action@v31
+      if: ${{ ! matrix.self-hosted }}
     - uses: Swatinem/rust-cache@v2
       if: ${{ ! matrix.self-hosted }}
       with:
         shared-key: ${{ matrix.name }}
+    - name: Run clippy
+      run: nix develop .#CI -c cargo clippy ${{ env.common_args }} -- -Dwarnings
     - name: Build tests
-      run: cargo build --profile=CI --verbose --tests
+      run: nix develop .#CI -c cargo build ${{ env.common_args }} --tests
     - name: Run tests
-      run: cargo test --profile=CI --verbose
+      run: nix develop .#CI -c cargo test ${{ env.common_args }}
     - name: Build examples
-      run: cargo build --profile=CI --verbose --bins
-  clippy:
-    strategy:
-      matrix:
-        include:
-        - name: windows-latest
-          runs-on: [self-hosted, Windows]
-          self-hosted: true
-        - name: ubuntu-latest
-          runs-on: ubuntu-latest
-          self-hosted: false
-        - name: macos-latest
-          runs-on: macos-latest
-          self-hosted: false
-      fail-fast: false
-    name: clippy / ${{ matrix.name }}
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-    - uses: actions/checkout@v4
-    - run: rustup toolchain install stable --component clippy
-    - uses: Swatinem/rust-cache@v2
-      if: ${{ ! matrix.self-hosted }}
-      with:
-        shared-key: ${{ matrix.name }}
-        save-if: false
-    - name: Run clippy check
-      run: cargo clippy --profile=CI -- -Dwarnings
+      run: nix develop .#CI -c cargo build ${{ env.common_args }} --bins
   fmt:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - run: rustup toolchain install nightly --component rustfmt
+    - uses: cachix/install-nix-action@v31
     - name: Run fmt check
-      run: cargo +nightly fmt --check
+      run: nix develop .#CI -c cargo fmt --check
   typos:
     runs-on: ubuntu-latest
     steps:

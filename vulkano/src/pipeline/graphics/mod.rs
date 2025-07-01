@@ -1900,11 +1900,11 @@ impl<'a> GraphicsPipelineCreateInfo<'a> {
         }
 
         if let Some(depth_stencil_state) = depth_stencil_state {
-            let &DepthStencilState {
+            let DepthStencilState {
                 flags: _,
-                ref depth,
-                ref depth_bounds,
-                ref stencil,
+                depth,
+                depth_bounds,
+                stencil,
                 _ne: _,
             } = depth_stencil_state;
 

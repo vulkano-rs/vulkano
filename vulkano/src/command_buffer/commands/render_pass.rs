@@ -2999,9 +2999,9 @@ impl RenderingAttachmentInfo {
                 .validate(device)
                 .map_err(|err| err.add_context("resolve_info"))?;
 
-            let &RenderingAttachmentResolveInfo {
+            let RenderingAttachmentResolveInfo {
                 mode: _,
-                image_view: ref resolve_image_view,
+                image_view: resolve_image_view,
                 image_layout: _,
             } = resolve_info;
 

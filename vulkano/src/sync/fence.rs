@@ -1050,7 +1050,7 @@ impl ImportFenceFdInfo<'_> {
     }
 
     pub(crate) fn to_vk(&self, fence_vk: vk::Fence) -> vk::ImportFenceFdInfoKHR<'static> {
-        let &ImportFenceFdInfo {
+        let &Self {
             flags,
             handle_type,
             fd,

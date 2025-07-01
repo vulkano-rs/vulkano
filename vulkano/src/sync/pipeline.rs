@@ -1828,11 +1828,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk2_fields1(&self) -> DependencyInfo2Fields1Vk {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 
@@ -1858,11 +1858,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> DependencyInfoFields1Vk {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 
@@ -1916,11 +1916,11 @@ impl DependencyInfo {
     }
 
     pub(crate) fn to_vk_src_stage_mask(&self) -> vk::PipelineStageFlags {
-        let &Self {
+        let Self {
             dependency_flags: _,
-            ref memory_barriers,
-            ref buffer_memory_barriers,
-            ref image_memory_barriers,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
             _ne: _,
         } = self;
 
@@ -2589,8 +2589,9 @@ pub struct BufferMemoryBarrier {
 }
 
 impl BufferMemoryBarrier {
+    /// Returns a default `BufferMemoryBarrier` with the provided `buffer`.
     #[inline]
-    pub fn buffer(buffer: Arc<Buffer>) -> Self {
+    pub const fn new(buffer: Arc<Buffer>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -2602,6 +2603,12 @@ impl BufferMemoryBarrier {
             size: 0,
             _ne: crate::NE,
         }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn buffer(buffer: Arc<Buffer>) -> Self {
+        Self::new(buffer)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -3299,32 +3306,45 @@ pub struct ImageMemoryBarrier {
 
     /// The memory accesses in the destination scope that must wait for `src_access` to be made
     /// available and visible.
+    ///
+    /// The default value is [`AccessFlags::empty()`].
     pub dst_access: AccessFlags,
 
     /// The layout that the specified `subresource_range` of `image` is expected to be in when the
     /// source scope completes.
+    ///
+    /// The default value is [`ImageLayout::Undefined`].
     pub old_layout: ImageLayout,
 
     /// The layout that the specified `subresource_range` of `image` will be transitioned to before
     /// the destination scope begins.
+    ///
+    /// The default value is [`ImageLayout::Undefined`], which must be overridden.
     pub new_layout: ImageLayout,
 
     /// For resources created with [`Sharing::Exclusive`](crate::sync::Sharing), transfers
     /// ownership of a resource from one queue family to another.
+    ///
+    /// The default value is `None`.
     pub queue_family_ownership_transfer: Option<QueueFamilyOwnershipTransfer>,
 
     /// The image to apply the barrier to.
+    ///
+    /// There is no default value.
     pub image: Arc<Image>,
 
     /// The subresource range of `image` to apply the barrier to.
+    ///
+    /// The default value is [`ImageSubresourceRange::default()`].
     pub subresource_range: ImageSubresourceRange,
 
     pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl ImageMemoryBarrier {
+    /// Returns a default `ImageMemoryBarrier` with the provided `image`.
     #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
+    pub const fn new(image: Arc<Image>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -3334,16 +3354,15 @@ impl ImageMemoryBarrier {
             new_layout: ImageLayout::Undefined,
             queue_family_ownership_transfer: None,
             image,
-            subresource_range: ImageSubresourceRange {
-                // Can't use image format aspects because `color` can't be specified with `planeN`.
-                aspects: ImageAspects::empty(),
-                base_mip_level: 0,
-                level_count: 0,
-                base_array_layer: 0,
-                layer_count: 0,
-            },
+            subresource_range: ImageSubresourceRange::new(),
             _ne: crate::NE,
         }
+    }
+
+    #[inline]
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {

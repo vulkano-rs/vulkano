@@ -10,12 +10,14 @@
 ### Public dependency updates
 
 - Rust version: 1.80.0
+- [shaderc](https://crates.io/crates/shaderc) 0.9.1
 
 ### Breaking changes
 
 Global changes:
 - Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
 - Where `Range` and `RangeInclusive` were previously used in parameters, two separate parameters for the offset/base and size/count are now used instead to match Vulkan.
+- All structs containing `ImageSubresourceLayers` and `ImageSubresourceRange` now use `Default::default()` as the default value for that field, instead of an empty value (all zeroes).
 
 Changes to images:
 - `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
@@ -38,9 +40,12 @@ Changes to external memory and external sync:
 
 ### Additions
 
+- `ash` is now re-exported.
 - Added `new` constructors to all `*Info`-like structs.
 - Added `Instance::from_handle_borrowed` and `Device::from_handle_borrowed`.
 - Added a safe `PipelineCacheData` binary data wrapper.
+- Added support for importing `D3D11Texture` and `D3D11TextureKmt` memory handles.
+- `ImageSubresourceLayers` and `ImageSubresourceRange` now implement `Default`.
 
 ### Bugs fixed
 
