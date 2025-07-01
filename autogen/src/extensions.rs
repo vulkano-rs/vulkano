@@ -268,7 +268,7 @@ impl Extensions {
     }
 
     fn to_vk(&self) -> TokenStream {
-        let &Self { ref extensions, .. } = self;
+        let Self { extensions, .. } = self;
 
         let from_vk_iter = extensions.iter().map(Extension::to_from_vk);
         let to_vk_iter = extensions.iter().map(Extension::to_to_vk);
