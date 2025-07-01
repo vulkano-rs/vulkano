@@ -421,10 +421,10 @@ impl Extensions {
 
                     #[inline]
                     fn next(&mut self) -> Option<Self::Item> {
-                        self.inner.next().map(|(extension_name_c, enabled)| {
+                        self.inner.next().map(|(name, enabled)| {
                             (
                                 // SAFETY: `NAMES_C` only contains UTF-8 strings.
-                                unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
                                 enabled,
                             )
                         })
@@ -437,10 +437,10 @@ impl Extensions {
 
                     #[inline]
                     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-                        self.inner.nth(n).map(|(extension_name_c, enabled)| {
+                        self.inner.nth(n).map(|(name, enabled)| {
                             (
                                 // SAFETY: `NAMES_C` only contains UTF-8 strings.
-                                unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
                                 enabled,
                             )
                         })
@@ -450,10 +450,10 @@ impl Extensions {
                 impl<'a> DoubleEndedIterator for Iter<'a> {
                     #[inline]
                     fn next_back(&mut self) -> Option<Self::Item> {
-                        self.inner.next_back().map(|(extension_name_c, enabled)| {
+                        self.inner.next_back().map(|(name, enabled)| {
                             (
                                 // SAFETY: `NAMES_C` only contains UTF-8 strings.
-                                unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
                                 enabled,
                             )
                         })

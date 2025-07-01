@@ -10578,11 +10578,8 @@ mod extensions {
         fn next(&mut self) -> Option<Self::Item> {
             self.inner
                 .next()
-                .map(|(extension_name_c, enabled)| {
-                    (
-                        unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
-                        enabled,
-                    )
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
                 })
         }
         #[inline]
@@ -10593,11 +10590,8 @@ mod extensions {
         fn nth(&mut self, n: usize) -> Option<Self::Item> {
             self.inner
                 .nth(n)
-                .map(|(extension_name_c, enabled)| {
-                    (
-                        unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
-                        enabled,
-                    )
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
                 })
         }
     }
@@ -10606,11 +10600,8 @@ mod extensions {
         fn next_back(&mut self) -> Option<Self::Item> {
             self.inner
                 .next_back()
-                .map(|(extension_name_c, enabled)| {
-                    (
-                        unsafe { str::from_utf8_unchecked(extension_name_c.to_bytes()) },
-                        enabled,
-                    )
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
                 })
         }
     }
