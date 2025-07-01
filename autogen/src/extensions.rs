@@ -116,7 +116,7 @@ impl Extensions {
 
         let empty_doc = format!(
             "Returns a `{}` with none of the members set.",
-            extension_ty.as_str_lowercase()
+            extension_ty.struct_name()
         );
         let empty_iter = extensions.iter().map(Extension::to_empty_constructor);
         let count_iter = extensions.iter().map(Extension::to_count_expr);
