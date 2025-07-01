@@ -1260,7 +1260,7 @@ impl SparseImageMemoryBindInfo {
 
             if offset[0]
                 .checked_add(extent[0])
-                .map_or(true, |sum| sum > subresource_extent[0])
+                .is_none_or(|sum| sum > subresource_extent[0])
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -1276,7 +1276,7 @@ impl SparseImageMemoryBindInfo {
 
             if offset[1]
                 .checked_add(extent[1])
-                .map_or(true, |sum| sum > subresource_extent[1])
+                .is_none_or(|sum| sum > subresource_extent[1])
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -1292,7 +1292,7 @@ impl SparseImageMemoryBindInfo {
 
             if offset[2]
                 .checked_add(extent[2])
-                .map_or(true, |sum| sum > subresource_extent[2])
+                .is_none_or(|sum| sum > subresource_extent[2])
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(

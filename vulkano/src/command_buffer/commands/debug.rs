@@ -174,7 +174,10 @@ impl RecordingCommandBuffer {
 
         let fns = self.device().fns();
         unsafe {
-            (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info_vk)
+            (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(
+                self.handle(),
+                &raw const label_info_vk,
+            )
         };
 
         self
@@ -282,7 +285,10 @@ impl RecordingCommandBuffer {
 
         let fns = self.device().fns();
         unsafe {
-            (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info_vk)
+            (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(
+                self.handle(),
+                &raw const label_info_vk,
+            )
         };
 
         self

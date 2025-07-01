@@ -91,7 +91,7 @@ impl RawBuffer {
             unsafe {
                 (fns.v1_0.create_buffer)(
                     device.handle(),
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -215,8 +215,8 @@ impl RawBuffer {
                 unsafe {
                     (fns.v1_1.get_buffer_memory_requirements2)(
                         device.handle(),
-                        &info_vk,
-                        &mut memory_requirements2_vk,
+                        &raw const info_vk,
+                        &raw mut memory_requirements2_vk,
                     )
                 };
             } else {
@@ -224,8 +224,8 @@ impl RawBuffer {
                     (fns.khr_get_memory_requirements2
                         .get_buffer_memory_requirements2_khr)(
                         device.handle(),
-                        &info_vk,
-                        &mut memory_requirements2_vk,
+                        &raw const info_vk,
+                        &raw mut memory_requirements2_vk,
                     )
                 };
             }
@@ -234,7 +234,7 @@ impl RawBuffer {
                 (fns.v1_0.get_buffer_memory_requirements)(
                     device.handle(),
                     handle,
-                    &mut memory_requirements2_vk.memory_requirements,
+                    &raw mut memory_requirements2_vk.memory_requirements,
                 )
             };
         }

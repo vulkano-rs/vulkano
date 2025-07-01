@@ -105,7 +105,7 @@ impl DebugUtilsMessenger {
             unsafe {
                 (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
                     instance.handle(),
-                    &create_info_vk,
+                    &raw const create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -294,7 +294,7 @@ impl DebugUtilsMessengerCallback {
     }
 
     pub(crate) fn as_ptr(&self) -> *const CallbackData {
-        ptr::addr_of!(self.0)
+        &raw const self.0
     }
 }
 

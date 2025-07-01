@@ -180,7 +180,7 @@ impl PhysicalDevice {
                 (fns.v1_0.enumerate_device_extension_properties)(
                     handle,
                     ptr::null(),
-                    &mut count,
+                    &raw mut count,
                     ptr::null_mut(),
                 )
             }
@@ -192,7 +192,7 @@ impl PhysicalDevice {
                 (fns.v1_0.enumerate_device_extension_properties)(
                     handle,
                     ptr::null(),
-                    &mut count,
+                    &raw mut count,
                     output.as_mut_ptr(),
                 )
             };
@@ -212,7 +212,7 @@ impl PhysicalDevice {
         let mut features_vk = DeviceFeatures::to_mut_vk();
 
         let fns = instance.fns();
-        unsafe { (fns.v1_0.get_physical_device_features)(handle, &mut features_vk) };
+        unsafe { (fns.v1_0.get_physical_device_features)(handle, &raw mut features_vk) };
 
         DeviceFeatures::from_vk(&features_vk)
     }
@@ -258,7 +258,7 @@ impl PhysicalDevice {
         let mut properties_vk = DeviceProperties::to_mut_vk();
 
         let fns = instance.fns();
-        unsafe { (fns.v1_0.get_physical_device_properties)(handle, &mut properties_vk) };
+        unsafe { (fns.v1_0.get_physical_device_properties)(handle, &raw mut properties_vk) };
 
         DeviceProperties::from_vk(&properties_vk)
     }
@@ -349,13 +349,13 @@ impl PhysicalDevice {
 
         if instance.api_version() >= Version::V1_1 {
             unsafe {
-                (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut properties_vk)
+                (fns.v1_1.get_physical_device_memory_properties2)(handle, &raw mut properties_vk)
             };
         } else {
             unsafe {
                 (fns.khr_get_physical_device_properties2
                     .get_physical_device_memory_properties2_khr)(
-                    handle, &mut properties_vk
+                    handle, &raw mut properties_vk
                 )
             };
         }
@@ -373,7 +373,7 @@ impl PhysicalDevice {
         unsafe {
             (fns.v1_0.get_physical_device_queue_family_properties)(
                 handle,
-                &mut num,
+                &raw mut num,
                 ptr::null_mut(),
             )
         };
@@ -382,7 +382,7 @@ impl PhysicalDevice {
         unsafe {
             (fns.v1_0.get_physical_device_queue_family_properties)(
                 handle,
-                &mut num,
+                &raw mut num,
                 output.as_mut_ptr(),
             )
         };
@@ -402,7 +402,7 @@ impl PhysicalDevice {
             unsafe {
                 (fns.v1_1.get_physical_device_queue_family_properties2)(
                     handle,
-                    &mut num,
+                    &raw mut num,
                     ptr::null_mut(),
                 )
             };
@@ -411,7 +411,7 @@ impl PhysicalDevice {
                 (fns.khr_get_physical_device_properties2
                     .get_physical_device_queue_family_properties2_khr)(
                     handle,
-                    &mut num,
+                    &raw mut num,
                     ptr::null_mut(),
                 )
             };
@@ -423,7 +423,7 @@ impl PhysicalDevice {
             unsafe {
                 (fns.v1_1.get_physical_device_queue_family_properties2)(
                     handle,
-                    &mut num,
+                    &raw mut num,
                     properties_vk.as_mut_ptr(),
                 )
             };
@@ -432,7 +432,7 @@ impl PhysicalDevice {
                 (fns.khr_get_physical_device_properties2
                     .get_physical_device_queue_family_properties2_khr)(
                     handle,
-                    &mut num,
+                    &raw mut num,
                     properties_vk.as_mut_ptr(),
                 )
             };
@@ -536,7 +536,7 @@ impl PhysicalDevice {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_properties2_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -548,7 +548,7 @@ impl PhysicalDevice {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_properties2_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties_vk.as_mut_ptr(),
                     )
                 };
@@ -583,7 +583,7 @@ impl PhysicalDevice {
                 unsafe {
                     (fns.khr_display.get_physical_device_display_properties_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -594,7 +594,7 @@ impl PhysicalDevice {
                 let result = unsafe {
                     (fns.khr_display.get_physical_device_display_properties_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties_vk.as_mut_ptr(),
                     )
                 };
@@ -710,7 +710,7 @@ impl PhysicalDevice {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_plane_properties2_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -722,7 +722,7 @@ impl PhysicalDevice {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_plane_properties2_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties.as_mut_ptr(),
                     )
                 };
@@ -751,7 +751,7 @@ impl PhysicalDevice {
                     (fns.khr_display
                         .get_physical_device_display_plane_properties_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -763,7 +763,7 @@ impl PhysicalDevice {
                     (fns.khr_display
                         .get_physical_device_display_plane_properties_khr)(
                         self.handle,
-                        &mut count,
+                        &raw mut count,
                         properties.as_mut_ptr(),
                     )
                 };
@@ -854,7 +854,7 @@ impl PhysicalDevice {
                 (fns.khr_display.get_display_plane_supported_displays_khr)(
                     self.handle,
                     plane_index,
-                    &mut count,
+                    &raw mut count,
                     ptr::null_mut(),
                 )
             }
@@ -866,7 +866,7 @@ impl PhysicalDevice {
                 (fns.khr_display.get_display_plane_supported_displays_khr)(
                     self.handle,
                     plane_index,
-                    &mut count,
+                    &raw mut count,
                     displays.as_mut_ptr(),
                 )
             };
@@ -967,8 +967,8 @@ impl PhysicalDevice {
                     unsafe {
                         (fns.v1_1.get_physical_device_external_buffer_properties)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     }
                 } else {
@@ -976,8 +976,8 @@ impl PhysicalDevice {
                         (fns.khr_external_memory_capabilities
                             .get_physical_device_external_buffer_properties_khr)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     };
                 }
@@ -1059,8 +1059,8 @@ impl PhysicalDevice {
                     unsafe {
                         (fns.v1_1.get_physical_device_external_fence_properties)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     }
                 } else {
@@ -1068,8 +1068,8 @@ impl PhysicalDevice {
                         (fns.khr_external_fence_capabilities
                             .get_physical_device_external_fence_properties_khr)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     };
                 }
@@ -1152,8 +1152,8 @@ impl PhysicalDevice {
                     unsafe {
                         (fns.v1_1.get_physical_device_external_semaphore_properties)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     }
                 } else {
@@ -1161,8 +1161,8 @@ impl PhysicalDevice {
                         (fns.khr_external_semaphore_capabilities
                             .get_physical_device_external_semaphore_properties_khr)(
                             self.handle,
-                            &info_vk,
-                            &mut properties_vk,
+                            &raw const info_vk,
+                            &raw mut properties_vk,
                         )
                     };
                 }
@@ -1229,7 +1229,7 @@ impl PhysicalDevice {
                         (fns.v1_0.get_physical_device_format_properties)(
                             self.handle(),
                             format.into(),
-                            &mut format_properties2_vk.format_properties,
+                            &raw mut format_properties2_vk.format_properties,
                         )
                     };
                 }
@@ -1331,8 +1331,8 @@ impl PhysicalDevice {
                         unsafe {
                             (fns.v1_1.get_physical_device_image_format_properties2)(
                                 self.handle,
-                                &info2_vk,
-                                &mut properties2_vk,
+                                &raw const info2_vk,
+                                &raw mut properties2_vk,
                             )
                         }
                     } else if self
@@ -1344,8 +1344,8 @@ impl PhysicalDevice {
                             (fns.khr_get_physical_device_properties2
                                 .get_physical_device_image_format_properties2_khr)(
                                 self.handle,
-                                &info2_vk,
-                                &mut properties2_vk,
+                                &raw const info2_vk,
+                                &raw mut properties2_vk,
                             )
                         }
                     } else {
@@ -1369,7 +1369,7 @@ impl PhysicalDevice {
                                 info2_vk.tiling,
                                 info2_vk.usage,
                                 info2_vk.flags,
-                                &mut properties2_vk.image_format_properties,
+                                &raw mut properties2_vk.image_format_properties,
                             )
                         }
                     }
@@ -1452,8 +1452,8 @@ impl PhysicalDevice {
                         unsafe {
                             (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
                                 self.handle,
-                                &format_info2_vk,
-                                &mut count,
+                                &raw const format_info2_vk,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         };
@@ -1462,8 +1462,8 @@ impl PhysicalDevice {
                             (fns.khr_get_physical_device_properties2
                                 .get_physical_device_sparse_image_format_properties2_khr)(
                                 self.handle,
-                                &format_info2_vk,
-                                &mut count,
+                                &raw const format_info2_vk,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         };
@@ -1476,8 +1476,8 @@ impl PhysicalDevice {
                         unsafe {
                             (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
                                 self.handle,
-                                &format_info2_vk,
-                                &mut count,
+                                &raw const format_info2_vk,
+                                &raw mut count,
                                 sparse_image_format_properties2.as_mut_ptr(),
                             )
                         };
@@ -1486,8 +1486,8 @@ impl PhysicalDevice {
                             (fns.khr_get_physical_device_properties2
                                 .get_physical_device_sparse_image_format_properties2_khr)(
                                 self.handle,
-                                &format_info2_vk,
-                                &mut count,
+                                &raw const format_info2_vk,
+                                &raw mut count,
                                 sparse_image_format_properties2.as_mut_ptr(),
                             )
                         };
@@ -1515,7 +1515,7 @@ impl PhysicalDevice {
                             format_info2_vk.samples,
                             format_info2_vk.usage,
                             format_info2_vk.tiling,
-                            &mut count,
+                            &raw mut count,
                             ptr::null_mut(),
                         )
                     };
@@ -1531,7 +1531,7 @@ impl PhysicalDevice {
                             format_info2_vk.samples,
                             format_info2_vk.usage,
                             format_info2_vk.tiling,
-                            &mut count,
+                            &raw mut count,
                             sparse_image_format_properties.as_mut_ptr(),
                         )
                     };
@@ -1700,8 +1700,8 @@ impl PhysicalDevice {
                 (fns.khr_get_surface_capabilities2
                     .get_physical_device_surface_capabilities2_khr)(
                     self.handle(),
-                    &info2_vk,
-                    &mut capabilities_vk,
+                    &raw const info2_vk,
+                    &raw mut capabilities_vk,
                 )
             }
             .result()
@@ -1711,7 +1711,7 @@ impl PhysicalDevice {
                 (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                     self.handle(),
                     info2_vk.surface,
-                    &mut capabilities_vk.surface_capabilities,
+                    &raw mut capabilities_vk.surface_capabilities,
                 )
             }
             .result()
@@ -1875,8 +1875,8 @@ impl PhysicalDevice {
                             (fns.khr_get_surface_capabilities2
                                 .get_physical_device_surface_formats2_khr)(
                                 self.handle(),
-                                &info2_vk,
-                                &mut count,
+                                &raw const info2_vk,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         }
@@ -1889,8 +1889,8 @@ impl PhysicalDevice {
                             (fns.khr_get_surface_capabilities2
                                 .get_physical_device_surface_formats2_khr)(
                                 self.handle(),
-                                &info2_vk,
-                                &mut count,
+                                &raw const info2_vk,
+                                &raw mut count,
                                 surface_format2s_vk.as_mut_ptr(),
                             )
                         };
@@ -1930,7 +1930,7 @@ impl PhysicalDevice {
                             (fns.khr_surface.get_physical_device_surface_formats_khr)(
                                 self.handle(),
                                 surface.handle(),
-                                &mut count,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         }
@@ -1942,7 +1942,7 @@ impl PhysicalDevice {
                             (fns.khr_surface.get_physical_device_surface_formats_khr)(
                                 self.handle(),
                                 surface.handle(),
-                                &mut count,
+                                &raw mut count,
                                 surface_formats.as_mut_ptr(),
                             )
                         };
@@ -2092,8 +2092,8 @@ impl PhysicalDevice {
                             (fns.ext_full_screen_exclusive
                                 .get_physical_device_surface_present_modes2_ext)(
                                 self.handle(),
-                                &info2_vk,
-                                &mut count,
+                                &raw const info2_vk,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         }
@@ -2105,8 +2105,8 @@ impl PhysicalDevice {
                             (fns.ext_full_screen_exclusive
                                 .get_physical_device_surface_present_modes2_ext)(
                                 self.handle(),
-                                &info2_vk,
-                                &mut count,
+                                &raw const info2_vk,
+                                &raw mut count,
                                 modes.as_mut_ptr(),
                             )
                         };
@@ -2136,7 +2136,7 @@ impl PhysicalDevice {
                                 .get_physical_device_surface_present_modes_khr)(
                                 self.handle(),
                                 surface.handle(),
-                                &mut count,
+                                &raw mut count,
                                 ptr::null_mut(),
                             )
                         }
@@ -2149,7 +2149,7 @@ impl PhysicalDevice {
                                 .get_physical_device_surface_present_modes_khr)(
                                 self.handle(),
                                 surface.handle(),
-                                &mut count,
+                                &raw mut count,
                                 modes.as_mut_ptr(),
                             )
                         };
@@ -2295,7 +2295,7 @@ impl PhysicalDevice {
                 unsafe {
                     (fns.v1_3.get_physical_device_tool_properties)(
                         self.handle(),
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -2303,7 +2303,7 @@ impl PhysicalDevice {
                 unsafe {
                     (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
                         self.handle(),
-                        &mut count,
+                        &raw mut count,
                         ptr::null_mut(),
                     )
                 }
@@ -2316,7 +2316,7 @@ impl PhysicalDevice {
                 unsafe {
                     (fns.v1_3.get_physical_device_tool_properties)(
                         self.handle(),
-                        &mut count,
+                        &raw mut count,
                         tool_properties.as_mut_ptr(),
                     )
                 }
@@ -2324,7 +2324,7 @@ impl PhysicalDevice {
                 unsafe {
                     (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
                         self.handle(),
-                        &mut count,
+                        &raw mut count,
                         tool_properties.as_mut_ptr(),
                     )
                 }

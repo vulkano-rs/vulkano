@@ -42,7 +42,7 @@ macro_rules! impl_vertex {
                         let field_size = {
                             let dummy_ptr: *const $out = <*const _>::cast(&dummy);
                             let member_ptr = unsafe {
-                                core::ptr::addr_of!((*dummy_ptr).$member)
+                                &raw const (*dummy_ptr).$member
                             };
                             const fn size_of_raw<T>(_: *const T) -> usize {
                                 core::mem::size_of::<T>()
@@ -54,8 +54,8 @@ macro_rules! impl_vertex {
                         let remainder = field_size % format_size;
                         assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", stringify!($member));
 
-                        let dummy_ptr = core::ptr::addr_of!(dummy);
-                        let member_ptr = core::ptr::addr_of!(dummy.$member);
+                        let dummy_ptr = &raw const dummy;
+                        let member_ptr = &raw const dummy.$member;
 
                         members.insert(stringify!($member).to_string(), VertexMemberInfo {
                             offset: u32::try_from(member_ptr as usize - dummy_ptr as usize).unwrap(),

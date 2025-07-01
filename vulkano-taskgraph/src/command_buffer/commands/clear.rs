@@ -51,7 +51,7 @@ impl RecordingCommandBuffer<'_> {
                     image_layout.into(),
                     &clear_value.to_vk(),
                     1,
-                    &region_vk,
+                    &raw const region_vk,
                 )
             };
         } else {
@@ -111,7 +111,7 @@ impl RecordingCommandBuffer<'_> {
                     image_layout.into(),
                     &clear_value.to_vk(),
                     1,
-                    &region_vk,
+                    &raw const region_vk,
                 )
             };
         } else {

@@ -587,7 +587,7 @@ impl RuntimeValidator<'_> {
                                 }));
                             }
 
-                            if workgroup_size.map_or(true, |size| {
+                            if workgroup_size.is_none_or(|size| {
                                 size > properties.max_compute_work_group_invocations
                             }) {
                                 return Err(Box::new(ValidationError {
@@ -645,7 +645,7 @@ impl RuntimeValidator<'_> {
                                 }));
                             }
 
-                            if workgroup_size.map_or(true, |size| {
+                            if workgroup_size.is_none_or(|size| {
                                 size > properties
                                     .max_task_work_group_invocations
                                     .unwrap_or_default()
@@ -705,7 +705,7 @@ impl RuntimeValidator<'_> {
                                 }));
                             }
 
-                            if workgroup_size.map_or(true, |size| {
+                            if workgroup_size.is_none_or(|size| {
                                 size > properties
                                     .max_mesh_work_group_invocations
                                     .unwrap_or_default()
@@ -2801,7 +2801,7 @@ impl RuntimeValidator<'_> {
                             }
                         }
 
-                        if product.map_or(true, |product| {
+                        if product.is_none_or(|product| {
                             product
                                 > properties
                                     .max_mesh_work_group_total_count

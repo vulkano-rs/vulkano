@@ -696,10 +696,10 @@ impl RecordingCommandBuffer<'_> {
         unsafe {
             (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
                 self.handle(),
-                &raygen,
-                &miss,
-                &hit,
-                &callable,
+                &raw const raygen,
+                &raw const miss,
+                &raw const hit,
+                &raw const callable,
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],
