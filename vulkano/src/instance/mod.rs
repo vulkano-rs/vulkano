@@ -1155,8 +1155,7 @@ impl<'a> InstanceCreateInfo<'a> {
             enabled_layers_vk,
             enabled_extensions_extra_vk: enabled_extensions_raw_vk,
         } = fields2_vk;
-        // SAFETY: explicit lifetime 'a ensures compiler checks it
-        let enabled_extensions_vk: Vec<&'a CStr> = enabled_extensions.to_vk();
+        let enabled_extensions_vk = enabled_extensions.to_vk();
 
         let mut application_info_vk = vk::ApplicationInfo::default()
             .application_version(

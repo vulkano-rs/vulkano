@@ -1866,8 +1866,7 @@ impl<'a> DeviceCreateInfo<'a> {
         let DeviceCreateInfoFields2Vk {
             enabled_extensions_extra_vk: enabled_extensions_raw_vk,
         } = fields2_vk;
-        // SAFETY: explicit lifetime 'a ensures compiler checks it
-        let enabled_extensions_vk: Vec<&'a CStr> = self.enabled_extensions.to_vk();
+        let enabled_extensions_vk = self.enabled_extensions.to_vk();
 
         let queue_create_infos_vk = self
             .queue_create_infos
