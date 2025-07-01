@@ -91,7 +91,7 @@ impl Extensions {
         } = self;
 
         let doc = format!(
-            "List of {} extensions that are enabled or available",
+            "List of {} extensions that are enabled or available.",
             extension_ty.as_str_lowercase()
         );
         let struct_name = extension_ty.struct_name();
@@ -116,7 +116,7 @@ impl Extensions {
 
         let empty_doc = format!(
             "Returns a `{}` with none of the members set.",
-            extension_ty.as_str_lowercase()
+            extension_ty.struct_name()
         );
         let empty_iter = extensions.iter().map(Extension::to_empty_constructor);
         let count_iter = extensions.iter().map(Extension::to_count_expr);
