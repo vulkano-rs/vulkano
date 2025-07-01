@@ -2,7 +2,7 @@
 // It should not be edited manually. Changes should be made by editing autogen.
 
 
-///List of device extensions that are enabled or available
+///List of device extensions that are enabled or available.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct DeviceExtensions {
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_16bit_storage.html)
@@ -1357,7 +1357,7 @@ pub struct DeviceExtensions {
     pub _ne: crate::NonExhaustive<'static>,
 }
 impl DeviceExtensions {
-    ///Returns a `device` with none of the members set.
+    ///Returns a `DeviceExtensions` with none of the members set.
     #[inline]
     pub const fn empty() -> Self {
         Self {

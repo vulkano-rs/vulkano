@@ -2,7 +2,7 @@
 // It should not be edited manually. Changes should be made by editing autogen.
 
 
-///List of instance extensions that are enabled or available
+///List of instance extensions that are enabled or available.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct InstanceExtensions {
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
@@ -155,7 +155,7 @@ pub struct InstanceExtensions {
     pub _ne: crate::NonExhaustive<'static>,
 }
 impl InstanceExtensions {
-    ///Returns a `instance` with none of the members set.
+    ///Returns a `InstanceExtensions` with none of the members set.
     #[inline]
     pub const fn empty() -> Self {
         Self {
