@@ -91,7 +91,7 @@ impl Extensions {
         } = self;
 
         let doc = format!(
-            "List of {} extensions that are enabled or available",
+            "List of {} extensions that are enabled or available.",
             extension_ty.as_str_lowercase()
         );
         let struct_name = extension_ty.struct_name();
