@@ -119,6 +119,7 @@
 //! [`vulkano-macros`]: vulkano_macros
 //! [`serde`]: https://crates.io/crates/serde
 
+pub use ash;
 use ash::vk;
 use bytemuck::{Pod, Zeroable};
 pub use extensions::ExtensionProperties;
