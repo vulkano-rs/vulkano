@@ -952,6 +952,28 @@ impl MemoryFdProperties {
     }
 }
 
+/// The properties of a Windows handle when it is imported.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryWin32HandleProperties {
+    /// A bitmask of the indices of memory types that can be used with the handle.
+    pub memory_type_bits: u32,
+}
+
+impl MemoryWin32HandleProperties {
+    pub(crate) fn to_mut_vk() -> vk::MemoryWin32HandlePropertiesKHR<'static> {
+        vk::MemoryWin32HandlePropertiesKHR::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &vk::MemoryWin32HandlePropertiesKHR<'_>) -> Self {
+        let &vk::MemoryWin32HandlePropertiesKHR {
+            memory_type_bits, ..
+        } = val_vk;
+
+        Self { memory_type_bits }
+    }
+}
+
 #[inline(always)]
 pub(crate) fn is_aligned(offset: DeviceSize, alignment: DeviceAlignment) -> bool {
     offset & (alignment.as_devicesize() - 1) == 0

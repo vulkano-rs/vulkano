@@ -480,10 +480,9 @@ impl Image {
                     .iter()
                     .copied()
                     .collect(),
-                base_mip_level: 0,
                 level_count: self.mip_levels(),
-                base_array_layer: 0,
                 layer_count: self.array_layers(),
+                ..Default::default()
             }
         } else {
             let aspect_num = (range.start / self.aspect_size) as usize;
@@ -499,18 +498,18 @@ impl Image {
                 debug_assert!(range.start % self.mip_level_size == 0);
                 debug_assert!(range.end % self.mip_level_size == 0);
 
-                let start_mip_level = (range.start / self.mip_level_size) as u32;
+                let base_mip_level = (range.start / self.mip_level_size) as u32;
                 let end_mip_level = (range.end / self.mip_level_size) as u32;
 
                 ImageSubresourceRange {
                     aspects: self.aspect_list[aspect_num].into(),
-                    base_mip_level: start_mip_level,
-                    level_count: end_mip_level - start_mip_level,
-                    base_array_layer: 0,
+                    base_mip_level,
+                    level_count: end_mip_level - base_mip_level,
                     layer_count: self.array_layers(),
+                    ..Default::default()
                 }
             } else {
-                let mip_level = (range.start / self.mip_level_size) as u32;
+                let base_mip_level = (range.start / self.mip_level_size) as u32;
                 range.start %= self.mip_level_size;
                 range.end %= self.mip_level_size;
 
@@ -519,15 +518,15 @@ impl Image {
                     range.end = self.mip_level_size;
                 }
 
-                let start_array_layer = range.start as u32;
+                let base_array_layer = range.start as u32;
                 let end_array_layer = range.end as u32;
 
                 ImageSubresourceRange {
                     aspects: self.aspect_list[aspect_num].into(),
-                    base_mip_level: mip_level,
-                    level_count: 1,
-                    base_array_layer: start_array_layer,
-                    layer_count: end_array_layer - start_array_layer,
+                    base_mip_level,
+                    base_array_layer,
+                    layer_count: end_array_layer - base_array_layer,
+                    ..Default::default()
                 }
             }
         }
@@ -1381,27 +1380,47 @@ pub fn mip_level_extent(extent: [u32; 3], level: u32) -> Option<[u32; 3]> {
 pub struct ImageSubresourceLayers {
     /// Selects the aspects that will be included.
     ///
-    /// The value must not be empty, and must not include any of the `memory_plane` aspects.
-    /// The `color` aspect cannot be selected together any of with the `plane` aspects.
+    /// The value must not be empty, and must not include any of the `MEMORY_PLANEx` aspects.
+    /// The `COLOR` aspect cannot be selected together any of with the `PLANEx` aspects.
+    ///
+    /// The default value is empty, which must be overridden.
     pub aspects: ImageAspects,
 
     /// Selects mip level that will be included.
+    ///
+    /// The default value is `0`.
     pub mip_level: u32,
 
     /// Selects the first array layer that will be included.
+    ///
+    /// The default value is `0`.
     pub base_array_layer: u32,
 
     /// Selects the number of array layers that will be included.
     ///
     /// Must be nonzero.
+    ///
+    /// The default value is `1`.
     pub layer_count: u32,
 }
 
 impl ImageSubresourceLayers {
+    /// Returns a default `ImageSubresourceLayers`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            aspects: ImageAspects::empty(),
+            mip_level: 0,
+            base_array_layer: 0,
+            layer_count: 1,
+        }
+    }
+
     /// Returns an `ImageSubresourceLayers` from the given image parameters, covering the first
     /// mip level of the image. All aspects of the image are selected, or `PLANE_0` if the image
     /// is multi-planar.
     #[inline]
+    #[deprecated(since = "0.36.0")]
     pub fn from_parameters(format: Format, layer_count: u32) -> Self {
         Self {
             aspects: {
@@ -1418,9 +1437,7 @@ impl ImageSubresourceLayers {
             layer_count,
         }
     }
-}
 
-impl ImageSubresourceLayers {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,
@@ -1493,9 +1510,7 @@ impl ImageSubresourceLayers {
 
         Ok(())
     }
-}
 
-impl ImageSubresourceLayers {
     #[doc(hidden)]
     pub fn to_vk(&self) -> vk::ImageSubresourceLayers {
         let &Self {
@@ -1514,36 +1529,66 @@ impl ImageSubresourceLayers {
     }
 }
 
+impl Default for ImageSubresourceLayers {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// One or more subresources of an image that should be accessed by a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ImageSubresourceRange {
     /// Selects the aspects that will be included.
     ///
-    /// The value must not be empty, and must not include any of the `memory_plane` aspects.
-    /// The `color` aspect cannot be selected together any of with the `plane` aspects.
+    /// The value must not be empty, and must not include any of the `MEMORY_PLANEx` aspects.
+    /// The `COLOR` aspect cannot be selected together any of with the `PLANEx` aspects.
+    ///
+    /// The default value is empty, which must be overridden.
     pub aspects: ImageAspects,
 
     /// Selects the first mip level that will be included.
+    ///
+    /// The default value is `0`.
     pub base_mip_level: u32,
 
     /// Selects the number of mip levels that will be included.
     ///
     /// Must be nonzero.
+    ///
+    /// The default value is `1`.
     pub level_count: u32,
 
     /// Selects the first array layer that will be included.
+    ///
+    /// The default value is `0`.
     pub base_array_layer: u32,
 
     /// Selects the number of array layers that will be included.
     ///
     /// Must be nonzero.
+    ///
+    /// The default value is `1`.
     pub layer_count: u32,
 }
 
 impl ImageSubresourceRange {
-    /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
-    /// image. If the image is multi-planar, only the `color` aspect is selected.
+    /// Returns a default `ImageSubresourceRange`.
     #[inline]
+    pub const fn new() -> Self {
+        Self {
+            aspects: ImageAspects::empty(),
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        }
+    }
+
+    /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
+    /// image. If the image is multi-planar, only the `COLOR` aspect is selected.
+    #[inline]
+    #[deprecated(since = "0.36.0")]
     pub fn from_parameters(format: Format, level_count: u32, layer_count: u32) -> Self {
         Self {
             aspects: format.aspects()
@@ -1647,6 +1692,13 @@ impl ImageSubresourceRange {
             base_array_layer,
             layer_count,
         }
+    }
+}
+
+impl Default for ImageSubresourceRange {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 

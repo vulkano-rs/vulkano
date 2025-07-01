@@ -507,8 +507,6 @@ fn window_size_dependent_setup(
         .unwrap();
 
     let bloom_storage_image_ids = array::from_fn(|mip_level| {
-        let mip_level = cmp::min(mip_level as u32, max_mip_levels(extent) - 1);
-
         bcx.global_set()
             .create_storage_image(
                 bloom_image_id,
@@ -516,10 +514,8 @@ fn window_size_dependent_setup(
                     format: Format::R32_UINT,
                     subresource_range: ImageSubresourceRange {
                         aspects: ImageAspects::COLOR,
-                        base_mip_level: mip_level,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
+                        base_mip_level: cmp::min(mip_level as u32, max_mip_levels(extent) - 1),
+                        ..Default::default()
                     },
                     usage: ImageUsage::STORAGE,
                     ..Default::default()
