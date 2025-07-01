@@ -123,7 +123,7 @@ use ash::vk::{self, Handle};
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    ffi::{c_char, CString},
+    ffi::{c_char, CStr, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     marker::PhantomData,
     mem::MaybeUninit,
@@ -1495,10 +1495,8 @@ impl<'a> DeviceCreateInfo<'a> {
         &self,
         physical_device: &PhysicalDevice,
     ) -> (DeviceExtensions, DeviceFeatures) {
-        let mut enabled_extensions = *self.enabled_extensions;
-
         // VUID-vkCreateDevice-ppEnabledExtensionNames-01387
-        enabled_extensions.enable_dependencies(
+        let mut enabled_extensions = self.enabled_extensions.enable_dependencies(
             physical_device.api_version(),
             physical_device.supported_extensions(),
         );
@@ -1573,28 +1571,24 @@ impl<'a> DeviceCreateInfo<'a> {
         }
 
         enabled_extensions
-            .check_requirements(
+            .validate(
                 physical_device.supported_extensions(),
                 physical_device.api_version(),
                 physical_device.instance().enabled_extensions(),
             )
-            .map_err(|err| {
-                Box::new(ValidationError {
-                    context: "enabled_extensions".into(),
-                    vuids: &["VUID-vkCreateDevice-ppEnabledExtensionNames-01387"],
-                    ..ValidationError::from_error(err)
-                })
-            })?;
+            .map_err(|err| err.add_context("enabled_extensions"))?;
 
         // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-01840
         // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-00374
         // Ensured because `DeviceExtensions` doesn't contain obsoleted extensions.
 
-        enabled_features.validate(
-            physical_device.supported_features(),
-            physical_device.api_version(),
-            &enabled_extensions,
-        )?;
+        enabled_features
+            .validate(
+                physical_device.supported_features(),
+                physical_device.api_version(),
+                &enabled_extensions,
+            )
+            .map_err(|err| err.add_context("enabled_features"))?;
 
         if enabled_extensions.ext_buffer_device_address {
             if enabled_extensions.khr_buffer_device_address {
@@ -1870,8 +1864,9 @@ impl<'a> DeviceCreateInfo<'a> {
         features_vk: Option<&'a vk::PhysicalDeviceFeatures>,
     ) -> DeviceCreateInfoFields1Vk<'a> {
         let DeviceCreateInfoFields2Vk {
-            enabled_extensions_vk,
+            enabled_extensions_extra_vk: enabled_extensions_raw_vk,
         } = fields2_vk;
+        let enabled_extensions_vk = self.enabled_extensions.to_vk();
 
         let queue_create_infos_vk = self
             .queue_create_infos
@@ -1879,7 +1874,8 @@ impl<'a> DeviceCreateInfo<'a> {
             .map(QueueCreateInfo::to_vk)
             .collect();
         let enabled_extension_names_vk = enabled_extensions_vk
-            .iter()
+            .into_iter()
+            .chain(enabled_extensions_raw_vk.iter().map(Deref::deref))
             .map(|extension| extension.as_ptr())
             .collect();
         let device_group_physical_devices_vk = self
@@ -1897,10 +1893,9 @@ impl<'a> DeviceCreateInfo<'a> {
     }
 
     pub(crate) fn to_vk_fields2(&self) -> DeviceCreateInfoFields2Vk {
-        let enabled_extensions_vk = Vec::<CString>::from(self.enabled_extensions);
-
         DeviceCreateInfoFields2Vk {
-            enabled_extensions_vk,
+            // TODO: allow user to (unsafely) specify custom extensions
+            enabled_extensions_extra_vk: Vec::new(),
         }
     }
 }
@@ -1919,7 +1914,7 @@ pub(crate) struct DeviceCreateInfoFields1Vk<'a> {
 }
 
 pub(crate) struct DeviceCreateInfoFields2Vk {
-    pub(crate) enabled_extensions_vk: Vec<CString>,
+    pub(crate) enabled_extensions_extra_vk: Vec<CString>,
 }
 
 /// Parameters to create queues in a new `Device`.
@@ -2222,11 +2217,11 @@ mod tests {
     use crate::device::{
         Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, QueueCreateInfo,
     };
-    use std::{ffi::CString, sync::Arc};
+    use std::sync::Arc;
 
     #[test]
     fn empty_extensions() {
-        let d: Vec<CString> = (&DeviceExtensions::empty()).into();
+        let d = DeviceExtensions::empty().to_vk();
         assert!(d.is_empty());
     }
 
