@@ -5,7 +5,7 @@ use nom::{
     branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
     multi::separated_list0, sequence::delimited, IResult, Parser,
 };
-use proc_macro2::{Ident, Literal, TokenStream};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use std::ffi::CString;
 use vk_parse::Extension as VkExtension;
@@ -100,6 +100,7 @@ impl Extensions {
         quote! {
             #[doc = #doc]
             #[derive(Copy, Clone, PartialEq, Eq)]
+            #[repr(C)]
             pub struct #struct_name {
                 #(#iter)*
                 pub _ne: crate::NonExhaustive<'static>,
@@ -114,91 +115,104 @@ impl Extensions {
             ..
         } = self;
 
+        let struct_name = extension_ty.struct_name();
         let empty_doc = format!(
             "Returns a `{}` with none of the members set.",
             extension_ty.struct_name()
         );
-        let empty_iter = extensions.iter().map(Extension::to_empty_constructor);
-        let count_iter = extensions.iter().map(Extension::to_count_expr);
-        let is_empty_iter = extensions.iter().map(Extension::to_is_empty_expr);
-        let intersects_iter = extensions.iter().map(Extension::to_intersects_expr);
-        let contains_iter = extensions.iter().map(Extension::to_contains_expr);
-        let union_iter = extensions.iter().map(Extension::to_union_constructor);
-        let intersection_iter = extensions
+        let len = extensions.len();
+        let extension_name_c_iter = extensions
             .iter()
-            .map(Extension::to_intersection_constructor);
-        let difference_iter = extensions.iter().map(Extension::to_difference_constructor);
-        let symmetric_difference_iter = extensions
-            .iter()
-            .map(Extension::to_symmetric_difference_constructor);
+            .map(|extension| CString::new(extension.extension_name_c.as_str()).unwrap());
 
         quote! {
+            const COUNT: usize = #len;
+
+            const NAMES_C: [&std::ffi::CStr; Self::COUNT] = [#(#extension_name_c_iter),*];
+
             #[doc = #empty_doc]
             #[inline]
             pub const fn empty() -> Self {
-                Self {
-                    #(#empty_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array([false; Self::COUNT])
             }
 
             /// Returns the number of members set in self.
             #[inline]
             pub const fn count(self) -> u64 {
-                #(#count_iter)+*
+                crate::array_count(self.as_array()) as u64
             }
 
             /// Returns whether no members are set in `self`.
             #[inline]
             pub const fn is_empty(self) -> bool {
-                !(#(#is_empty_iter)||*)
+                crate::array_is_empty(self.as_array())
             }
 
             /// Returns whether any members are set in both `self` and `other`.
             #[inline]
             pub const fn intersects(&self, other: &Self) -> bool {
-                #(#intersects_iter)||*
+                crate::array_intersects(self.as_array(), other.as_array())
             }
 
             /// Returns whether all members in `other` are set in `self`.
             #[inline]
             pub const fn contains(&self, other: &Self) -> bool {
-                #(#contains_iter)&&*
+                crate::array_contains(self.as_array(), other.as_array())
             }
 
             /// Returns the union of `self` and `other`.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
-                Self {
-                    #(#union_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_union(self.as_array(), other.as_array()))
             }
 
             /// Returns the intersection of `self` and `other`.
             #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
-                Self {
-                    #(#intersection_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_intersection(self.as_array(), other.as_array()))
             }
 
             /// Returns `self` without the members set in `other`.
             #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
-                Self {
-                    #(#difference_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_difference(self.as_array(), other.as_array()))
             }
 
             /// Returns the members set in `self` or `other`, but not both.
             #[inline]
             pub const fn symmetric_difference(&self, other: &Self) -> Self {
-                Self {
-                    #(#symmetric_difference_iter)*
-                    _ne: crate::NE,
+                Self::from_array(
+                    crate::array_symmetric_difference(self.as_array(), other.as_array()),
+                )
+            }
+
+            #[inline]
+            const fn from_array(array: [bool; Self::COUNT]) -> Self {
+                // SAFETY: `DeviceExtensions` / `InstanceExtensions` are nothing more than an array
+                // of `bool`s.
+                unsafe { ::std::mem::transmute::<[bool; Self::COUNT], #struct_name>(array) }
+            }
+
+            #[inline]
+            const fn as_array(&self) -> &[bool; Self::COUNT] {
+                // SAFETY: `DeviceExtensions` / `InstanceExtensions` are nothing more than an array
+                // of `bool`s.
+                unsafe { ::std::mem::transmute::<&#struct_name, &[bool; Self::COUNT]>(self) }
+            }
+
+            #[inline]
+            const fn as_mut_array(&mut self) -> &mut [bool; Self::COUNT] {
+                // SAFETY: `DeviceExtensions` / `InstanceExtensions` are nothing more than an array
+                // of `bool`s.
+                unsafe {
+                    ::std::mem::transmute::<&mut #struct_name, &mut [bool; Self::COUNT]>(self)
+                }
+            }
+
+            #[inline]
+            fn iter(&self) -> extensions::Iter<'_> {
+                extensions::Iter {
+                    inner: Self::NAMES_C.iter().copied().zip(self.as_array().iter().copied()),
                 }
             }
         }
@@ -268,18 +282,17 @@ impl Extensions {
     }
 
     fn to_vk(&self) -> TokenStream {
-        let Self { extensions, .. } = self;
-
-        let from_vk_iter = extensions.iter().map(Extension::to_from_vk);
-        let to_vk_iter = extensions.iter().map(Extension::to_to_vk);
-
         quote! {
             pub(crate) fn from_vk<'a>(iter: impl IntoIterator<Item = &'a str>) -> Self {
+                // SAFETY: `NAMES_C` only contains UTF-8 strings.
+                let names = Self::NAMES_C.iter().map(|name| unsafe {
+                    std::str::from_utf8_unchecked(name.to_bytes())
+                });
+
                 let mut val = Self::empty();
                 for name in iter {
-                    match name {
-                        #(#from_vk_iter)*
-                        _ => (),
+                    if let Some(index) = names.clone().position(|n| n == name) {
+                        val.as_mut_array()[index] = true;
                     }
                 }
                 val
@@ -288,34 +301,29 @@ impl Extensions {
             #[allow(clippy::wrong_self_convention)]
             pub(crate) fn to_vk(&self) -> Vec<&'static CStr> {
                 let mut val_vk = Vec::new();
-                #(#to_vk_iter)*
+                for index in 0..Self::COUNT {
+                    if self.as_array()[index] {
+                        val_vk.push(Self::NAMES_C[index]);
+                    }
+                }
                 val_vk
             }
         }
     }
 
     fn to_traits(&self) -> TokenStream {
-        let &Self {
-            extension_ty,
-            ref extensions,
-            ..
-        } = self;
+        let &Self { extension_ty, .. } = self;
 
         let struct_name = extension_ty.struct_name();
-        let debug_iter = extensions.iter().map(Extension::to_debug);
-        let len = extensions.len();
-        let into_iter = extensions.iter().map(Extension::to_into_iter);
 
         quote! {
             impl std::fmt::Debug for #struct_name {
-                #[allow(unused_assignments)]
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    write!(f, "[")?;
-
-                    let mut first = true;
-                    #(#debug_iter)*
-
-                    write!(f, "]")
+                    f.debug_list()
+                        .entries(self.iter().flat_map(|(extension_name_c, enabled)| {
+                            enabled.then_some(extension_name_c)
+                        }))
+                        .finish()
                 }
             }
 
@@ -390,14 +398,76 @@ impl Extensions {
                 }
             }
 
-            impl IntoIterator for #struct_name {
+            impl<'a> IntoIterator for &'a #struct_name {
                 type Item = (&'static str, bool);
-                type IntoIter = std::array::IntoIter<Self::Item, #len>;
+                type IntoIter = extensions::Iter<'a>;
 
                 #[inline]
                 fn into_iter(self) -> Self::IntoIter {
-                    [#(#into_iter)*].into_iter()
+                    self.iter()
                 }
+            }
+
+            mod extensions {
+                pub struct Iter<'a> {
+                    pub(crate) inner: std::iter::Zip<
+                        std::iter::Copied<std::slice::Iter<'a, &'static std::ffi::CStr>>,
+                        std::iter::Copied<std::slice::Iter<'a, bool>>,
+                    >,
+                }
+
+                impl<'a> Iterator for Iter<'a> {
+                    type Item = (&'static str, bool);
+
+                    #[inline]
+                    fn next(&mut self) -> Option<Self::Item> {
+                        self.inner.next().map(|(name, enabled)| {
+                            (
+                                // SAFETY: `NAMES_C` only contains UTF-8 strings.
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
+                                enabled,
+                            )
+                        })
+                    }
+
+                    #[inline]
+                    fn size_hint(&self) -> (usize, Option<usize>) {
+                        self.inner.size_hint()
+                    }
+
+                    #[inline]
+                    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+                        self.inner.nth(n).map(|(name, enabled)| {
+                            (
+                                // SAFETY: `NAMES_C` only contains UTF-8 strings.
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
+                                enabled,
+                            )
+                        })
+                    }
+                }
+
+                impl<'a> DoubleEndedIterator for Iter<'a> {
+                    #[inline]
+                    fn next_back(&mut self) -> Option<Self::Item> {
+                        self.inner.next_back().map(|(name, enabled)| {
+                            (
+                                // SAFETY: `NAMES_C` only contains UTF-8 strings.
+                                unsafe { std::str::from_utf8_unchecked(name.to_bytes()) },
+                                enabled,
+                            )
+                        })
+                    }
+                }
+
+                impl ExactSizeIterator for Iter<'_> {
+                    #[inline]
+                    fn len(&self) -> usize {
+                        self.inner.len()
+                    }
+                }
+
+                impl std::iter::FusedIterator for Iter<'_> {}
             }
         }
     }
@@ -568,78 +638,6 @@ impl Extension {
         }
     }
 
-    fn to_empty_constructor(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            #extension_name: false,
-        }
-    }
-
-    fn to_union_constructor(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            #extension_name: self.#extension_name || other.#extension_name,
-        }
-    }
-
-    fn to_intersection_constructor(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            #extension_name: self.#extension_name && other.#extension_name,
-        }
-    }
-
-    fn to_difference_constructor(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            #extension_name: self.#extension_name && !other.#extension_name,
-        }
-    }
-
-    fn to_symmetric_difference_constructor(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            #extension_name: self.#extension_name ^ other.#extension_name,
-        }
-    }
-
-    fn to_is_empty_expr(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            self.#extension_name
-        }
-    }
-
-    fn to_count_expr(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            self.#extension_name as u64
-        }
-    }
-
-    fn to_intersects_expr(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            (self.#extension_name && other.#extension_name)
-        }
-    }
-
-    fn to_contains_expr(&self) -> TokenStream {
-        let Self { extension_name, .. } = self;
-
-        quote! {
-            (self.#extension_name || !other.#extension_name)
-        }
-    }
-
     fn to_validate(&self, extensions_level: ExtensionType) -> TokenStream {
         let Self {
             extension_name,
@@ -696,64 +694,6 @@ impl Extension {
                 #(#requires_all_of_items)*
             }
         })
-    }
-
-    fn to_from_vk(&self) -> TokenStream {
-        let Self {
-            extension_name,
-            extension_name_c,
-            ..
-        } = self;
-
-        let raw = Literal::string(extension_name_c);
-
-        quote! {
-            #raw => { val.#extension_name = true; }
-        }
-    }
-
-    fn to_to_vk(&self) -> TokenStream {
-        let Self {
-            extension_name,
-            extension_name_c,
-            ..
-        } = self;
-
-        let cstr = CString::new(extension_name_c.as_str()).unwrap();
-
-        quote! {
-            if self.#extension_name {
-                val_vk.push(#cstr);
-            }
-        }
-    }
-
-    fn to_debug(&self) -> TokenStream {
-        let Self {
-            extension_name,
-            extension_name_c,
-            ..
-        } = self;
-
-        quote! {
-            if self.#extension_name {
-                if !first { write!(f, ", ")? }
-                else { first = false; }
-                f.write_str(#extension_name_c)?;
-            }
-        }
-    }
-
-    fn to_into_iter(&self) -> TokenStream {
-        let Self {
-            extension_name,
-            extension_name_c,
-            ..
-        } = self;
-
-        quote! {
-            (#extension_name_c, self.#extension_name),
-        }
     }
 }
 

@@ -708,5 +708,115 @@ macro_rules! autogen_output {
         concat!(std::env!("CARGO_MANIFEST_DIR"), "/autogen-out/", $file)
     };
 }
+use autogen_output;
 
-pub(crate) use autogen_output;
+// The following functions are explicitly written to NOT have an early return. An early return
+// inhibits the loop unroller and auto-vectorizer. These functions are used with arrays small
+// enough where an early return would never be a gain (quite the opposite). The loops as written
+// get unrolled entirely and replaced with a sequence of vector instructions. That's not to say
+// that runtime performance is important here -- it absolutely isn't -- but this optimization
+// couldn't be simpler to make.
+
+#[inline]
+const fn array_count<const N: usize>(array: &[bool; N]) -> usize {
+    let mut out = 0;
+    let mut i = 0;
+
+    while i < N {
+        out += array[i] as usize;
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_is_empty<const N: usize>(array: &[bool; N]) -> bool {
+    let mut out = false;
+    let mut i = 0;
+
+    while i < N {
+        out |= array[i];
+        i += 1;
+    }
+
+    !out
+}
+
+#[inline]
+const fn array_intersects<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> bool {
+    let mut out = false;
+    let mut i = 0;
+
+    while i < N {
+        out |= lhs[i] && rhs[i];
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_contains<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> bool {
+    let mut out = true;
+    let mut i = 0;
+
+    while i < N {
+        out &= lhs[i] || !rhs[i];
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_union<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> [bool; N] {
+    let mut out = [false; N];
+    let mut i = 0;
+
+    while i < N {
+        out[i] = lhs[i] || rhs[i];
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_intersection<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> [bool; N] {
+    let mut out = [false; N];
+    let mut i = 0;
+
+    while i < N {
+        out[i] = lhs[i] && rhs[i];
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_difference<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> [bool; N] {
+    let mut out = [false; N];
+    let mut i = 0;
+
+    while i < N {
+        out[i] = lhs[i] && !rhs[i];
+        i += 1;
+    }
+
+    out
+}
+
+#[inline]
+const fn array_symmetric_difference<const N: usize>(lhs: &[bool; N], rhs: &[bool; N]) -> [bool; N] {
+    let mut out = [false; N];
+    let mut i = 0;
+
+    while i < N {
+        out[i] = lhs[i] ^ rhs[i];
+        i += 1;
+    }
+
+    out
+}

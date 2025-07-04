@@ -1361,7 +1361,7 @@ mod tests {
             khr_display: true,
             ..InstanceExtensions::empty()
         };
-        for (name, enabled) in extensions {
+        for (name, enabled) in &extensions {
             if name == "VK_KHR_display" {
                 assert!(enabled);
             } else {
