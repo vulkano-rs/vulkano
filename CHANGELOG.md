@@ -46,6 +46,7 @@ Changes to external memory and external sync:
 - Added a safe `PipelineCacheData` binary data wrapper.
 - Added support for importing `D3D11Texture` and `D3D11TextureKmt` memory handles.
 - `ImageSubresourceLayers` and `ImageSubresourceRange` now implement `Default`.
+- Added proc macro `include_vulkano_glsl` to vulkano-shaders.
 
 ### Bugs fixed
 
