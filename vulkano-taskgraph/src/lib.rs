@@ -772,6 +772,10 @@ impl<T> Id<T> {
         unsafe { Id::new(self.slot) }
     }
 
+    fn is<O: Object>(self) -> bool {
+        self.object_type() == O::TYPE
+    }
+
     fn object_type(self) -> ObjectType {
         match self.slot.tag() & Id::OBJECT_TYPE_MASK {
             Buffer::TAG => ObjectType::Buffer,
@@ -780,6 +784,10 @@ impl<T> Id<T> {
             Flight::TAG => ObjectType::Flight,
             _ => unreachable!(),
         }
+    }
+
+    unsafe fn parametrize<O: Object>(self) -> Id<O> {
+        unsafe { Id::new(self.slot) }
     }
 }
 
@@ -797,14 +805,6 @@ impl Id {
 
     const VIRTUAL_BIT: u32 = 1 << 7;
     const EXCLUSIVE_BIT: u32 = 1 << 6;
-
-    fn is<O: Object>(self) -> bool {
-        self.object_type() == O::TYPE
-    }
-
-    unsafe fn parametrize<O: Object>(self) -> Id<O> {
-        unsafe { Id::new(self.slot) }
-    }
 }
 
 impl<T> Clone for Id<T> {

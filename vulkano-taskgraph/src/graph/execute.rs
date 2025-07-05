@@ -2700,7 +2700,7 @@ impl<'a> ResourceMap<'a> {
 
     pub(crate) unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageState {
         assert_unsafe_precondition!(
-            self.virtual_resources.get(id.erase()).is_ok(),
+            self.virtual_resources.get(id.erase()).is_ok() && id.is::<Image>(),
             "`id` must be a valid virtual image ID",
         );
 
