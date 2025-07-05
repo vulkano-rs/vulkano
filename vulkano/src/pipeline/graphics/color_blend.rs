@@ -470,9 +470,11 @@ impl<'a> ColorBlendState<'a> {
 
         ColorBlendStateFields1Vk {
             color_blend_attachments_vk,
-            color_write_enables_vk: has_color_write_enables
-                .then_some(color_write_enables_vk)
-                .unwrap_or_default(),
+            color_write_enables_vk: if has_color_write_enables {
+                color_write_enables_vk
+            } else {
+                Default::default()
+            },
         }
     }
 
