@@ -223,7 +223,7 @@ impl Surface {
             unsafe {
                 (fns.ext_headless_surface.create_headless_surface_ext)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -374,7 +374,7 @@ impl Surface {
             unsafe {
                 (fns.khr_display.create_display_plane_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -441,7 +441,7 @@ impl Surface {
             unsafe {
                 (fns.khr_android_surface.create_android_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -516,7 +516,7 @@ impl Surface {
             unsafe {
                 (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -588,7 +588,7 @@ impl Surface {
                 (fns.fuchsia_imagepipe_surface
                     .create_image_pipe_surface_fuchsia)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -658,7 +658,7 @@ impl Surface {
                 (fns.ggp_stream_descriptor_surface
                     .create_stream_descriptor_surface_ggp)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -729,7 +729,7 @@ impl Surface {
             unsafe {
                 (fns.mvk_ios_surface.create_ios_surface_mvk)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -800,7 +800,7 @@ impl Surface {
             unsafe {
                 (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -873,7 +873,7 @@ impl Surface {
             unsafe {
                 (fns.ext_metal_surface.create_metal_surface_ext)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -950,7 +950,7 @@ impl Surface {
             unsafe {
                 (fns.qnx_screen_surface.create_screen_surface_qnx)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1017,7 +1017,7 @@ impl Surface {
             unsafe {
                 (fns.nn_vi_surface.create_vi_surface_nn)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1094,7 +1094,7 @@ impl Surface {
             unsafe {
                 (fns.khr_wayland_surface.create_wayland_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1171,7 +1171,7 @@ impl Surface {
             unsafe {
                 (fns.khr_win32_surface.create_win32_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1248,7 +1248,7 @@ impl Surface {
             unsafe {
                 (fns.khr_xcb_surface.create_xcb_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1325,7 +1325,7 @@ impl Surface {
             unsafe {
                 (fns.khr_xlib_surface.create_xlib_surface_khr)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

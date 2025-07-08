@@ -59,7 +59,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_buffer(dst_buffer.handle())
                     .regions(&regions_vk);
 
-                unsafe { cmd_copy_buffer2(self.handle(), &raw const copy_buffer_info_vk) };
+                unsafe { cmd_copy_buffer2(self.handle(), &copy_buffer_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -83,7 +83,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_buffer(dst_buffer.handle())
                     .regions(&regions_vk);
 
-                unsafe { cmd_copy_buffer2(self.handle(), &raw const copy_buffer_info_vk) };
+                unsafe { cmd_copy_buffer2(self.handle(), &copy_buffer_info_vk) };
             }
         } else {
             let cmd_copy_buffer = fns.v1_0.cmd_copy_buffer;
@@ -101,7 +101,7 @@ impl RecordingCommandBuffer<'_> {
                         src_buffer.handle(),
                         dst_buffer.handle(),
                         1,
-                        &raw const region_vk,
+                        &region_vk,
                     )
                 };
             } else {
@@ -220,7 +220,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe { cmd_copy_image2(self.handle(), &raw const copy_image_info_vk) };
+                unsafe { cmd_copy_image2(self.handle(), &copy_image_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -250,7 +250,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe { cmd_copy_image2(self.handle(), &raw const copy_image_info_vk) };
+                unsafe { cmd_copy_image2(self.handle(), &copy_image_info_vk) };
             }
         } else {
             let cmd_copy_image = fns.v1_0.cmd_copy_image;
@@ -287,7 +287,7 @@ impl RecordingCommandBuffer<'_> {
                         dst_image.handle(),
                         dst_image_layout.into(),
                         1,
-                        &raw const region_vk,
+                        &region_vk,
                     )
                 };
             } else {
@@ -380,12 +380,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe {
-                    cmd_copy_buffer_to_image2(
-                        self.handle(),
-                        &raw const copy_buffer_to_image_info_vk,
-                    )
-                };
+                unsafe { cmd_copy_buffer_to_image2(self.handle(), &copy_buffer_to_image_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -416,12 +411,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe {
-                    cmd_copy_buffer_to_image2(
-                        self.handle(),
-                        &raw const copy_buffer_to_image_info_vk,
-                    )
-                };
+                unsafe { cmd_copy_buffer_to_image2(self.handle(), &copy_buffer_to_image_info_vk) };
             }
         } else {
             let cmd_copy_buffer_to_image = fns.v1_0.cmd_copy_buffer_to_image;
@@ -443,7 +433,7 @@ impl RecordingCommandBuffer<'_> {
                         dst_image.handle(),
                         dst_image_layout.into(),
                         1,
-                        &raw const region_vk,
+                        &region_vk,
                     )
                 };
             } else {
@@ -537,12 +527,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_buffer(dst_buffer.handle())
                     .regions(&regions_vk);
 
-                unsafe {
-                    cmd_copy_image_to_buffer2(
-                        self.handle(),
-                        &raw const copy_image_to_buffer_info_vk,
-                    )
-                };
+                unsafe { cmd_copy_image_to_buffer2(self.handle(), &copy_image_to_buffer_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -573,12 +558,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_buffer(dst_buffer.handle())
                     .regions(&regions_vk);
 
-                unsafe {
-                    cmd_copy_image_to_buffer2(
-                        self.handle(),
-                        &raw const copy_image_to_buffer_info_vk,
-                    )
-                };
+                unsafe { cmd_copy_image_to_buffer2(self.handle(), &copy_image_to_buffer_info_vk) };
             }
         } else {
             let cmd_copy_image_to_buffer = fns.v1_0.cmd_copy_image_to_buffer;
@@ -600,7 +580,7 @@ impl RecordingCommandBuffer<'_> {
                         src_image_layout.into(),
                         dst_buffer.handle(),
                         1,
-                        &raw const region_vk,
+                        &region_vk,
                     )
                 };
             } else {
@@ -732,7 +712,7 @@ impl RecordingCommandBuffer<'_> {
                     .regions(&regions_vk)
                     .filter(filter.into());
 
-                unsafe { cmd_blit_image2(self.handle(), &raw const blit_image_info_vk) };
+                unsafe { cmd_blit_image2(self.handle(), &blit_image_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -761,7 +741,7 @@ impl RecordingCommandBuffer<'_> {
                     .regions(&regions_vk)
                     .filter(filter.into());
 
-                unsafe { cmd_blit_image2(self.handle(), &raw const blit_image_info_vk) };
+                unsafe { cmd_blit_image2(self.handle(), &blit_image_info_vk) };
             }
         } else {
             let cmd_blit_image = fns.v1_0.cmd_blit_image;
@@ -791,7 +771,7 @@ impl RecordingCommandBuffer<'_> {
                         dst_image.handle(),
                         dst_image_layout.into(),
                         1,
-                        &raw const region_vk,
+                        &region_vk,
                         filter.into(),
                     )
                 };
@@ -905,7 +885,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe { cmd_resolve_image2(self.handle(), &raw const resolve_image_info_vk) };
+                unsafe { cmd_resolve_image2(self.handle(), &resolve_image_info_vk) };
             } else {
                 let regions_vk = regions
                     .iter()
@@ -935,7 +915,7 @@ impl RecordingCommandBuffer<'_> {
                     .dst_image_layout(dst_image_layout.into())
                     .regions(&regions_vk);
 
-                unsafe { cmd_resolve_image2(self.handle(), &raw const resolve_image_info_vk) };
+                unsafe { cmd_resolve_image2(self.handle(), &resolve_image_info_vk) };
             }
         } else {
             let cmd_resolve_image = fns.v1_0.cmd_resolve_image;

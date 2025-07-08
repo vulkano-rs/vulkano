@@ -327,7 +327,7 @@ impl RecordingCommandBuffer {
                 self.handle(),
                 clear_info_vk.image,
                 clear_info_vk.image_layout,
-                &raw const clear_info_vk.color,
+                &clear_info_vk.color,
                 ranges_vk.len() as u32,
                 ranges_vk.as_ptr(),
             )
@@ -389,7 +389,7 @@ impl RecordingCommandBuffer {
                 self.handle(),
                 clear_info_vk.image,
                 clear_info_vk.image_layout,
-                &raw const clear_info_vk.depth_stencil,
+                &clear_info_vk.depth_stencil,
                 ranges_vk.len() as u32,
                 ranges_vk.as_ptr(),
             )

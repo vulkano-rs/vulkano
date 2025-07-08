@@ -638,14 +638,12 @@ impl RecordingCommandBuffer {
             let copy_buffer_info_vk = copy_buffer_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                unsafe {
-                    (fns.v1_3.cmd_copy_buffer2)(self.handle(), &raw const copy_buffer_info_vk)
-                };
+                unsafe { (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info_vk) };
             } else {
                 unsafe {
                     (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(
                         self.handle(),
-                        &raw const copy_buffer_info_vk,
+                        &copy_buffer_info_vk,
                     )
                 };
             }
@@ -990,13 +988,10 @@ impl RecordingCommandBuffer {
             let copy_image_info_vk = copy_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                unsafe { (fns.v1_3.cmd_copy_image2)(self.handle(), &raw const copy_image_info_vk) };
+                unsafe { (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info_vk) };
             } else {
                 unsafe {
-                    (fns.khr_copy_commands2.cmd_copy_image2_khr)(
-                        self.handle(),
-                        &raw const copy_image_info_vk,
-                    )
+                    (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info_vk)
                 };
             }
         } else {
@@ -1270,14 +1265,14 @@ impl RecordingCommandBuffer {
                 unsafe {
                     (fns.v1_3.cmd_copy_buffer_to_image2)(
                         self.handle(),
-                        &raw const copy_buffer_to_image_info_vk,
+                        &copy_buffer_to_image_info_vk,
                     )
                 };
             } else {
                 unsafe {
                     (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
                         self.handle(),
-                        &raw const copy_buffer_to_image_info_vk,
+                        &copy_buffer_to_image_info_vk,
                     )
                 };
             }
@@ -1529,14 +1524,14 @@ impl RecordingCommandBuffer {
                 unsafe {
                     (fns.v1_3.cmd_copy_image_to_buffer2)(
                         self.handle(),
-                        &raw const copy_image_to_buffer_info_vk,
+                        &copy_image_to_buffer_info_vk,
                     )
                 };
             } else {
                 unsafe {
                     (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
                         self.handle(),
-                        &raw const copy_image_to_buffer_info_vk,
+                        &copy_image_to_buffer_info_vk,
                     )
                 };
             }
@@ -1613,13 +1608,10 @@ impl RecordingCommandBuffer {
             let blit_image_info_vk = blit_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                unsafe { (fns.v1_3.cmd_blit_image2)(self.handle(), &raw const blit_image_info_vk) };
+                unsafe { (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info_vk) };
             } else {
                 unsafe {
-                    (fns.khr_copy_commands2.cmd_blit_image2_khr)(
-                        self.handle(),
-                        &raw const blit_image_info_vk,
-                    )
+                    (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info_vk)
                 };
             }
         } else {
@@ -1702,14 +1694,12 @@ impl RecordingCommandBuffer {
             let resolve_image_info_vk = resolve_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                unsafe {
-                    (fns.v1_3.cmd_resolve_image2)(self.handle(), &raw const resolve_image_info_vk)
-                };
+                unsafe { (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info_vk) };
             } else {
                 unsafe {
                     (fns.khr_copy_commands2.cmd_resolve_image2_khr)(
                         self.handle(),
-                        &raw const resolve_image_info_vk,
+                        &resolve_image_info_vk,
                     )
                 };
             }

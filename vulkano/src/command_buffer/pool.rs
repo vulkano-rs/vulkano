@@ -73,7 +73,7 @@ impl CommandPool {
             unsafe {
                 (fns.v1_0.create_command_pool)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -184,7 +184,7 @@ impl CommandPool {
             unsafe {
                 (fns.v1_0.allocate_command_buffers)(
                     self.device.handle(),
-                    &raw const allocate_info_vk,
+                    &allocate_info_vk,
                     out.as_mut_ptr(),
                 )
             }

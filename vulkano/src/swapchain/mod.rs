@@ -1022,7 +1022,7 @@ impl Swapchain {
             unsafe {
                 (fns.khr_swapchain.create_swapchain_khr)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -1038,7 +1038,7 @@ impl Swapchain {
                 (fns.khr_swapchain.get_swapchain_images_khr)(
                     device.handle(),
                     handle,
-                    &raw mut count,
+                    &mut count,
                     ptr::null_mut(),
                 )
             }
@@ -1050,7 +1050,7 @@ impl Swapchain {
                 (fns.khr_swapchain.get_swapchain_images_khr)(
                     device.handle(),
                     handle,
-                    &raw mut count,
+                    &mut count,
                     images.as_mut_ptr(),
                 )
             };
@@ -1381,7 +1381,7 @@ impl Swapchain {
                 unsafe {
                     (fns.khr_swapchain.acquire_next_image2_khr)(
                         self.device.handle(),
-                        &raw const acquire_info_vk,
+                        &acquire_info_vk,
                         output.as_mut_ptr(),
                     )
                 }

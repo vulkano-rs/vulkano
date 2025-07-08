@@ -72,7 +72,7 @@ impl DescriptorPool {
             unsafe {
                 (fns.v1_0.create_descriptor_pool)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -271,7 +271,7 @@ impl DescriptorPool {
             unsafe {
                 (fns.v1_0.allocate_descriptor_sets)(
                     self.device.handle(),
-                    &raw const info_vk,
+                    &info_vk,
                     output.as_mut_ptr(),
                 )
             }

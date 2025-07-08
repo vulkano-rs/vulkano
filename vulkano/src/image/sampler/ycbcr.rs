@@ -190,7 +190,7 @@ impl SamplerYcbcrConversion {
             unsafe {
                 create_sampler_ycbcr_conversion(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

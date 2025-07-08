@@ -126,7 +126,7 @@ impl PipelineLayout {
             unsafe {
                 (fns.v1_0.create_pipeline_layout)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

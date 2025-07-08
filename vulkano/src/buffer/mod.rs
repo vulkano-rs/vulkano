@@ -534,7 +534,7 @@ impl Buffer {
             } else {
                 fns.ext_buffer_device_address.get_buffer_device_address_ext
             };
-            unsafe { func(device.handle(), &raw const info_vk) }
+            unsafe { func(device.handle(), &info_vk) }
         };
 
         NonZero::new(ptr).unwrap()

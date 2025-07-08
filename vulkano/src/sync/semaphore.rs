@@ -130,7 +130,7 @@ impl Semaphore {
             unsafe {
                 (fns.v1_0.create_semaphore)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -324,12 +324,12 @@ impl Semaphore {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_2 {
-            unsafe { (fns.v1_2.signal_semaphore)(self.device.handle(), &raw const signal_info_vk) }
+            unsafe { (fns.v1_2.signal_semaphore)(self.device.handle(), &signal_info_vk) }
         } else {
             unsafe {
                 (fns.khr_timeline_semaphore.signal_semaphore_khr)(
                     self.device.handle(),
-                    &raw const signal_info_vk,
+                    &signal_info_vk,
                 )
             }
         }
@@ -395,7 +395,7 @@ impl Semaphore {
             unsafe {
                 (fns.v1_2.wait_semaphores)(
                     self.device.handle(),
-                    &raw const wait_info_vk,
+                    &wait_info_vk,
                     timeout.map_or(u64::MAX, |duration| {
                         u64::try_from(duration.as_nanos()).unwrap()
                     }),
@@ -405,7 +405,7 @@ impl Semaphore {
             unsafe {
                 (fns.khr_timeline_semaphore.wait_semaphores_khr)(
                     self.device.handle(),
-                    &raw const wait_info_vk,
+                    &wait_info_vk,
                     timeout.map_or(u64::MAX, |duration| {
                         u64::try_from(duration.as_nanos()).unwrap()
                     }),
@@ -476,7 +476,7 @@ impl Semaphore {
             unsafe {
                 (fns.v1_2.wait_semaphores)(
                     device.handle(),
-                    &raw const wait_info_vk,
+                    &wait_info_vk,
                     timeout.map_or(u64::MAX, |duration| {
                         u64::try_from(duration.as_nanos()).unwrap()
                     }),
@@ -486,7 +486,7 @@ impl Semaphore {
             unsafe {
                 (fns.khr_timeline_semaphore.wait_semaphores_khr)(
                     device.handle(),
-                    &raw const wait_info_vk,
+                    &wait_info_vk,
                     timeout.map_or(u64::MAX, |duration| {
                         u64::try_from(duration.as_nanos()).unwrap()
                     }),
@@ -586,7 +586,7 @@ impl Semaphore {
             unsafe {
                 (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
                     self.device.handle(),
-                    &raw const info_vk,
+                    &info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -691,7 +691,7 @@ impl Semaphore {
                 (fns.khr_external_semaphore_win32
                     .get_semaphore_win32_handle_khr)(
                     self.device.handle(),
-                    &raw const info_vk,
+                    &info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -786,7 +786,7 @@ impl Semaphore {
                 (fns.fuchsia_external_semaphore
                     .get_semaphore_zircon_handle_fuchsia)(
                     self.device.handle(),
-                    &raw const info_vk,
+                    &info_vk,
                     output.as_mut_ptr(),
                 )
             }
@@ -868,10 +868,7 @@ impl Semaphore {
 
         let fns = self.device.fns();
         unsafe {
-            (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(
-                self.device.handle(),
-                &raw const info_vk,
-            )
+            (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
         }
         .result()
         .map_err(VulkanError::from)?;
@@ -954,9 +951,7 @@ impl Semaphore {
         let fns = self.device.fns();
         unsafe {
             (fns.khr_external_semaphore_win32
-                .import_semaphore_win32_handle_khr)(
-                self.device.handle(), &raw const info_vk
-            )
+                .import_semaphore_win32_handle_khr)(self.device.handle(), &info_vk)
         }
         .result()
         .map_err(VulkanError::from)?;
@@ -1022,9 +1017,7 @@ impl Semaphore {
         let fns = self.device.fns();
         unsafe {
             (fns.fuchsia_external_semaphore
-                .import_semaphore_zircon_handle_fuchsia)(
-                self.device.handle(), &raw const info_vk
-            )
+                .import_semaphore_zircon_handle_fuchsia)(self.device.handle(), &info_vk)
         }
         .result()
         .map_err(VulkanError::from)?;

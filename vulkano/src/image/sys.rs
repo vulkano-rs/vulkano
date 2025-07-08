@@ -119,7 +119,7 @@ impl RawImage {
             unsafe {
                 (fns.v1_0.create_image)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -337,8 +337,8 @@ impl RawImage {
                 unsafe {
                     (fns.v1_1.get_image_memory_requirements2)(
                         device.handle(),
-                        &raw const info_vk,
-                        &raw mut memory_requirements2_vk,
+                        &info_vk,
+                        &mut memory_requirements2_vk,
                     )
                 };
             } else {
@@ -346,8 +346,8 @@ impl RawImage {
                     (fns.khr_get_memory_requirements2
                         .get_image_memory_requirements2_khr)(
                         device.handle(),
-                        &raw const info_vk,
-                        &raw mut memory_requirements2_vk,
+                        &info_vk,
+                        &mut memory_requirements2_vk,
                     )
                 };
             }
@@ -356,7 +356,7 @@ impl RawImage {
                 (fns.v1_0.get_image_memory_requirements)(
                     device.handle(),
                     handle,
-                    &raw mut memory_requirements2_vk.memory_requirements,
+                    &mut memory_requirements2_vk.memory_requirements,
                 )
             };
         }
@@ -390,8 +390,8 @@ impl RawImage {
                 unsafe {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
                         device.handle(),
-                        &raw const info2_vk,
-                        &raw mut count,
+                        &info2_vk,
+                        &mut count,
                         ptr::null_mut(),
                     )
                 };
@@ -400,8 +400,8 @@ impl RawImage {
                     (fns.khr_get_memory_requirements2
                         .get_image_sparse_memory_requirements2_khr)(
                         device.handle(),
-                        &raw const info2_vk,
-                        &raw mut count,
+                        &info2_vk,
+                        &mut count,
                         ptr::null_mut(),
                     )
                 };
@@ -414,8 +414,8 @@ impl RawImage {
                 unsafe {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
                         device.handle(),
-                        &raw const info2_vk,
-                        &raw mut count,
+                        &info2_vk,
+                        &mut count,
                         requirements2_vk.as_mut_ptr(),
                     )
                 };
@@ -424,8 +424,8 @@ impl RawImage {
                     (fns.khr_get_memory_requirements2
                         .get_image_sparse_memory_requirements2_khr)(
                         device.handle(),
-                        &raw const info2_vk,
-                        &raw mut count,
+                        &info2_vk,
+                        &mut count,
                         requirements2_vk.as_mut_ptr(),
                     )
                 };
@@ -443,7 +443,7 @@ impl RawImage {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
                     handle,
-                    &raw mut count,
+                    &mut count,
                     ptr::null_mut(),
                 )
             };
@@ -455,7 +455,7 @@ impl RawImage {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
                     handle,
-                    &raw mut count,
+                    &mut count,
                     requirements_vk.as_mut_ptr(),
                 )
             };
@@ -480,7 +480,7 @@ impl RawImage {
                 .get_image_drm_format_modifier_properties_ext)(
                 device.handle(),
                 handle,
-                &raw mut properties_vk,
+                &mut properties_vk,
             )
         }
         .result()
@@ -1450,7 +1450,7 @@ impl RawImage {
                         (fns.v1_0.get_image_subresource_layout)(
                             self.device.handle(),
                             self.handle,
-                            &raw const subresource_vk,
+                            &subresource_vk,
                             output.as_mut_ptr(),
                         )
                     };

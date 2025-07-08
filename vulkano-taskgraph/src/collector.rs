@@ -416,7 +416,7 @@ impl<'a> DeferredBatch<'a> {
 
                 if self.0.drop_guard {
                     // SAFETY: The caller must ensure that this method is not called again.
-                    unsafe { ptr::drop_in_place(&raw mut self.0.guard) };
+                    unsafe { ptr::drop_in_place(&mut self.0.guard) };
                 }
             }
         }
@@ -444,7 +444,7 @@ impl<'a> DeferredBatch<'a> {
 
             if self.drop_guard {
                 // SAFETY: The caller must ensure that this method is not called again.
-                unsafe { ptr::drop_in_place(&raw mut self.guard) };
+                unsafe { ptr::drop_in_place(&mut self.guard) };
             }
 
             return;
@@ -495,7 +495,7 @@ impl<'a> DeferredBatch<'a> {
 
         if self.drop_guard {
             // SAFETY: The caller must ensure that this method is not called again.
-            unsafe { ptr::drop_in_place(&raw mut self.guard) };
+            unsafe { ptr::drop_in_place(&mut self.guard) };
         }
     }
 }

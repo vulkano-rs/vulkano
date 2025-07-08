@@ -273,7 +273,7 @@ impl Device {
             unsafe {
                 (fns.v1_0.create_device)(
                     physical_device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -649,9 +649,9 @@ impl Device {
                 .get_acceleration_structure_build_sizes_khr)(
                 self.handle,
                 build_type.into(),
-                &raw const build_info_vk,
+                &build_info_vk,
                 max_primitive_counts.as_ptr(),
-                &raw mut build_sizes_info_vk,
+                &mut build_sizes_info_vk,
             )
         };
 
@@ -710,8 +710,8 @@ impl Device {
             (fns.khr_acceleration_structure
                 .get_device_acceleration_structure_compatibility_khr)(
                 self.handle,
-                &raw const version_info_vk,
-                &raw mut compatibility_vk,
+                &version_info_vk,
+                &mut compatibility_vk,
             )
         };
 
@@ -783,16 +783,16 @@ impl Device {
             unsafe {
                 (fns.v1_1.get_descriptor_set_layout_support)(
                     self.handle(),
-                    &raw const create_info_vk,
-                    &raw mut support_vk,
+                    &create_info_vk,
+                    &mut support_vk,
                 )
             }
         } else {
             unsafe {
                 (fns.khr_maintenance3.get_descriptor_set_layout_support_khr)(
                     self.handle(),
-                    &raw const create_info_vk,
-                    &raw mut support_vk,
+                    &create_info_vk,
+                    &mut support_vk,
                 )
             }
         }
@@ -865,8 +865,8 @@ impl Device {
             unsafe {
                 (fns.v1_3.get_device_buffer_memory_requirements)(
                     self.handle(),
-                    &raw const info_vk,
-                    &raw mut memory_requirements2_vk,
+                    &info_vk,
+                    &mut memory_requirements2_vk,
                 )
             };
         } else {
@@ -875,8 +875,8 @@ impl Device {
                 (fns.khr_maintenance4
                     .get_device_buffer_memory_requirements_khr)(
                     self.handle(),
-                    &raw const info_vk,
-                    &raw mut memory_requirements2_vk,
+                    &info_vk,
+                    &mut memory_requirements2_vk,
                 )
             };
         }
@@ -1082,8 +1082,8 @@ impl Device {
             unsafe {
                 (fns.v1_3.get_device_image_memory_requirements)(
                     self.handle(),
-                    &raw const info_vk,
-                    &raw mut memory_requirements2_vk,
+                    &info_vk,
+                    &mut memory_requirements2_vk,
                 )
             };
         } else {
@@ -1092,8 +1092,8 @@ impl Device {
                 (fns.khr_maintenance4
                     .get_device_image_memory_requirements_khr)(
                     self.handle(),
-                    &raw const info_vk,
-                    &raw mut memory_requirements2_vk,
+                    &info_vk,
+                    &mut memory_requirements2_vk,
                 )
             };
         }
@@ -1178,7 +1178,7 @@ impl Device {
                 self.handle,
                 handle_type.into(),
                 fd,
-                &raw mut memory_fd_properties,
+                &mut memory_fd_properties,
             )
         }
         .result()
@@ -1290,11 +1290,9 @@ impl Device {
         }
 
         let fns = self.fns();
-        unsafe {
-            (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &raw const info_vk)
-        }
-        .result()
-        .map_err(VulkanError::from)?;
+        unsafe { (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info_vk) }
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }

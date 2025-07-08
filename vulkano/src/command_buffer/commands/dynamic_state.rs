@@ -1376,7 +1376,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_blend_constants_unchecked(&mut self, constants: [f32; 4]) -> &mut Self {
         let fns = self.device().fns();
-        unsafe { (fns.v1_0.cmd_set_blend_constants)(self.handle(), &raw const constants) };
+        unsafe { (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants) };
 
         self
     }
@@ -3557,7 +3557,7 @@ impl RecordingCommandBuffer {
             (fns.khr_fragment_shading_rate
                 .cmd_set_fragment_shading_rate_khr)(
                 self.handle(),
-                &raw const fragment_size,
+                &fragment_size,
                 combiner_ops.as_ptr().cast(),
             )
         };

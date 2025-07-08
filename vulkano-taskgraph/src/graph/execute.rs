@@ -68,7 +68,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     ) -> Result {
         assert!(ptr::eq(
             resource_map.virtual_resources,
-            &raw const self.graph.resources,
+            &self.graph.resources,
         ));
         assert!(resource_map.is_exhaustive());
 
@@ -632,7 +632,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         let fns = self.device().fns();
         let queue_present_khr = fns.khr_swapchain.queue_present_khr;
-        let _ = unsafe { queue_present_khr(present_queue.handle(), &raw const present_info) };
+        let _ = unsafe { queue_present_khr(present_queue.handle(), &present_info) };
 
         let mut res = Ok(());
 
@@ -1215,7 +1215,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         unsafe {
             (fns.v1_0.cmd_begin_render_pass)(
                 current_command_buffer!(self).handle(),
-                &raw const render_pass_begin_info_vk,
+                &render_pass_begin_info_vk,
                 vk::SubpassContents::INLINE,
             )
         };
@@ -1817,7 +1817,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         unsafe {
             (fns.v1_0.cmd_begin_render_pass)(
                 current_command_buffer!(self).handle(),
-                &raw const render_pass_begin_info_vk,
+                &render_pass_begin_info_vk,
                 vk::SubpassContents::INLINE,
             )
         };

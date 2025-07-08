@@ -181,7 +181,7 @@ impl RenderPass {
                 unsafe {
                     (fns.v1_2.create_render_pass2)(
                         device.handle(),
-                        &raw const create_info_vk,
+                        &create_info_vk,
                         ptr::null(),
                         output.as_mut_ptr(),
                     )
@@ -190,7 +190,7 @@ impl RenderPass {
                 unsafe {
                     (fns.khr_create_renderpass2.create_render_pass2_khr)(
                         device.handle(),
-                        &raw const create_info_vk,
+                        &create_info_vk,
                         ptr::null(),
                         output.as_mut_ptr(),
                     )
@@ -213,7 +213,7 @@ impl RenderPass {
             unsafe {
                 (fns.v1_0.create_render_pass)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

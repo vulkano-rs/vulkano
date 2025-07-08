@@ -232,7 +232,7 @@ impl GraphicsPipeline {
                     device.handle(),
                     cache_handle,
                     1,
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

@@ -105,7 +105,7 @@ impl DebugUtilsMessenger {
             unsafe {
                 (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
                     instance.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )

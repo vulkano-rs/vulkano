@@ -44,7 +44,7 @@ impl Queue {
                 unsafe {
                     (fns.v1_1.get_device_queue2)(
                         device.handle(),
-                        &raw const queue_info_vk,
+                        &queue_info_vk,
                         output.as_mut_ptr(),
                     )
                 };
@@ -461,8 +461,7 @@ impl QueueGuard<'_> {
         );
 
         let fns = self.queue.device().fns();
-        let result =
-            unsafe { (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &raw const info_vk) };
+        let result = unsafe { (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk) };
 
         // Per the documentation of `vkQueuePresentKHR`, certain results indicate that the whole
         // operation has failed, while others only indicate failure of a particular present.
@@ -789,7 +788,7 @@ impl QueueGuard<'_> {
         unsafe {
             (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(
                 self.queue.handle,
-                &raw const label_info_vk,
+                &label_info_vk,
             )
         };
     }
@@ -888,7 +887,7 @@ impl QueueGuard<'_> {
         unsafe {
             (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(
                 self.queue.handle,
-                &raw const label_info_vk,
+                &label_info_vk,
             )
         };
     }

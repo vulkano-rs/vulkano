@@ -175,7 +175,7 @@ impl AccelerationStructure {
                 (fns.khr_acceleration_structure
                     .create_acceleration_structure_khr)(
                     device.handle(),
-                    &raw const create_info_vk,
+                    &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
@@ -252,8 +252,7 @@ impl AccelerationStructure {
         let ptr = unsafe {
             (fns.khr_acceleration_structure
                 .get_acceleration_structure_device_address_khr)(
-                self.device.handle(),
-                &raw const info_vk,
+                self.device.handle(), &info_vk
             )
         };
 

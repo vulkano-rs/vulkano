@@ -130,7 +130,7 @@ impl RecordingCommandBuffer<'_> {
                 fns.khr_synchronization2.cmd_pipeline_barrier2_khr
             };
 
-            unsafe { cmd_pipeline_barrier2(self.handle(), &raw const dependency_info_vk) };
+            unsafe { cmd_pipeline_barrier2(self.handle(), &dependency_info_vk) };
         } else {
             let mut src_stage_mask = vk::PipelineStageFlags::empty();
             let mut dst_stage_mask = vk::PipelineStageFlags::empty();

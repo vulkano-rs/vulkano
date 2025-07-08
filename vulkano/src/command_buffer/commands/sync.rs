@@ -213,14 +213,12 @@ impl RecordingCommandBuffer {
             let fns = self.device().fns();
 
             if self.device().api_version() >= Version::V1_3 {
-                unsafe {
-                    (fns.v1_3.cmd_pipeline_barrier2)(self.handle(), &raw const dependency_info_vk)
-                };
+                unsafe { (fns.v1_3.cmd_pipeline_barrier2)(self.handle(), &dependency_info_vk) };
             } else {
                 unsafe {
                     (fns.khr_synchronization2.cmd_pipeline_barrier2_khr)(
                         self.handle(),
-                        &raw const dependency_info_vk,
+                        &dependency_info_vk,
                     )
                 };
             }
@@ -467,18 +465,14 @@ impl RecordingCommandBuffer {
 
             if self.device().api_version() >= Version::V1_3 {
                 unsafe {
-                    (fns.v1_3.cmd_set_event2)(
-                        self.handle(),
-                        event.handle(),
-                        &raw const dependency_info_vk,
-                    )
+                    (fns.v1_3.cmd_set_event2)(self.handle(), event.handle(), &dependency_info_vk)
                 };
             } else {
                 unsafe {
                     (fns.khr_synchronization2.cmd_set_event2_khr)(
                         self.handle(),
                         event.handle(),
-                        &raw const dependency_info_vk,
+                        &dependency_info_vk,
                     )
                 };
             }
