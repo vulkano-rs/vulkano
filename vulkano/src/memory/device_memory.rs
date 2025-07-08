@@ -2352,6 +2352,7 @@ impl MappedDeviceMemory {
     ///
     /// - Panics if `range` is empty.
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn write(
         &self,
         range: Range<DeviceSize>,
