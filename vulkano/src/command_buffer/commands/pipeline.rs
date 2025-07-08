@@ -1258,7 +1258,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }));
             }
 
-            if group_counts_product.map_or(true, |size| {
+            if group_counts_product.is_none_or(|size| {
                 size > properties
                     .max_task_work_group_total_count
                     .unwrap_or_default()
@@ -1303,7 +1303,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }));
             }
 
-            if group_counts_product.map_or(true, |size| {
+            if group_counts_product.is_none_or(|size| {
                 size > properties
                     .max_mesh_work_group_total_count
                     .unwrap_or_default()

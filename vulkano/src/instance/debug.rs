@@ -294,7 +294,7 @@ impl DebugUtilsMessengerCallback {
     }
 
     pub(crate) fn as_ptr(&self) -> *const CallbackData {
-        ptr::addr_of!(self.0)
+        &raw const self.0
     }
 }
 

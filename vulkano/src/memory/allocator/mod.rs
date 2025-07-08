@@ -1467,7 +1467,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
             // TODO: Maybe do a similar check for dedicated blocks.
             debug_assert!(
-                vec.iter().any(|block| ptr::addr_of!(**block) == block_ptr),
+                vec.iter().any(|block| &raw const **block == block_ptr),
                 "attempted to deallocate a memory block that does not belong to this allocator",
             );
 

@@ -678,7 +678,7 @@ impl SamplerYcbcrConversionCreateInfo<'_> {
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-01655
         if ycbcr_model != SamplerYcbcrModelConversion::RgbIdentity {
-            if components_bits[0].map_or(true, |bits| bits == 0) {
+            if components_bits[0].is_none_or(|bits| bits == 0) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.r` does not map to a component that exists in \
@@ -689,7 +689,7 @@ impl SamplerYcbcrConversionCreateInfo<'_> {
                 }));
             }
 
-            if components_bits[1].map_or(true, |bits| bits == 0) {
+            if components_bits[1].is_none_or(|bits| bits == 0) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.g` does not map to a component that exists in \
@@ -700,7 +700,7 @@ impl SamplerYcbcrConversionCreateInfo<'_> {
                 }));
             }
 
-            if components_bits[2].map_or(true, |bits| bits == 0) {
+            if components_bits[2].is_none_or(|bits| bits == 0) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.b` does not map to a component that exists in \
@@ -711,7 +711,7 @@ impl SamplerYcbcrConversionCreateInfo<'_> {
                 }));
             }
 
-            if components_bits[3].map_or(true, |bits| bits == 0) {
+            if components_bits[3].is_none_or(|bits| bits == 0) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.a` does not map to a component that exists in \

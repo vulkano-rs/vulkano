@@ -15,7 +15,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.80.0"
+rust-version = "1.82.0"
 license = "MIT OR Apache-2.0"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
@@ -84,18 +84,27 @@ rand = "0.8"
 ron = "0.8"
 
 [workspace.lints]
-rust.missing_docs = "allow"                                       # TODO: warn eventually
+# Rust 2024 lints
+# Before switching to the 2024 edition, fix these where needed and then remove them
+rust.rust_2024_compatibility = { level = "warn", priority = -1 }
+rust.edition_2024_expr_fragment_specifier = "allow"
+rust.if_let_rescope = "allow"
+rust.impl_trait_overcaptures = "allow"
+rust.tail_expr_drop_order = "allow"
+
+# TODO: we want to fix/enable these lints eventually
+rust.missing_docs = "allow"
+clippy.missing_safety_doc = "allow"
+
+# Warn lints
 rust.rust_2018_idioms = { level = "warn", priority = -1 }
-rust.rust_2024_compatibility = { level = "allow", priority = -1 } # TODO: warn eventually
-rust.rust_2024_incompatible_pat = "warn"
-rust.unsafe_op_in_unsafe_fn = "warn"
-clippy.borrow_as_ptr = "warn"
-clippy.missing_safety_doc = "allow"                               # TODO: warn eventually
 clippy.multiple_unsafe_ops_per_block = "warn"
 clippy.ptr_as_ptr = "warn"
 clippy.ptr_cast_constness = "warn"
 clippy.ref_as_ptr = "warn"
 clippy.trivially_copy_pass_by_ref = "warn"
+
+# Allow lints
 # These lints are a bit too pedantic, so they're disabled here.
 # They can be removed if they no longer happen in the future.
 clippy.arc_with_non_send_sync = "allow"
