@@ -94,7 +94,7 @@ use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::{
     cmp,
-    ffi::{c_char, CString},
+    ffi::{c_char, CStr, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZero,
@@ -304,39 +304,6 @@ impl Instance {
             .validate(library)
             .map_err(|err| err.add_context("create_info"))?;
 
-        let &InstanceCreateInfo {
-            flags: _,
-            application_name: _,
-            application_version: _,
-            engine_name: _,
-            engine_version: _,
-            max_api_version,
-            enabled_layers,
-            enabled_extensions,
-            debug_utils_messengers: _,
-            enabled_validation_features: _,
-            disabled_validation_features: _,
-            _ne,
-        } = create_info;
-
-        let api_version = cmp::min(
-            max_api_version.unwrap_or(Version::HEADER_VERSION),
-            library.api_version(),
-        );
-        let supported_extensions = library
-            .supported_extensions_with_layers(enabled_layers)
-            .unwrap();
-
-        enabled_extensions
-            .check_requirements(&supported_extensions, api_version)
-            .map_err(|err| {
-                Box::new(ValidationError {
-                    context: "create_info.enabled_extensions".into(),
-                    vuids: &["VUID-vkCreateInstance-ppEnabledExtensionNames-01388"],
-                    ..ValidationError::from_error(err)
-                })
-            })?;
-
         Ok(())
     }
 
@@ -354,9 +321,7 @@ impl Instance {
                 Version::HEADER_VERSION
             }
         });
-        let mut enabled_extensions = *create_info.enabled_extensions;
-
-        enabled_extensions.enable_dependencies(
+        let mut enabled_extensions = create_info.enabled_extensions.enable_dependencies(
             cmp::min(max_api_version, library.api_version()),
             &library
                 .supported_extensions_with_layers(create_info.enabled_layers)
@@ -962,7 +927,7 @@ impl<'a> InstanceCreateInfo<'a> {
             engine_name: _,
             engine_version: _,
             max_api_version,
-            enabled_layers: _,
+            enabled_layers,
             enabled_extensions,
             debug_utils_messengers,
             enabled_validation_features,
@@ -982,8 +947,18 @@ impl<'a> InstanceCreateInfo<'a> {
             }));
         }
 
+        let supported_extensions = library
+            .supported_extensions_with_layers(enabled_layers)
+            .unwrap();
+        let enabled_extensions =
+            enabled_extensions.enable_dependencies(api_version, &supported_extensions);
+
+        enabled_extensions
+            .validate(&supported_extensions, api_version)
+            .map_err(|err| err.add_context("enabled_extensions"))?;
+
         flags
-            .validate_instance_raw(api_version, enabled_extensions)
+            .validate_instance_raw(api_version, &enabled_extensions)
             .map_err(|err| {
                 err.add_context("flags")
                     .set_vuids(&["VUID-VkInstanceCreateInfo-flags-parameter"])
@@ -1003,7 +978,7 @@ impl<'a> InstanceCreateInfo<'a> {
 
             for (index, messenger_create_info) in debug_utils_messengers.iter().enumerate() {
                 messenger_create_info
-                    .validate_raw(api_version, enabled_extensions)
+                    .validate_raw(api_version, &enabled_extensions)
                     .map_err(|err| err.add_context(format!("debug_utils_messengers[{}]", index)))?;
             }
         }
@@ -1022,7 +997,7 @@ impl<'a> InstanceCreateInfo<'a> {
 
             for (index, enabled) in enabled_validation_features.iter().enumerate() {
                 enabled
-                    .validate_instance_raw(api_version, enabled_extensions)
+                    .validate_instance_raw(api_version, &enabled_extensions)
                     .map_err(|err| {
                         err.add_context(format!("enabled_validation_features[{}]", index))
                             .set_vuids(&[
@@ -1074,7 +1049,7 @@ impl<'a> InstanceCreateInfo<'a> {
 
             for (index, disabled) in disabled_validation_features.iter().enumerate() {
                 disabled
-                    .validate_instance_raw(api_version, enabled_extensions)
+                    .validate_instance_raw(api_version, &enabled_extensions)
                     .map_err(|err| {
                         err.add_context(format!("disabled_validation_features[{}]", index)).set_vuids(
                         &[
@@ -1182,7 +1157,7 @@ impl<'a> InstanceCreateInfo<'a> {
             engine_version,
             max_api_version,
             enabled_layers: _,
-            enabled_extensions: _,
+            enabled_extensions,
             debug_utils_messengers: _,
             enabled_validation_features,
             disabled_validation_features,
@@ -1192,8 +1167,9 @@ impl<'a> InstanceCreateInfo<'a> {
             application_name_vk,
             engine_name_vk,
             enabled_layers_vk,
-            enabled_extensions_vk,
+            enabled_extensions_extra_vk: enabled_extensions_raw_vk,
         } = fields2_vk;
+        let enabled_extensions_vk = enabled_extensions.to_vk();
 
         let mut application_info_vk = vk::ApplicationInfo::default()
             .application_version(
@@ -1222,7 +1198,8 @@ impl<'a> InstanceCreateInfo<'a> {
             .map(|layer| layer.as_ptr())
             .collect();
         let enabled_extension_names_vk = enabled_extensions_vk
-            .iter()
+            .into_iter()
+            .chain(enabled_extensions_raw_vk.iter().map(Deref::deref))
             .map(|extension| extension.as_ptr())
             .collect();
 
@@ -1255,7 +1232,7 @@ impl<'a> InstanceCreateInfo<'a> {
             engine_version: _,
             max_api_version: _,
             enabled_layers,
-            enabled_extensions,
+            enabled_extensions: _,
             debug_utils_messengers: _,
             enabled_validation_features: _,
             disabled_validation_features: _,
@@ -1268,13 +1245,13 @@ impl<'a> InstanceCreateInfo<'a> {
             .iter()
             .map(|&name| CString::new(name).unwrap())
             .collect();
-        let enabled_extensions_vk: Vec<CString> = enabled_extensions.into();
 
         InstanceCreateInfoFields2Vk {
             application_name_vk,
             engine_name_vk,
             enabled_layers_vk,
-            enabled_extensions_vk,
+            // TODO: allow user to (unsafely) specify custom extensions
+            enabled_extensions_extra_vk: Vec::new(),
         }
     }
 }
@@ -1296,7 +1273,7 @@ pub(crate) struct InstanceCreateInfoFields2Vk {
     pub(crate) application_name_vk: Option<CString>,
     pub(crate) engine_name_vk: Option<CString>,
     pub(crate) enabled_layers_vk: Vec<CString>,
-    pub(crate) enabled_extensions_vk: Vec<CString>,
+    pub(crate) enabled_extensions_extra_vk: Vec<CString>,
 }
 
 vulkan_bitflags! {
@@ -1385,11 +1362,10 @@ impl<T> Deref for InstanceOwnedDebugWrapper<T> {
 #[cfg(test)]
 mod tests {
     use crate::instance::InstanceExtensions;
-    use std::ffi::CString;
 
     #[test]
     fn empty_extensions() {
-        let i: Vec<CString> = (&InstanceExtensions::empty()).into();
+        let i = InstanceExtensions::empty().to_vk();
         assert!(i.is_empty());
     }
 

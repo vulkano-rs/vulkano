@@ -94,10 +94,11 @@ impl VulkanLibrary {
 
         let api_version = unsafe { Self::get_api_version(&loader) }?;
         let extension_properties = unsafe { Self::get_extension_properties(&fns, None) }?;
-        let supported_extensions = extension_properties
-            .iter()
-            .map(|property| property.extension_name.as_str())
-            .collect();
+        let supported_extensions = InstanceExtensions::from_vk(
+            extension_properties
+                .iter()
+                .map(|property| property.extension_name.as_str()),
+        );
 
         Ok(Arc::new(VulkanLibrary {
             loader: Box::new(loader),
@@ -279,11 +280,12 @@ impl VulkanLibrary {
         &self,
         layer: &str,
     ) -> Result<InstanceExtensions, VulkanError> {
-        Ok(self
-            .layer_extension_properties(layer)?
-            .iter()
-            .map(|property| property.extension_name.as_str())
-            .collect())
+        let supported_extensions = InstanceExtensions::from_vk(
+            self.layer_extension_properties(layer)?
+                .iter()
+                .map(|property| property.extension_name.as_str()),
+        );
+        Ok(supported_extensions)
     }
 
     /// Returns the union of the extensions that are supported by the core library and all

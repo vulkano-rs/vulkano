@@ -348,10 +348,11 @@ impl FixedEntry {
         let pool = DescriptorPool::new(
             layout.device(),
             &DescriptorPoolCreateInfo {
-                flags: create_info
-                    .update_after_bind
-                    .then_some(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
-                    .unwrap_or_default(),
+                flags: if create_info.update_after_bind {
+                    DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
+                } else {
+                    DescriptorPoolCreateFlags::empty()
+                },
                 max_sets: create_info.set_count as u32,
                 pool_sizes: &layout
                     .descriptor_counts()
@@ -434,10 +435,11 @@ impl VariableEntry {
         let pool = DescriptorPool::new(
             layout.device(),
             &DescriptorPoolCreateInfo {
-                flags: create_info
-                    .update_after_bind
-                    .then_some(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
-                    .unwrap_or_default(),
+                flags: if create_info.update_after_bind {
+                    DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
+                } else {
+                    DescriptorPoolCreateFlags::empty()
+                },
                 max_sets: create_info.set_count as u32,
                 pool_sizes: &layout
                     .descriptor_counts()
