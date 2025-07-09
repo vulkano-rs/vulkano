@@ -703,20 +703,20 @@ impl ResourceAccesses {
         Ok((id, access))
     }
 
-    fn iter(&self) -> impl Iterator<Item = (Id, &ResourceAccess)> {
+    fn iter(&self) -> impl Iterator<Item = (Id, &ResourceAccess)> + use<'_> {
         self.inner.iter().map(|(id, access)| (*id, access))
     }
 }
 
 impl Attachments {
-    fn keys(&self) -> impl Iterator<Item = &Id> {
+    fn keys(&self) -> impl Iterator<Item = &Id> + use<'_> {
         self.input_attachments
             .keys()
             .chain(self.color_attachments.keys())
             .chain(self.depth_stencil_attachment.iter().map(|(id, _)| id))
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&Id, &AttachmentInfo<'static>)> {
+    fn iter(&self) -> impl Iterator<Item = (&Id, &AttachmentInfo<'static>)> + use<'_> {
         self.input_attachments
             .iter()
             .chain(self.color_attachments.iter())

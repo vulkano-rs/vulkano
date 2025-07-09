@@ -18,7 +18,7 @@ use smallvec::{smallvec, SmallVec};
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
-pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)> + '_ {
+pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)> + use<'_> {
     let interface_variables = interface_variables(spirv);
 
     spirv.entry_points().iter().filter_map(move |instruction| {

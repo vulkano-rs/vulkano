@@ -754,7 +754,7 @@ impl Resources {
     pub(crate) fn flights_protected<'a>(
         &'a self,
         guard: &'a hyaline::Guard<'a>,
-    ) -> impl Iterator<Item = (Id<Flight>, &'a Flight)> {
+    ) -> impl Iterator<Item = (Id<Flight>, &'a Flight)> + use<'a> {
         self.storage
             .flights
             .iter(guard)

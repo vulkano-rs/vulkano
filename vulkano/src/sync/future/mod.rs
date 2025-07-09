@@ -566,7 +566,8 @@ pub(crate) unsafe fn queue_bind_sparse(
 pub(crate) unsafe fn queue_present(
     queue: &Arc<Queue>,
     present_info: PresentInfo,
-) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>> {
+) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, Validated<VulkanError>>
+{
     let results: SmallVec<[_; 1]> = queue
         .with(|mut queue_guard| unsafe { queue_guard.present(&present_info) })?
         .collect();

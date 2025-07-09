@@ -755,7 +755,12 @@ impl DescriptorSetWithOffsets {
     }
 
     #[inline]
-    pub fn into_tuple(self) -> (Arc<DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
+    pub fn into_tuple(
+        self,
+    ) -> (
+        Arc<DescriptorSet>,
+        impl ExactSizeIterator<Item = u32> + use<>,
+    ) {
         (self.descriptor_set, self.dynamic_offsets.into_iter())
     }
 }

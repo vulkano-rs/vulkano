@@ -178,7 +178,8 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
-    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, Validated<VulkanError>> {
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, Validated<VulkanError>>
+    {
         self.validate_allocate_descriptor_sets(allocate_infos)?;
 
         Ok(unsafe { self.allocate_descriptor_sets_unchecked(allocate_infos) }?)
@@ -227,7 +228,7 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets_unchecked(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
-    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, VulkanError> {
         let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(allocate_infos.len());
         let mut variable_descriptor_counts: SmallVec<[_; 1]> =
             SmallVec::with_capacity(allocate_infos.len());
