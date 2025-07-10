@@ -60,6 +60,7 @@ Changes to external memory and external sync:
 
 - Fixed a bug in `StandardMemoryAllocator` where if the suballocation count of a `DeviceMemory` block would drop to zero, no more suballocations could be made, leading to needless allocations of new `DeviceMemory` blocks.
 - Fixed a panic for non-contiguous push constants ranges.
+- Fixed `StandardDescriptorSetAllocator::deallocate` executing UB when the allocation was made for a variable count descriptor set with a variable descriptor count of 0.
 - Vulkano-taskgraph: Fixed a panic that would happen when looking up the previous barrier and it's an initial barrier.
 
 # Version 0.35.0 (2025-02-06)
