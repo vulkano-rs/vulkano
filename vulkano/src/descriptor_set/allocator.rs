@@ -266,7 +266,7 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
     #[inline]
     unsafe fn deallocate(&self, allocation: DescriptorSetAlloc) {
-        let is_fixed = allocation.inner.variable_descriptor_count() == 0;
+        let is_fixed = allocation.inner.layout().variable_descriptor_count() == 0;
         let ptr = allocation.handle.as_ptr();
 
         if is_fixed {
