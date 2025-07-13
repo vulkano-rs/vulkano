@@ -34,7 +34,7 @@ use vulkano::{
 };
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer,
-    descriptor_set::{AccelerationStructureDescriptor, AccelerationStructureId, StorageBufferId},
+    descriptor_set::{AccelerationStructureId, StorageBufferId},
     resource::HostAccessType,
     Id, Task, TaskContext, TaskResult,
 };
@@ -205,11 +205,7 @@ impl SceneTask {
         }
         .unwrap();
 
-        let acceleration_structure_id =
-            bcx.global_set()
-                .add_acceleration_structure(AccelerationStructureDescriptor {
-                    acceleration_structure: tlas,
-                });
+        let acceleration_structure_id = bcx.global_set().add_acceleration_structure(tlas);
 
         let camera_storage_buffer_id = bcx
             .global_set()

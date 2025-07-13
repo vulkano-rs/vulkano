@@ -15,7 +15,7 @@ use vulkano::{
     Validated, Version, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
-    descriptor_set::{BindlessContext, StorageImageDescriptor, StorageImageId},
+    descriptor_set::{BindlessContext, StorageImageId},
     graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
     resource::{AccessTypes, Flight, ImageLayoutType, Resources, ResourcesCreateInfo},
     resource_map, Id, QueueFamilyType,
@@ -373,10 +373,8 @@ fn window_size_dependent_setup(
         .map(|image| {
             let image_view = ImageView::new_default(image).unwrap();
 
-            bcx.global_set().add_storage_image(StorageImageDescriptor {
-                image_view,
-                image_layout: ImageLayout::General,
-            })
+            bcx.global_set()
+                .add_storage_image(image_view, ImageLayout::General)
         })
         .collect();
 
