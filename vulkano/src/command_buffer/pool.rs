@@ -164,7 +164,7 @@ impl CommandPool {
     pub fn allocate_command_buffers(
         &self,
         allocate_info: &CommandBufferAllocateInfo<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, VulkanError> {
         let &CommandBufferAllocateInfo {
             level,
             command_buffer_count,

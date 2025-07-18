@@ -1400,7 +1400,7 @@ impl PipelineStageAccess {
         descriptor_type: DescriptorType,
         stages_read: ShaderStages,
         stages_write: ShaderStages,
-    ) -> impl Iterator<Item = Self> + 'static {
+    ) -> impl Iterator<Item = Self> + use<> {
         static MAP_READ: LazyLock<
             HashMap<DescriptorType, HashMap<PipelineStage, PipelineStageAccess>>,
         > = LazyLock::new(|| {

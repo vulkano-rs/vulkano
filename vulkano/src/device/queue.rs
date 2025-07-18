@@ -376,8 +376,10 @@ impl QueueGuard<'_> {
     pub unsafe fn present(
         &mut self,
         present_info: &PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>>
-    {
+    ) -> Result<
+        impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>,
+        Validated<VulkanError>,
+    > {
         self.validate_present(present_info)?;
 
         Ok(unsafe { self.present_unchecked(present_info) }?)
@@ -448,7 +450,7 @@ impl QueueGuard<'_> {
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: &PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, VulkanError> {
         let present_info_fields2_vk = present_info.to_vk_fields2();
         let present_info_fields1_vk = present_info.to_vk_fields1(&present_info_fields2_vk);
         let mut results_vk = present_info.to_vk_results();

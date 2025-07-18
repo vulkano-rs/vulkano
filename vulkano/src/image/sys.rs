@@ -507,6 +507,7 @@ impl RawImage {
         (
             Validated<VulkanError>,
             RawImage,
+            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
             impl ExactSizeIterator<Item = ResourceMemory>,
         ),
     > {
@@ -878,6 +879,7 @@ impl RawImage {
         (
             VulkanError,
             RawImage,
+            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
             impl ExactSizeIterator<Item = ResourceMemory>,
         ),
     > {

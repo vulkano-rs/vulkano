@@ -231,7 +231,7 @@ impl VulkanLibrary {
     /// ```
     pub fn layer_properties(
         &self,
-    ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = LayerProperties> + use<>, VulkanError> {
         let fns = self.fns();
 
         let layer_properties = loop {
