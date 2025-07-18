@@ -171,17 +171,34 @@ impl<'a> ResourceAccesses<'a> {
     }
 
     unsafe fn image_unchecked(&self, id: Id<Image>) -> &'a Arc<Image> {
-        if id.is_virtual() {
-            // SAFETY:
-            // * The caller must ensure that `id` is valid.
-            // * The caller of `Task::execute` must ensure that `self.resource_map` maps the virtual
-            //   IDs of the graph exhaustively.
-            unsafe { self.resource_map.image_unchecked(id) }.image()
-        } else {
-            let resources = self.resource_map.resources();
+        let resources = self.resource_map.resources();
+        let guard = self.resource_map.guard();
 
-            // SAFETY: The caller must ensure that `id` is valid.
-            unsafe { resources.image_unchecked_protected(id, self.resource_map.guard()) }.image()
+        if id.is::<Image>() {
+            if id.is_virtual() {
+                // SAFETY:
+                // * The caller must ensure that `id` is valid.
+                // * The caller of `Task::execute` must ensure that `self.resource_map` maps the
+                //   virtual IDs of the graph exhaustively.
+                unsafe { self.resource_map.image_unchecked(id) }.image()
+            } else {
+                // SAFETY: The caller must ensure that `id` is valid.
+                unsafe { resources.image_unchecked_protected(id, guard) }.image()
+            }
+        } else {
+            // SAFETY: An `Id<Image>` can only be an image or swapchain ID.
+            let id = unsafe { id.parametrize() };
+
+            if id.is_virtual() {
+                // SAFETY:
+                // * The caller must ensure that `id` is valid.
+                // * The caller of `Task::execute` must ensure that `self.resource_map` maps the
+                //   virtual IDs of the graph exhaustively.
+                unsafe { self.resource_map.swapchain_unchecked(id) }.current_image()
+            } else {
+                // SAFETY: The caller must ensure that `id` is valid.
+                unsafe { resources.swapchain_unchecked_protected(id, guard) }.current_image()
+            }
         }
     }
 }
