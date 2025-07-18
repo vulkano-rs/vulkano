@@ -18,6 +18,7 @@ Global changes:
 - Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
 - Where `Range` and `RangeInclusive` were previously used in parameters, two separate parameters for the offset/base and size/count are now used instead to match Vulkan.
 - All structs containing `ImageSubresourceLayers` and `ImageSubresourceRange` now use `Default::default()` as the default value for that field, instead of an empty value (all zeroes).
+- `DeviceFeatures`, `DeviceExtensions` and `InstanceExtensions` now implement `IntoIterator` by reference instead of by value and the `IntoIter` associated type is now an opaque type.
 
 Changes to images:
 - `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
