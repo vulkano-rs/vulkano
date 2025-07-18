@@ -4,6 +4,7 @@
 
 ///List of instance extensions that are enabled or available.
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct InstanceExtensions {
     ///- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
     ///- Requires:
@@ -155,483 +156,120 @@ pub struct InstanceExtensions {
     pub _ne: crate::NonExhaustive<'static>,
 }
 impl InstanceExtensions {
+    const COUNT: usize = 39usize;
+    const NAMES_C: [&std::ffi::CStr; Self::COUNT] = [
+        c"VK_KHR_android_surface",
+        c"VK_KHR_device_group_creation",
+        c"VK_KHR_display",
+        c"VK_KHR_external_fence_capabilities",
+        c"VK_KHR_external_memory_capabilities",
+        c"VK_KHR_external_semaphore_capabilities",
+        c"VK_KHR_get_display_properties2",
+        c"VK_KHR_get_physical_device_properties2",
+        c"VK_KHR_get_surface_capabilities2",
+        c"VK_KHR_portability_enumeration",
+        c"VK_KHR_surface",
+        c"VK_KHR_surface_protected_capabilities",
+        c"VK_KHR_wayland_surface",
+        c"VK_KHR_win32_surface",
+        c"VK_KHR_xcb_surface",
+        c"VK_KHR_xlib_surface",
+        c"VK_EXT_acquire_drm_display",
+        c"VK_EXT_acquire_xlib_display",
+        c"VK_EXT_debug_report",
+        c"VK_EXT_debug_utils",
+        c"VK_EXT_direct_mode_display",
+        c"VK_EXT_directfb_surface",
+        c"VK_EXT_display_surface_counter",
+        c"VK_EXT_headless_surface",
+        c"VK_EXT_layer_settings",
+        c"VK_EXT_metal_surface",
+        c"VK_EXT_surface_maintenance1",
+        c"VK_EXT_swapchain_colorspace",
+        c"VK_EXT_validation_features",
+        c"VK_EXT_validation_flags",
+        c"VK_FUCHSIA_imagepipe_surface",
+        c"VK_GGP_stream_descriptor_surface",
+        c"VK_GOOGLE_surfaceless_query",
+        c"VK_LUNARG_direct_driver_loading",
+        c"VK_MVK_ios_surface",
+        c"VK_MVK_macos_surface",
+        c"VK_NN_vi_surface",
+        c"VK_NV_external_memory_capabilities",
+        c"VK_QNX_screen_surface",
+    ];
     ///Returns a `InstanceExtensions` with none of the members set.
     #[inline]
     pub const fn empty() -> Self {
-        Self {
-            khr_android_surface: false,
-            khr_device_group_creation: false,
-            khr_display: false,
-            khr_external_fence_capabilities: false,
-            khr_external_memory_capabilities: false,
-            khr_external_semaphore_capabilities: false,
-            khr_get_display_properties2: false,
-            khr_get_physical_device_properties2: false,
-            khr_get_surface_capabilities2: false,
-            khr_portability_enumeration: false,
-            khr_surface: false,
-            khr_surface_protected_capabilities: false,
-            khr_wayland_surface: false,
-            khr_win32_surface: false,
-            khr_xcb_surface: false,
-            khr_xlib_surface: false,
-            ext_acquire_drm_display: false,
-            ext_acquire_xlib_display: false,
-            ext_debug_report: false,
-            ext_debug_utils: false,
-            ext_direct_mode_display: false,
-            ext_directfb_surface: false,
-            ext_display_surface_counter: false,
-            ext_headless_surface: false,
-            ext_layer_settings: false,
-            ext_metal_surface: false,
-            ext_surface_maintenance1: false,
-            ext_swapchain_colorspace: false,
-            ext_validation_features: false,
-            ext_validation_flags: false,
-            fuchsia_imagepipe_surface: false,
-            ggp_stream_descriptor_surface: false,
-            google_surfaceless_query: false,
-            lunarg_direct_driver_loading: false,
-            mvk_ios_surface: false,
-            mvk_macos_surface: false,
-            nn_vi_surface: false,
-            nv_external_memory_capabilities: false,
-            qnx_screen_surface: false,
-            _ne: crate::NE,
-        }
+        Self::from_array([false; Self::COUNT])
     }
     /// Returns the number of members set in self.
     #[inline]
     pub const fn count(self) -> u64 {
-        self.khr_android_surface as u64 + self.khr_device_group_creation as u64
-            + self.khr_display as u64 + self.khr_external_fence_capabilities as u64
-            + self.khr_external_memory_capabilities as u64
-            + self.khr_external_semaphore_capabilities as u64
-            + self.khr_get_display_properties2 as u64
-            + self.khr_get_physical_device_properties2 as u64
-            + self.khr_get_surface_capabilities2 as u64
-            + self.khr_portability_enumeration as u64 + self.khr_surface as u64
-            + self.khr_surface_protected_capabilities as u64
-            + self.khr_wayland_surface as u64 + self.khr_win32_surface as u64
-            + self.khr_xcb_surface as u64 + self.khr_xlib_surface as u64
-            + self.ext_acquire_drm_display as u64 + self.ext_acquire_xlib_display as u64
-            + self.ext_debug_report as u64 + self.ext_debug_utils as u64
-            + self.ext_direct_mode_display as u64 + self.ext_directfb_surface as u64
-            + self.ext_display_surface_counter as u64 + self.ext_headless_surface as u64
-            + self.ext_layer_settings as u64 + self.ext_metal_surface as u64
-            + self.ext_surface_maintenance1 as u64 + self.ext_swapchain_colorspace as u64
-            + self.ext_validation_features as u64 + self.ext_validation_flags as u64
-            + self.fuchsia_imagepipe_surface as u64
-            + self.ggp_stream_descriptor_surface as u64
-            + self.google_surfaceless_query as u64
-            + self.lunarg_direct_driver_loading as u64 + self.mvk_ios_surface as u64
-            + self.mvk_macos_surface as u64 + self.nn_vi_surface as u64
-            + self.nv_external_memory_capabilities as u64
-            + self.qnx_screen_surface as u64
+        crate::array_count(self.as_array()) as u64
     }
     /// Returns whether no members are set in `self`.
     #[inline]
     pub const fn is_empty(self) -> bool {
-        !(self.khr_android_surface || self.khr_device_group_creation || self.khr_display
-            || self.khr_external_fence_capabilities
-            || self.khr_external_memory_capabilities
-            || self.khr_external_semaphore_capabilities
-            || self.khr_get_display_properties2
-            || self.khr_get_physical_device_properties2
-            || self.khr_get_surface_capabilities2 || self.khr_portability_enumeration
-            || self.khr_surface || self.khr_surface_protected_capabilities
-            || self.khr_wayland_surface || self.khr_win32_surface || self.khr_xcb_surface
-            || self.khr_xlib_surface || self.ext_acquire_drm_display
-            || self.ext_acquire_xlib_display || self.ext_debug_report
-            || self.ext_debug_utils || self.ext_direct_mode_display
-            || self.ext_directfb_surface || self.ext_display_surface_counter
-            || self.ext_headless_surface || self.ext_layer_settings
-            || self.ext_metal_surface || self.ext_surface_maintenance1
-            || self.ext_swapchain_colorspace || self.ext_validation_features
-            || self.ext_validation_flags || self.fuchsia_imagepipe_surface
-            || self.ggp_stream_descriptor_surface || self.google_surfaceless_query
-            || self.lunarg_direct_driver_loading || self.mvk_ios_surface
-            || self.mvk_macos_surface || self.nn_vi_surface
-            || self.nv_external_memory_capabilities || self.qnx_screen_surface)
+        crate::array_is_empty(self.as_array())
     }
     /// Returns whether any members are set in both `self` and `other`.
     #[inline]
     pub const fn intersects(&self, other: &Self) -> bool {
-        (self.khr_android_surface && other.khr_android_surface)
-            || (self.khr_device_group_creation && other.khr_device_group_creation)
-            || (self.khr_display && other.khr_display)
-            || (self.khr_external_fence_capabilities
-                && other.khr_external_fence_capabilities)
-            || (self.khr_external_memory_capabilities
-                && other.khr_external_memory_capabilities)
-            || (self.khr_external_semaphore_capabilities
-                && other.khr_external_semaphore_capabilities)
-            || (self.khr_get_display_properties2 && other.khr_get_display_properties2)
-            || (self.khr_get_physical_device_properties2
-                && other.khr_get_physical_device_properties2)
-            || (self.khr_get_surface_capabilities2
-                && other.khr_get_surface_capabilities2)
-            || (self.khr_portability_enumeration && other.khr_portability_enumeration)
-            || (self.khr_surface && other.khr_surface)
-            || (self.khr_surface_protected_capabilities
-                && other.khr_surface_protected_capabilities)
-            || (self.khr_wayland_surface && other.khr_wayland_surface)
-            || (self.khr_win32_surface && other.khr_win32_surface)
-            || (self.khr_xcb_surface && other.khr_xcb_surface)
-            || (self.khr_xlib_surface && other.khr_xlib_surface)
-            || (self.ext_acquire_drm_display && other.ext_acquire_drm_display)
-            || (self.ext_acquire_xlib_display && other.ext_acquire_xlib_display)
-            || (self.ext_debug_report && other.ext_debug_report)
-            || (self.ext_debug_utils && other.ext_debug_utils)
-            || (self.ext_direct_mode_display && other.ext_direct_mode_display)
-            || (self.ext_directfb_surface && other.ext_directfb_surface)
-            || (self.ext_display_surface_counter && other.ext_display_surface_counter)
-            || (self.ext_headless_surface && other.ext_headless_surface)
-            || (self.ext_layer_settings && other.ext_layer_settings)
-            || (self.ext_metal_surface && other.ext_metal_surface)
-            || (self.ext_surface_maintenance1 && other.ext_surface_maintenance1)
-            || (self.ext_swapchain_colorspace && other.ext_swapchain_colorspace)
-            || (self.ext_validation_features && other.ext_validation_features)
-            || (self.ext_validation_flags && other.ext_validation_flags)
-            || (self.fuchsia_imagepipe_surface && other.fuchsia_imagepipe_surface)
-            || (self.ggp_stream_descriptor_surface
-                && other.ggp_stream_descriptor_surface)
-            || (self.google_surfaceless_query && other.google_surfaceless_query)
-            || (self.lunarg_direct_driver_loading && other.lunarg_direct_driver_loading)
-            || (self.mvk_ios_surface && other.mvk_ios_surface)
-            || (self.mvk_macos_surface && other.mvk_macos_surface)
-            || (self.nn_vi_surface && other.nn_vi_surface)
-            || (self.nv_external_memory_capabilities
-                && other.nv_external_memory_capabilities)
-            || (self.qnx_screen_surface && other.qnx_screen_surface)
+        crate::array_intersects(self.as_array(), other.as_array())
     }
     /// Returns whether all members in `other` are set in `self`.
     #[inline]
     pub const fn contains(&self, other: &Self) -> bool {
-        (self.khr_android_surface || !other.khr_android_surface)
-            && (self.khr_device_group_creation || !other.khr_device_group_creation)
-            && (self.khr_display || !other.khr_display)
-            && (self.khr_external_fence_capabilities
-                || !other.khr_external_fence_capabilities)
-            && (self.khr_external_memory_capabilities
-                || !other.khr_external_memory_capabilities)
-            && (self.khr_external_semaphore_capabilities
-                || !other.khr_external_semaphore_capabilities)
-            && (self.khr_get_display_properties2 || !other.khr_get_display_properties2)
-            && (self.khr_get_physical_device_properties2
-                || !other.khr_get_physical_device_properties2)
-            && (self.khr_get_surface_capabilities2
-                || !other.khr_get_surface_capabilities2)
-            && (self.khr_portability_enumeration || !other.khr_portability_enumeration)
-            && (self.khr_surface || !other.khr_surface)
-            && (self.khr_surface_protected_capabilities
-                || !other.khr_surface_protected_capabilities)
-            && (self.khr_wayland_surface || !other.khr_wayland_surface)
-            && (self.khr_win32_surface || !other.khr_win32_surface)
-            && (self.khr_xcb_surface || !other.khr_xcb_surface)
-            && (self.khr_xlib_surface || !other.khr_xlib_surface)
-            && (self.ext_acquire_drm_display || !other.ext_acquire_drm_display)
-            && (self.ext_acquire_xlib_display || !other.ext_acquire_xlib_display)
-            && (self.ext_debug_report || !other.ext_debug_report)
-            && (self.ext_debug_utils || !other.ext_debug_utils)
-            && (self.ext_direct_mode_display || !other.ext_direct_mode_display)
-            && (self.ext_directfb_surface || !other.ext_directfb_surface)
-            && (self.ext_display_surface_counter || !other.ext_display_surface_counter)
-            && (self.ext_headless_surface || !other.ext_headless_surface)
-            && (self.ext_layer_settings || !other.ext_layer_settings)
-            && (self.ext_metal_surface || !other.ext_metal_surface)
-            && (self.ext_surface_maintenance1 || !other.ext_surface_maintenance1)
-            && (self.ext_swapchain_colorspace || !other.ext_swapchain_colorspace)
-            && (self.ext_validation_features || !other.ext_validation_features)
-            && (self.ext_validation_flags || !other.ext_validation_flags)
-            && (self.fuchsia_imagepipe_surface || !other.fuchsia_imagepipe_surface)
-            && (self.ggp_stream_descriptor_surface
-                || !other.ggp_stream_descriptor_surface)
-            && (self.google_surfaceless_query || !other.google_surfaceless_query)
-            && (self.lunarg_direct_driver_loading || !other.lunarg_direct_driver_loading)
-            && (self.mvk_ios_surface || !other.mvk_ios_surface)
-            && (self.mvk_macos_surface || !other.mvk_macos_surface)
-            && (self.nn_vi_surface || !other.nn_vi_surface)
-            && (self.nv_external_memory_capabilities
-                || !other.nv_external_memory_capabilities)
-            && (self.qnx_screen_surface || !other.qnx_screen_surface)
+        crate::array_contains(self.as_array(), other.as_array())
     }
     /// Returns the union of `self` and `other`.
     #[inline]
     pub const fn union(&self, other: &Self) -> Self {
-        Self {
-            khr_android_surface: self.khr_android_surface || other.khr_android_surface,
-            khr_device_group_creation: self.khr_device_group_creation
-                || other.khr_device_group_creation,
-            khr_display: self.khr_display || other.khr_display,
-            khr_external_fence_capabilities: self.khr_external_fence_capabilities
-                || other.khr_external_fence_capabilities,
-            khr_external_memory_capabilities: self.khr_external_memory_capabilities
-                || other.khr_external_memory_capabilities,
-            khr_external_semaphore_capabilities: self.khr_external_semaphore_capabilities
-                || other.khr_external_semaphore_capabilities,
-            khr_get_display_properties2: self.khr_get_display_properties2
-                || other.khr_get_display_properties2,
-            khr_get_physical_device_properties2: self.khr_get_physical_device_properties2
-                || other.khr_get_physical_device_properties2,
-            khr_get_surface_capabilities2: self.khr_get_surface_capabilities2
-                || other.khr_get_surface_capabilities2,
-            khr_portability_enumeration: self.khr_portability_enumeration
-                || other.khr_portability_enumeration,
-            khr_surface: self.khr_surface || other.khr_surface,
-            khr_surface_protected_capabilities: self.khr_surface_protected_capabilities
-                || other.khr_surface_protected_capabilities,
-            khr_wayland_surface: self.khr_wayland_surface || other.khr_wayland_surface,
-            khr_win32_surface: self.khr_win32_surface || other.khr_win32_surface,
-            khr_xcb_surface: self.khr_xcb_surface || other.khr_xcb_surface,
-            khr_xlib_surface: self.khr_xlib_surface || other.khr_xlib_surface,
-            ext_acquire_drm_display: self.ext_acquire_drm_display
-                || other.ext_acquire_drm_display,
-            ext_acquire_xlib_display: self.ext_acquire_xlib_display
-                || other.ext_acquire_xlib_display,
-            ext_debug_report: self.ext_debug_report || other.ext_debug_report,
-            ext_debug_utils: self.ext_debug_utils || other.ext_debug_utils,
-            ext_direct_mode_display: self.ext_direct_mode_display
-                || other.ext_direct_mode_display,
-            ext_directfb_surface: self.ext_directfb_surface
-                || other.ext_directfb_surface,
-            ext_display_surface_counter: self.ext_display_surface_counter
-                || other.ext_display_surface_counter,
-            ext_headless_surface: self.ext_headless_surface
-                || other.ext_headless_surface,
-            ext_layer_settings: self.ext_layer_settings || other.ext_layer_settings,
-            ext_metal_surface: self.ext_metal_surface || other.ext_metal_surface,
-            ext_surface_maintenance1: self.ext_surface_maintenance1
-                || other.ext_surface_maintenance1,
-            ext_swapchain_colorspace: self.ext_swapchain_colorspace
-                || other.ext_swapchain_colorspace,
-            ext_validation_features: self.ext_validation_features
-                || other.ext_validation_features,
-            ext_validation_flags: self.ext_validation_flags
-                || other.ext_validation_flags,
-            fuchsia_imagepipe_surface: self.fuchsia_imagepipe_surface
-                || other.fuchsia_imagepipe_surface,
-            ggp_stream_descriptor_surface: self.ggp_stream_descriptor_surface
-                || other.ggp_stream_descriptor_surface,
-            google_surfaceless_query: self.google_surfaceless_query
-                || other.google_surfaceless_query,
-            lunarg_direct_driver_loading: self.lunarg_direct_driver_loading
-                || other.lunarg_direct_driver_loading,
-            mvk_ios_surface: self.mvk_ios_surface || other.mvk_ios_surface,
-            mvk_macos_surface: self.mvk_macos_surface || other.mvk_macos_surface,
-            nn_vi_surface: self.nn_vi_surface || other.nn_vi_surface,
-            nv_external_memory_capabilities: self.nv_external_memory_capabilities
-                || other.nv_external_memory_capabilities,
-            qnx_screen_surface: self.qnx_screen_surface || other.qnx_screen_surface,
-            _ne: crate::NE,
-        }
+        Self::from_array(crate::array_union(self.as_array(), other.as_array()))
     }
     /// Returns the intersection of `self` and `other`.
     #[inline]
     pub const fn intersection(&self, other: &Self) -> Self {
-        Self {
-            khr_android_surface: self.khr_android_surface && other.khr_android_surface,
-            khr_device_group_creation: self.khr_device_group_creation
-                && other.khr_device_group_creation,
-            khr_display: self.khr_display && other.khr_display,
-            khr_external_fence_capabilities: self.khr_external_fence_capabilities
-                && other.khr_external_fence_capabilities,
-            khr_external_memory_capabilities: self.khr_external_memory_capabilities
-                && other.khr_external_memory_capabilities,
-            khr_external_semaphore_capabilities: self.khr_external_semaphore_capabilities
-                && other.khr_external_semaphore_capabilities,
-            khr_get_display_properties2: self.khr_get_display_properties2
-                && other.khr_get_display_properties2,
-            khr_get_physical_device_properties2: self.khr_get_physical_device_properties2
-                && other.khr_get_physical_device_properties2,
-            khr_get_surface_capabilities2: self.khr_get_surface_capabilities2
-                && other.khr_get_surface_capabilities2,
-            khr_portability_enumeration: self.khr_portability_enumeration
-                && other.khr_portability_enumeration,
-            khr_surface: self.khr_surface && other.khr_surface,
-            khr_surface_protected_capabilities: self.khr_surface_protected_capabilities
-                && other.khr_surface_protected_capabilities,
-            khr_wayland_surface: self.khr_wayland_surface && other.khr_wayland_surface,
-            khr_win32_surface: self.khr_win32_surface && other.khr_win32_surface,
-            khr_xcb_surface: self.khr_xcb_surface && other.khr_xcb_surface,
-            khr_xlib_surface: self.khr_xlib_surface && other.khr_xlib_surface,
-            ext_acquire_drm_display: self.ext_acquire_drm_display
-                && other.ext_acquire_drm_display,
-            ext_acquire_xlib_display: self.ext_acquire_xlib_display
-                && other.ext_acquire_xlib_display,
-            ext_debug_report: self.ext_debug_report && other.ext_debug_report,
-            ext_debug_utils: self.ext_debug_utils && other.ext_debug_utils,
-            ext_direct_mode_display: self.ext_direct_mode_display
-                && other.ext_direct_mode_display,
-            ext_directfb_surface: self.ext_directfb_surface
-                && other.ext_directfb_surface,
-            ext_display_surface_counter: self.ext_display_surface_counter
-                && other.ext_display_surface_counter,
-            ext_headless_surface: self.ext_headless_surface
-                && other.ext_headless_surface,
-            ext_layer_settings: self.ext_layer_settings && other.ext_layer_settings,
-            ext_metal_surface: self.ext_metal_surface && other.ext_metal_surface,
-            ext_surface_maintenance1: self.ext_surface_maintenance1
-                && other.ext_surface_maintenance1,
-            ext_swapchain_colorspace: self.ext_swapchain_colorspace
-                && other.ext_swapchain_colorspace,
-            ext_validation_features: self.ext_validation_features
-                && other.ext_validation_features,
-            ext_validation_flags: self.ext_validation_flags
-                && other.ext_validation_flags,
-            fuchsia_imagepipe_surface: self.fuchsia_imagepipe_surface
-                && other.fuchsia_imagepipe_surface,
-            ggp_stream_descriptor_surface: self.ggp_stream_descriptor_surface
-                && other.ggp_stream_descriptor_surface,
-            google_surfaceless_query: self.google_surfaceless_query
-                && other.google_surfaceless_query,
-            lunarg_direct_driver_loading: self.lunarg_direct_driver_loading
-                && other.lunarg_direct_driver_loading,
-            mvk_ios_surface: self.mvk_ios_surface && other.mvk_ios_surface,
-            mvk_macos_surface: self.mvk_macos_surface && other.mvk_macos_surface,
-            nn_vi_surface: self.nn_vi_surface && other.nn_vi_surface,
-            nv_external_memory_capabilities: self.nv_external_memory_capabilities
-                && other.nv_external_memory_capabilities,
-            qnx_screen_surface: self.qnx_screen_surface && other.qnx_screen_surface,
-            _ne: crate::NE,
-        }
+        Self::from_array(crate::array_intersection(self.as_array(), other.as_array()))
     }
     /// Returns `self` without the members set in `other`.
     #[inline]
     pub const fn difference(&self, other: &Self) -> Self {
-        Self {
-            khr_android_surface: self.khr_android_surface && !other.khr_android_surface,
-            khr_device_group_creation: self.khr_device_group_creation
-                && !other.khr_device_group_creation,
-            khr_display: self.khr_display && !other.khr_display,
-            khr_external_fence_capabilities: self.khr_external_fence_capabilities
-                && !other.khr_external_fence_capabilities,
-            khr_external_memory_capabilities: self.khr_external_memory_capabilities
-                && !other.khr_external_memory_capabilities,
-            khr_external_semaphore_capabilities: self.khr_external_semaphore_capabilities
-                && !other.khr_external_semaphore_capabilities,
-            khr_get_display_properties2: self.khr_get_display_properties2
-                && !other.khr_get_display_properties2,
-            khr_get_physical_device_properties2: self.khr_get_physical_device_properties2
-                && !other.khr_get_physical_device_properties2,
-            khr_get_surface_capabilities2: self.khr_get_surface_capabilities2
-                && !other.khr_get_surface_capabilities2,
-            khr_portability_enumeration: self.khr_portability_enumeration
-                && !other.khr_portability_enumeration,
-            khr_surface: self.khr_surface && !other.khr_surface,
-            khr_surface_protected_capabilities: self.khr_surface_protected_capabilities
-                && !other.khr_surface_protected_capabilities,
-            khr_wayland_surface: self.khr_wayland_surface && !other.khr_wayland_surface,
-            khr_win32_surface: self.khr_win32_surface && !other.khr_win32_surface,
-            khr_xcb_surface: self.khr_xcb_surface && !other.khr_xcb_surface,
-            khr_xlib_surface: self.khr_xlib_surface && !other.khr_xlib_surface,
-            ext_acquire_drm_display: self.ext_acquire_drm_display
-                && !other.ext_acquire_drm_display,
-            ext_acquire_xlib_display: self.ext_acquire_xlib_display
-                && !other.ext_acquire_xlib_display,
-            ext_debug_report: self.ext_debug_report && !other.ext_debug_report,
-            ext_debug_utils: self.ext_debug_utils && !other.ext_debug_utils,
-            ext_direct_mode_display: self.ext_direct_mode_display
-                && !other.ext_direct_mode_display,
-            ext_directfb_surface: self.ext_directfb_surface
-                && !other.ext_directfb_surface,
-            ext_display_surface_counter: self.ext_display_surface_counter
-                && !other.ext_display_surface_counter,
-            ext_headless_surface: self.ext_headless_surface
-                && !other.ext_headless_surface,
-            ext_layer_settings: self.ext_layer_settings && !other.ext_layer_settings,
-            ext_metal_surface: self.ext_metal_surface && !other.ext_metal_surface,
-            ext_surface_maintenance1: self.ext_surface_maintenance1
-                && !other.ext_surface_maintenance1,
-            ext_swapchain_colorspace: self.ext_swapchain_colorspace
-                && !other.ext_swapchain_colorspace,
-            ext_validation_features: self.ext_validation_features
-                && !other.ext_validation_features,
-            ext_validation_flags: self.ext_validation_flags
-                && !other.ext_validation_flags,
-            fuchsia_imagepipe_surface: self.fuchsia_imagepipe_surface
-                && !other.fuchsia_imagepipe_surface,
-            ggp_stream_descriptor_surface: self.ggp_stream_descriptor_surface
-                && !other.ggp_stream_descriptor_surface,
-            google_surfaceless_query: self.google_surfaceless_query
-                && !other.google_surfaceless_query,
-            lunarg_direct_driver_loading: self.lunarg_direct_driver_loading
-                && !other.lunarg_direct_driver_loading,
-            mvk_ios_surface: self.mvk_ios_surface && !other.mvk_ios_surface,
-            mvk_macos_surface: self.mvk_macos_surface && !other.mvk_macos_surface,
-            nn_vi_surface: self.nn_vi_surface && !other.nn_vi_surface,
-            nv_external_memory_capabilities: self.nv_external_memory_capabilities
-                && !other.nv_external_memory_capabilities,
-            qnx_screen_surface: self.qnx_screen_surface && !other.qnx_screen_surface,
-            _ne: crate::NE,
-        }
+        Self::from_array(crate::array_difference(self.as_array(), other.as_array()))
     }
     /// Returns the members set in `self` or `other`, but not both.
     #[inline]
     pub const fn symmetric_difference(&self, other: &Self) -> Self {
-        Self {
-            khr_android_surface: self.khr_android_surface ^ other.khr_android_surface,
-            khr_device_group_creation: self.khr_device_group_creation
-                ^ other.khr_device_group_creation,
-            khr_display: self.khr_display ^ other.khr_display,
-            khr_external_fence_capabilities: self.khr_external_fence_capabilities
-                ^ other.khr_external_fence_capabilities,
-            khr_external_memory_capabilities: self.khr_external_memory_capabilities
-                ^ other.khr_external_memory_capabilities,
-            khr_external_semaphore_capabilities: self.khr_external_semaphore_capabilities
-                ^ other.khr_external_semaphore_capabilities,
-            khr_get_display_properties2: self.khr_get_display_properties2
-                ^ other.khr_get_display_properties2,
-            khr_get_physical_device_properties2: self.khr_get_physical_device_properties2
-                ^ other.khr_get_physical_device_properties2,
-            khr_get_surface_capabilities2: self.khr_get_surface_capabilities2
-                ^ other.khr_get_surface_capabilities2,
-            khr_portability_enumeration: self.khr_portability_enumeration
-                ^ other.khr_portability_enumeration,
-            khr_surface: self.khr_surface ^ other.khr_surface,
-            khr_surface_protected_capabilities: self.khr_surface_protected_capabilities
-                ^ other.khr_surface_protected_capabilities,
-            khr_wayland_surface: self.khr_wayland_surface ^ other.khr_wayland_surface,
-            khr_win32_surface: self.khr_win32_surface ^ other.khr_win32_surface,
-            khr_xcb_surface: self.khr_xcb_surface ^ other.khr_xcb_surface,
-            khr_xlib_surface: self.khr_xlib_surface ^ other.khr_xlib_surface,
-            ext_acquire_drm_display: self.ext_acquire_drm_display
-                ^ other.ext_acquire_drm_display,
-            ext_acquire_xlib_display: self.ext_acquire_xlib_display
-                ^ other.ext_acquire_xlib_display,
-            ext_debug_report: self.ext_debug_report ^ other.ext_debug_report,
-            ext_debug_utils: self.ext_debug_utils ^ other.ext_debug_utils,
-            ext_direct_mode_display: self.ext_direct_mode_display
-                ^ other.ext_direct_mode_display,
-            ext_directfb_surface: self.ext_directfb_surface ^ other.ext_directfb_surface,
-            ext_display_surface_counter: self.ext_display_surface_counter
-                ^ other.ext_display_surface_counter,
-            ext_headless_surface: self.ext_headless_surface ^ other.ext_headless_surface,
-            ext_layer_settings: self.ext_layer_settings ^ other.ext_layer_settings,
-            ext_metal_surface: self.ext_metal_surface ^ other.ext_metal_surface,
-            ext_surface_maintenance1: self.ext_surface_maintenance1
-                ^ other.ext_surface_maintenance1,
-            ext_swapchain_colorspace: self.ext_swapchain_colorspace
-                ^ other.ext_swapchain_colorspace,
-            ext_validation_features: self.ext_validation_features
-                ^ other.ext_validation_features,
-            ext_validation_flags: self.ext_validation_flags ^ other.ext_validation_flags,
-            fuchsia_imagepipe_surface: self.fuchsia_imagepipe_surface
-                ^ other.fuchsia_imagepipe_surface,
-            ggp_stream_descriptor_surface: self.ggp_stream_descriptor_surface
-                ^ other.ggp_stream_descriptor_surface,
-            google_surfaceless_query: self.google_surfaceless_query
-                ^ other.google_surfaceless_query,
-            lunarg_direct_driver_loading: self.lunarg_direct_driver_loading
-                ^ other.lunarg_direct_driver_loading,
-            mvk_ios_surface: self.mvk_ios_surface ^ other.mvk_ios_surface,
-            mvk_macos_surface: self.mvk_macos_surface ^ other.mvk_macos_surface,
-            nn_vi_surface: self.nn_vi_surface ^ other.nn_vi_surface,
-            nv_external_memory_capabilities: self.nv_external_memory_capabilities
-                ^ other.nv_external_memory_capabilities,
-            qnx_screen_surface: self.qnx_screen_surface ^ other.qnx_screen_surface,
-            _ne: crate::NE,
+        Self::from_array(
+            crate::array_symmetric_difference(self.as_array(), other.as_array()),
+        )
+    }
+    #[inline]
+    const fn from_array(array: [bool; Self::COUNT]) -> Self {
+        unsafe {
+            ::std::mem::transmute::<[bool; Self::COUNT], InstanceExtensions>(array)
+        }
+    }
+    #[inline]
+    const fn as_array(&self) -> &[bool; Self::COUNT] {
+        unsafe {
+            ::std::mem::transmute::<&InstanceExtensions, &[bool; Self::COUNT]>(self)
+        }
+    }
+    #[inline]
+    const fn as_mut_array(&mut self) -> &mut [bool; Self::COUNT] {
+        unsafe {
+            ::std::mem::transmute::<
+                &mut InstanceExtensions,
+                &mut [bool; Self::COUNT],
+            >(self)
+        }
+    }
+    #[inline]
+    fn iter(&self) -> extensions::Iter<'_> {
+        extensions::Iter {
+            inner: Self::NAMES_C.iter().copied().zip(self.as_array().iter().copied()),
         }
     }
     pub(crate) fn validate(
@@ -1245,127 +883,13 @@ impl InstanceExtensions {
         enabled
     }
     pub(crate) fn from_vk<'a>(iter: impl IntoIterator<Item = &'a str>) -> Self {
+        let names = Self::NAMES_C
+            .iter()
+            .map(|name| unsafe { std::str::from_utf8_unchecked(name.to_bytes()) });
         let mut val = Self::empty();
         for name in iter {
-            match name {
-                "VK_KHR_android_surface" => {
-                    val.khr_android_surface = true;
-                }
-                "VK_KHR_device_group_creation" => {
-                    val.khr_device_group_creation = true;
-                }
-                "VK_KHR_display" => {
-                    val.khr_display = true;
-                }
-                "VK_KHR_external_fence_capabilities" => {
-                    val.khr_external_fence_capabilities = true;
-                }
-                "VK_KHR_external_memory_capabilities" => {
-                    val.khr_external_memory_capabilities = true;
-                }
-                "VK_KHR_external_semaphore_capabilities" => {
-                    val.khr_external_semaphore_capabilities = true;
-                }
-                "VK_KHR_get_display_properties2" => {
-                    val.khr_get_display_properties2 = true;
-                }
-                "VK_KHR_get_physical_device_properties2" => {
-                    val.khr_get_physical_device_properties2 = true;
-                }
-                "VK_KHR_get_surface_capabilities2" => {
-                    val.khr_get_surface_capabilities2 = true;
-                }
-                "VK_KHR_portability_enumeration" => {
-                    val.khr_portability_enumeration = true;
-                }
-                "VK_KHR_surface" => {
-                    val.khr_surface = true;
-                }
-                "VK_KHR_surface_protected_capabilities" => {
-                    val.khr_surface_protected_capabilities = true;
-                }
-                "VK_KHR_wayland_surface" => {
-                    val.khr_wayland_surface = true;
-                }
-                "VK_KHR_win32_surface" => {
-                    val.khr_win32_surface = true;
-                }
-                "VK_KHR_xcb_surface" => {
-                    val.khr_xcb_surface = true;
-                }
-                "VK_KHR_xlib_surface" => {
-                    val.khr_xlib_surface = true;
-                }
-                "VK_EXT_acquire_drm_display" => {
-                    val.ext_acquire_drm_display = true;
-                }
-                "VK_EXT_acquire_xlib_display" => {
-                    val.ext_acquire_xlib_display = true;
-                }
-                "VK_EXT_debug_report" => {
-                    val.ext_debug_report = true;
-                }
-                "VK_EXT_debug_utils" => {
-                    val.ext_debug_utils = true;
-                }
-                "VK_EXT_direct_mode_display" => {
-                    val.ext_direct_mode_display = true;
-                }
-                "VK_EXT_directfb_surface" => {
-                    val.ext_directfb_surface = true;
-                }
-                "VK_EXT_display_surface_counter" => {
-                    val.ext_display_surface_counter = true;
-                }
-                "VK_EXT_headless_surface" => {
-                    val.ext_headless_surface = true;
-                }
-                "VK_EXT_layer_settings" => {
-                    val.ext_layer_settings = true;
-                }
-                "VK_EXT_metal_surface" => {
-                    val.ext_metal_surface = true;
-                }
-                "VK_EXT_surface_maintenance1" => {
-                    val.ext_surface_maintenance1 = true;
-                }
-                "VK_EXT_swapchain_colorspace" => {
-                    val.ext_swapchain_colorspace = true;
-                }
-                "VK_EXT_validation_features" => {
-                    val.ext_validation_features = true;
-                }
-                "VK_EXT_validation_flags" => {
-                    val.ext_validation_flags = true;
-                }
-                "VK_FUCHSIA_imagepipe_surface" => {
-                    val.fuchsia_imagepipe_surface = true;
-                }
-                "VK_GGP_stream_descriptor_surface" => {
-                    val.ggp_stream_descriptor_surface = true;
-                }
-                "VK_GOOGLE_surfaceless_query" => {
-                    val.google_surfaceless_query = true;
-                }
-                "VK_LUNARG_direct_driver_loading" => {
-                    val.lunarg_direct_driver_loading = true;
-                }
-                "VK_MVK_ios_surface" => {
-                    val.mvk_ios_surface = true;
-                }
-                "VK_MVK_macos_surface" => {
-                    val.mvk_macos_surface = true;
-                }
-                "VK_NN_vi_surface" => {
-                    val.nn_vi_surface = true;
-                }
-                "VK_NV_external_memory_capabilities" => {
-                    val.nv_external_memory_capabilities = true;
-                }
-                "VK_QNX_screen_surface" => {
-                    val.qnx_screen_surface = true;
-                }
-                _ => {}
+            if let Some(index) = names.clone().position(|n| n == name) {
+                val.as_mut_array()[index] = true;
             }
         }
         val
@@ -1373,444 +897,25 @@ impl InstanceExtensions {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_vk(&self) -> Vec<&'static CStr> {
         let mut val_vk = Vec::new();
-        if self.khr_android_surface {
-            val_vk.push(c"VK_KHR_android_surface");
-        }
-        if self.khr_device_group_creation {
-            val_vk.push(c"VK_KHR_device_group_creation");
-        }
-        if self.khr_display {
-            val_vk.push(c"VK_KHR_display");
-        }
-        if self.khr_external_fence_capabilities {
-            val_vk.push(c"VK_KHR_external_fence_capabilities");
-        }
-        if self.khr_external_memory_capabilities {
-            val_vk.push(c"VK_KHR_external_memory_capabilities");
-        }
-        if self.khr_external_semaphore_capabilities {
-            val_vk.push(c"VK_KHR_external_semaphore_capabilities");
-        }
-        if self.khr_get_display_properties2 {
-            val_vk.push(c"VK_KHR_get_display_properties2");
-        }
-        if self.khr_get_physical_device_properties2 {
-            val_vk.push(c"VK_KHR_get_physical_device_properties2");
-        }
-        if self.khr_get_surface_capabilities2 {
-            val_vk.push(c"VK_KHR_get_surface_capabilities2");
-        }
-        if self.khr_portability_enumeration {
-            val_vk.push(c"VK_KHR_portability_enumeration");
-        }
-        if self.khr_surface {
-            val_vk.push(c"VK_KHR_surface");
-        }
-        if self.khr_surface_protected_capabilities {
-            val_vk.push(c"VK_KHR_surface_protected_capabilities");
-        }
-        if self.khr_wayland_surface {
-            val_vk.push(c"VK_KHR_wayland_surface");
-        }
-        if self.khr_win32_surface {
-            val_vk.push(c"VK_KHR_win32_surface");
-        }
-        if self.khr_xcb_surface {
-            val_vk.push(c"VK_KHR_xcb_surface");
-        }
-        if self.khr_xlib_surface {
-            val_vk.push(c"VK_KHR_xlib_surface");
-        }
-        if self.ext_acquire_drm_display {
-            val_vk.push(c"VK_EXT_acquire_drm_display");
-        }
-        if self.ext_acquire_xlib_display {
-            val_vk.push(c"VK_EXT_acquire_xlib_display");
-        }
-        if self.ext_debug_report {
-            val_vk.push(c"VK_EXT_debug_report");
-        }
-        if self.ext_debug_utils {
-            val_vk.push(c"VK_EXT_debug_utils");
-        }
-        if self.ext_direct_mode_display {
-            val_vk.push(c"VK_EXT_direct_mode_display");
-        }
-        if self.ext_directfb_surface {
-            val_vk.push(c"VK_EXT_directfb_surface");
-        }
-        if self.ext_display_surface_counter {
-            val_vk.push(c"VK_EXT_display_surface_counter");
-        }
-        if self.ext_headless_surface {
-            val_vk.push(c"VK_EXT_headless_surface");
-        }
-        if self.ext_layer_settings {
-            val_vk.push(c"VK_EXT_layer_settings");
-        }
-        if self.ext_metal_surface {
-            val_vk.push(c"VK_EXT_metal_surface");
-        }
-        if self.ext_surface_maintenance1 {
-            val_vk.push(c"VK_EXT_surface_maintenance1");
-        }
-        if self.ext_swapchain_colorspace {
-            val_vk.push(c"VK_EXT_swapchain_colorspace");
-        }
-        if self.ext_validation_features {
-            val_vk.push(c"VK_EXT_validation_features");
-        }
-        if self.ext_validation_flags {
-            val_vk.push(c"VK_EXT_validation_flags");
-        }
-        if self.fuchsia_imagepipe_surface {
-            val_vk.push(c"VK_FUCHSIA_imagepipe_surface");
-        }
-        if self.ggp_stream_descriptor_surface {
-            val_vk.push(c"VK_GGP_stream_descriptor_surface");
-        }
-        if self.google_surfaceless_query {
-            val_vk.push(c"VK_GOOGLE_surfaceless_query");
-        }
-        if self.lunarg_direct_driver_loading {
-            val_vk.push(c"VK_LUNARG_direct_driver_loading");
-        }
-        if self.mvk_ios_surface {
-            val_vk.push(c"VK_MVK_ios_surface");
-        }
-        if self.mvk_macos_surface {
-            val_vk.push(c"VK_MVK_macos_surface");
-        }
-        if self.nn_vi_surface {
-            val_vk.push(c"VK_NN_vi_surface");
-        }
-        if self.nv_external_memory_capabilities {
-            val_vk.push(c"VK_NV_external_memory_capabilities");
-        }
-        if self.qnx_screen_surface {
-            val_vk.push(c"VK_QNX_screen_surface");
+        for index in 0..Self::COUNT {
+            if self.as_array()[index] {
+                val_vk.push(Self::NAMES_C[index]);
+            }
         }
         val_vk
     }
 }
 impl std::fmt::Debug for InstanceExtensions {
-    #[allow(unused_assignments)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "[")?;
-        let mut first = true;
-        if self.khr_android_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_android_surface")?;
-        }
-        if self.khr_device_group_creation {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_device_group_creation")?;
-        }
-        if self.khr_display {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_display")?;
-        }
-        if self.khr_external_fence_capabilities {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_external_fence_capabilities")?;
-        }
-        if self.khr_external_memory_capabilities {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_external_memory_capabilities")?;
-        }
-        if self.khr_external_semaphore_capabilities {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_external_semaphore_capabilities")?;
-        }
-        if self.khr_get_display_properties2 {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_get_display_properties2")?;
-        }
-        if self.khr_get_physical_device_properties2 {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_get_physical_device_properties2")?;
-        }
-        if self.khr_get_surface_capabilities2 {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_get_surface_capabilities2")?;
-        }
-        if self.khr_portability_enumeration {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_portability_enumeration")?;
-        }
-        if self.khr_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_surface")?;
-        }
-        if self.khr_surface_protected_capabilities {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_surface_protected_capabilities")?;
-        }
-        if self.khr_wayland_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_wayland_surface")?;
-        }
-        if self.khr_win32_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_win32_surface")?;
-        }
-        if self.khr_xcb_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_xcb_surface")?;
-        }
-        if self.khr_xlib_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_KHR_xlib_surface")?;
-        }
-        if self.ext_acquire_drm_display {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_acquire_drm_display")?;
-        }
-        if self.ext_acquire_xlib_display {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_acquire_xlib_display")?;
-        }
-        if self.ext_debug_report {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_debug_report")?;
-        }
-        if self.ext_debug_utils {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_debug_utils")?;
-        }
-        if self.ext_direct_mode_display {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_direct_mode_display")?;
-        }
-        if self.ext_directfb_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_directfb_surface")?;
-        }
-        if self.ext_display_surface_counter {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_display_surface_counter")?;
-        }
-        if self.ext_headless_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_headless_surface")?;
-        }
-        if self.ext_layer_settings {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_layer_settings")?;
-        }
-        if self.ext_metal_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_metal_surface")?;
-        }
-        if self.ext_surface_maintenance1 {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_surface_maintenance1")?;
-        }
-        if self.ext_swapchain_colorspace {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_swapchain_colorspace")?;
-        }
-        if self.ext_validation_features {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_validation_features")?;
-        }
-        if self.ext_validation_flags {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_EXT_validation_flags")?;
-        }
-        if self.fuchsia_imagepipe_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_FUCHSIA_imagepipe_surface")?;
-        }
-        if self.ggp_stream_descriptor_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_GGP_stream_descriptor_surface")?;
-        }
-        if self.google_surfaceless_query {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_GOOGLE_surfaceless_query")?;
-        }
-        if self.lunarg_direct_driver_loading {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_LUNARG_direct_driver_loading")?;
-        }
-        if self.mvk_ios_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_MVK_ios_surface")?;
-        }
-        if self.mvk_macos_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_MVK_macos_surface")?;
-        }
-        if self.nn_vi_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_NN_vi_surface")?;
-        }
-        if self.nv_external_memory_capabilities {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_NV_external_memory_capabilities")?;
-        }
-        if self.qnx_screen_surface {
-            if !first {
-                write!(f, ", ")?
-            } else {
-                first = false;
-            }
-            f.write_str("VK_QNX_screen_surface")?;
-        }
-        write!(f, "]")
+        f.debug_list()
+            .entries(
+                self
+                    .iter()
+                    .flat_map(|(extension_name_c, enabled)| {
+                        enabled.then_some(extension_name_c)
+                    }),
+            )
+            .finish()
     }
 }
 impl Default for InstanceExtensions {
@@ -1871,64 +976,59 @@ impl std::ops::SubAssign for InstanceExtensions {
         *self = self.difference(&rhs);
     }
 }
-impl IntoIterator for InstanceExtensions {
+impl<'a> IntoIterator for &'a InstanceExtensions {
     type Item = (&'static str, bool);
-    type IntoIter = std::array::IntoIter<Self::Item, 39usize>;
+    type IntoIter = extensions::Iter<'a>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        [
-            ("VK_KHR_android_surface", self.khr_android_surface),
-            ("VK_KHR_device_group_creation", self.khr_device_group_creation),
-            ("VK_KHR_display", self.khr_display),
-            ("VK_KHR_external_fence_capabilities", self.khr_external_fence_capabilities),
-            (
-                "VK_KHR_external_memory_capabilities",
-                self.khr_external_memory_capabilities,
-            ),
-            (
-                "VK_KHR_external_semaphore_capabilities",
-                self.khr_external_semaphore_capabilities,
-            ),
-            ("VK_KHR_get_display_properties2", self.khr_get_display_properties2),
-            (
-                "VK_KHR_get_physical_device_properties2",
-                self.khr_get_physical_device_properties2,
-            ),
-            ("VK_KHR_get_surface_capabilities2", self.khr_get_surface_capabilities2),
-            ("VK_KHR_portability_enumeration", self.khr_portability_enumeration),
-            ("VK_KHR_surface", self.khr_surface),
-            (
-                "VK_KHR_surface_protected_capabilities",
-                self.khr_surface_protected_capabilities,
-            ),
-            ("VK_KHR_wayland_surface", self.khr_wayland_surface),
-            ("VK_KHR_win32_surface", self.khr_win32_surface),
-            ("VK_KHR_xcb_surface", self.khr_xcb_surface),
-            ("VK_KHR_xlib_surface", self.khr_xlib_surface),
-            ("VK_EXT_acquire_drm_display", self.ext_acquire_drm_display),
-            ("VK_EXT_acquire_xlib_display", self.ext_acquire_xlib_display),
-            ("VK_EXT_debug_report", self.ext_debug_report),
-            ("VK_EXT_debug_utils", self.ext_debug_utils),
-            ("VK_EXT_direct_mode_display", self.ext_direct_mode_display),
-            ("VK_EXT_directfb_surface", self.ext_directfb_surface),
-            ("VK_EXT_display_surface_counter", self.ext_display_surface_counter),
-            ("VK_EXT_headless_surface", self.ext_headless_surface),
-            ("VK_EXT_layer_settings", self.ext_layer_settings),
-            ("VK_EXT_metal_surface", self.ext_metal_surface),
-            ("VK_EXT_surface_maintenance1", self.ext_surface_maintenance1),
-            ("VK_EXT_swapchain_colorspace", self.ext_swapchain_colorspace),
-            ("VK_EXT_validation_features", self.ext_validation_features),
-            ("VK_EXT_validation_flags", self.ext_validation_flags),
-            ("VK_FUCHSIA_imagepipe_surface", self.fuchsia_imagepipe_surface),
-            ("VK_GGP_stream_descriptor_surface", self.ggp_stream_descriptor_surface),
-            ("VK_GOOGLE_surfaceless_query", self.google_surfaceless_query),
-            ("VK_LUNARG_direct_driver_loading", self.lunarg_direct_driver_loading),
-            ("VK_MVK_ios_surface", self.mvk_ios_surface),
-            ("VK_MVK_macos_surface", self.mvk_macos_surface),
-            ("VK_NN_vi_surface", self.nn_vi_surface),
-            ("VK_NV_external_memory_capabilities", self.nv_external_memory_capabilities),
-            ("VK_QNX_screen_surface", self.qnx_screen_surface),
-        ]
-            .into_iter()
+        self.iter()
     }
+}
+mod extensions {
+    pub struct Iter<'a> {
+        pub(crate) inner: std::iter::Zip<
+            std::iter::Copied<std::slice::Iter<'a, &'static std::ffi::CStr>>,
+            std::iter::Copied<std::slice::Iter<'a, bool>>,
+        >,
+    }
+    impl<'a> Iterator for Iter<'a> {
+        type Item = (&'static str, bool);
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner
+                .next()
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
+                })
+        }
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
+        #[inline]
+        fn nth(&mut self, n: usize) -> Option<Self::Item> {
+            self.inner
+                .nth(n)
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
+                })
+        }
+    }
+    impl<'a> DoubleEndedIterator for Iter<'a> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
+            self.inner
+                .next_back()
+                .map(|(name, enabled)| {
+                    (unsafe { std::str::from_utf8_unchecked(name.to_bytes()) }, enabled)
+                })
+        }
+    }
+    impl ExactSizeIterator for Iter<'_> {
+        #[inline]
+        fn len(&self) -> usize {
+            self.inner.len()
+        }
+    }
+    impl std::iter::FusedIterator for Iter<'_> {}
 }

@@ -2231,7 +2231,7 @@ mod tests {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
-        for (name, enabled) in extensions {
+        for (name, enabled) in &extensions {
             if name == "VK_KHR_swapchain" {
                 assert!(enabled);
             } else {
@@ -2246,7 +2246,7 @@ mod tests {
             tessellation_shader: true,
             ..DeviceFeatures::empty()
         };
-        for (name, enabled) in features {
+        for (name, enabled) in &features {
             if name == "tessellationShader" {
                 assert!(enabled);
             } else {

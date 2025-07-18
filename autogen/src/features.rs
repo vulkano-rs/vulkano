@@ -145,6 +145,7 @@ impl DeviceFeatures {
             /// Depending on the highest version of Vulkan supported by the physical device, and
             /// the available extensions, not every feature may be available.
             #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+            #[repr(C)]
             pub struct DeviceFeatures {
                 #(#iter)*
                 pub _ne: crate::NonExhaustive<'static>,
@@ -155,81 +156,80 @@ impl DeviceFeatures {
     fn to_helpers(&self) -> TokenStream {
         let Self { features, .. } = self;
 
-        let empty_iter = features.iter().map(Feature::to_empty_constructor);
-        let all_iter = features.iter().map(Feature::to_all_constructor);
-        let intersects_iter = features.iter().map(Feature::to_intersects_expr);
-        let contains_iter = features.iter().map(Feature::to_contains_expr);
-        let union_iter = features.iter().map(Feature::to_union_constructor);
-        let intersection_iter = features.iter().map(Feature::to_intersection_constructor);
-        let difference_iter = features.iter().map(Feature::to_difference_constructor);
-        let symmetric_difference_iter = features
-            .iter()
-            .map(Feature::to_symmetric_difference_constructor);
+        let len = features.len();
+        let feature_name_c_iter = features.iter().map(|feature| &feature.feature_name_c);
 
         quote! {
+            const COUNT: usize = #len;
+
+            const NAMES_C: [&str; Self::COUNT] = [#(#feature_name_c_iter),*];
+
             /// Returns a `DeviceFeatures` with none of the members set.
             #[inline]
             pub const fn empty() -> Self {
-                Self {
-                    #(#empty_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array([false; Self::COUNT])
             }
 
             /// Returns a `DeviceFeatures` with all of the members set.
             #[cfg(test)]
             pub(crate) const fn all() -> DeviceFeatures {
-                Self {
-                    #(#all_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array([true; Self::COUNT])
             }
 
             /// Returns whether any members are set in both `self` and `other`.
             #[inline]
             pub const fn intersects(&self, other: &Self) -> bool {
-                #(#intersects_iter)||*
+                crate::array_intersects(self.as_array(), other.as_array())
             }
 
             /// Returns whether all members in `other` are set in `self`.
             #[inline]
             pub const fn contains(&self, other: &Self) -> bool {
-                #(#contains_iter)&&*
+                crate::array_contains(self.as_array(), other.as_array())
             }
 
             /// Returns the union of `self` and `other`.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
-                Self {
-                    #(#union_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_union(self.as_array(), other.as_array()))
             }
 
             /// Returns the intersection of `self` and `other`.
             #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
-                Self {
-                    #(#intersection_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_intersection(self.as_array(), other.as_array()))
             }
 
             /// Returns `self` without the members set in `other`.
             #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
-                Self {
-                    #(#difference_iter)*
-                    _ne: crate::NE,
-                }
+                Self::from_array(crate::array_difference(self.as_array(), other.as_array()))
             }
 
             /// Returns the members set in `self` or `other`, but not both.
             #[inline]
             pub const fn symmetric_difference(&self, other: &Self) -> Self {
-                Self {
-                    #(#symmetric_difference_iter)*
-                    _ne: crate::NE,
+                Self::from_array(
+                    crate::array_symmetric_difference(self.as_array(), other.as_array()),
+                )
+            }
+
+            #[inline]
+            const fn from_array(array: [bool; Self::COUNT]) -> Self {
+                // SAFETY: `DeviceFeatures` is nothing more than an array of `bool`s.
+                unsafe { ::std::mem::transmute::<[bool; Self::COUNT], DeviceFeatures>(array) }
+            }
+
+            #[inline]
+            const fn as_array(&self) -> &[bool; Self::COUNT] {
+                // SAFETY: `DeviceFeatures` is nothing more than an array of `bool`s.
+                unsafe { ::std::mem::transmute::<&DeviceFeatures, &[bool; Self::COUNT]>(self) }
+            }
+
+            #[inline]
+            fn iter(&self) -> features::Iter<'_> {
+                features::Iter {
+                    inner: Self::NAMES_C.iter().copied().zip(self.as_array().iter().copied()),
                 }
             }
         }
@@ -427,22 +427,14 @@ impl DeviceFeatures {
     }
 
     fn to_traits(&self) -> TokenStream {
-        let Self { features, .. } = self;
-
-        let debug_iter = features.iter().map(Feature::to_debug);
-        let len = features.len();
-        let into_iter = features.iter().map(Feature::to_into_iter);
-
         quote! {
             impl std::fmt::Debug for DeviceFeatures {
-                #[allow(unused_assignments)]
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    write!(f, "[")?;
-
-                    let mut first = true;
-                    #(#debug_iter)*
-
-                    write!(f, "]")
+                    f.debug_list()
+                        .entries(self.iter().flat_map(|(feature_name_c, enabled)| {
+                            enabled.then_some(feature_name_c)
+                        }))
+                        .finish()
                 }
             }
 
@@ -453,14 +445,58 @@ impl DeviceFeatures {
                 }
             }
 
-            impl IntoIterator for DeviceFeatures {
+            impl<'a> IntoIterator for &'a DeviceFeatures {
                 type Item = (&'static str, bool);
-                type IntoIter = std::array::IntoIter<Self::Item, #len>;
+                type IntoIter = features::Iter<'a>;
 
                 #[inline]
                 fn into_iter(self) -> Self::IntoIter {
-                    [#(#into_iter)*].into_iter()
+                    self.iter()
                 }
+            }
+
+            mod features {
+                pub struct Iter<'a> {
+                    pub(crate) inner: std::iter::Zip<
+                        std::iter::Copied<std::slice::Iter<'a, &'static str>>,
+                        std::iter::Copied<std::slice::Iter<'a, bool>>,
+                    >,
+                }
+
+                impl<'a> Iterator for Iter<'a> {
+                    type Item = (&'static str, bool);
+
+                    #[inline]
+                    fn next(&mut self) -> Option<Self::Item> {
+                        self.inner.next()
+                    }
+
+                    #[inline]
+                    fn size_hint(&self) -> (usize, Option<usize>) {
+                        self.inner.size_hint()
+                    }
+
+                    #[inline]
+                    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+                        self.inner.nth(n)
+                    }
+                }
+
+                impl<'a> DoubleEndedIterator for Iter<'a> {
+                    #[inline]
+                    fn next_back(&mut self) -> Option<Self::Item> {
+                        self.inner.next_back()
+                    }
+                }
+
+                impl ExactSizeIterator for Iter<'_> {
+                    #[inline]
+                    fn len(&self) -> usize {
+                        self.inner.len()
+                    }
+                }
+
+                impl std::iter::FusedIterator for Iter<'_> {}
             }
 
             impl std::ops::BitAnd for DeviceFeatures {
@@ -895,70 +931,6 @@ impl Feature {
         }
     }
 
-    fn to_empty_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: false,
-        }
-    }
-
-    fn to_all_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: true,
-        }
-    }
-
-    fn to_intersects_expr(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            (self.#feature_name && other.#feature_name)
-        }
-    }
-
-    fn to_contains_expr(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            (self.#feature_name || !other.#feature_name)
-        }
-    }
-
-    fn to_union_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: self.#feature_name || other.#feature_name,
-        }
-    }
-
-    fn to_intersection_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: self.#feature_name && other.#feature_name,
-        }
-    }
-
-    fn to_difference_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: self.#feature_name && !other.#feature_name,
-        }
-    }
-
-    fn to_symmetric_difference_constructor(&self) -> TokenStream {
-        let Self { feature_name, .. } = self;
-
-        quote! {
-            #feature_name: self.#feature_name ^ !other.#feature_name,
-        }
-    }
-
     fn to_validate(&self) -> TokenStream {
         let Self {
             feature_name,
@@ -1054,38 +1026,6 @@ impl Feature {
 
         quote! {
             val.#item_name |= #item_name != 0;
-        }
-    }
-
-    fn to_debug(&self) -> TokenStream {
-        let Self {
-            feature_name,
-            feature_name_c,
-            ..
-        } = self;
-
-        quote! {
-            if self.#feature_name {
-                if !first {
-                    write!(f, ", ")?
-                } else {
-                    first = false;
-                }
-
-                f.write_str(#feature_name_c)?;
-            }
-        }
-    }
-
-    fn to_into_iter(&self) -> TokenStream {
-        let Self {
-            feature_name,
-            feature_name_c,
-            ..
-        } = self;
-
-        quote! {
-            (#feature_name_c, self.#feature_name),
         }
     }
 }

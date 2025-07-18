@@ -7,9 +7,9 @@ use nom::{
     sequence::{delimited, tuple},
     IResult, Parser,
 };
+use proc_macro2::TokenStream;
 use std::{
     cmp::min,
-    fmt::Display,
     fs::File,
     io::{BufWriter, Write},
     ops::BitOrAssign,
@@ -55,8 +55,8 @@ fn main() {
     version::write(&vk_data);
 }
 
-fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, contents: impl Display) {
-    let contents = prettyplease::unparse(&syn::parse_file(&contents.to_string()).unwrap());
+fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, contents: TokenStream) {
+    let contents = prettyplease::unparse(&syn::parse2(contents).unwrap());
 
     let path = Path::new(OUTPUT_DIR).join(file.as_ref());
     let mut writer = BufWriter::new(File::create(&path).unwrap());
