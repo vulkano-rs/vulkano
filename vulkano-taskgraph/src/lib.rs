@@ -746,14 +746,6 @@ impl<T> Id<T> {
         marker: PhantomData,
     };
 
-    /// An ID that is a null descriptor for the given type.
-    ///
-    /// This is only valid when `null_descriptor` feature is enabled.
-    pub const NULL: Self = Id {
-        slot: SlotId::new(0, SlotId::OCCUPIED_TAG),
-        marker: PhantomData,
-    };
-
     const unsafe fn new(slot: SlotId) -> Self {
         Id {
             slot,

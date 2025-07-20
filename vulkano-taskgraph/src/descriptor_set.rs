@@ -223,10 +223,11 @@ pub struct GlobalDescriptorSet {
     inner: RawDescriptorSet,
 
     samplers: SlotMap<SamplerId, SamplerDescriptor>,
-    sampled_images: SlotMap<SampledImageId, SampledImageDescriptor>,
-    storage_images: SlotMap<StorageImageId, StorageImageDescriptor>,
-    storage_buffers: SlotMap<StorageBufferId, StorageBufferDescriptor>,
-    acceleration_structures: SlotMap<AccelerationStructureId, AccelerationStructureDescriptor>,
+    sampled_images: SlotMap<SampledImageId, Option<SampledImageDescriptor>>,
+    storage_images: SlotMap<StorageImageId, Option<StorageImageDescriptor>>,
+    storage_buffers: SlotMap<StorageBufferId, Option<StorageBufferDescriptor>>,
+    acceleration_structures:
+        SlotMap<AccelerationStructureId, Option<AccelerationStructureDescriptor>>,
 }
 
 #[derive(Debug)]
@@ -277,33 +278,47 @@ impl GlobalDescriptorSet {
         let max_storage_buffers = descriptor_count(STORAGE_BUFFER_BINDING);
         let max_acceleration_structures = descriptor_count(ACCELERATION_STRUCTURE_BINDING);
 
+        // SAFETY: We make sure that any guard we acquire through `ResourceStorage::pin` doesn't
+        // outlive the `Resources` collection.
+        let samplers =
+            unsafe { SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone()) };
+        // SAFETY: Same as the previous.
+        let sampled_images = unsafe {
+            SlotMap::with_collector_and_key(max_sampled_images, hyaline_collector.clone())
+        };
+        // SAFETY: Same as the previous.
+        let storage_images = unsafe {
+            SlotMap::with_collector_and_key(max_storage_images, hyaline_collector.clone())
+        };
+        // SAFETY: Same as the previous.
+        let storage_buffers = unsafe {
+            SlotMap::with_collector_and_key(max_storage_buffers, hyaline_collector.clone())
+        };
+        // SAFETY: Same as the previous.
+        let acceleration_structures = unsafe {
+            SlotMap::with_collector_and_key(max_acceleration_structures, hyaline_collector.clone())
+        };
+
+        if device.enabled_features().null_descriptor {
+            let guard = resources.pin();
+            assert_eq!(sampled_images.insert(None, &guard), SampledImageId::NULL);
+            assert_eq!(storage_images.insert(None, &guard), StorageImageId::NULL);
+            assert_eq!(storage_buffers.insert(None, &guard), StorageBufferId::NULL);
+            assert_eq!(
+                acceleration_structures.insert(None, &guard),
+                AccelerationStructureId::NULL
+            );
+        }
+
         Ok(GlobalDescriptorSet {
             resources: resources.clone(),
             inner,
-            // SAFETY: We make sure that any guard we acquire through `ResourceStorage::pin` doesn't
-            // outlive the `Resources` collection.
-            samplers: unsafe {
-                SlotMap::with_collector_and_key(max_samplers, hyaline_collector.clone())
-            },
-            // SAFETY: Same as the previous.
-            sampled_images: unsafe {
-                SlotMap::with_collector_and_key(max_sampled_images, hyaline_collector.clone())
-            },
-            // SAFETY: Same as the previous.
-            storage_images: unsafe {
-                SlotMap::with_collector_and_key(max_storage_images, hyaline_collector.clone())
-            },
-            // SAFETY: Same as the previous.
-            storage_buffers: unsafe {
-                SlotMap::with_collector_and_key(max_storage_buffers, hyaline_collector.clone())
-            },
-            // SAFETY: Same as the previous.
-            acceleration_structures: unsafe {
-                SlotMap::with_collector_and_key(
-                    max_acceleration_structures,
-                    hyaline_collector.clone(),
-                )
-            },
+
+            samplers,
+            sampled_images,
+            storage_images,
+            storage_buffers,
+            acceleration_structures,
         })
     }
 
@@ -457,7 +472,7 @@ impl GlobalDescriptorSet {
         };
         let id = self
             .sampled_images
-            .insert(descriptor, &self.resources.pin());
+            .insert(Some(descriptor), &self.resources.pin());
 
         let write = WriteDescriptorSet::image_array(
             SAMPLED_IMAGE_BINDING,
@@ -487,7 +502,7 @@ impl GlobalDescriptorSet {
         };
         let id = self
             .storage_images
-            .insert(descriptor, &self.resources.pin());
+            .insert(Some(descriptor), &self.resources.pin());
 
         let write = WriteDescriptorSet::image_array(
             STORAGE_IMAGE_BINDING,
@@ -519,7 +534,7 @@ impl GlobalDescriptorSet {
         };
         let id = self
             .storage_buffers
-            .insert(descriptor, &self.resources.pin());
+            .insert(Some(descriptor), &self.resources.pin());
 
         let write = WriteDescriptorSet::buffer_array(
             STORAGE_BUFFER_BINDING,
@@ -541,7 +556,7 @@ impl GlobalDescriptorSet {
         };
         let id = self
             .acceleration_structures
-            .insert(descriptor, &self.resources.pin());
+            .insert(Some(descriptor), &self.resources.pin());
 
         let write = WriteDescriptorSet::acceleration_structure_array(
             ACCELERATION_STRUCTURE_BINDING,
@@ -567,7 +582,18 @@ impl GlobalDescriptorSet {
         id: SampledImageId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a SampledImageDescriptor> {
-        self.sampled_images.invalidate(id, guard)
+        if self
+            .sampled_images
+            .get(id, guard)
+            .and_then(|x| x.as_ref())
+            .is_none()
+        {
+            return None;
+        }
+
+        self.sampled_images
+            .invalidate(id, guard)
+            .map(|x| x.as_ref().unwrap())
     }
 
     pub(crate) fn invalidate_storage_image<'a>(
@@ -575,7 +601,18 @@ impl GlobalDescriptorSet {
         id: StorageImageId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageImageDescriptor> {
-        self.storage_images.invalidate(id, guard)
+        if self
+            .storage_images
+            .get(id, guard)
+            .and_then(|x| x.as_ref())
+            .is_none()
+        {
+            return None;
+        }
+
+        self.storage_images
+            .invalidate(id, guard)
+            .map(|x| x.as_ref().unwrap())
     }
 
     pub(crate) fn invalidate_storage_buffer<'a>(
@@ -583,7 +620,18 @@ impl GlobalDescriptorSet {
         id: StorageBufferId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageBufferDescriptor> {
-        self.storage_buffers.invalidate(id, guard)
+        if self
+            .storage_buffers
+            .get(id, guard)
+            .and_then(|x| x.as_ref())
+            .is_none()
+        {
+            return None;
+        }
+
+        self.storage_buffers
+            .invalidate(id, guard)
+            .map(|x| x.as_ref().unwrap())
     }
 
     pub(crate) fn invalidate_acceleration_structure<'a>(
@@ -591,7 +639,18 @@ impl GlobalDescriptorSet {
         id: AccelerationStructureId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a AccelerationStructureDescriptor> {
-        self.acceleration_structures.invalidate(id, guard)
+        if self
+            .acceleration_structures
+            .get(id, guard)
+            .and_then(|x| x.as_ref())
+            .is_none()
+        {
+            return None;
+        }
+
+        self.acceleration_structures
+            .invalidate(id, guard)
+            .map(|x| x.as_ref().unwrap())
     }
 
     pub(crate) unsafe fn remove_invalidated_sampler_unchecked(&self, id: SamplerId) {
@@ -646,9 +705,12 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let descriptor = self.sampled_images.get(id, unsafe {
-            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
-        })?;
+        let descriptor = self
+            .sampled_images
+            .get(id, unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })?
+            .as_ref()?;
 
         Some(Ref::new(descriptor, guard))
     }
@@ -658,9 +720,12 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let descriptor = self.storage_images.get(id, unsafe {
-            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
-        })?;
+        let descriptor = self
+            .storage_images
+            .get(id, unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })?
+            .as_ref()?;
 
         Some(Ref::new(descriptor, guard))
     }
@@ -670,9 +735,12 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let descriptor = self.storage_buffers.get(id, unsafe {
-            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
-        })?;
+        let descriptor = self
+            .storage_buffers
+            .get(id, unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })?
+            .as_ref()?;
 
         Some(Ref::new(descriptor, guard))
     }
@@ -685,9 +753,12 @@ impl GlobalDescriptorSet {
         let guard = self.resources.pin();
 
         // SAFETY: Same as in the `sampler` method above.
-        let descriptor = self.acceleration_structures.get(id, unsafe {
-            mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
-        })?;
+        let descriptor = self
+            .acceleration_structures
+            .get(id, unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })?
+            .as_ref()?;
 
         Some(Ref::new(descriptor, guard))
     }
@@ -875,23 +946,45 @@ macro_rules! declare_key {
     };
 }
 
+macro_rules! declare_key_with_null {
+    (
+        $(#[$meta:meta])*
+        pub struct $name:ident $(;)?
+    ) => {
+        declare_key! {
+            $(#[$meta])*
+            pub struct $name;
+        }
+
+        impl $name {
+            /// An ID that is a null descriptor for the given type.
+            ///
+            /// This is only guaranteed to be valid when `null_descriptor` feature is enabled.
+            pub const NULL: Self = Self::new(concurrent_slotmap::SlotId::new(
+                0,
+                concurrent_slotmap::SlotId::OCCUPIED_TAG,
+            ));
+        }
+    }
+}
+
 declare_key! {
     pub struct SamplerId;
 }
 
-declare_key! {
+declare_key_with_null! {
     pub struct SampledImageId;
 }
 
-declare_key! {
+declare_key_with_null! {
     pub struct StorageImageId;
 }
 
-declare_key! {
+declare_key_with_null! {
     pub struct StorageBufferId;
 }
 
-declare_key! {
+declare_key_with_null! {
     pub struct AccelerationStructureId;
 }
 
