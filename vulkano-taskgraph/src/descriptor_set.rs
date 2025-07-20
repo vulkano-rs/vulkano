@@ -582,14 +582,8 @@ impl GlobalDescriptorSet {
         id: SampledImageId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a SampledImageDescriptor> {
-        if self
-            .sampled_images
-            .get(id, guard)
-            .and_then(|x| x.as_ref())
-            .is_none()
-        {
-            return None;
-        }
+        // Prevent invalidation of NULL
+        self.sampled_images.get(id, guard)?.as_ref()?;
 
         self.sampled_images
             .invalidate(id, guard)
@@ -601,14 +595,8 @@ impl GlobalDescriptorSet {
         id: StorageImageId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageImageDescriptor> {
-        if self
-            .storage_images
-            .get(id, guard)
-            .and_then(|x| x.as_ref())
-            .is_none()
-        {
-            return None;
-        }
+        // Prevent invalidation of NULL
+        self.storage_images.get(id, guard)?.as_ref()?;
 
         self.storage_images
             .invalidate(id, guard)
@@ -620,14 +608,8 @@ impl GlobalDescriptorSet {
         id: StorageBufferId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a StorageBufferDescriptor> {
-        if self
-            .storage_buffers
-            .get(id, guard)
-            .and_then(|x| x.as_ref())
-            .is_none()
-        {
-            return None;
-        }
+        // Prevent invalidation of NULL
+        self.storage_buffers.get(id, guard)?.as_ref()?;
 
         self.storage_buffers
             .invalidate(id, guard)
@@ -639,14 +621,8 @@ impl GlobalDescriptorSet {
         id: AccelerationStructureId,
         guard: &'a hyaline::Guard<'a>,
     ) -> Option<&'a AccelerationStructureDescriptor> {
-        if self
-            .acceleration_structures
-            .get(id, guard)
-            .and_then(|x| x.as_ref())
-            .is_none()
-        {
-            return None;
-        }
+        // Prevent invalidation of NULL
+        self.acceleration_structures.get(id, guard)?.as_ref()?;
 
         self.acceleration_structures
             .invalidate(id, guard)
