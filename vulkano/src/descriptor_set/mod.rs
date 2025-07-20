@@ -418,23 +418,6 @@ impl DescriptorSetResources {
                     | DescriptorType::Sampler => {
                         DescriptorBindingResources::Image(smallvec![None; count])
                     }
-                    // TODO(Comfy): Check if this is needed
-                    // DescriptorType::Sampler => {
-                    //     if binding.immutable_samplers.is_empty() {
-                    //         DescriptorBindingResources::Sampler(smallvec![None; count])
-                    //     } else if layout
-                    //         .flags()
-                    //         .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
-                    //     {
-                    //         // For push descriptors, no resource is written by default, this
-                    // needs         // to be done explicitly via a dummy write.
-                    //         DescriptorBindingResources::None(smallvec![None; count])
-                    //     } else {
-                    //         // For regular descriptor sets, all descriptors are considered valid
-                    //         // from the start.
-                    //         DescriptorBindingResources::None(smallvec![Some(()); count])
-                    //     }
-                    // }
                     DescriptorType::InlineUniformBlock => {
                         DescriptorBindingResources::InlineUniformBlock
                     }

@@ -175,20 +175,6 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                         if let Some(buffer_info) = element {
                             let Some(buffer_info) = buffer_info else {
-                                // TODO(Comfy): Duplicated?
-                                if !self.device().enabled_features().null_descriptor {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "the buffer of `descriptor_sets[{}]` \
-                                            (for set number {}) for binding {} index {} is \
-                                            `None`, but `null_descriptor` is not enabled",
-                                            descriptor_sets_index, set_num, binding_num, index,
-                                        )
-                                        .into(),
-                                        // vuids?
-                                        ..Default::default()
-                                    }));
-                                }
                                 continue;
                             };
 

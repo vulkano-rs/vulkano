@@ -1766,7 +1766,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                  index: u32,
                  buffer_view: &Option<Arc<BufferView>>| {
                     let Some(buffer_view) = buffer_view else {
-                        // TODO(Comfy): Do we need to check this?
                         return Ok(());
                     };
 
@@ -3584,7 +3583,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
                                 let Some(buffer_info) = buffer_info else {
-                                    // TODO(Comfy): Do we need to check this?
                                     continue;
                                 };
 
@@ -3614,7 +3612,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                         for (index, element) in elements.iter().enumerate() {
                             if let Some(buffer_info) = element {
                                 let Some(buffer_info) = buffer_info else {
-                                    // TODO(Comfy): Do we need to check this?
                                     continue;
                                 };
 
@@ -3642,7 +3639,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(buffer_view) = element {
                             let Some(buffer_view) = buffer_view else {
-                                // TODO(Comfy): Do we need to check this?
                                 continue;
                             };
 
