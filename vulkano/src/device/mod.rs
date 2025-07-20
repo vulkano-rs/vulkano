@@ -177,8 +177,13 @@ impl Device {
     pub fn new(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), Validated<VulkanError>>
-    {
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        Validated<VulkanError>,
+    > {
         Self::validate_new(physical_device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(physical_device, create_info) }?)
@@ -222,7 +227,13 @@ impl Device {
     pub unsafe fn new_unchecked(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), VulkanError> {
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        VulkanError,
+    > {
         let (enabled_extensions, enabled_features) =
             create_info.enable_dependencies(physical_device);
 
@@ -297,7 +308,10 @@ impl Device {
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+    ) -> (
+        Arc<Device>,
+        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+    ) {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, false) }
     }
 
@@ -314,7 +328,10 @@ impl Device {
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+    ) -> (
+        Arc<Device>,
+        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+    ) {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, true) }
     }
 
@@ -323,7 +340,10 @@ impl Device {
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
         borrowed: bool,
-    ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+    ) -> (
+        Arc<Device>,
+        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+    ) {
         let &DeviceCreateInfo {
             queue_create_infos,
             enabled_features,

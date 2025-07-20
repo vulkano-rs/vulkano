@@ -128,7 +128,7 @@ fn extension_fns_members<'a>(
     extensions: &'a IndexMap<&str, &Extension>,
     device_functions: bool,
     // extension_filter: impl Fn(&str) -> bool,
-) -> impl Iterator<Item = FnsMember> + 'a {
+) -> impl Iterator<Item = FnsMember> + use<'a> {
     let fn_struct_name = if device_functions {
         format_ident!("DeviceFn")
     } else {

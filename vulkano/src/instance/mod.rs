@@ -527,7 +527,7 @@ impl Instance {
     /// ```
     pub fn enumerate_physical_devices(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>> + use<>, VulkanError> {
         let fns = self.fns();
 
         let handles = loop {
@@ -584,8 +584,10 @@ impl Instance {
     #[inline]
     pub fn enumerate_physical_device_groups(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, Validated<VulkanError>>
-    {
+    ) -> Result<
+        impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>,
+        Validated<VulkanError>,
+    > {
         self.validate_enumerate_physical_device_groups()?;
 
         Ok(unsafe { self.enumerate_physical_device_groups_unchecked() }?)
@@ -610,7 +612,8 @@ impl Instance {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn enumerate_physical_device_groups_unchecked(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>, VulkanError>
+    {
         let fns = self.fns();
         let enumerate_physical_device_groups = if self.api_version() >= Version::V1_1 {
             fns.v1_1.enumerate_physical_device_groups

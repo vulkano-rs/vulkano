@@ -688,7 +688,7 @@ impl FunctionInfo {
 
 fn iter_instructions(
     mut words: &[u32],
-) -> impl Iterator<Item = Result<Instruction, ParseError>> + '_ {
+) -> impl Iterator<Item = Result<Instruction, ParseError>> + use<'_> {
     let mut index = 0;
     let next = move || -> Option<Result<Instruction, ParseError>> {
         if words.is_empty() {
