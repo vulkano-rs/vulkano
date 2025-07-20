@@ -67,6 +67,8 @@ impl WriteDescriptorSet {
     /// For dynamic buffer bindings, this will bind the whole buffer, and only a dynamic offset
     /// of zero will be valid, which is probably not what you want.
     /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
+    ///
+    /// The buffer may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer<T: ?Sized>(binding: u32, buffer: impl Into<Option<Subbuffer<T>>>) -> Self {
         let buffer = buffer.into();
@@ -84,6 +86,8 @@ impl WriteDescriptorSet {
     /// Write a number of consecutive buffer elements.
     ///
     /// See [`buffer`](Self::buffer) for more information.
+    ///
+    /// The buffers may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_array(
         binding: u32,
@@ -106,6 +110,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
+    ///
+    /// The buffer may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_with_range(
         binding: u32,
@@ -119,6 +125,8 @@ impl WriteDescriptorSet {
     /// bound.
     ///
     /// See [`buffer_with_range`](Self::buffer_with_range) for more information.
+    ///
+    /// The buffers may be `None` if `null_descriptor` feature is enabled.
     pub fn buffer_with_range_array(
         binding: u32,
         first_array_element: u32,
@@ -135,6 +143,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single buffer view to array element 0.
+    ///
+    /// The buffer view may be `None` if `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_view(binding: u32, buffer_view: impl Into<Option<Arc<BufferView>>>) -> Self {
         let buffer_view = buffer_view.into();
@@ -142,6 +152,8 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive buffer view elements.
+    ///
+    /// The buffer views may be `None` if `null_descriptor` feature is enabled.
     pub fn buffer_view_array(
         binding: u32,
         first_array_element: u32,
@@ -189,7 +201,7 @@ impl WriteDescriptorSet {
 
     /// Write a single sampler to array element 0.
     ///
-    /// Samplers must always be provided if immutable samplers are not used.
+    /// A sampler must always be provided if immutable samplers are not used.
     #[inline]
     pub fn sampler(binding: u32, sampler: impl Into<Option<Arc<Sampler>>>) -> Self {
         let sampler = sampler.into();
