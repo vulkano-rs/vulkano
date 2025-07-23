@@ -3581,11 +3581,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(buffer_info) = element {
-                                let Some(buffer_info) = buffer_info else {
-                                    continue;
-                                };
-
+                            if let Some(Some(buffer_info)) = element {
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3610,11 +3606,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
                     } else {
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(buffer_info) = element {
-                                let Some(buffer_info) = buffer_info else {
-                                    continue;
-                                };
-
+                            if let Some(Some(buffer_info)) = element {
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3637,11 +3629,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(buffer_view) = element {
-                            let Some(buffer_view) = buffer_view else {
-                                continue;
-                            };
-
+                        if let Some(Some(buffer_view)) = element {
                             let buffer = buffer_view.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 

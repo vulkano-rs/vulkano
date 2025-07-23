@@ -173,11 +173,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             }
                         }
 
-                        if let Some(buffer_info) = element {
-                            let Some(buffer_info) = buffer_info else {
-                                continue;
-                            };
-
+                        if let Some(Some(buffer_info)) = element {
                             let &DescriptorBufferInfo {
                                 ref buffer,
                                 offset,
