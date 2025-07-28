@@ -81,7 +81,9 @@ pub use self::{
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::view::BufferView,
-    descriptor_set::layout::{DescriptorBindingFlags, DescriptorType},
+    descriptor_set::layout::{
+        DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
+    },
     device::{Device, DeviceOwned},
     image::ImageLayout,
     Validated, ValidationError, VulkanError, VulkanObject,
@@ -414,9 +416,24 @@ impl DescriptorSetResources {
                     DescriptorType::SampledImage
                     | DescriptorType::StorageImage
                     | DescriptorType::InputAttachment
-                    | DescriptorType::CombinedImageSampler
-                    | DescriptorType::Sampler => {
+                    | DescriptorType::CombinedImageSampler => {
                         DescriptorBindingResources::Image(smallvec![None; count])
+                    }
+                    DescriptorType::Sampler => {
+                        if binding.immutable_samplers.is_empty()
+                            || layout
+                                .flags()
+                                .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+                        {
+                            DescriptorBindingResources::Image(smallvec![None; count])
+                        } else {
+                            // For descriptor sets that use immutable samplers, all descriptors are
+                            // considered valid from the start but only if the descriptor set
+                            // doesn't use push descriptors.
+                            DescriptorBindingResources::Image(
+                                smallvec![Some(DescriptorImageInfo::default()); count],
+                            )
+                        }
                     }
                     DescriptorType::InlineUniformBlock => {
                         DescriptorBindingResources::InlineUniformBlock
