@@ -524,8 +524,8 @@ impl ApplicationHandler for App {
                     1,
                     0,
                     [
-                        self.mascot_texture.clone() as _,
-                        self.vulkano_texture.clone() as _,
+                        Some(self.mascot_texture.clone()),
+                        Some(self.vulkano_texture.clone()),
                     ],
                 ),
             ],
