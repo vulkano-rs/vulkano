@@ -128,89 +128,6 @@ mod linux {
         recreate_swapchain: bool,
         previous_frame_end: Option<Box<dyn GpuFuture>>,
     }
-
-    fn create_window_with_opengl_support(event_loop: &EventLoop<()>) -> (Option<Window>, Config) {
-        DisplayBuilder::new()
-            .with_window_attributes(Some(
-                Window::default_attributes().with_title("OpenGL window"),
-            ))
-            .build(
-                event_loop,
-                ConfigTemplateBuilder::default(),
-                |mut available_configs| {
-                    available_configs
-                        .find(|config| {
-                            config
-                                .config_surface_types()
-                                .intersects(ConfigSurfaceTypes::WINDOW)
-                        })
-                        .unwrap()
-                },
-            )
-            .unwrap()
-    }
-
-    fn create_opengl_surface(window: &Window, window_config: Config) -> Display<WindowSurface> {
-        // This example uses OpenGL 4.5 or OpenGL ES 3.2. Earlier versions can also be
-        // supported given that additional extension requirements are met. See the dependency
-        // section of
-        // https://registry.khronos.org/OpenGL/extensions/EXT/EXT_external_objects.txt
-        let raw_window_handle = window.window_handle().unwrap().as_raw();
-        let gl_context_attributes = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 5))))
-            .build(Some(raw_window_handle));
-        let gles_context_attributes = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::Gles(Some(Version::new(3, 2))))
-            .build(Some(raw_window_handle));
-        let context = unsafe {
-            window_config
-                .display()
-                .create_context(&window_config, &gl_context_attributes)
-                .unwrap_or_else(|_| {
-                    window_config
-                        .display()
-                        .create_context(&window_config, &gles_context_attributes)
-                        .unwrap()
-                })
-        };
-
-        let window_attributes = window.build_surface_attributes(Default::default()).unwrap();
-        let surface = unsafe {
-            window_config
-                .display()
-                .create_window_surface(&window_config, &window_attributes)
-                .unwrap()
-        };
-        let display = Display::with_debug(
-            context.make_current(&surface).unwrap(),
-            surface,
-            DebugCallbackBehavior::PrintAll,
-        )
-        .unwrap();
-
-        let gl_context = display.get_context();
-        assert!(
-            gl_context.get_extensions().gl_ext_memory_object,
-            "Missing required GL_EXT_memory_object extension"
-        );
-        assert!(
-            gl_context.get_extensions().gl_ext_semaphore,
-            "Missing required GL_EXT_memory_object extension"
-        );
-        if cfg!(target_os = "linux") {
-            assert!(
-                gl_context.get_extensions().gl_ext_memory_object_fd,
-                "Missing required GL_EXT_memory_object_fd extension"
-            );
-            assert!(
-                gl_context.get_extensions().gl_ext_semaphore_fd,
-                "Missing required GL_EXT_memory_object_fd extension"
-            );
-        }
-
-        display
-    }
-
     impl App {
         fn new(event_loop: &EventLoop<()>) -> Self {
             // A requirement for sharing memory between OpenGL and Vulkan is that both instances
@@ -224,10 +141,9 @@ mod linux {
             let (gl_driver_uuid, gl_device_uuids) = {
                 let (window, config) = create_window_with_opengl_support(event_loop);
                 let gl_surface = create_opengl_surface(&window.unwrap(), config);
-                let gl_context = gl_surface.get_context();
                 (
-                    gl_context.driver_uuid().unwrap(),
-                    gl_context.device_uuids().unwrap(),
+                    gl_surface.get_context().driver_uuid().unwrap(),
+                    gl_surface.get_context().device_uuids().unwrap(),
                 )
             };
 
@@ -857,6 +773,77 @@ mod linux {
                 .unwrap()
             })
             .collect::<Vec<_>>()
+    }
+
+    fn create_window_with_opengl_support(event_loop: &EventLoop<()>) -> (Option<Window>, Config) {
+        DisplayBuilder::new()
+            .with_window_attributes(Some(
+                Window::default_attributes().with_title("OpenGL window"),
+            ))
+            .build(
+                event_loop,
+                ConfigTemplateBuilder::default(),
+                |mut available_configs| {
+                    available_configs
+                        .find(|config| {
+                            config
+                                .config_surface_types()
+                                .intersects(ConfigSurfaceTypes::WINDOW)
+                        })
+                        .unwrap()
+                },
+            )
+            .unwrap()
+    }
+
+    fn create_opengl_surface(window: &Window, window_config: Config) -> Display<WindowSurface> {
+        // This example uses OpenGL 4.5 or OpenGL ES 3.2. Earlier versions can also be
+        // supported given that additional extension requirements are met. See the dependency
+        // section of
+        // https://registry.khronos.org/OpenGL/extensions/EXT/EXT_external_objects.txt
+        let raw_window_handle = window.window_handle().unwrap().as_raw();
+        let gl_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 5))))
+            .build(Some(raw_window_handle));
+        let gles_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::Gles(Some(Version::new(3, 2))))
+            .build(Some(raw_window_handle));
+        let context = unsafe {
+            window_config
+                .display()
+                .create_context(&window_config, &gl_context_attributes)
+                .unwrap_or_else(|_| {
+                    window_config
+                        .display()
+                        .create_context(&window_config, &gles_context_attributes)
+                        .unwrap()
+                })
+        };
+
+        let window_attributes = window.build_surface_attributes(Default::default()).unwrap();
+        let surface = unsafe {
+            window_config
+                .display()
+                .create_window_surface(&window_config, &window_attributes)
+                .unwrap()
+        };
+        let display = Display::with_debug(
+            context.make_current(&surface).unwrap(),
+            surface,
+            DebugCallbackBehavior::PrintAll,
+        )
+        .unwrap();
+
+        let supported_extensions = display.get_context().get_extensions();
+        assert!(
+            supported_extensions.gl_ext_memory_object
+                && supported_extensions.gl_ext_memory_object_fd
+                && supported_extensions.gl_ext_semaphore
+                && supported_extensions.gl_ext_semaphore_fd,
+            "Missing one or more of these required OpenGL extensions: GL_EXT_memory_object, GL_EXT_memory_object_fd, GL_EXT_semaphore, GL_EXT_semaphore_fd"
+        );
+
+        display
     }
 
     mod vs {
