@@ -12,8 +12,21 @@ fn main() -> Result<(), winit::error::EventLoopError> {
 // TODO: Can this be demonstrated for other platforms as well?
 #[cfg(target_os = "linux")]
 mod linux {
-    use glium::glutin::{self, platform::unix::HeadlessContextExt};
+    use glium::{
+        backend::Facade,
+        debug::DebugCallbackBehavior,
+        glutin::{
+            config::{Config, ConfigSurfaceTypes, ConfigTemplateBuilder, GlConfig},
+            context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, Version},
+            display::{GetGlDisplay, GlDisplay},
+            surface::WindowSurface,
+        },
+        CapabilitiesSource, Display,
+    };
+    use glutin_winit::{DisplayBuilder, GlWindow};
     use std::{
+        fs::File,
+        os::fd::FromRawFd,
         sync::{Arc, Barrier},
         time::Instant,
     };
@@ -37,12 +50,7 @@ mod linux {
             view::ImageView,
             Image, ImageCreateFlags, ImageCreateInfo, ImageType, ImageUsage,
         },
-        instance::{
-            debug::{
-                DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
-            },
-            Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
-        },
+        instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
         memory::{
             allocator::{
                 AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator,
@@ -82,6 +90,7 @@ mod linux {
         error::EventLoopError,
         event::WindowEvent,
         event_loop::{ActiveEventLoop, EventLoop},
+        raw_window_handle::HasWindowHandle,
         window::{Window, WindowId},
     };
 
@@ -120,28 +129,107 @@ mod linux {
         previous_frame_end: Option<Box<dyn GpuFuture>>,
     }
 
+    fn create_window_with_opengl_support(event_loop: &EventLoop<()>) -> (Option<Window>, Config) {
+        DisplayBuilder::new()
+            .with_window_attributes(Some(
+                Window::default_attributes().with_title("OpenGL window"),
+            ))
+            .build(
+                event_loop,
+                ConfigTemplateBuilder::default(),
+                |mut available_configs| {
+                    available_configs
+                        .find(|config| {
+                            config
+                                .config_surface_types()
+                                .intersects(ConfigSurfaceTypes::WINDOW)
+                        })
+                        .unwrap()
+                },
+            )
+            .unwrap()
+    }
+
+    fn create_opengl_surface(window: &Window, window_config: Config) -> Display<WindowSurface> {
+        // This example uses OpenGL 4.5 or OpenGL ES 3.2. Earlier versions can also be
+        // supported given that additional extension requirements are met. See the dependency
+        // section of
+        // https://registry.khronos.org/OpenGL/extensions/EXT/EXT_external_objects.txt
+        let raw_window_handle = window.window_handle().unwrap().as_raw();
+        let gl_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 5))))
+            .build(Some(raw_window_handle));
+        let gles_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::Gles(Some(Version::new(3, 2))))
+            .build(Some(raw_window_handle));
+        let context = unsafe {
+            window_config
+                .display()
+                .create_context(&window_config, &gl_context_attributes)
+                .unwrap_or_else(|_| {
+                    window_config
+                        .display()
+                        .create_context(&window_config, &gles_context_attributes)
+                        .unwrap()
+                })
+        };
+
+        let window_attributes = window.build_surface_attributes(Default::default()).unwrap();
+        let surface = unsafe {
+            window_config
+                .display()
+                .create_window_surface(&window_config, &window_attributes)
+                .unwrap()
+        };
+        let display = Display::with_debug(
+            context.make_current(&surface).unwrap(),
+            surface,
+            DebugCallbackBehavior::PrintAll,
+        )
+        .unwrap();
+
+        let gl_context = display.get_context();
+        assert!(
+            gl_context.get_extensions().gl_ext_memory_object,
+            "Missing required GL_EXT_memory_object extension"
+        );
+        assert!(
+            gl_context.get_extensions().gl_ext_semaphore,
+            "Missing required GL_EXT_memory_object extension"
+        );
+        if cfg!(target_os = "linux") {
+            assert!(
+                gl_context.get_extensions().gl_ext_memory_object_fd,
+                "Missing required GL_EXT_memory_object_fd extension"
+            );
+            assert!(
+                gl_context.get_extensions().gl_ext_semaphore_fd,
+                "Missing required GL_EXT_memory_object_fd extension"
+            );
+        }
+
+        display
+    }
+
     impl App {
         fn new(event_loop: &EventLoop<()>) -> Self {
-            let event_loop_gl = winit_glium::event_loop::EventLoop::new();
-            // For some reason, this must be created before the vulkan window
-            let hrb = glutin::ContextBuilder::new()
-                .with_gl_debug_flag(true)
-                .with_gl(glutin::GlRequest::Latest)
-                .build_surfaceless(&event_loop_gl)
-                .unwrap();
-
-            let hrb_vk = glutin::ContextBuilder::new()
-                .with_gl_debug_flag(true)
-                .with_gl(glutin::GlRequest::Latest)
-                .build_surfaceless(&event_loop_gl)
-                .unwrap();
-
-            // Used for checking device and driver UUIDs.
-            let display = glium::HeadlessRenderer::with_debug(
-                hrb_vk,
-                glium::debug::DebugCallbackBehavior::PrintAll,
-            )
-            .unwrap();
+            // A requirement for sharing memory between OpenGL and Vulkan is that both instances
+            // need to use the same graphics device and driver. Historically, choosing which device
+            // to use has not been a feature available in OpenGL. (Depending on the platform, it's
+            // now possible to do this via environment variables, driver hints, driver extensions or
+            // EGL).
+            // But since Vulkan allows us to explicitly choose a graphics device, we'll first create
+            // an OpenGL context to query what device and driver UUIDs got chosen. Then we'll make
+            // sure our Vulkan instance uses the same ones.
+            let (gl_driver_uuid, gl_device_uuids) = {
+                let (window, config) = create_window_with_opengl_support(event_loop);
+                let gl_surface = create_opengl_surface(&window.unwrap(), config);
+                let gl_context = gl_surface.get_context();
+                (
+                    gl_context.driver_uuid().unwrap(),
+                    gl_context.device_uuids().unwrap(),
+                )
+            };
 
             let library = VulkanLibrary::new().unwrap();
             let required_extensions = Surface::required_extensions(event_loop).unwrap();
@@ -160,26 +248,6 @@ mod linux {
                     ..Default::default()
                 },
             )
-            .unwrap();
-
-            let _debug_callback = unsafe {
-                DebugUtilsMessenger::new(
-                    &instance,
-                    &DebugUtilsMessengerCreateInfo::user_callback(
-                        &DebugUtilsMessengerCallback::new(
-                            |message_severity, message_type, callback_data| {
-                                println!(
-                                    "{} {:?} {:?}: {}",
-                                    callback_data.message_id_name.unwrap_or("unknown"),
-                                    message_type,
-                                    message_severity,
-                                    callback_data.message,
-                                );
-                            },
-                        ),
-                    ),
-                )
-            }
             .unwrap();
 
             let device_extensions = DeviceExtensions {
@@ -206,15 +274,8 @@ mod linux {
                         })
                         .map(|i| (p, i as u32))
                 })
-                .filter(|(p, _)| {
-                    p.properties().driver_uuid.unwrap() == display.driver_uuid().unwrap()
-                })
-                .filter(|(p, _)| {
-                    display
-                        .device_uuids()
-                        .unwrap()
-                        .contains(&p.properties().device_uuid.unwrap())
-                })
+                .filter(|(p, _)| p.properties().driver_uuid.unwrap() == gl_driver_uuid)
+                .filter(|(p, _)| gl_device_uuids.contains(&p.properties().device_uuid.unwrap()))
                 .min_by_key(|(p, _)| match p.properties().device_type {
                     PhysicalDeviceType::DiscreteGpu => 0,
                     PhysicalDeviceType::IntegratedGpu => 1,
@@ -378,10 +439,15 @@ mod linux {
             let barrier_clone = barrier.clone();
             let barrier_2_clone = barrier_2.clone();
 
-            build_display(hrb, move |gl_display| {
+            let (window, window_config) = create_window_with_opengl_support(event_loop);
+            std::thread::spawn(move || {
+                let gl_surface = create_opengl_surface(&window.unwrap(), window_config);
+                let gl_context = gl_surface.get_context().clone();
+
+                let image_file = unsafe { File::from_raw_fd(image_fd) };
                 let gl_tex = unsafe {
                     glium::texture::Texture2d::new_from_fd(
-                        gl_display.as_ref(),
+                        &gl_context,
                         glium::texture::UncompressedFloatFormat::U16U16U16U16,
                         glium::texture::MipmapsOption::NoMipmap,
                         glium::texture::Dimensions::Texture2d {
@@ -394,17 +460,23 @@ mod linux {
                             offset: 0,
                             tiling: glium::texture::ExternalTilingMode::Optimal,
                         },
-                        image_fd,
+                        image_file,
                     )
                 }
                 .unwrap();
 
                 let gl_acquire_sem = unsafe {
-                    glium::semaphore::Semaphore::new_from_fd(gl_display.as_ref(), acquire_fd)
+                    glium::semaphore::Semaphore::new_from_fd(
+                        &gl_context,
+                        File::from_raw_fd(acquire_fd),
+                    )
                 }
                 .unwrap();
                 let gl_release_sem = unsafe {
-                    glium::semaphore::Semaphore::new_from_fd(gl_display.as_ref(), release_fd)
+                    glium::semaphore::Semaphore::new_from_fd(
+                        &gl_context,
+                        File::from_raw_fd(release_fd),
+                    )
                 }
                 .unwrap();
 
@@ -417,7 +489,7 @@ mod linux {
                         glium::semaphore::TextureLayout::General,
                     )]));
 
-                    gl_display.get_context().flush();
+                    gl_context.flush();
 
                     let elapsed = rotation_start.elapsed();
                     let rotation = elapsed.as_nanos() as f64 / 2_000_000_000.0;
@@ -439,9 +511,9 @@ mod linux {
                     )]));
                     barrier_2_clone.wait();
 
-                    gl_display.get_context().finish();
+                    gl_context.finish();
 
-                    gl_display.get_context().assert_no_error(Some("err"));
+                    gl_context.assert_no_error(Some("err"));
                 }
             });
 
@@ -467,7 +539,7 @@ mod linux {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
             let window = Arc::new(
                 event_loop
-                    .create_window(Window::default_attributes())
+                    .create_window(Window::default_attributes().with_title("Vulkan(o) window"))
                     .unwrap(),
             );
             let surface = Surface::from_window(&self.instance, &window).unwrap();
@@ -565,7 +637,8 @@ mod linux {
             let viewport = Viewport {
                 offset: [0.0, 0.0],
                 extent: window_size.into(),
-                depth_range: 0.0..=1.0,
+                min_depth: 0.0,
+                max_depth: 1.0,
             };
 
             let layout = &pipeline.layout().set_layouts()[0];
@@ -763,24 +836,6 @@ mod linux {
     struct MyVertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
-    }
-
-    fn build_display<F>(ctx: glutin::Context<glutin::NotCurrent>, f: F)
-    where
-        F: FnOnce(Box<dyn glium::backend::Facade>),
-        F: Send + 'static,
-    {
-        std::thread::spawn(move || {
-            let display = Box::new(
-                glium::HeadlessRenderer::with_debug(
-                    ctx,
-                    glium::debug::DebugCallbackBehavior::PrintAll,
-                )
-                .unwrap(),
-            );
-
-            f(display);
-        });
     }
 
     fn window_size_dependent_setup(
