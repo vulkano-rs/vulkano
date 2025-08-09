@@ -134,9 +134,10 @@ mod linux {
         fn new(event_loop: &EventLoop<()>) -> Self {
             // A requirement for sharing memory between OpenGL and Vulkan is that both instances
             // need to use the same graphics device and driver. Historically, choosing which device
-            // to use has not been a feature available in OpenGL. (Depending on the platform, it's
+            // to use has not been a feature available in OpenGL (depending on the platform, it's
             // now possible to do this via environment variables, driver hints, driver extensions or
             // EGL).
+            //
             // But since Vulkan allows us to explicitly choose a graphics device, we'll first create
             // an OpenGL context to query what device and driver UUIDs got chosen. Then we'll make
             // sure our Vulkan instance uses the same ones.
@@ -840,7 +841,8 @@ mod linux {
                 && supported_extensions.gl_ext_memory_object_fd
                 && supported_extensions.gl_ext_semaphore
                 && supported_extensions.gl_ext_semaphore_fd,
-            "Missing one or more of these required OpenGL extensions: GL_EXT_memory_object, GL_EXT_memory_object_fd, GL_EXT_semaphore, GL_EXT_semaphore_fd"
+            "Missing one or more of these required OpenGL extensions: GL_EXT_memory_object, \
+            GL_EXT_memory_object_fd, GL_EXT_semaphore, GL_EXT_semaphore_fd"
         );
 
         display
