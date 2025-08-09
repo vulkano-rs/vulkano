@@ -950,7 +950,7 @@ impl ShaderGroupHandlesData {
 
     /// Returns an iterator over the data of each group handle.
     #[inline]
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &[u8]> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &[u8]> + use<'_> {
         self.data().chunks_exact(self.handle_size as usize)
     }
 }
