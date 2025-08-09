@@ -5,7 +5,8 @@ fn main() -> Result<(), winit::error::EventLoopError> {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        Ok(println!("Not Implemented"))
+        println!("Not Implemented");
+        Ok(())
     }
 }
 
@@ -128,6 +129,7 @@ mod linux {
         recreate_swapchain: bool,
         previous_frame_end: Option<Box<dyn GpuFuture>>,
     }
+
     impl App {
         fn new(event_loop: &EventLoop<()>) -> Self {
             // A requirement for sharing memory between OpenGL and Vulkan is that both instances
@@ -455,7 +457,7 @@ mod linux {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
             let window = Arc::new(
                 event_loop
-                    .create_window(Window::default_attributes().with_title("Vulkan(o) window"))
+                    .create_window(Window::default_attributes())
                     .unwrap(),
             );
             let surface = Surface::from_window(&self.instance, &window).unwrap();
@@ -777,9 +779,7 @@ mod linux {
 
     fn create_window_with_opengl_support(event_loop: &EventLoop<()>) -> (Option<Window>, Config) {
         DisplayBuilder::new()
-            .with_window_attributes(Some(
-                Window::default_attributes().with_title("OpenGL window"),
-            ))
+            .with_window_attributes(Some(Window::default_attributes()))
             .build(
                 event_loop,
                 ConfigTemplateBuilder::default(),

@@ -12,8 +12,8 @@ bench = false
 doc = false
 
 [dependencies]
-glium = "0.36.*"
-glutin-winit = "0.5.*"
+glium = "0.36"
+glutin-winit = "0.5"
 vulkano = { workspace = true, default-features = true }
 vulkano-shaders = { workspace = true }
 winit = { workspace = true, default-features = true }
