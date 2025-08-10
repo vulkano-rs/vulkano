@@ -30,6 +30,9 @@
             vulkan-tools-lunarg
             vulkan-validation-layers
 
+            # OpenGL dependencies (needed for the gl-interop example)
+            libGL
+
             # winit dependencies
             libxkbcommon
             wayland
@@ -56,6 +59,9 @@
 
             # Vulkan dependencies
             shaderc
+
+            # OpenGL dependencies (needed for the gl-interop example)
+            libGL
 
             # winit dependencies
             libxkbcommon
