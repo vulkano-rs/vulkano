@@ -1,3 +1,6 @@
+// IMPORTANT NOTE: Names starting with an underscore are private and NOT PART OF THE PUBLIC API.
+// They can be changed at any moment without warning.
+
 #ifndef _VULKANO_HEADER
 #define _VULKANO_HEADER
 
