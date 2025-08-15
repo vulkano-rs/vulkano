@@ -117,12 +117,15 @@ mod tests {
     #[test]
     fn derive_vertex_multiple_names() {
         #[repr(C)]
-        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+        #[derive(Clone, Copy, Debug, Default, Vertex)]
         struct TestVertex {
             #[name("b", "c")]
             #[format(R32G32B32A32_SFLOAT)]
             a: [f32; 16],
         }
+
+        unsafe impl Pod for TestVertex {}
+        unsafe impl Zeroable for TestVertex {}
 
         let info = TestVertex::per_vertex();
         let b = info.members.get("b").unwrap();
@@ -136,11 +139,14 @@ mod tests {
     #[test]
     fn derive_vertex_format() {
         #[repr(C)]
-        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+        #[derive(Clone, Copy, Debug, Default, Vertex)]
         struct TestVertex {
             #[format(R8_UNORM)]
             unorm: u8,
         }
+
+        unsafe impl Pod for TestVertex {}
+        unsafe impl Zeroable for TestVertex {}
 
         let info = TestVertex::per_instance();
         let unorm = info.members.get("unorm").unwrap();

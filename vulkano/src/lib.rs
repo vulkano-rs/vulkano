@@ -210,9 +210,12 @@ impl StridedDeviceAddressRegion {
 /// and 8 bytes in the most significant bits of that memory,
 /// occupying a single [`u32`] in total.
 // NOTE: This is copied from Ash, but duplicated here so that we can implement traits on it.
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Zeroable, Pod)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
 pub struct Packed24_8(u32);
+
+unsafe impl Pod for Packed24_8 {}
+unsafe impl Zeroable for Packed24_8 {}
 
 impl Packed24_8 {
     /// Returns a new `Packed24_8` value.
