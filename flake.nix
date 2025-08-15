@@ -59,17 +59,6 @@
 
             # Vulkan dependencies
             shaderc
-
-            # OpenGL dependencies (needed for the gl-interop example)
-            libGL
-
-            # winit dependencies
-            libxkbcommon
-            wayland
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
