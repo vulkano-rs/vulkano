@@ -147,12 +147,15 @@ mod traits;
 ///   [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) device
 ///   limit.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DispatchIndirectCommand {
     pub x: u32,
     pub y: u32,
     pub z: u32,
 }
+
+unsafe impl Pod for DispatchIndirectCommand {}
+unsafe impl Zeroable for DispatchIndirectCommand {}
 
 /// Used as buffer contents to provide input for the
 /// [`AutoCommandBufferBuilder::draw_indirect`] command.
@@ -169,13 +172,16 @@ pub struct DispatchIndirectCommand {
 ///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
 ///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
     pub first_vertex: u32,
     pub first_instance: u32,
 }
+
+unsafe impl Pod for DrawIndirectCommand {}
+unsafe impl Zeroable for DrawIndirectCommand {}
 
 /// Used as buffer contents to provide input for the
 /// [`AutoCommandBufferBuilder::draw_mesh_tasks_indirect`] command.
@@ -195,12 +201,15 @@ pub struct DrawIndirectCommand {
 ///   [`max_task_work_group_total_count`](DeviceProperties::max_task_work_group_total_count) device
 ///   limit.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DrawMeshTasksIndirectCommand {
     pub group_count_x: u32,
     pub group_count_y: u32,
     pub group_count_z: u32,
 }
+
+unsafe impl Pod for DrawMeshTasksIndirectCommand {}
+unsafe impl Zeroable for DrawMeshTasksIndirectCommand {}
 
 /// Used as buffer contents to provide input for the
 /// [`AutoCommandBufferBuilder::draw_indexed_indirect`] command.
@@ -222,7 +231,7 @@ pub struct DrawMeshTasksIndirectCommand {
 ///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
 ///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
     pub index_count: u32,
     pub instance_count: u32,
@@ -230,6 +239,9 @@ pub struct DrawIndexedIndirectCommand {
     pub vertex_offset: u32,
     pub first_instance: u32,
 }
+
+unsafe impl Pod for DrawIndexedIndirectCommand {}
+unsafe impl Zeroable for DrawIndexedIndirectCommand {}
 
 vulkan_enum! {
     #[non_exhaustive]

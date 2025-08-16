@@ -471,13 +471,11 @@ impl<'a> PipelineShaderStageCreateInfo<'a> {
                 stage_enum,
                 ShaderStage::Compute | ShaderStage::Mesh | ShaderStage::Task
             ) && workgroup_size
-                > required_subgroup_size
-                    .checked_mul(
-                        properties
-                            .max_compute_workgroup_subgroups
-                            .unwrap_or_default(),
-                    )
-                    .unwrap_or(u32::MAX)
+                > required_subgroup_size.saturating_mul(
+                    properties
+                        .max_compute_workgroup_subgroups
+                        .unwrap_or_default(),
+                )
             {
                 return Err(Box::new(ValidationError {
                     problem: "the product of the `local_size_x`, `local_size_y` and \

@@ -1127,7 +1127,7 @@ impl AccelerationStructureGeometryAabbsData {
 /// Specifies two opposing corners of an axis-aligned bounding box.
 ///
 /// Each value in `min` must be less than or equal to the corresponding value in `max`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct AabbPositions {
     /// The minimum of the corner coordinates of the bounding box.
@@ -1140,6 +1140,9 @@ pub struct AabbPositions {
     /// The default value is `[0.0; 3]`.
     pub max: [f32; 3],
 }
+
+unsafe impl Pod for AabbPositions {}
+unsafe impl Zeroable for AabbPositions {}
 
 /// A top-level geometry consisting of instances of bottom-level acceleration structures.
 #[derive(Clone, Debug)]
@@ -1259,7 +1262,7 @@ impl From<Subbuffer<[DeviceSize]>> for AccelerationStructureGeometryInstancesDat
 
 /// Specifies a bottom-level acceleration structure instance when
 /// building a top-level structure.
-#[derive(Clone, Copy, Debug, PartialEq, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct AccelerationStructureInstance {
     /// A 3x4 transformation matrix to be applied to the bottom-level acceleration structure.
@@ -1288,6 +1291,9 @@ pub struct AccelerationStructureInstance {
     /// The default value is 0 (null).
     pub acceleration_structure_reference: DeviceAddress,
 }
+
+unsafe impl Pod for AccelerationStructureInstance {}
+unsafe impl Zeroable for AccelerationStructureInstance {}
 
 impl Default for AccelerationStructureInstance {
     #[inline]
@@ -1355,7 +1361,7 @@ impl From<GeometryInstanceFlags> for u8 {
 }
 
 /// Counts and offsets for an acceleration structure build operation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(C)]
 pub struct AccelerationStructureBuildRangeInfo {
     /// The number of primitives.
@@ -1384,6 +1390,9 @@ pub struct AccelerationStructureBuildRangeInfo {
     /// The default value is 0.
     pub transform_offset: u32,
 }
+
+unsafe impl Pod for AccelerationStructureBuildRangeInfo {}
+unsafe impl Zeroable for AccelerationStructureBuildRangeInfo {}
 
 impl AccelerationStructureBuildRangeInfo {
     #[allow(clippy::wrong_self_convention)]

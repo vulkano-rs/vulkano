@@ -166,13 +166,17 @@ mod tests {
     #[allow(deprecated)]
     fn impl_vertex() {
         #[repr(C)]
-        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+        #[derive(Clone, Copy, Debug, Default)]
         struct TestVertex {
             matrix: [f32; 16],
             vector: [f32; 4],
             scalar: u16,
             _padding: u16,
         }
+
+        unsafe impl Pod for TestVertex {}
+        unsafe impl Zeroable for TestVertex {}
+
         impl_vertex!(TestVertex, scalar, vector, matrix);
 
         let info = TestVertex::per_vertex();

@@ -1308,9 +1308,12 @@ mod tests {
         assert!(buffer.memory_offset() >= 17);
 
         {
-            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            #[derive(Clone, Copy)]
             #[repr(C, align(16))]
             struct Test([u8; 16]);
+
+            unsafe impl bytemuck::Pod for Test {}
+            unsafe impl bytemuck::Zeroable for Test {}
 
             let aligned = buffer.clone().cast_aligned::<Test>();
             assert_eq!(aligned.memory_offset() % 16, 0);
