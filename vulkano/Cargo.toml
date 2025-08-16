@@ -16,7 +16,7 @@ categories = { workspace = true }
 
 [dependencies]
 ash = { workspace = true }
-bytemuck = { workspace = true, features = ["min_const_generics"] }
+bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
 crossbeam-queue = { workspace = true }
 foldhash = { workspace = true }
 half = { workspace = true, features = ["bytemuck"] }
