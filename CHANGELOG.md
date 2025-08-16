@@ -55,6 +55,12 @@ Changes to external memory and external sync:
 - [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
 - The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
 
+# Version 0.33.1, 0.34.2 and 0.35.2 (2025-08-16)
+
+### Bugs fixed
+
+- The `bytemuck` dependency didn't specify the `derive` feature which was used in the vulkano crate. This only works because the `half` dependency specified the feature itself; however, when `half` inevitably removes this feature from its `bytemuck` dependency, these versions of vulkano would no longer compile.
+
 # Version 0.35.1 (2025-02-08)
 
 ### Bugs fixed
