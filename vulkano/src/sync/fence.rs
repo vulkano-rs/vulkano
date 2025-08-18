@@ -46,7 +46,7 @@ use std::{
     time::Duration,
 };
 
-/// A two-state synchronization primitive that is signalled by the device and waited on by the
+/// A two-state synchronization primitive that is signaled by the device and waited on by the
 /// host.
 #[derive(Debug)]
 pub struct Fence {
@@ -691,8 +691,8 @@ impl Fence {
         // Check if we are done without blocking
         match self.is_signaled() {
             Err(e) => return Poll::Ready(Err(e)),
-            Ok(signalled) => {
-                if signalled {
+            Ok(signaled) => {
+                if signaled {
                     return Poll::Ready(Ok(()));
                 }
             }

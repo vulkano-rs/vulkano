@@ -28,7 +28,7 @@
 //!    shader, which performs transformations on the data and generates new data as output.
 //! 3. (Optional) Tessellation: primitives are subdivided by the operations of two shaders, the
 //!    tessellation control and tessellation evaluation shaders. The control shader produces the
-//!    tessellation level to apply for the primitive, while the evaluation shader postprocesses the
+//!    tessellation level to apply for the primitive, while the evaluation shader post-processes the
 //!    newly created vertices.
 //! 4. (Optional) Geometry shading: whole primitives are fed as input and processed into a new set
 //!    of output primitives.

@@ -27,7 +27,7 @@
 //!
 //! ## Introducing barriers
 //!
-//! In some situations this is not the desired behaviour. If you add a command that writes to a
+//! In some situations this is not the desired behavior. If you add a command that writes to a
 //! buffer followed with another command that reads that buffer, you don't want them to execute
 //! simultaneously. Instead you want the second one to wait until the first one is finished. This
 //! is done by adding a pipeline barrier between the two commands.

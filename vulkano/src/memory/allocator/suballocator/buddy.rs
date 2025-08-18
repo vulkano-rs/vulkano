@@ -39,7 +39,7 @@ use std::{cmp, num::NonZero};
 /// largest of the highest order. With this notion, node sizes are proportional to 2<sup>*n*</sup>
 /// where *n* is the order. The highest order is determined from the size of the region and a
 /// constant minimum node size, which we chose to be 16B: log(*region&nbsp;size*&nbsp;/&nbsp;16) or
-/// equiavalently log(*region&nbsp;size*)&nbsp;-&nbsp;4 (assuming
+/// equivalently log(*region&nbsp;size*)&nbsp;-&nbsp;4 (assuming
 /// *region&nbsp;size*&nbsp;&ge;&nbsp;16).
 ///
 /// It's safe to say that this algorithm works best if you have some level of control over your

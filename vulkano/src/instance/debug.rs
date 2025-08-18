@@ -497,7 +497,7 @@ vulkan_bitflags! {
     /// Specifies that some general event has occurred.
     GENERAL = GENERAL,
 
-    /// Specifies that something has occurred during validation against the vulkan specification
+    /// Specifies that something has occurred during validation against the Vulkan specification
     VALIDATION = VALIDATION,
 
     /// Specifies a potentially non-optimal use of Vulkan

@@ -10,7 +10,7 @@
 //! 1. Create a [`VulkanLibrary`]. This represents a Vulkan library on the system, which must be
 //!    loaded before you can do anything with Vulkan.
 //!
-//! 2. Create an [`Instance`]. This is the API entry point, and represents an initialised Vulkan
+//! 2. Create an [`Instance`]. This is the API entry point, and represents an initialized Vulkan
 //!    library.
 //!
 //! 3. If you intend to show graphics to the user on a window or a screen, create a [`Surface`].

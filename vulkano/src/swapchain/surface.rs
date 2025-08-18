@@ -1681,7 +1681,7 @@ vulkan_enum! {
     /// - Exactly one image is currently displayed on the screen.
     /// - Zero or more are acquired by the application, or available to be acquired.
     /// - Some may be held inside the presentation engine waiting to be displayed. The present mode
-    ///   concerns the behaviour of this category, and by extension, which images are left over for
+    ///   concerns the behavior of this category, and by extension, which images are left over for
     ///   acquiring.
     ///
     /// The present mode affects what is commonly known as "vertical sync" or "vsync" for short.
@@ -1861,7 +1861,7 @@ vulkan_enum! {
     /// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
     /// > representation of the data, but not how it is interpreted. You can think of this a bit
     /// > like text encoding. An *RGB* value is a like a byte, in other words it is the medium by
-    /// > which values are communicated, and a *color space* is like a text encoding (eg. UTF-8),
+    /// > which values are communicated, and a *color space* is like a text encoding (e.g.. UTF-8),
     /// > in other words it is the way the value should be interpreted.
     ///
     /// The most commonly used color space today is sRGB. Most monitors today use this color space,

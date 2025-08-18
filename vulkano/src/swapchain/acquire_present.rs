@@ -159,7 +159,7 @@ impl AcquireNextImageInfo<'_> {
 /// behavior may change).
 ///
 /// The second field in the tuple in the Ok result is a bool represent if the acquisition was
-/// suboptimal. In this case the acquired image is still usable, but the swapchain should be
+/// sub-optimal. In this case the acquired image is still usable, but the swapchain should be
 /// recreated as the Surface's properties no longer match the swapchain.
 pub fn acquire_next_image(
     swapchain: Arc<Swapchain>,
@@ -269,10 +269,10 @@ pub struct AcquiredImage {
 pub struct SwapchainAcquireFuture {
     swapchain: Arc<Swapchain>,
     image_index: u32,
-    // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
+    // Semaphore that is signaled when the acquire is complete. Empty if the acquire has already
     // happened.
     semaphore: Option<Arc<Semaphore>>,
-    // Fence that is signalled when the acquire is complete. Empty if the acquire has already
+    // Fence that is signaled when the acquire is complete. Empty if the acquire has already
     // happened.
     fence: Option<Arc<Fence>>,
     finished: AtomicBool,
@@ -1318,7 +1318,7 @@ where
 /// Wait for an image to be presented to the user. Must be used with a `present_id` given to
 /// `present_with_id`.
 ///
-/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is
+/// Returns a bool to represent if the presentation was sub-optimal. In this case the swapchain is
 /// still usable, but the swapchain should be recreated as the Surface's properties no longer match
 /// the swapchain.
 #[deprecated(since = "0.35.0", note = "use `Swapchain::wait_for_present` instead")]

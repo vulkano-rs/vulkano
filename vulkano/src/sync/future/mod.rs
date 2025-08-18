@@ -51,13 +51,13 @@
 //! Adding a semaphore is a simple as replacing `prev_future.then_execute(...)` with
 //! `prev_future.then_signal_semaphore().then_execute(...)`.
 //!
-//! > **Note**: A common use-case is using a transfer queue (ie. a queue that is only capable of
+//! > **Note**: A common use-case is using a transfer queue (i.e. a queue that is only capable of
 //! > performing transfer operations) to write data to a buffer, then read that data from the
 //! > rendering queue.
 //!
 //! What happens when you do so is that the first queue will execute the first set of operations
-//! (represented by `prev_future` in the example), then put a semaphore in the signalled state.
-//! Meanwhile the second queue blocks (if necessary) until that same semaphore gets signalled, and
+//! (represented by `prev_future` in the example), then put a semaphore in the signaled state.
+//! Meanwhile the second queue blocks (if necessary) until that same semaphore gets signaled, and
 //! then only will execute the second set of operations.
 //!
 //! Since you want to avoid blocking the second queue as much as possible, you probably want to
@@ -76,10 +76,10 @@
 //!
 //! A `Fence` is an object that is used to signal the CPU when an operation on the GPU is finished.
 //!
-//! Signalling a fence is done by calling `then_signal_fence()` on a future. Just like semaphores,
+//! Signaling a fence is done by calling `then_signal_fence()` on a future. Just like semaphores,
 //! you are encouraged to use `then_signal_fence_and_flush()` instead.
 //!
-//! Signalling a fence is kind of a "terminator" to a chain of futures
+//! Signaling a fence is kind of a "terminator" to a chain of futures
 
 pub use self::{
     fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior},
@@ -131,7 +131,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn cleanup_finished(&mut self);
 
     /// Builds a submission that, if submitted, makes sure that the event represented by this
-    /// `GpuFuture` will happen, and possibly contains extra elements (eg. a semaphore wait or an
+    /// `GpuFuture` will happen, and possibly contains extra elements (e.g.. a semaphore wait or an
     /// event wait) that makes the dependency with subsequent operations work.
     ///
     /// It is the responsibility of the caller to ensure that the submission is going to be
@@ -279,7 +279,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     }
 
     /// Signals a semaphore after this future and flushes it. Returns another future that
-    /// represents the moment when the semaphore is signalled.
+    /// represents the moment when the semaphore is signaled.
     ///
     /// This is a just a shortcut for `then_signal_semaphore()` followed with `flush()`.
     ///

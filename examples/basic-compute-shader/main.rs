@@ -228,7 +228,7 @@ fn main() {
         .unwrap();
 
     // Blocks execution until the GPU has finished the operation. This method only exists on the
-    // future that corresponds to a signalled fence. In other words, this method wouldn't be
+    // future that corresponds to a signaled fence. In other words, this method wouldn't be
     // available if we didn't call `.then_signal_fence_and_flush()` earlier. The `None` parameter
     // is an optional timeout.
     //
@@ -237,7 +237,7 @@ fn main() {
     // `.then_signal_fence_and_flush()`. Therefore the actual point of calling
     // `.then_signal_fence_and_flush()` and `.wait()` is to make things more explicit. In the
     // future, if the Rust language gets linear types vulkano may get modified so that only
-    // fence-signalled futures can get destroyed like this.
+    // fence-signaled futures can get destroyed like this.
     future.wait(None).unwrap();
 
     // Now that the GPU is done, the content of the buffer should have been modified. Let's check

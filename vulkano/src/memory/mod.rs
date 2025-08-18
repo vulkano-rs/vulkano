@@ -1,7 +1,7 @@
 //! Device memory allocation and memory pools.
 //!
 //! By default, memory allocation is automatically handled by the vulkano library when you create
-//! a buffer or an image. But if you want more control, you have the possibility to customise the
+//! a buffer or an image. But if you want more control, you have the possibility to customize the
 //! memory allocation strategy.
 //!
 //! # Memory types and heaps
@@ -290,7 +290,7 @@ impl ResourceMemory {
         })
     }
 
-    /// Returns the mapped pointer to a range of the `ResourceMemory`, or returns [`None`] if ouf
+    /// Returns the mapped pointer to a range of the `ResourceMemory`, or returns [`None`] if out
     /// of bounds.
     ///
     /// `range` is specified in bytes relative to the beginning of `self` and must fall within the

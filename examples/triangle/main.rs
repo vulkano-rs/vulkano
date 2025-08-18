@@ -620,7 +620,7 @@ impl ApplicationHandler for App {
                     Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
-                // `acquire_next_image` can be successful, but suboptimal. This means that the
+                // `acquire_next_image` can be successful, but sub-optimal. This means that the
                 // swapchain image will still work, but it may not display correctly. With some
                 // drivers this can be when the window resizes, but it may not cause the swapchain
                 // to become out of date.

@@ -62,7 +62,7 @@ use std::{
 /// };
 /// ```
 ///
-/// **But note that this layout is extremely suboptimal.** What you should do instead is reorder
+/// **But note that this layout is extremely sub-optimal.** What you should do instead is reorder
 /// your fields such that you don't need any padding:
 ///
 /// ```glsl
@@ -135,7 +135,7 @@ use std::{
 /// }
 /// ```
 ///
-/// **But note again, that this layout is suboptimal.** You can instead use a buffer block instead
+/// **But note again, that this layout is sub-optimal.** You can instead use a buffer block instead
 /// of the uniform block, if memory usage could become an issue:
 ///
 /// ```glsl

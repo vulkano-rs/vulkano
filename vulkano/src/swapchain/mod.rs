@@ -1429,7 +1429,7 @@ impl Swapchain {
     /// presenting. This function will then wait until the swapchain image with the specified ID is
     /// presented.
     ///
-    /// Returns whether the presentation was suboptimal. This has the same meaning as in
+    /// Returns whether the presentation was sub-optimal. This has the same meaning as in
     /// [`AcquiredImage::is_suboptimal`].
     #[inline]
     pub fn wait_for_present(
