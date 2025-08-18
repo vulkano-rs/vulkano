@@ -3,8 +3,8 @@
 //! A compute pipeline takes buffers and/or images as both inputs and outputs. It operates
 //! "standalone", with no additional infrastructure such as render passes or vertex input. Compute
 //! pipelines can be used by themselves for performing work on the Vulkan device, but they can also
-//! assist graphics operations by precalculating or post-processing the operations from another kind
-//! of pipeline. While it theoretically possible to perform graphics operations entirely in a
+//! assist graphics operations by precalculating or post-processing the operations from another
+//! kind of pipeline. While it theoretically possible to perform graphics operations entirely in a
 //! compute pipeline, a graphics pipeline is better suited to that task.
 //!
 //! A compute pipeline is relatively simple to create, requiring only a pipeline layout and a

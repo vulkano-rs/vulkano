@@ -253,7 +253,7 @@ impl VulkanoWindowRenderer {
 
     /// Begin your rendering by calling `acquire`.
     /// `on_recreate_swapchain` is called when the swapchain gets recreated, due to being resized,
-    /// sub-optimal, or changing the present mode. Returns a [`GpuFuture`] representing the time
+    /// suboptimal, or changing the present mode. Returns a [`GpuFuture`] representing the time
     /// after which the swapchain image has been acquired and previous frame ended.
     /// Execute your command buffers after calling this function and
     /// finish rendering by calling [`VulkanoWindowRenderer::present`].

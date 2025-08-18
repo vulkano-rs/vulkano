@@ -43,8 +43,8 @@
 //!
 //! For binary semaphores:
 //! - When a semaphore signal operation is executed, the semaphore must be in the unsignaled state.
-//!   In other words, the same semaphore cannot be signaled by multiple commands; there must
-//!   always be a wait operation in between them.
+//!   In other words, the same semaphore cannot be signaled by multiple commands; there must always
+//!   be a wait operation in between them.
 //! - There must never be more than one semaphore wait operation executing on the same semaphore at
 //!   the same time.
 //! - When a semaphore wait operation is queued as part of a command, the semaphore must already be

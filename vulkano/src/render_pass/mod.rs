@@ -4283,8 +4283,8 @@ pub(crate) struct AttachmentReference2ExtensionsVk {
 /// A dependency between two subpasses of a render pass.
 ///
 /// The implementation is allowed to change the order of the subpasses within a render pass, unless
-/// you specify that there exists a dependency between two subpasses (i.e. the result of one will be
-/// used as the input of another one). Subpass dependencies work similar to pipeline barriers,
+/// you specify that there exists a dependency between two subpasses (i.e. the result of one will
+/// be used as the input of another one). Subpass dependencies work similar to pipeline barriers,
 /// except that they operate on whole subpasses instead of individual images.
 ///
 /// If `src_subpass` and `dst_subpass` are equal, then this specifies a

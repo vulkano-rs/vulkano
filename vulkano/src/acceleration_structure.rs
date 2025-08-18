@@ -694,11 +694,11 @@ vulkan_bitflags! {
     /// Prioritize for best trace performance, with possibly longer build times.
     PREFER_FAST_TRACE = PREFER_FAST_TRACE,
 
-    /// Prioritize for shorter build time, with possibly sub-optimal trace performance.
+    /// Prioritize for shorter build time, with possibly suboptimal trace performance.
     PREFER_FAST_BUILD = PREFER_FAST_BUILD,
 
     /// Prioritize low acceleration structure and scratch memory size, with possibly longer build
-    /// times or sub-optimal trace performance.
+    /// times or suboptimal trace performance.
     LOW_MEMORY = LOW_MEMORY,
 
     /* TODO: enable
