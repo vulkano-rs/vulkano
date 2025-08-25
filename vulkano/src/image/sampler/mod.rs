@@ -1420,7 +1420,7 @@ vulkan_enum! {
     /// as coordinate 0.0. Coordinates over 1.0 have the same value as coordinate 1.0.
     ClampToEdge = CLAMP_TO_EDGE,
 
-    /// Any pixel out of range is colored using the colour selected with the `border_color` on the
+    /// Any pixel out of range is colored using the color selected with the `border_color` on the
     /// `SamplerBuilder`.
     ///
     /// When this mode is chosen, the numeric type of the image view's format must match the border

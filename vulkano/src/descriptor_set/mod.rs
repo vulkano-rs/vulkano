@@ -308,7 +308,7 @@ impl DescriptorSet {
         }
     }
 
-    /// Invalidates descriptors within a descriptor set. Doesn't actually call into vulkan and only
+    /// Invalidates descriptors within a descriptor set. Doesn't actually call into Vulkan and only
     /// invalidates the descriptors inside vulkano's resource tracking. Invalidated descriptors are
     /// equivalent to uninitialized descriptors, in that binding a descriptor set to a particular
     /// pipeline requires all shader-accessible descriptors to be valid.

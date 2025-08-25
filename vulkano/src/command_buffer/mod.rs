@@ -40,7 +40,7 @@
 //!
 //! To record a new command buffer, the most direct way is to create a new
 //! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands
-//! to the command buffer. When you are done recording, you call [`build`] to finalise the command
+//! to the command buffer. When you are done recording, you call [`build`] to finalize the command
 //! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
 //! [`SecondaryAutoCommandBuffer`].
 //!
@@ -1295,11 +1295,11 @@ pub struct SemaphoreSubmitInfo {
 
     /// For a semaphore wait operation, specifies the pipeline stages in the second synchronization
     /// scope: stages of queue operations following the wait operation that can start executing
-    /// after the semaphore is signalled.
+    /// after the semaphore is signaled.
     ///
     /// For a semaphore signal operation, specifies the pipeline stages in the first
     /// synchronization scope: stages of queue operations preceding the signal operation that
-    /// must complete before the semaphore is signalled.
+    /// must complete before the semaphore is signaled.
     /// If this value does not equal [`ALL_COMMANDS`], then the [`synchronization2`] feature must
     /// be enabled on the device.
     ///

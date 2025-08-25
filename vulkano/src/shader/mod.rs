@@ -198,7 +198,7 @@
 //!   [`ImageFormatProperties::filter_cubic`] returned from
 //!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02694\]]</sup>
 //! - If the sampler's reduction mode is [`SamplerReductionMode::Min`] or
-//!   [`SamplerReductionMode::Max`], the image view type and format must support cubic minmax
+//!   [`SamplerReductionMode::Max`], the image view type and format must support cubic min-max
 //!   filtering, as indicated in [`ImageFormatProperties::filter_cubic_minmax`] returned from
 //!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02695\]]</sup>
 //!

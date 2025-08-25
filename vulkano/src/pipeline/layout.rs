@@ -36,7 +36,7 @@
 //! positioned correctly. For example, if a new, incompatible type were used for `Ds1`, then the
 //! `descriptor_set1`, `descriptor_set2` and `descriptor_set3` members would no longer be correct,
 //! but `descriptor_set0` and `push_constants` would remain accessible in the new layout.
-//! Because of this behaviour, the following rules apply to compatibility between the layouts used
+//! Because of this behavior, the following rules apply to compatibility between the layouts used
 //! in subsequent descriptor set binding calls:
 //!
 //! - An incompatible definition of `Pc` invalidates all bound descriptor sets.

@@ -9,7 +9,7 @@
 //! - Per-primitive shading rate requires the [`primitive_fragment_shading_rate`] feature to be
 //!   enabled on the device, and is set in the last active pre-rasterization shader stage.
 //! - Per-region shading rate requires the [`attachment_fragment_shading_rate`] feature to be
-//!   enabled on the device and an additional specialised fragment shading rate image attachment.
+//!   enabled on the device and an additional specialized fragment shading rate image attachment.
 //!
 //! `vulkano` does not currently support per-region shading state.
 //!
@@ -202,7 +202,7 @@ vulkan_enum! {
 
     /// Specifies a combiner operation of combine(Axy,Bxy) = Axy * Bxy.
     ///
-    /// See the vulkan specification for more information on how this operation is performed if `fragmentShadingRateStrictMultiplyCombiner` is `false`.
+    /// See the Vulkan specification for more information on how this operation is performed if `fragmentShadingRateStrictMultiplyCombiner` is `false`.
     Mul = MUL,
 }
 

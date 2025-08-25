@@ -269,10 +269,10 @@ pub struct AcquiredImage {
 pub struct SwapchainAcquireFuture {
     swapchain: Arc<Swapchain>,
     image_index: u32,
-    // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
+    // Semaphore that is signaled when the acquire is complete. Empty if the acquire has already
     // happened.
     semaphore: Option<Arc<Semaphore>>,
-    // Fence that is signalled when the acquire is complete. Empty if the acquire has already
+    // Fence that is signaled when the acquire is complete. Empty if the acquire has already
     // happened.
     fence: Option<Arc<Fence>>,
     finished: AtomicBool,

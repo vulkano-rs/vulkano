@@ -19,7 +19,7 @@ vulkan_enum! {
     /// performed as part of pipeline barriers in a command buffer.
     ///
     /// The `General` layout is compatible with any operation, so layout transitions are never
-    /// needed. However, the other layouts, while more restricted, are usually better optimised for
+    /// needed. However, the other layouts, while more restricted, are usually better optimized for
     /// a particular type of operation than `General`, so they are usually preferred.
     ///
     /// Vulkan does not keep track of layouts itself, so it is the responsibility of the user to

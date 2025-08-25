@@ -300,7 +300,7 @@ where
     ///
     /// After this function successfully locks the subbuffer, any attempt to submit a command
     /// buffer that uses it in exclusive mode will fail. You can still submit this subbuffer
-    /// for non-exclusive accesses (ie. reads).
+    /// for non-exclusive accesses (i.e. reads).
     ///
     /// If the memory backing the buffer is not [host-coherent], then this function will lock a
     /// range that is potentially larger than the subbuffer, because the range given to
@@ -580,7 +580,7 @@ impl Subbuffer<[u8]> {
 
     /// Casts the slice to a different element type while ensuring correct alignment for the type.
     ///
-    /// The offset of the subbuffer is rounded up to the alignment of `T` and the size abjusted for
+    /// The offset of the subbuffer is rounded up to the alignment of `T` and the size adjusted for
     /// the padding, then the size is rounded down to the nearest multiple of `T`'s size.
     ///
     /// # Panics

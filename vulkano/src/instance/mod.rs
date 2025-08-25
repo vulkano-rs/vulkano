@@ -17,7 +17,7 @@
 //! ```
 //!
 //! Creating an instance initializes everything and allows you to enumerate physical devices,
-//! ie. all the Vulkan implementations that are available on the system.
+//! i.e. all the Vulkan implementations that are available on the system.
 //!
 //! ```no_run
 //! # use vulkano::{
@@ -43,7 +43,7 @@
 //! that are available on the system with `Instance::enumerate_physical_devices()` (see above).
 //!
 //! When choosing which physical device to use, keep in mind that physical devices may or may not
-//! be able to draw to a certain surface (ie. to a window or a monitor), or may even not be able
+//! be able to draw to a certain surface (i.e. to a window or a monitor), or may even not be able
 //! to draw at all. See the `swapchain` module for more information about surfaces.
 //!
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the

@@ -387,7 +387,7 @@ impl<W: ?Sized> TaskGraph<W> {
     }
 
     /// Performs [longest path search] to assign the dependency level index to each task node.
-    /// Tasks in the same dependency level don't depend on eachother and can therefore be run in
+    /// Tasks in the same dependency level don't depend on each other and can therefore be run in
     /// parallel. Returns a vector of dependency levels in topological order indexed by the node's
     /// dependency level index.
     ///

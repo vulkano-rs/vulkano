@@ -541,7 +541,7 @@ vulkan_enum! {
     /// No culling.
     None = NONE,
 
-    /// The faces facing the front of the screen (ie. facing the user) will be removed.
+    /// The faces facing the front of the screen (i.e. facing the user) will be removed.
     Front = FRONT,
 
     /// The faces facing the back of the screen will be removed.

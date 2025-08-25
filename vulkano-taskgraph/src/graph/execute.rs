@@ -109,7 +109,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         let mut current_fence = flight.current_fence().write();
 
-        // SAFETY: We checked that the fence has been signalled.
+        // SAFETY: We checked that the fence has been signaled.
         unsafe { current_fence.reset_unchecked() }?;
 
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
@@ -2282,7 +2282,7 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
         unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
 
         // But even after waiting for idle, the state of the graph is invalid because some
-        // semaphores are still signalled, so we have to recreate them.
+        // semaphores are still signaled, so we have to recreate them.
         for semaphore in self.executable.semaphores.borrow_mut().iter_mut() {
             // SAFETY: The parameters are valid.
             match unsafe { Semaphore::new_unchecked(device, &Default::default()) } {

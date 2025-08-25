@@ -46,7 +46,7 @@ where
 pub enum FenceSignalFutureBehavior {
     /// Continue execution on the same queue.
     Continue,
-    /// Wait for the fence to be signalled before submitting any further operation.
+    /// Wait for the fence to be signaled before submitting any further operation.
     #[allow(dead_code)] // TODO: why is this never constructed?
     Block {
         /// How long to block the current thread.

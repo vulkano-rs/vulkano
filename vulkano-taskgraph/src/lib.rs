@@ -1,6 +1,6 @@
 //! Vulkano's **EXPERIMENTAL** task graph implementation. Expect many bugs and incomplete features.
-//! There is also currently no validation except the most barebones sanity checks. You may also get
-//! panics in random places.
+//! There is also currently no validation except the most bare-bones sanity checks. You may also
+//! get panics in random places.
 
 use command_buffer::RecordingCommandBuffer;
 use concurrent_slotmap::{hyaline, Key, SlotId};
