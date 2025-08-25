@@ -68,7 +68,7 @@ impl WriteDescriptorSet {
     /// of zero will be valid, which is probably not what you want.
     /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
     ///
-    /// The buffer may be `None` if `null_descriptor` feature is enabled.
+    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer<T: ?Sized>(binding: u32, buffer: impl Into<Option<Subbuffer<T>>>) -> Self {
         let buffer = buffer.into();
@@ -87,7 +87,7 @@ impl WriteDescriptorSet {
     ///
     /// See [`buffer`](Self::buffer) for more information.
     ///
-    /// The buffers may be `None` if `null_descriptor` feature is enabled.
+    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_array(
         binding: u32,
@@ -111,7 +111,7 @@ impl WriteDescriptorSet {
 
     /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
     ///
-    /// The buffer may be `None` if `null_descriptor` feature is enabled.
+    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_with_range(
         binding: u32,
@@ -126,7 +126,7 @@ impl WriteDescriptorSet {
     ///
     /// See [`buffer_with_range`](Self::buffer_with_range) for more information.
     ///
-    /// The buffers may be `None` if `null_descriptor` feature is enabled.
+    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
     pub fn buffer_with_range_array(
         binding: u32,
         first_array_element: u32,
@@ -144,7 +144,7 @@ impl WriteDescriptorSet {
 
     /// Write a single buffer view to array element 0.
     ///
-    /// The buffer view may be `None` if `null_descriptor` feature is enabled.
+    /// The buffer view may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_view(binding: u32, buffer_view: impl Into<Option<Arc<BufferView>>>) -> Self {
         let buffer_view = buffer_view.into();
@@ -153,7 +153,7 @@ impl WriteDescriptorSet {
 
     /// Write a number of consecutive buffer view elements.
     ///
-    /// The buffer views may be `None` if `null_descriptor` feature is enabled.
+    /// The buffer views may be `None` if the `null_descriptor` feature is enabled.
     pub fn buffer_view_array(
         binding: u32,
         first_array_element: u32,
@@ -172,7 +172,7 @@ impl WriteDescriptorSet {
     /// Write a single image view to array element 0, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
     ///
-    /// The image view may be `None` if `null_descriptor` feature is enabled.
+    /// The image view may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn image_view(binding: u32, image_view: impl Into<Option<Arc<ImageView>>>) -> Self {
         let image_view = image_view.into();
@@ -182,7 +182,7 @@ impl WriteDescriptorSet {
     /// Write a number of consecutive image view elements, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
     ///
-    /// The image views may be `None` if `null_descriptor` feature is enabled.
+    /// The image views may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn image_view_array(
         binding: u32,
@@ -239,7 +239,7 @@ impl WriteDescriptorSet {
 
     /// Write a single acceleration structure to array element 0.
     ///
-    /// The acceleration structure may be `None` if `null_descriptor` feature is enabled.
+    /// The acceleration structure may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn acceleration_structure(
         binding: u32,
@@ -251,7 +251,7 @@ impl WriteDescriptorSet {
 
     /// Write a number of consecutive acceleration structure elements.
     ///
-    /// The acceleration structures may be `None` if `null_descriptor` feature is enabled.
+    /// The acceleration structures may be `None` if the `null_descriptor` feature is enabled.
     pub fn acceleration_structure_array(
         binding: u32,
         first_array_element: u32,
@@ -566,8 +566,8 @@ impl WriteDescriptorSet {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
                                 problem: "is `None`, but samplers must be provided for \
-                                    `DescriptorType::CombinedImageSampler` when the descriptor set layout \
-                                    was not created with immutable samplers"
+                                    `DescriptorType::CombinedImageSampler` when the descriptor \
+                                    set layout was not created with immutable samplers"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00325"],
                                 ..Default::default()
@@ -1276,9 +1276,9 @@ impl WriteDescriptorSet {
                     let Some(image_view) = image_view else {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].image_view", index).into(),
-                            problem:
-                                "is `None`, but input attachment image views must not be `None`"
-                                    .into(),
+                            problem: "is `None`, but input attachment image views must not be \
+                                `None`"
+                                .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-07683"],
                             ..Default::default()
                         }));

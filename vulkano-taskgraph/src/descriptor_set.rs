@@ -306,7 +306,7 @@ impl GlobalDescriptorSet {
             assert_eq!(storage_buffers.insert(None, &guard), StorageBufferId::NULL);
             assert_eq!(
                 acceleration_structures.insert(None, &guard),
-                AccelerationStructureId::NULL
+                AccelerationStructureId::NULL,
             );
         }
 
@@ -478,9 +478,9 @@ impl GlobalDescriptorSet {
             SAMPLED_IMAGE_BINDING,
             id.index,
             iter::once(DescriptorImageInfo {
+                sampler: None,
                 image_view: Some(image_view),
                 image_layout,
-                sampler: None,
             }),
         );
 
@@ -508,9 +508,9 @@ impl GlobalDescriptorSet {
             STORAGE_IMAGE_BINDING,
             id.index,
             iter::once(DescriptorImageInfo {
+                sampler: None,
                 image_view: Some(image_view),
                 image_layout,
-                sampler: None,
             }),
         );
 
@@ -935,7 +935,7 @@ macro_rules! declare_key_with_null {
         impl $name {
             /// An ID that is a null descriptor for the given type.
             ///
-            /// This is only guaranteed to be valid when `null_descriptor` feature is enabled.
+            /// This is only guaranteed to be valid when the `null_descriptor` feature is enabled.
             pub const NULL: Self = Self::new(concurrent_slotmap::SlotId::new(
                 0,
                 concurrent_slotmap::SlotId::OCCUPIED_TAG,
@@ -1054,9 +1054,9 @@ impl LocalDescriptorSet {
                 INPUT_ATTACHMENT_BINDING,
                 input_attachment_index as u32,
                 iter::once(DescriptorImageInfo {
+                    sampler: None,
                     image_view: Some(attachment.clone()),
                     image_layout: attachment_reference.layout,
-                    sampler: None,
                 }),
             ));
         }
