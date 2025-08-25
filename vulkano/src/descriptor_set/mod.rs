@@ -88,7 +88,7 @@ use crate::{
     image::ImageLayout,
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ash::vk::{self};
+use ash::vk;
 use foldhash::HashMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use smallvec::{smallvec, SmallVec};
