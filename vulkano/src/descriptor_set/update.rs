@@ -39,29 +39,26 @@ pub struct WriteDescriptorSet {
 }
 
 impl WriteDescriptorSet {
-    /// Write an empty element to array element 0.
-    ///
-    /// This is used for push descriptors in combination with `Sampler` descriptors that have
-    /// immutable samplers in the layout. The Vulkan spec requires these elements to be explicitly
-    /// written, but since there is no data to write, a dummy write is provided instead.
-    ///
-    /// For regular descriptor sets, the data for such descriptors is automatically valid, and
-    /// dummy writes are not allowed.
+    /// Write a single image to array element 0.
     #[inline]
-    pub fn none(binding: u32) -> Self {
-        Self::none_array(binding, 0, 1)
+    pub fn image(binding: u32, image_info: DescriptorImageInfo) -> Self {
+        Self::image_array(binding, 0, [image_info])
     }
 
-    /// Write a number of consecutive empty elements.
-    ///
-    /// See [`none`](Self::none) for more information.
+    /// Write a number of consecutive image elements.
     #[inline]
-    pub fn none_array(binding: u32, first_array_element: u32, num_elements: u32) -> Self {
-        assert_ne!(num_elements, 0);
+    pub fn image_array(
+        binding: u32,
+        first_array_element: u32,
+        elements: impl IntoIterator<Item = DescriptorImageInfo>,
+    ) -> Self {
+        let elements: SmallVec<_> = elements.into_iter().collect();
+        assert!(!elements.is_empty());
+
         Self {
             binding,
             first_array_element,
-            elements: WriteDescriptorSetElements::None(num_elements),
+            elements: WriteDescriptorSetElements::Image(elements),
         }
     }
 
@@ -70,46 +67,57 @@ impl WriteDescriptorSet {
     /// For dynamic buffer bindings, this will bind the whole buffer, and only a dynamic offset
     /// of zero will be valid, which is probably not what you want.
     /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
+    ///
+    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
-    pub fn buffer(binding: u32, buffer: Subbuffer<impl ?Sized>) -> Self {
-        let range = buffer.size();
+    pub fn buffer<T: ?Sized>(binding: u32, buffer: impl Into<Option<Subbuffer<T>>>) -> Self {
+        let buffer = buffer.into();
         Self::buffer_with_range_array(
             binding,
             0,
-            [DescriptorBufferInfo {
+            [buffer.map(|buffer| DescriptorBufferInfo {
+                range: buffer.size(),
                 buffer: buffer.into_bytes(),
                 offset: 0,
-                range,
-            }],
+            })],
         )
     }
 
     /// Write a number of consecutive buffer elements.
     ///
     /// See [`buffer`](Self::buffer) for more information.
+    ///
+    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn buffer_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Subbuffer<impl ?Sized>>,
+        elements: impl IntoIterator<Item = Option<Subbuffer<impl ?Sized>>>,
     ) -> Self {
         Self::buffer_with_range_array(
             binding,
             first_array_element,
             elements.into_iter().map(|buffer| {
-                let range = buffer.size();
-                DescriptorBufferInfo {
+                let buffer = buffer?;
+
+                Some(DescriptorBufferInfo {
+                    range: buffer.size(),
                     buffer: buffer.into_bytes(),
                     offset: 0,
-                    range,
-                }
+                })
             }),
         )
     }
 
     /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
+    ///
+    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
-    pub fn buffer_with_range(binding: u32, buffer_info: DescriptorBufferInfo) -> Self {
+    pub fn buffer_with_range(
+        binding: u32,
+        buffer_info: impl Into<Option<DescriptorBufferInfo>>,
+    ) -> Self {
+        let buffer_info = buffer_info.into();
         Self::buffer_with_range_array(binding, 0, [buffer_info])
     }
 
@@ -117,10 +125,12 @@ impl WriteDescriptorSet {
     /// bound.
     ///
     /// See [`buffer_with_range`](Self::buffer_with_range) for more information.
+    ///
+    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
     pub fn buffer_with_range_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = DescriptorBufferInfo>,
+        elements: impl IntoIterator<Item = Option<DescriptorBufferInfo>>,
     ) -> Self {
         let elements: SmallVec<_> = elements.into_iter().collect();
         assert!(!elements.is_empty());
@@ -133,16 +143,21 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single buffer view to array element 0.
+    ///
+    /// The buffer view may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
-    pub fn buffer_view(binding: u32, buffer_view: Arc<BufferView>) -> Self {
+    pub fn buffer_view(binding: u32, buffer_view: impl Into<Option<Arc<BufferView>>>) -> Self {
+        let buffer_view = buffer_view.into();
         Self::buffer_view_array(binding, 0, [buffer_view])
     }
 
     /// Write a number of consecutive buffer view elements.
+    ///
+    /// The buffer views may be `None` if the `null_descriptor` feature is enabled.
     pub fn buffer_view_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<BufferView>>,
+        elements: impl IntoIterator<Item = Option<Arc<BufferView>>>,
     ) -> Self {
         let elements: SmallVec<_> = elements.into_iter().collect();
         assert!(!elements.is_empty());
@@ -156,155 +171,59 @@ impl WriteDescriptorSet {
 
     /// Write a single image view to array element 0, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
+    ///
+    /// The image view may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
-    pub fn image_view(binding: u32, image_view: Arc<ImageView>) -> Self {
-        Self::image_view_with_layout_array(
-            binding,
-            0,
-            [DescriptorImageViewInfo {
-                image_view,
-                image_layout: ImageLayout::Undefined,
-            }],
-        )
+    pub fn image_view(binding: u32, image_view: impl Into<Option<Arc<ImageView>>>) -> Self {
+        let image_view = image_view.into();
+        Self::image_view_array(binding, 0, [image_view])
     }
 
     /// Write a number of consecutive image view elements, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
+    ///
+    /// The image views may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn image_view_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<ImageView>>,
+        elements: impl IntoIterator<Item = Option<Arc<ImageView>>>,
     ) -> Self {
-        Self::image_view_with_layout_array(
+        Self::image_array(
             binding,
             first_array_element,
-            elements
-                .into_iter()
-                .map(|image_view| DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: ImageLayout::Undefined,
-                }),
-        )
-    }
-
-    /// Write a single image view to array element 0, specifying the layout of the image to be
-    /// bound.
-    #[inline]
-    pub fn image_view_with_layout(binding: u32, image_view_info: DescriptorImageViewInfo) -> Self {
-        Self::image_view_with_layout_array(binding, 0, [image_view_info])
-    }
-
-    /// Write a number of consecutive image view elements, specifying the layouts of the images to
-    /// be bound.
-    pub fn image_view_with_layout_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = DescriptorImageViewInfo>,
-    ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-        Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::ImageView(elements),
-        }
-    }
-
-    /// Write a single image view and sampler to array element 0,
-    /// using the `Undefined` image layout, which will be automatically replaced with
-    /// an appropriate default layout.
-    #[inline]
-    pub fn image_view_sampler(
-        binding: u32,
-        image_view: Arc<ImageView>,
-        sampler: Arc<Sampler>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(
-            binding,
-            0,
-            [(
-                DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: ImageLayout::Undefined,
-                },
-                sampler,
-            )],
-        )
-    }
-
-    /// Write a number of consecutive image view and sampler elements,
-    /// using the `Undefined` image layout, which will be automatically replaced with
-    /// an appropriate default layout.
-    #[inline]
-    pub fn image_view_sampler_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = (Arc<ImageView>, Arc<Sampler>)>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(
-            binding,
-            first_array_element,
-            elements.into_iter().map(|(image_view, sampler)| {
-                (
-                    DescriptorImageViewInfo {
-                        image_view,
-                        image_layout: ImageLayout::Undefined,
-                    },
-                    sampler,
-                )
+            elements.into_iter().map(|image_view| DescriptorImageInfo {
+                image_view,
+                ..Default::default()
             }),
         )
     }
 
-    /// Write a single image view and sampler to array element 0, specifying the layout of the
-    /// image to be bound.
-    #[inline]
-    pub fn image_view_with_layout_sampler(
-        binding: u32,
-        image_view_info: DescriptorImageViewInfo,
-        sampler: Arc<Sampler>,
-    ) -> Self {
-        Self::image_view_with_layout_sampler_array(binding, 0, [(image_view_info, sampler)])
-    }
-
-    /// Write a number of consecutive image view and sampler elements, specifying the layout of the
-    /// image to be bound.
-    pub fn image_view_with_layout_sampler_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = (DescriptorImageViewInfo, Arc<Sampler>)>,
-    ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-
-        Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::ImageViewSampler(elements),
-        }
-    }
-
     /// Write a single sampler to array element 0.
+    ///
+    /// A sampler must always be provided if immutable samplers are not used.
     #[inline]
-    pub fn sampler(binding: u32, sampler: Arc<Sampler>) -> Self {
+    pub fn sampler(binding: u32, sampler: impl Into<Option<Arc<Sampler>>>) -> Self {
+        let sampler = sampler.into();
         Self::sampler_array(binding, 0, [sampler])
     }
 
     /// Write a number of consecutive sampler elements.
+    ///
+    /// Samplers must always be provided if immutable samplers are not used.
     pub fn sampler_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<Sampler>>,
+        elements: impl IntoIterator<Item = Option<Arc<Sampler>>>,
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
-
-        Self {
+        Self::image_array(
             binding,
             first_array_element,
-            elements: WriteDescriptorSetElements::Sampler(elements),
-        }
+            elements.into_iter().map(|sampler| DescriptorImageInfo {
+                sampler,
+                ..Default::default()
+            }),
+        )
     }
 
     /// Write data to an inline uniform block.
@@ -319,19 +238,24 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single acceleration structure to array element 0.
+    ///
+    /// The acceleration structure may be `None` if the `null_descriptor` feature is enabled.
     #[inline]
     pub fn acceleration_structure(
         binding: u32,
-        acceleration_structure: Arc<AccelerationStructure>,
+        acceleration_structure: impl Into<Option<Arc<AccelerationStructure>>>,
     ) -> Self {
+        let acceleration_structure = acceleration_structure.into();
         Self::acceleration_structure_array(binding, 0, [acceleration_structure])
     }
 
     /// Write a number of consecutive acceleration structure elements.
+    ///
+    /// The acceleration structures may be `None` if the `null_descriptor` feature is enabled.
     pub fn acceleration_structure_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<AccelerationStructure>>,
+        elements: impl IntoIterator<Item = Option<Arc<AccelerationStructure>>>,
     ) -> Self {
         let elements: SmallVec<_> = elements.into_iter().collect();
         assert!(!elements.is_empty());
@@ -368,12 +292,9 @@ impl WriteDescriptorSet {
     ) -> Result<(), Box<ValidationError>> {
         fn provided_element_type(elements: &WriteDescriptorSetElements) -> &'static str {
             match elements {
-                WriteDescriptorSetElements::None(_) => "none",
                 WriteDescriptorSetElements::Buffer(_) => "buffer",
                 WriteDescriptorSetElements::BufferView(_) => "buffer_view",
-                WriteDescriptorSetElements::ImageView(_) => "image_view",
-                WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
-                WriteDescriptorSetElements::Sampler(_) => "sampler",
+                WriteDescriptorSetElements::Image(_) => "image",
                 WriteDescriptorSetElements::InlineUniformBlock(_) => "inline_uniform_block",
                 WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
             }
@@ -514,30 +435,45 @@ impl WriteDescriptorSet {
 
         match layout_binding.descriptor_type {
             DescriptorType::Sampler => {
-                if layout_binding.immutable_samplers.is_empty() {
-                    let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
-                        elements
-                    } else {
-                        return Err(Box::new(ValidationError {
-                            context: "elements".into(),
-                            problem: format!(
-                                "contains `{}` elements, but descriptor set binding {} \
+                let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
+                    elements
+                } else {
+                    return Err(Box::new(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but descriptor set binding {} \
                                 requires `sampler` elements",
-                                provided_element_type(elements),
-                                binding,
-                            )
-                            .into(),
-                            // vuids?
-                            ..Default::default()
-                        }));
-                    };
+                            provided_element_type(elements),
+                            binding,
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    }));
+                };
 
-                    for (index, sampler) in elements.iter().enumerate() {
+                if layout_binding.immutable_samplers.is_empty() {
+                    for (index, image_info) in elements.iter().enumerate() {
+                        let Some(ref sampler) = image_info.sampler else {
+                            // For Sampler descriptor type without immutable samplers,
+                            // samplers must always be provided (can't be None even with null
+                            // descriptor)
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}].sampler", index).into(),
+                                problem: "is `None`, but samplers must be provided for \
+                                    `DescriptorType::Sampler` when the descriptor set layout \
+                                    was not created with immutable samplers"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00325"],
+                                ..Default::default()
+                            }));
+                        };
+
                         assert_eq!(device, sampler.device());
 
                         if sampler.sampler_ycbcr_conversion().is_some() {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].sampler", index).into(),
                                 problem: "the descriptor type is not \
                                     `DescriptorType::CombinedImageSampler`, and the sampler has a \
                                     sampler YCbCr conversion"
@@ -552,7 +488,7 @@ impl WriteDescriptorSet {
                             && sampler.compare().is_some()
                         {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].sampler", index).into(),
                                 problem: "this device is a portability subset device, and \
                                     the sampler has depth comparison enabled"
                                     .into(),
@@ -569,16 +505,15 @@ impl WriteDescriptorSet {
                     .flags()
                     .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
                 {
-                    // For push descriptors, we must write a dummy element.
-                    if let WriteDescriptorSetElements::None(_) = elements {
-                        // Do nothing
-                    } else {
+                    if elements
+                        .iter()
+                        .any(|image_info| image_info.sampler.is_some())
+                    {
                         return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
-                                "contains `{}` elements, but descriptor set binding {} \
-                                requires `none` elements",
-                                provided_element_type(elements),
+                                "contains Some(sampler), but descriptor set binding {} \
+                                requires `None` for push descriptors",
                                 binding,
                             )
                             .into(),
@@ -587,13 +522,13 @@ impl WriteDescriptorSet {
                         }));
                     }
                 } else {
-                    // For regular descriptors, no element must be written.
+                    // For regular descriptors with immutable samplers, no element must be written.
                     return Err(Box::new(ValidationError {
                         context: "binding".into(),
                         problem: "no descriptors must be written to this \
                             descriptor set binding"
                             .into(),
-                        // vuids?
+                        vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02752"],
                         ..Default::default()
                     }));
                 }
@@ -601,29 +536,58 @@ impl WriteDescriptorSet {
 
             DescriptorType::CombinedImageSampler => {
                 if layout_binding.immutable_samplers.is_empty() {
-                    let elements =
-                        if let WriteDescriptorSetElements::ImageViewSampler(elements) = elements {
-                            elements
-                        } else {
+                    let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
+                        elements
+                    } else {
+                        return Err(Box::new(ValidationError {
+                            context: "elements".into(),
+                            problem: format!(
+                                "contains `{}` elements, but descriptor set binding {} \
+                                requires `image` elements",
+                                provided_element_type(elements),
+                                binding,
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    };
+
+                    for (index, image_info) in elements.iter().enumerate() {
+                        let &DescriptorImageInfo {
+                            ref image_view,
+                            ref sampler,
+                            mut image_layout,
+                        } = image_info;
+
+                        // For CombinedImageSampler without immutable samplers, sampler must always
+                        // be provided
+                        let Some(sampler) = sampler else {
                             return Err(Box::new(ValidationError {
-                                context: "elements".into(),
-                                problem: format!(
-                                    "contains `{}` elements, but descriptor set binding {} \
-                                    requires `image_view_sampler` elements",
-                                    provided_element_type(elements),
-                                    binding,
-                                )
-                                .into(),
-                                // vuids?
+                                context: format!("elements[{}].sampler", index).into(),
+                                problem: "is `None`, but samplers must be provided for \
+                                    `DescriptorType::CombinedImageSampler` when the descriptor \
+                                    set layout was not created with immutable samplers"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00325"],
                                 ..Default::default()
                             }));
                         };
 
-                    for (index, (image_view_info, sampler)) in elements.iter().enumerate() {
-                        let &DescriptorImageViewInfo {
-                            ref image_view,
-                            mut image_layout,
-                        } = image_view_info;
+                        // Image view can be None only if null descriptor is enabled
+                        let Some(image_view) = image_view else {
+                            if !device.enabled_features().null_descriptor {
+                                return Err(Box::new(ValidationError {
+                                    context: format!("elements[{}].image_view", index).into(),
+                                    problem: "is `None`, but the `null_descriptor` feature is not \
+                                        enabled on the device"
+                                        .into(),
+                                    vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02997"],
+                                    ..Default::default()
+                                }));
+                            }
+                            continue;
+                        };
 
                         if image_layout == ImageLayout::Undefined {
                             image_layout = default_image_layout;
@@ -636,7 +600,7 @@ impl WriteDescriptorSet {
 
                         if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].image_view", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::SampledImage` or \
                                     `DescriptorType::CombinedImageSampler`, and the image was not \
@@ -658,7 +622,7 @@ impl WriteDescriptorSet {
                                 | ImageLayout::StencilReadOnlyOptimal,
                         ) {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].image_layout", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::CombinedImageSampler`, and the image layout \
                                     is not valid with this type"
@@ -673,7 +637,7 @@ impl WriteDescriptorSet {
                             && sampler.compare().is_some()
                         {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].sampler", index).into(),
                                 problem: "this device is a portability subset device, and \
                                     the sampler has depth comparison enabled"
                                     .into(),
@@ -688,7 +652,7 @@ impl WriteDescriptorSet {
 
                         if image_view.sampler_ycbcr_conversion().is_some() {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].image_view", index).into(),
                                 problem: "the image view has a sampler YCbCr conversion, and the \
                                     descriptor set layout was not created with immutable samplers"
                                     .into(),
@@ -699,7 +663,7 @@ impl WriteDescriptorSet {
 
                         if sampler.sampler_ycbcr_conversion().is_some() {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].sampler", index).into(),
                                 problem: "the sampler has a sampler YCbCr conversion".into(),
                                 // vuids?
                                 ..Default::default()
@@ -711,15 +675,14 @@ impl WriteDescriptorSet {
                             .map_err(|err| err.add_context(format!("elements[{}]", index)))?;
                     }
                 } else {
-                    let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements
-                    {
+                    let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                         elements
                     } else {
                         return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
                                 "contains `{}` elements, but descriptor set binding {} \
-                                requires `image_view` elements",
+                                requires `image` elements",
                                 provided_element_type(elements),
                                 binding,
                             )
@@ -731,13 +694,42 @@ impl WriteDescriptorSet {
                     let immutable_samplers = &layout_binding.immutable_samplers
                         [first_array_element as usize..][..array_element_count as usize];
 
-                    for (index, (image_view_info, sampler)) in
+                    for (index, (image_info, sampler)) in
                         elements.iter().zip(immutable_samplers).enumerate()
                     {
-                        let &DescriptorImageViewInfo {
+                        let &DescriptorImageInfo {
                             ref image_view,
                             mut image_layout,
-                        } = image_view_info;
+                            sampler: ref image_info_sampler,
+                        } = image_info;
+
+                        // For immutable samplers, the sampler field in DescriptorImageInfo should
+                        // be None
+                        if image_info_sampler.is_some() {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}].sampler", index).into(),
+                                problem: "must be `None` when the descriptor set layout was \
+                                    created with immutable samplers"
+                                    .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
+
+                        // Image view can be None only if null descriptor is enabled
+                        let Some(image_view) = image_view else {
+                            if !device.enabled_features().null_descriptor {
+                                return Err(Box::new(ValidationError {
+                                    context: format!("elements[{}].image_view", index).into(),
+                                    problem: "is `None`, but the `null_descriptor` feature is not \
+                                        enabled on the device"
+                                        .into(),
+                                    vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02997"],
+                                    ..Default::default()
+                                }));
+                            }
+                            continue;
+                        };
 
                         if image_layout == ImageLayout::Undefined {
                             image_layout = default_image_layout;
@@ -749,7 +741,7 @@ impl WriteDescriptorSet {
 
                         if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].image_view", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::SampledImage` or \
                                     `DescriptorType::CombinedImageSampler`, and the image was not \
@@ -771,7 +763,7 @@ impl WriteDescriptorSet {
                                 | ImageLayout::StencilReadOnlyOptimal,
                         ) {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].image_layout", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::CombinedImageSampler`, and the image layout \
                                     is not valid with this type"
@@ -789,14 +781,14 @@ impl WriteDescriptorSet {
             }
 
             DescriptorType::SampledImage => {
-                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
                 } else {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but descriptor set binding {} \
-                            requires `image_view` elements",
+                            requires `image` elements",
                             provided_element_type(elements),
                             binding,
                         )
@@ -806,11 +798,37 @@ impl WriteDescriptorSet {
                     }));
                 };
 
-                for (index, image_view_info) in elements.iter().enumerate() {
-                    let &DescriptorImageViewInfo {
+                for (index, image_info) in elements.iter().enumerate() {
+                    let &DescriptorImageInfo {
                         ref image_view,
                         mut image_layout,
-                    } = image_view_info;
+                        ref sampler,
+                    } = image_info;
+
+                    // For SampledImage, sampler field should be None
+                    if sampler.is_some() {
+                        return Err(Box::new(ValidationError {
+                            context: format!("elements[{}].sampler", index).into(),
+                            problem: "must be `None` for `DescriptorType::SampledImage`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    }
+
+                    // Image view can be None only if null descriptor is enabled
+                    let Some(image_view) = image_view else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}].image_view", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02997"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
 
                     if image_layout == ImageLayout::Undefined {
                         image_layout = default_image_layout;
@@ -822,7 +840,7 @@ impl WriteDescriptorSet {
 
                     if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::SampledImage` or \
                                 `DescriptorType::CombinedImageSampler`, and the image was not \
@@ -844,7 +862,7 @@ impl WriteDescriptorSet {
                             | ImageLayout::StencilReadOnlyOptimal,
                     ) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_layout", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::SampledImage`, and the image layout is \
                                 not valid with this type"
@@ -856,7 +874,7 @@ impl WriteDescriptorSet {
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is `DescriptorType::SampledImage`, and \
                                 the image view has a sampler YCbCr conversion"
                                 .into(),
@@ -868,14 +886,14 @@ impl WriteDescriptorSet {
             }
 
             DescriptorType::StorageImage => {
-                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
                 } else {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but descriptor set binding {} \
-                            requires `image_view` elements",
+                            requires `image` elements",
                             provided_element_type(elements),
                             binding,
                         )
@@ -885,11 +903,37 @@ impl WriteDescriptorSet {
                     }));
                 };
 
-                for (index, image_view_info) in elements.iter().enumerate() {
-                    let &DescriptorImageViewInfo {
+                for (index, image_info) in elements.iter().enumerate() {
+                    let &DescriptorImageInfo {
                         ref image_view,
                         mut image_layout,
-                    } = image_view_info;
+                        ref sampler,
+                    } = image_info;
+
+                    // For StorageImage, sampler field should be None
+                    if sampler.is_some() {
+                        return Err(Box::new(ValidationError {
+                            context: format!("elements[{}].sampler", index).into(),
+                            problem: "must be `None` for `DescriptorType::StorageImage`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    }
+
+                    // Image view can be None only if null descriptor is enabled
+                    let Some(image_view) = image_view else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}].image_view", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02997"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
 
                     if image_layout == ImageLayout::Undefined {
                         image_layout = default_image_layout;
@@ -901,7 +945,7 @@ impl WriteDescriptorSet {
 
                     if !image_view.usage().intersects(ImageUsage::STORAGE) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::StorageImage`, and the image was not \
                                 created with the `ImageUsage::STORAGE` usage"
@@ -913,7 +957,7 @@ impl WriteDescriptorSet {
 
                     if !matches!(image_layout, ImageLayout::General) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_layout", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::StorageImage`, and the image layout is \
                                 not valid with this type"
@@ -925,7 +969,7 @@ impl WriteDescriptorSet {
 
                     if !image_view.component_mapping().is_identity() {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageImage` or \
                                 `DescriptorType::InputAttachment`, and the image view is not \
                                 identity swizzled"
@@ -937,7 +981,7 @@ impl WriteDescriptorSet {
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the image view has a sampler YCbCr conversion".into(),
                             // vuids?
                             ..Default::default()
@@ -965,6 +1009,20 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_view) in elements.iter().enumerate() {
+                    let Some(buffer_view) = buffer_view else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02995"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
+
                     assert_eq!(device, buffer_view.device());
 
                     if !buffer_view
@@ -979,7 +1037,7 @@ impl WriteDescriptorSet {
                                 `DescriptorType::UniformTexelBuffer`, and the buffer was not \
                                 created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` usage"
                                 .into(),
-                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00334"],
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-08765"],
                             ..Default::default()
                         }));
                     }
@@ -1005,6 +1063,20 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_view) in elements.iter().enumerate() {
+                    let Some(buffer_view) = buffer_view else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02995"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
+
                     assert_eq!(device, buffer_view.device());
 
                     // TODO: storage_texel_buffer_atomic
@@ -1020,7 +1092,7 @@ impl WriteDescriptorSet {
                                 `DescriptorType::StorageTexelBuffer`, and the buffer was not \
                                 created with the `BufferUsage::STORAGE_TEXEL_BUFFER` usage"
                                 .into(),
-                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00335"],
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-08766"],
                             ..Default::default()
                         }));
                     }
@@ -1046,6 +1118,20 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
+                    let Some(buffer_info) = buffer_info else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02998"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
+
                     let &DescriptorBufferInfo {
                         ref buffer,
                         offset,
@@ -1106,6 +1192,20 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
+                    let Some(buffer_info) = buffer_info else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled on the device"
+                                    .into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02998"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
+
                     let &DescriptorBufferInfo {
                         ref buffer,
                         offset,
@@ -1148,14 +1248,14 @@ impl WriteDescriptorSet {
             }
 
             DescriptorType::InputAttachment => {
-                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
                 } else {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but descriptor set binding {} \
-                            requires `image_view` elements",
+                            requires `image` elements",
                             provided_element_type(elements),
                             binding,
                         )
@@ -1165,11 +1265,24 @@ impl WriteDescriptorSet {
                     }));
                 };
 
-                for (index, image_view_info) in elements.iter().enumerate() {
-                    let &DescriptorImageViewInfo {
+                for (index, image_info) in elements.iter().enumerate() {
+                    let &DescriptorImageInfo {
                         ref image_view,
                         mut image_layout,
-                    } = image_view_info;
+                        sampler: _,
+                    } = image_info;
+
+                    // Input attachments must never be None (even with null descriptor feature)
+                    let Some(image_view) = image_view else {
+                        return Err(Box::new(ValidationError {
+                            context: format!("elements[{}].image_view", index).into(),
+                            problem: "is `None`, but input attachment image views must not be \
+                                `None`"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-07683"],
+                            ..Default::default()
+                        }));
+                    };
 
                     if image_layout == ImageLayout::Undefined {
                         image_layout = default_image_layout;
@@ -1181,7 +1294,7 @@ impl WriteDescriptorSet {
 
                     if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::InputAttachment`, and the image was not \
                                 created with the `ImageUsage::INPUT_ATTACHMENT` usage"
@@ -1202,7 +1315,7 @@ impl WriteDescriptorSet {
                             | ImageLayout::StencilReadOnlyOptimal,
                     ) {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_layout", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::InputAttachment`, and the image layout is \
                                 not valid with this type"
@@ -1214,7 +1327,7 @@ impl WriteDescriptorSet {
 
                     if !image_view.component_mapping().is_identity() {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageImage` or \
                                 `DescriptorType::InputAttachment`, and the image view is not \
                                 identity swizzled"
@@ -1226,7 +1339,7 @@ impl WriteDescriptorSet {
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
+                            context: format!("elements[{}].image_view", index).into(),
                             problem: "the descriptor type is `DescriptorType::InputAttachment`, \
                                 and the image view has a sampler YCbCr conversion"
                                 .into(),
@@ -1307,6 +1420,19 @@ impl WriteDescriptorSet {
                     };
 
                 for (index, acceleration_structure) in elements.iter().enumerate() {
+                    let Some(acceleration_structure) = acceleration_structure else {
+                        if !device.enabled_features().null_descriptor {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "is `None`, but the `null_descriptor` feature is not \
+                                    enabled for the device"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03580"],
+                                ..Default::default()
+                            }));
+                        }
+                        continue;
+                    };
                     assert_eq!(device, acceleration_structure.device());
 
                     if !matches!(
@@ -1426,38 +1552,30 @@ impl WriteDescriptorSet {
         default_image_layout: ImageLayout,
     ) -> WriteDescriptorSetFields1 {
         let descriptor_infos_vk = match &self.elements {
-            WriteDescriptorSetElements::None(num_elements) => DescriptorInfosVk::Image(
-                std::iter::repeat_with(vk::DescriptorImageInfo::default)
-                    .take(*num_elements as usize)
+            WriteDescriptorSetElements::Image(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|element| element.to_vk(default_image_layout))
                     .collect(),
             ),
             WriteDescriptorSetElements::Buffer(elements) => DescriptorInfosVk::Buffer(
-                elements.iter().map(DescriptorBufferInfo::to_vk).collect(),
-            ),
-            WriteDescriptorSetElements::BufferView(elements) => {
-                DescriptorInfosVk::BufferView(elements.iter().map(VulkanObject::handle).collect())
-            }
-            WriteDescriptorSetElements::ImageView(elements) => DescriptorInfosVk::Image(
                 elements
                     .iter()
-                    .map(|image_view_info| image_view_info.to_vk(default_image_layout))
-                    .collect(),
-            ),
-            WriteDescriptorSetElements::ImageViewSampler(elements) => DescriptorInfosVk::Image(
-                elements
-                    .iter()
-                    .map(|(image_view_info, sampler)| vk::DescriptorImageInfo {
-                        sampler: sampler.handle(),
-                        ..image_view_info.to_vk(default_image_layout)
+                    .map(|element| {
+                        element.as_ref().map_or(
+                            vk::DescriptorBufferInfo::default(),
+                            DescriptorBufferInfo::to_vk,
+                        )
                     })
                     .collect(),
             ),
-            WriteDescriptorSetElements::Sampler(elements) => DescriptorInfosVk::Image(
+            WriteDescriptorSetElements::BufferView(elements) => DescriptorInfosVk::BufferView(
                 elements
                     .iter()
-                    .map(|sampler| vk::DescriptorImageInfo {
-                        sampler: sampler.handle(),
-                        ..Default::default()
+                    .map(|element| {
+                        element
+                            .as_ref()
+                            .map_or(vk::BufferView::null(), VulkanObject::handle)
                     })
                     .collect(),
             ),
@@ -1466,7 +1584,14 @@ impl WriteDescriptorSet {
             }
             WriteDescriptorSetElements::AccelerationStructure(elements) => {
                 DescriptorInfosVk::AccelerationStructure(
-                    elements.iter().map(VulkanObject::handle).collect(),
+                    elements
+                        .iter()
+                        .map(|element| {
+                            element
+                                .as_ref()
+                                .map_or(vk::AccelerationStructureKHR::null(), VulkanObject::handle)
+                        })
+                        .collect(),
                 )
             }
         };
@@ -1501,14 +1626,11 @@ pub(crate) enum DescriptorInfosVk {
 /// The elements held by a `WriteDescriptorSet`.
 #[derive(Clone, Debug)]
 pub enum WriteDescriptorSetElements {
-    None(u32),
-    Buffer(SmallVec<[DescriptorBufferInfo; 1]>),
-    BufferView(SmallVec<[Arc<BufferView>; 1]>),
-    ImageView(SmallVec<[DescriptorImageViewInfo; 1]>),
-    ImageViewSampler(SmallVec<[(DescriptorImageViewInfo, Arc<Sampler>); 1]>),
-    Sampler(SmallVec<[Arc<Sampler>; 1]>),
+    Image(SmallVec<[DescriptorImageInfo; 1]>),
+    Buffer(SmallVec<[Option<DescriptorBufferInfo>; 1]>),
+    BufferView(SmallVec<[Option<Arc<BufferView>>; 1]>),
     InlineUniformBlock(Vec<u8>),
-    AccelerationStructure(SmallVec<[Arc<AccelerationStructure>; 1]>),
+    AccelerationStructure(SmallVec<[Option<Arc<AccelerationStructure>>; 1]>),
 }
 
 impl WriteDescriptorSetElements {
@@ -1516,12 +1638,9 @@ impl WriteDescriptorSetElements {
     #[inline]
     pub fn len(&self) -> u32 {
         match self {
-            Self::None(num_elements) => *num_elements,
+            Self::Image(elements) => elements.len() as u32,
             Self::Buffer(elements) => elements.len() as u32,
             Self::BufferView(elements) => elements.len() as u32,
-            Self::ImageView(elements) => elements.len() as u32,
-            Self::ImageViewSampler(elements) => elements.len() as u32,
-            Self::Sampler(elements) => elements.len() as u32,
             Self::InlineUniformBlock(data) => data.len() as u32,
             Self::AccelerationStructure(elements) => elements.len() as u32,
         }
@@ -1568,11 +1687,14 @@ impl DescriptorBufferInfo {
     }
 }
 
-/// Parameters to write an image view reference to a descriptor.
-#[derive(Clone, Debug)]
-pub struct DescriptorImageViewInfo {
+/// Parameters to write an image reference to a descriptor.
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorImageInfo {
+    /// The sampler to write to the descriptor.
+    pub sampler: Option<Arc<Sampler>>,
+
     /// The image view to write to the descriptor.
-    pub image_view: Arc<ImageView>,
+    pub image_view: Option<Arc<ImageView>>,
 
     /// The layout that the image is expected to be in when it's accessed in the shader.
     ///
@@ -1594,16 +1716,21 @@ pub struct DescriptorImageViewInfo {
     pub image_layout: ImageLayout,
 }
 
-impl DescriptorImageViewInfo {
+impl DescriptorImageInfo {
     pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> vk::DescriptorImageInfo {
         let &Self {
             ref image_view,
+            ref sampler,
             image_layout,
         } = self;
 
         vk::DescriptorImageInfo {
-            sampler: vk::Sampler::null(),
-            image_view: image_view.handle(),
+            sampler: sampler
+                .as_ref()
+                .map_or(vk::Sampler::null(), VulkanObject::handle),
+            image_view: image_view
+                .as_ref()
+                .map_or(vk::ImageView::null(), VulkanObject::handle),
             image_layout: if image_layout == ImageLayout::Undefined {
                 default_image_layout.into()
             } else {
