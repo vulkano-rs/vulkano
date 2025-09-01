@@ -662,8 +662,8 @@ impl Resources {
 
     /// Waits for all frames of all flights to finish.
     ///
-    /// This equivalent to [`Device::wait_idle`], but unlike that method, this method additionally
-    /// collects outstanding garbage.
+    /// This is equivalent to [`Device::wait_idle`], but unlike that method, this method
+    /// additionally collects outstanding garbage.
     ///
     /// # Safety
     ///
