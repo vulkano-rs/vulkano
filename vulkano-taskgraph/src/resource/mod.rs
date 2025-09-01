@@ -245,9 +245,6 @@ impl Resources {
     /// # Errors
     ///
     /// - Returns an error when [`Swapchain::new`] returns an error.
-    /// - Returns an error when [`add_swapchain`] returns an error.
-    ///
-    /// [`add_swapchain`]: Self::add_swapchain
     pub fn create_swapchain(
         self: &Arc<Self>,
         surface: &Arc<Surface>,
@@ -256,7 +253,7 @@ impl Resources {
         let (swapchain, images) = Swapchain::new(self.device(), surface, create_info)?;
 
         // SAFETY: We just created the swapchain.
-        Ok(unsafe { self.add_swapchain_unchecked(swapchain, images) }?)
+        Ok(unsafe { self.add_swapchain_unchecked(swapchain, images) })
     }
 
     /// Creates a new [flight] with `frame_count` [frames] and adds it to the collection.
@@ -347,15 +344,11 @@ impl Resources {
     /// - Panics if any other references to the swapchain or its images exist.
     /// - Panics if the device of `swapchain` is not the same as that of `self`.
     /// - Panics if the `images` don't comprise the images of `swapchain`.
-    ///
-    /// # Errors
-    ///
-    /// - Returns an error when [`Semaphore::new_unchecked`] returns an error.
     pub fn add_swapchain(
         self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         mut images: Vec<Arc<Image>>,
-    ) -> Result<Id<Swapchain>, VulkanError> {
+    ) -> Id<Swapchain> {
         assert_eq!(swapchain.device(), self.device());
         assert_eq!(images.len(), swapchain.image_count() as usize);
 
@@ -407,17 +400,17 @@ impl Resources {
         self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         images: Vec<Arc<Image>>,
-    ) -> Result<Id<Swapchain>, VulkanError> {
+    ) -> Id<Swapchain> {
         let guard = &self.storage.pin();
 
-        let state = SwapchainState::new(swapchain, images, self)?;
+        let state = SwapchainState::new(swapchain, images, self);
 
         let id = self
             .storage
             .swapchains
             .insert_with_tag(state, Swapchain::TAG, guard);
 
-        Ok(unsafe { id.parametrize() })
+        unsafe { id.parametrize() }
     }
 
     /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new

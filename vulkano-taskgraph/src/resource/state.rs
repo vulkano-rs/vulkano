@@ -180,8 +180,8 @@ impl SwapchainState {
         swapchain: Arc<Swapchain>,
         images: Vec<Arc<Image>>,
         resources: &Arc<Resources>,
-    ) -> Result<Self, VulkanError> {
-        Ok(SwapchainState {
+    ) -> Self {
+        SwapchainState {
             swapchain,
             images: images.into(),
             generation: 0,
@@ -199,7 +199,7 @@ impl SwapchainState {
             })),
             current_image_index: AtomicU32::new(u32::MAX),
             last_access: Mutex::new(ImageAccess::NONE),
-        })
+        }
     }
 
     pub(super) unsafe fn with_old_state(
