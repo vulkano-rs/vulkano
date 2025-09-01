@@ -915,7 +915,7 @@ impl Drop for Resources {
             //   can exist and that we have exclusive access to this queue.
             // * We waited on the flight above.
             // * `self` is the correct `Resources` collection.
-            unsafe { flight.garbage_queue.drop(self, guard) };
+            unsafe { flight.garbage_queue().drop(self, guard) };
         }
 
         // SAFETY: Same as the `drop` above.

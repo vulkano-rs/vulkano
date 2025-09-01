@@ -6,7 +6,7 @@ use crate::{
     Id,
 };
 use ash::vk;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex, MutexGuard, RwLock};
 use smallvec::SmallVec;
 use std::{
     cell::UnsafeCell,
@@ -1023,13 +1023,13 @@ pub(crate) enum SwapchainSyncStage {
 pub struct Flight {
     // HACK: We need this in order to collect garbage.
     resources: Weak<Resources>,
-    pub(super) frame_count: NonZero<u32>,
+    frame_count: NonZero<u32>,
     biased_started_frame: AtomicU64,
     current_frame: AtomicU64,
     biased_complete_frame: AtomicU64,
-    pub(super) fences: SmallVec<[RwLock<Fence>; 3]>,
-    pub(super) garbage_queue: collector::LocalQueue,
-    pub(crate) state: Mutex<()>,
+    fences: SmallVec<[RwLock<Fence>; 3]>,
+    garbage_queue: collector::LocalQueue,
+    lock: Mutex<()>,
 }
 
 impl Flight {
@@ -1061,7 +1061,7 @@ impl Flight {
             biased_complete_frame: AtomicU64::new(u64::from(frame_count.get())),
             fences,
             garbage_queue: resources.garbage_queue().register_local(),
-            state: Mutex::new(()),
+            lock: Mutex::new(()),
         })
     }
 
@@ -1110,6 +1110,10 @@ impl Flight {
 
     pub(crate) fn garbage_queue(&self) -> &collector::LocalQueue {
         &self.garbage_queue
+    }
+
+    pub(crate) fn try_lock(&self) -> Option<MutexGuard<'_, ()>> {
+        self.lock.try_lock()
     }
 
     /// Waits for the oldest [frame] in [flight] to finish.

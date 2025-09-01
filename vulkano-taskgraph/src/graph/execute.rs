@@ -83,7 +83,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             .flight_protected(flight_id, &resource_map.guard)
             .expect("invalid flight ID");
 
-        let _flight_state = flight.state.try_lock().unwrap_or_else(|| {
+        let _flight_lock_guard = flight.try_lock().unwrap_or_else(|| {
             panic!(
                 "another thread is already executing a task graph using the flight {flight_id:?}",
             );
