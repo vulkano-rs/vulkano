@@ -59,7 +59,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     /// - Panics if another thread is already executing a task graph using the flight.
     /// - Panics if another thread is already executing a task graph using any of the swapchains
     ///   used by the task graph.
-    /// - Panics if any swapchain used by the task graph has already been recreated.
+    /// - Panics if any swapchain used by the task graph has already been recreated or removed.
     /// - Panics if the oldest frame of the flight wasn't [waited] on.
     ///
     /// [waited]: crate::resource::Flight::wait

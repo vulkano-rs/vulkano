@@ -133,6 +133,11 @@ pub struct SwapchainState {
 /// the same time. The latter, coupled with the fact that a swapchain can't be used after being
 /// recreated, allows us to remove a swapchain from which an image has never been acquired
 /// immediately.
+///
+/// The swapchain can also be removed, which is similar to being locked except that this state is
+/// final. Like with locking, removal is mutually exclusive and ensures that the swapchain can't be
+/// used in a task graph execution when removed, which allows us to schedule the destruction of the
+/// swapchain, any of its old swapchains, and sync objects after a device wait for idle.
 struct SwapchainLock {
     state: AtomicU32,
     data: UnsafeCell<SwapchainSyncState>,
@@ -686,6 +691,95 @@ impl SwapchainState {
         }
     }
 
+    #[track_caller]
+    pub(super) unsafe fn remove(&self, swapchain_id: Id<Swapchain>) {
+        self.sync_state
+            .try_remove(self.generation)
+            .expect("failed to remove the swapchain");
+
+        // SAFETY: We removed the swapchain above, which ensures correct synchronization. We also
+        // don't create additional references.
+        let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
+
+        let mut garbage = super::SwapchainGarbage::default();
+
+        for queued_garbage in sync_state.garbage_queue.drain(..) {
+            garbage.swapchains.extend(queued_garbage.swapchains);
+            garbage.semaphores.extend(queued_garbage.semaphores);
+        }
+
+        let generation = self.generation;
+
+        if let Some(acquire_semaphore) = sync_state.current_acquire_semaphore.take() {
+            // An image is still acquired and the acquire semaphore and fence haven't been waited
+            // on. We have to do something with them, so we add a dummy present operation just to
+            // clean them up.
+            let image_index = self.current_image_index().unwrap();
+            let acquire_fence = sync_state.current_acquire_fence.take().unwrap();
+            sync_state
+                .present_queue
+                .push_back(SwapchainPresentOperation {
+                    generation,
+                    acquire_semaphore: Some(acquire_semaphore),
+                    image_index,
+                    pre_present_semaphore: None,
+                    present_semaphore: None,
+                    cleanup_fence: Some(acquire_fence),
+                });
+        }
+
+        let has_present_operations = sync_state
+            .present_queue
+            .back()
+            .is_some_and(|present_operation| present_operation.generation == generation);
+
+        for present_operation in sync_state.present_queue.drain(..) {
+            if let Some(semaphore) = present_operation.acquire_semaphore {
+                garbage.semaphores.push(semaphore);
+            }
+
+            if let Some(semaphore) = present_operation.pre_present_semaphore {
+                garbage.semaphores.push(semaphore);
+            }
+
+            if let Some(semaphore) = present_operation.present_semaphore {
+                garbage.semaphores.push(semaphore);
+            }
+
+            if let Some(fence) = present_operation.cleanup_fence {
+                garbage.fences.push(fence);
+            }
+        }
+
+        let resources = sync_state.resources.upgrade().unwrap();
+        let guard = &resources.pin();
+
+        if has_present_operations {
+            // We can't remove the old swapchain until we know that there are no pending present
+            // operations, so we only invalidate it for now.
+            resources.invalidate_swapchain(swapchain_id, guard).unwrap();
+
+            garbage.swapchains.push(swapchain_id);
+        } else {
+            // Since we removed the swapchain above, which ensures that it can't also be used in a
+            // task graph execution or used again in the future, and there are no existing present
+            // operations, there are no current uses or possible future uses of the swapchain, so we
+            // know it is sound to remove the swapchain immediately.
+            resources
+                .storage
+                .swapchains
+                .remove(swapchain_id.erase(), guard)
+                .unwrap();
+        }
+
+        if garbage.swapchains.is_empty() {
+            assert!(garbage.semaphores.is_empty());
+            assert!(garbage.fences.is_empty());
+        } else {
+            resources.storage.swapchain_garbage.lock().push(garbage);
+        }
+    }
+
     /// Returns the image index that's acquired in the current frame, or returns `None` if no image
     /// index is acquired.
     #[inline]
@@ -786,6 +880,7 @@ const SWAPCHAIN_TAG_MASK: u32 = (1 << SWAPCHAIN_TAG_BITS) - 1;
 const SWAPCHAIN_UNUSED_TAG: u32 = 0;
 const SWAPCHAIN_EXECUTION_LOCKED_TAG: u32 = 1;
 const SWAPCHAIN_RECREATION_LOCKED_TAG: u32 = 2;
+const SWAPCHAIN_REMOVED_TAG: u32 = 3;
 
 unsafe impl Send for SwapchainLock {}
 unsafe impl Sync for SwapchainLock {}
@@ -848,6 +943,18 @@ impl SwapchainLock {
         // `SWAPCHAIN_UNUSED_TAG` is `0`.
         self.state.fetch_and(!SWAPCHAIN_TAG_MASK, Release);
     }
+
+    /// Tries to remove the swapchain.
+    fn try_remove(&self, generation: u32) -> Result<(), SwapchainLockError> {
+        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
+        let new_state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_REMOVED_TAG;
+
+        self.state
+            .compare_exchange(state, new_state, Acquire, Relaxed)
+            .map_err(SwapchainLockError::from_state)?;
+
+        Ok(())
+    }
 }
 
 impl fmt::Debug for SwapchainLock {
@@ -871,6 +978,7 @@ pub(crate) enum SwapchainLockError {
     Unused,
     ExecutionLocked,
     RecreationLocked,
+    Removed,
 }
 
 impl SwapchainLockError {
@@ -879,6 +987,7 @@ impl SwapchainLockError {
             SWAPCHAIN_UNUSED_TAG => SwapchainLockError::Unused,
             SWAPCHAIN_EXECUTION_LOCKED_TAG => SwapchainLockError::ExecutionLocked,
             SWAPCHAIN_RECREATION_LOCKED_TAG => SwapchainLockError::RecreationLocked,
+            SWAPCHAIN_REMOVED_TAG => SwapchainLockError::Removed,
             _ => unreachable!(),
         }
     }
@@ -893,6 +1002,7 @@ impl fmt::Display for SwapchainLockError {
             Self::ExecutionLocked => {
                 f.write_str("a task graph using the swapchain is being executed")
             }
+            Self::Removed => f.write_str("the swapchain has already been removed"),
         }
     }
 }

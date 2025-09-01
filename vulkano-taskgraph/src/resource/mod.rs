@@ -27,7 +27,7 @@ use vulkano::{
     image::{AllocateImageError, Image, ImageCreateInfo, ImageLayout, ImageMemory},
     memory::allocator::{AllocationCreateInfo, DeviceLayout, StandardMemoryAllocator},
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
-    sync::{fence::Fence, AccessFlags, PipelineStages},
+    sync::{fence::Fence, semaphore::Semaphore, AccessFlags, PipelineStages},
     Validated, VulkanError,
 };
 
@@ -61,6 +61,7 @@ pub(crate) struct ResourceStorage {
     flights: SlotMap<Id, Flight>,
 
     garbage_queue: collector::GlobalQueue,
+    swapchain_garbage: Mutex<Vec<SwapchainGarbage>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -76,6 +77,13 @@ pub struct ImageAccess {
     access_mask: AccessFlags,
     image_layout: ImageLayout,
     queue_family_index: u32,
+}
+
+#[derive(Debug, Default)]
+struct SwapchainGarbage {
+    swapchains: Vec<Id<Swapchain>>,
+    semaphores: Vec<Semaphore>,
+    fences: Vec<Fence>,
 }
 
 impl Resources {
@@ -143,6 +151,7 @@ impl Resources {
             },
             // SAFETY: Same as the previous.
             garbage_queue: unsafe { collector::GlobalQueue::new(hyaline_collector.clone()) },
+            swapchain_garbage: Mutex::new(Vec::new()),
             hyaline_collector,
         });
         let bindless_context = bindless_context
@@ -417,7 +426,7 @@ impl Resources {
     /// # Panics
     ///
     /// - Panics if a task graph using the swapchain is being executed.
-    /// - Panics if the swapchain has already been recreated.
+    /// - Panics if the swapchain has already been recreated or removed.
     /// - Panics if `f` panics.
     /// - Panics if [`Swapchain::recreate`] panics.
     ///
@@ -516,6 +525,37 @@ impl Resources {
                 .swapchains
                 .remove_invalidated_unchecked(id.erase())
         };
+    }
+
+    /// Removes the swapchain corresponding to `id` from the collection.
+    ///
+    /// Note that if there are any pending present operations then the swapchain cannot be
+    /// collected until it's certain that the presentation engine is no longer using the swapchain
+    /// or any of its old swapchains. The only way to guarantee that is by calling [`wait_idle`]
+    /// after removing the swapchain.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if the swapchain has already been recreated or removed.
+    ///
+    /// [`wait_idle`]: Self::wait_idle
+    #[track_caller]
+    pub fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
+        let guard = self.storage.pin();
+
+        let state = self
+            .storage
+            .swapchains
+            // SAFETY: Same as in the `ResourceStorage::buffer` method below.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        unsafe { state.remove(id) };
+
+        Ok(Ref::new(state, guard))
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -629,35 +669,33 @@ impl Resources {
 
     /// Waits for all frames of all flights to finish.
     ///
-    /// This is a safe alternative to [`Device::wait_idle`], but unlike that method, this method
-    /// additionally collects outstanding garbage.
-    pub fn wait_idle(&self) -> Result<(), VulkanError> {
+    /// This equivalent to [`Device::wait_idle`], but unlike that method, this method additionally
+    /// collects outstanding garbage.
+    ///
+    /// # Safety
+    ///
+    /// See [the safety documentation of `Device::wait_idle`].
+    ///
+    /// [the safety documentation of `Device::wait_idle`]: Device::wait_idle#safety
+    pub unsafe fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.storage.pin();
-        let mut fence_guards = SmallVec::<[_; 8]>::new();
         let mut frames = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
             let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
-
-            if flight.is_biased_frame_complete(biased_frame) {
-                continue;
-            }
-
-            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fence_guards.push(flight.fences[frame_index as usize].read());
             frames.push((flight, biased_frame));
         }
 
-        let fences = fence_guards
-            .iter()
-            .map(|guard| &**guard)
-            .collect::<SmallVec<[_; 8]>>();
+        let swapchain_garbage = mem::take(&mut *self.storage.swapchain_garbage.lock());
 
-        // SAFETY: We created these fences with the same device as `self`.
-        unsafe { Fence::multi_wait_unchecked(&fences, None) }?;
-
-        drop(fences);
-        drop(fence_guards);
+        // SAFETY: Enforced by the caller.
+        if let Err(err) = unsafe { self.device().wait_idle() } {
+            self.storage
+                .swapchain_garbage
+                .lock()
+                .extend(swapchain_garbage);
+            return Err(err);
+        }
 
         let mut collect = false;
 
@@ -671,6 +709,12 @@ impl Resources {
 
         if collect {
             unsafe { self.garbage_queue().collect(self, guard) };
+        }
+
+        for garbage in swapchain_garbage {
+            for swapchain_id in garbage.swapchains {
+                unsafe { self.remove_invalidated_swapchain_unchecked(swapchain_id) };
+            }
         }
 
         Ok(())
@@ -860,27 +904,9 @@ impl Drop for Resources {
     fn drop(&mut self) {
         let guard = &self.storage.pin();
 
-        let mut fence_guards = SmallVec::<[_; 8]>::new();
-
-        for (_, flight) in self.storage.flights.iter(guard) {
-            let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
-
-            if flight.is_biased_frame_complete(biased_frame) {
-                continue;
-            }
-
-            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fence_guards.push(flight.fences[frame_index as usize].read());
-        }
-
-        let fences = fence_guards
-            .iter()
-            .map(|guard| &**guard)
-            .collect::<SmallVec<[_; 8]>>();
-
-        // SAFETY: We created these fences with the same device as `self`.
-        if let Err(err) = unsafe { Fence::multi_wait_unchecked(&fences, None) } {
-            if err != VulkanError::DeviceLost {
+        // FIXME:
+        if let Err(err) = unsafe { self.device().wait_idle() } {
+            if err == VulkanError::DeviceLost {
                 return;
             }
 
@@ -889,9 +915,6 @@ impl Drop for Resources {
             );
             std::process::abort();
         }
-
-        // FIXME:
-        let _ = unsafe { self.device().wait_idle() };
 
         for (_, flight) in self.storage.flights.iter(guard) {
             // SAFETY:
