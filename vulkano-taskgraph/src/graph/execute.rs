@@ -9,6 +9,7 @@ use crate::{
     linear_map::LinearMap,
     resource::{
         BufferAccess, BufferState, Flight, ImageAccess, ImageState, Resources, SwapchainState,
+        SwapchainSyncStage,
     },
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
@@ -21,7 +22,7 @@ use std::{
     mem::{self, ManuallyDrop},
     ops::Range,
     ptr,
-    sync::{atomic::Ordering, Arc},
+    sync::Arc,
 };
 use vulkano::{
     buffer::{Buffer, BufferMemory},
@@ -33,7 +34,7 @@ use vulkano::{
         Image, ImageSubresourceRange,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
-    swapchain::{AcquireNextImageInfo, AcquiredImage, Swapchain},
+    swapchain::Swapchain,
     sync::{
         fence::{Fence, FenceCreateFlags, FenceCreateInfo},
         semaphore::Semaphore,
@@ -56,10 +57,13 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     /// - Panics if `resource_map` doesn't map the virtual resources of `self` exhaustively.
     /// - Panics if `self.flight_id()` is invalid.
     /// - Panics if another thread is already executing a task graph using the flight.
-    /// - Panics if `resource_map` maps to any swapchain that isn't owned by the flight.
+    /// - Panics if another thread is already executing a task graph using any of the swapchains
+    ///   used by the task graph.
+    /// - Panics if any swapchain used by the task graph has already been recreated.
     /// - Panics if the oldest frame of the flight wasn't [waited] on.
     ///
     /// [waited]: crate::resource::Flight::wait
+    #[track_caller]
     pub unsafe fn execute(
         &self,
         resource_map: ResourceMap<'_>,
@@ -90,32 +94,21 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             "you must wait on the oldest frame in flight to finish before submitting more work",
         );
 
-        for &swapchain_id in &self.swapchains {
-            // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
-            let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
-
-            assert_eq!(
-                swapchain_state.flight_id(),
-                flight_id,
-                "`resource_map` must not map to any swapchain not owned by the flight \
-                corresponding to `flight_id`",
-            );
-        }
+        let _resource_lock_guard = unsafe { self.lock_resources(&resource_map) };
 
         let current_frame_index = flight.current_frame_index();
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
-        unsafe { self.acquire_images_khr(&resource_map, current_frame_index) }?;
+        unsafe { self.collect_swapchains(&resource_map) }?;
+
+        unsafe { self.acquire_images_khr(&resource_map) }?;
 
         let mut current_fence = flight.current_fence().write();
 
         // SAFETY: We checked that the fence has been signaled.
         unsafe { current_fence.reset_unchecked() }?;
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.invalidate_mapped_memory_ranges(&resource_map) }?;
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.create_framebuffers(&resource_map) }?;
 
         unsafe { flight.start_next_frame() };
@@ -136,7 +129,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             Self::execute_instructions
         };
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe {
             execute_instructions(
                 self,
@@ -157,62 +149,70 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         pre_present_notify();
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
-        let res = unsafe { self.present_images_khr(&resource_map, current_frame_index) };
+        let mut deferred_batch = state_guard.deferred_batch.take().unwrap();
 
-        // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
+        let res = unsafe { self.present_images_khr(&resource_map, &mut deferred_batch) };
+
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
 
-        let deferred_batch = state_guard.deferred_batch.take().unwrap();
-
-        // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
 
         res
     }
 
-    unsafe fn acquire_images_khr(
-        &self,
-        resource_map: &ResourceMap<'_>,
-        current_frame_index: u32,
-    ) -> Result {
-        for &swapchain_id in &self.swapchains {
-            // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs exhaustively.
+    #[track_caller]
+    unsafe fn lock_resources<'a>(
+        &'a self,
+        resource_map: &'a ResourceMap<'a>,
+    ) -> ResourceLockGuard<'a> {
+        for (index, &swapchain_id) in self.swapchains.iter().enumerate() {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
-            let semaphore =
-                &swapchain_state.semaphores[current_frame_index as usize].image_available_semaphore;
+
+            match swapchain_state.try_execute() {
+                Ok(()) => {}
+                Err(err) => {
+                    for &swapchain_id in &self.swapchains[..index] {
+                        let swapchain_state =
+                            unsafe { resource_map.swapchain_unchecked(swapchain_id) };
+
+                        // SAFETY: We locked these swapchains in the outer loop.
+                        unsafe { swapchain_state.unlock() };
+                    }
+
+                    panic!("failed to lock swapchain {swapchain_id:?} for execution: {err}");
+                }
+            }
+        }
+
+        // SAFETY: We successfully locked all the swapchains.
+        unsafe { ResourceLockGuard::new(resource_map, &self.swapchains) }
+    }
+
+    unsafe fn collect_swapchains(&self, resource_map: &ResourceMap<'_>) -> Result {
+        for &swapchain_id in &self.swapchains {
+            let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
+            unsafe { swapchain_state.collect() }?;
+        }
+
+        Ok(())
+    }
+
+    unsafe fn acquire_images_khr(&self, resource_map: &ResourceMap<'_>) -> Result {
+        for &swapchain_id in &self.swapchains {
+            let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
 
             // Make sure to not acquire another image index if we already acquired one. This can
             // happen when using multiple swapchains, if one acquire succeeds and another fails, or
             // when executing a submission or presenting an image fails.
-            if swapchain_state.current_image_index.load(Ordering::Relaxed) != u32::MAX {
+            if swapchain_state.is_image_acquired() {
                 continue;
             }
 
-            let res = unsafe {
-                swapchain_state
-                    .swapchain()
-                    .acquire_next_image(&AcquireNextImageInfo {
-                        semaphore: Some(semaphore),
-                        ..Default::default()
-                    })
-            };
-
-            match res {
-                Ok(AcquiredImage { image_index, .. }) => {
-                    swapchain_state
-                        .current_image_index
-                        .store(image_index, Ordering::Relaxed);
-                }
-                Err(error) => {
-                    swapchain_state
-                        .current_image_index
-                        .store(u32::MAX, Ordering::Relaxed);
-                    return Err(ExecuteError::Swapchain {
-                        swapchain_id,
-                        error,
-                    });
-                }
+            if let Err(error) = unsafe { swapchain_state.acquire_next_image() } {
+                return Err(ExecuteError::Swapchain {
+                    swapchain_id,
+                    error,
+                });
             }
         }
 
@@ -223,7 +223,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut mapped_memory_ranges = Vec::new();
 
         for &buffer_id in &self.graph.resources.host_reads {
-            // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs exhaustively.
             let buffer = unsafe { resource_map.buffer_unchecked(buffer_id) }.buffer();
 
             let allocation = match buffer.memory() {
@@ -418,7 +417,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     swapchain_id,
                     stage_mask,
                 } => {
-                    state.signal_pre_present(swapchain_id, stage_mask);
+                    state.signal_pre_present(swapchain_id, stage_mask)?;
                 }
                 Instruction::WaitPrePresent {
                     swapchain_id,
@@ -430,7 +429,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     swapchain_id,
                     stage_mask,
                 } => {
-                    state.signal_present(swapchain_id, stage_mask);
+                    state.signal_present(swapchain_id, stage_mask)?;
                 }
                 Instruction::FlushSubmit => {
                     state.flush_submit()?;
@@ -521,7 +520,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     swapchain_id,
                     stage_mask,
                 } => {
-                    state.signal_pre_present(swapchain_id, stage_mask);
+                    state.signal_pre_present(swapchain_id, stage_mask)?;
                 }
                 Instruction::WaitPrePresent {
                     swapchain_id,
@@ -533,7 +532,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     swapchain_id,
                     stage_mask,
                 } => {
-                    state.signal_present(swapchain_id, stage_mask);
+                    state.signal_present(swapchain_id, stage_mask)?;
                 }
                 Instruction::FlushSubmit => {
                     state.flush_submit()?;
@@ -552,7 +551,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut mapped_memory_ranges = Vec::new();
 
         for &buffer_id in &self.graph.resources.host_writes {
-            // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs exhaustively.
             let buffer = unsafe { resource_map.buffer_unchecked(buffer_id) }.buffer();
 
             let allocation = match buffer.memory() {
@@ -599,7 +597,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn present_images_khr(
         &self,
         resource_map: &ResourceMap<'_>,
-        current_frame_index: u32,
+        deferred_batch: &mut DeferredBatch<'_>,
     ) -> Result {
         let Some(present_queue) = &self.present_queue else {
             return Ok(());
@@ -612,13 +610,9 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut results = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
 
         for &swapchain_id in &self.swapchains {
-            // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs exhaustively.
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
-            semaphores.push(
-                swapchain_state.semaphores[current_frame_index as usize]
-                    .tasks_complete_semaphore
-                    .handle(),
-            );
+            let semaphore_vk = unsafe { swapchain_state.current_present_semaphore() }.unwrap();
+            semaphores.push(semaphore_vk);
             swapchains.push(swapchain_state.swapchain().handle());
             image_indices.push(swapchain_state.current_image_index().unwrap());
             results.push(vk::Result::SUCCESS);
@@ -637,30 +631,19 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut res = Ok(());
 
         for (&result, &swapchain_id) in results.iter().zip(&self.swapchains) {
-            // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs exhaustively.
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
+
+            unsafe { swapchain_state.handle_presentation(result, deferred_batch) };
 
             // TODO: Could there be a use case for keeping the old image contents?
             unsafe { swapchain_state.set_access(ImageAccess::NONE) };
-
-            // In case of these error codes, the semaphore wait operation is not executed.
-            if !matches!(
-                result,
-                vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    | vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                    | vk::Result::ERROR_DEVICE_LOST
-            ) {
-                swapchain_state
-                    .current_image_index
-                    .store(u32::MAX, Ordering::Relaxed);
-            }
 
             if !matches!(result, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR) {
                 // Return the first error for consistency with the acquisition logic.
                 if res.is_ok() {
                     res = Err(ExecuteError::Swapchain {
                         swapchain_id,
-                        error: Validated::Error(result.into()),
+                        error: result.into(),
                     });
                 }
             }
@@ -680,8 +663,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             match id.object_type() {
                 ObjectType::Buffer => {
                     let id = unsafe { id.parametrize() };
-                    // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
-                    // exhaustively.
                     let state = unsafe { resource_map.buffer_unchecked(id) };
                     let access = BufferAccess::from_masks(
                         access.stage_mask,
@@ -692,8 +673,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 }
                 ObjectType::Image => {
                     let id = unsafe { id.parametrize() };
-                    // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
-                    // exhaustively.
                     let state = unsafe { resource_map.image_unchecked(id) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
@@ -705,8 +684,6 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 }
                 ObjectType::Swapchain => {
                     let id = unsafe { id.parametrize() };
-                    // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
-                    // exhaustively.
                     let state = unsafe { resource_map.swapchain_unchecked(id) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
@@ -722,13 +699,39 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     }
 }
 
+struct ResourceLockGuard<'a> {
+    resource_map: &'a ResourceMap<'a>,
+    swapchains: &'a [Id<Swapchain>],
+}
+
+impl<'a> ResourceLockGuard<'a> {
+    unsafe fn new(resource_map: &'a ResourceMap<'a>, swapchains: &'a [Id<Swapchain>]) -> Self {
+        ResourceLockGuard {
+            resource_map,
+            swapchains,
+        }
+    }
+}
+
+impl Drop for ResourceLockGuard<'_> {
+    fn drop(&mut self) {
+        for &swapchain_id in self.swapchains {
+            // SAFETY: Enforced by the caller of `ResourceLockGuard::new`.
+            let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
+
+            // SAFETY: Enforced by the caller of `ResourceLockGuard::new`.
+            unsafe { swapchain_state.unlock() };
+        }
+    }
+}
+
 unsafe fn create_framebuffers(
     render_pass: &Arc<RenderPass>,
     attachments: &LinearMap<Id, super::AttachmentState>,
     framebuffers: &mut Vec<Arc<Framebuffer>>,
     swapchains: &[Id<Swapchain>],
     resource_map: &ResourceMap<'_>,
-) -> Result<()> {
+) -> Result {
     debug_assert!(framebuffers.is_empty());
 
     let swapchain_image_counts = swapchains
@@ -1038,12 +1041,17 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
     fn wait_acquire(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .image_available_semaphore;
+
+        // The acquire semaphore isn't set if an image index has already been acquired but not
+        // presented in the previous task graph execution and the semaphore has already been waited
+        // on.
+        let Some(semaphore_vk) = (unsafe { swapchain_state.current_acquire_semaphore() }) else {
+            return;
+        };
 
         self.current_per_submit.wait_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore.handle())
+                .semaphore(semaphore_vk)
                 .stage_mask(stage_mask.into()),
         );
     }
@@ -1298,40 +1306,49 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         );
     }
 
-    fn signal_pre_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
+    fn signal_pre_present(
+        &mut self,
+        swapchain_id: Id<Swapchain>,
+        stage_mask: PipelineStages,
+    ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .pre_present_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }?;
 
         self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore.handle())
+                .semaphore(semaphore_vk)
                 .stage_mask(stage_mask.into()),
         );
+
+        Ok(())
     }
 
     fn wait_pre_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .pre_present_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.current_pre_present_semaphore() }.unwrap();
 
         self.current_per_submit.wait_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore.handle())
+                .semaphore(semaphore_vk)
                 .stage_mask(stage_mask.into()),
         );
     }
 
-    fn signal_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
+    fn signal_present(
+        &mut self,
+        swapchain_id: Id<Swapchain>,
+        stage_mask: PipelineStages,
+    ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore =
-            &swapchain_state.semaphores[self.current_frame_index as usize].tasks_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }?;
 
         self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
-                .semaphore(semaphore.handle())
+                .semaphore(semaphore_vk)
                 .stage_mask(stage_mask.into()),
         );
+
+        Ok(())
     }
 
     fn flush_barriers(&mut self) -> Result {
@@ -1635,12 +1652,17 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
     fn wait_acquire(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .image_available_semaphore;
+
+        // The acquire semaphore isn't set if an image index has already been acquired but not
+        // presented in the previous task graph execution and the semaphore has already been waited
+        // on.
+        let Some(semaphore_vk) = (unsafe { swapchain_state.current_acquire_semaphore() }) else {
+            return;
+        };
 
         self.current_per_submit
             .wait_semaphores_vk
-            .push(semaphore.handle());
+            .push(semaphore_vk);
         self.current_per_submit
             .wait_dst_stage_mask_vk
             .push(convert_stage_mask(stage_mask));
@@ -1898,37 +1920,46 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .push(self.executable.semaphores.borrow()[semaphore_index].handle());
     }
 
-    fn signal_pre_present(&mut self, swapchain_id: Id<Swapchain>, _stage_mask: PipelineStages) {
+    fn signal_pre_present(
+        &mut self,
+        swapchain_id: Id<Swapchain>,
+        _stage_mask: PipelineStages,
+    ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .pre_present_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }?;
 
         self.current_per_submit
             .signal_semaphores_vk
-            .push(semaphore.handle());
+            .push(semaphore_vk);
+
+        Ok(())
     }
 
     fn wait_pre_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore = &swapchain_state.semaphores[self.current_frame_index as usize]
-            .pre_present_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.current_pre_present_semaphore() }.unwrap();
 
         self.current_per_submit
             .wait_semaphores_vk
-            .push(semaphore.handle());
+            .push(semaphore_vk);
         self.current_per_submit
             .wait_dst_stage_mask_vk
             .push(convert_stage_mask(stage_mask));
     }
 
-    fn signal_present(&mut self, swapchain_id: Id<Swapchain>, _stage_mask: PipelineStages) {
+    fn signal_present(
+        &mut self,
+        swapchain_id: Id<Swapchain>,
+        _stage_mask: PipelineStages,
+    ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore =
-            &swapchain_state.semaphores[self.current_frame_index as usize].tasks_complete_semaphore;
+        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }?;
 
         self.current_per_submit
             .signal_semaphores_vk
-            .push(semaphore.handle());
+            .push(semaphore_vk);
+
+        Ok(())
     }
 
     fn flush_submit(&mut self) -> Result {
@@ -2307,32 +2338,69 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             ResourceAccess::default();
             self.executable.graph.resources.reserved_len() as usize
         ];
+        let mut last_swapchain_stages = LinearMap::from_iter(
+            self.executable
+                .swapchains
+                .iter()
+                .map(|&swapchain_id| (swapchain_id, SwapchainSyncStage::SignalAcquire)),
+        );
         let instruction_range = 0..submissions[self.submission_count - 1].instruction_range.end;
 
         // Determine the last accesses of resources up until before the failed submission.
         for instruction in &self.executable.instructions[instruction_range] {
-            let Instruction::ExecuteTask { node_index } = instruction else {
-                continue;
-            };
-            let task_node = unsafe { self.executable.graph.nodes.task_node_unchecked(*node_index) };
+            match instruction {
+                Instruction::ExecuteTask { node_index } => {
+                    let task_node =
+                        unsafe { self.executable.graph.nodes.task_node_unchecked(*node_index) };
 
-            for (id, access) in task_node.accesses.iter() {
-                let prev_access = &mut last_accesses[id.index() as usize];
-                let access = ResourceAccess {
-                    queue_family_index: task_node.queue_family_index,
-                    ..*access
-                };
+                    for (id, access) in task_node.accesses.iter() {
+                        let prev_access = &mut last_accesses[id.index() as usize];
+                        let access = ResourceAccess {
+                            queue_family_index: task_node.queue_family_index,
+                            ..*access
+                        };
 
-                if prev_access.queue_family_index != access.queue_family_index
-                    || prev_access.image_layout != access.image_layout
-                    || prev_access.access_mask.contains_writes()
-                    || access.access_mask.contains_writes()
-                {
-                    *prev_access = access;
-                } else {
-                    prev_access.stage_mask |= access.stage_mask;
-                    prev_access.access_mask |= access.access_mask;
+                        if prev_access.queue_family_index != access.queue_family_index
+                            || prev_access.image_layout != access.image_layout
+                            || prev_access.access_mask.contains_writes()
+                            || access.access_mask.contains_writes()
+                        {
+                            *prev_access = access;
+                        } else {
+                            prev_access.stage_mask |= access.stage_mask;
+                            prev_access.access_mask |= access.access_mask;
+                        }
+                    }
                 }
+                Instruction::WaitAcquire {
+                    swapchain_id,
+                    stage_mask: _,
+                } => {
+                    *last_swapchain_stages.get_mut(swapchain_id).unwrap() =
+                        SwapchainSyncStage::WaitAcquire;
+                }
+                Instruction::SignalPrePresent {
+                    swapchain_id,
+                    stage_mask: _,
+                } => {
+                    *last_swapchain_stages.get_mut(swapchain_id).unwrap() =
+                        SwapchainSyncStage::SignalPrePresent;
+                }
+                Instruction::WaitPrePresent {
+                    swapchain_id,
+                    stage_mask: _,
+                } => {
+                    *last_swapchain_stages.get_mut(swapchain_id).unwrap() =
+                        SwapchainSyncStage::WaitPrePresent;
+                }
+                Instruction::SignalPresent {
+                    swapchain_id,
+                    stage_mask: _,
+                } => {
+                    *last_swapchain_stages.get_mut(swapchain_id).unwrap() =
+                        SwapchainSyncStage::SignalPresent;
+                }
+                _ => {}
             }
         }
 
@@ -2341,6 +2409,12 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             self.executable
                 .update_resource_state(self.resource_map, &last_accesses)
         };
+
+        // Fix the swapchain state.
+        for (&swapchain_id, &sync_stage) in last_swapchain_stages.iter() {
+            let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
+            unsafe { swapchain_state.handle_execution_failure(sync_stage) };
+        }
     }
 }
 
@@ -2810,7 +2884,7 @@ pub enum ExecuteError {
     },
     Swapchain {
         swapchain_id: Id<Swapchain>,
-        error: Validated<VulkanError>,
+        error: VulkanError,
     },
     VulkanError(VulkanError),
 }

@@ -24,7 +24,7 @@ use std::{
         Arc,
     },
 };
-use vulkano::{buffer::Buffer, image::Image, swapchain::Swapchain};
+use vulkano::{buffer::Buffer, image::Image};
 
 /// A batch of deferred functions to be enqueued together.
 ///
@@ -94,24 +94,6 @@ impl<'a> DeferredBatch<'a> {
         self.defer(move |resources| {
             // SAFETY: Same as in the `destroy_buffer` method above.
             unsafe { resources.remove_invalidated_image_unchecked(id) };
-        })
-    }
-
-    /// Defers the destruction of the swapchain corresponding to `id`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `id` is not a valid physical resource ID.
-    #[inline]
-    #[track_caller]
-    pub fn destroy_swapchain(&mut self, id: Id<Swapchain>) -> &mut Self {
-        self.resources
-            .invalidate_swapchain(id, &self.guard)
-            .expect("invalid swapchain ID");
-
-        self.defer(move |resources| {
-            // SAFETY: Same as in the `destroy_buffer` method above.
-            unsafe { resources.remove_invalidated_swapchain_unchecked(id) };
         })
     }
 

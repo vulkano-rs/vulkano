@@ -10,10 +10,11 @@ use ash::vk;
 use concurrent_slotmap::{hyaline, SlotMap};
 use parking_lot::Mutex;
 use smallvec::SmallVec;
+pub(crate) use state::SwapchainSyncStage;
 pub use state::{BufferState, Flight, ImageState, SwapchainState};
 use std::{
     hash::Hash,
-    iter, mem,
+    mem,
     num::NonZero,
     ops::{BitOr, BitOrAssign},
     sync::Arc,
@@ -224,13 +225,11 @@ impl Resources {
         Ok(unsafe { self.add_image_unchecked(image) })
     }
 
-    /// Creates a swapchain and adds it to the collection. `flight_id` is the [flight] which will
-    /// own the swapchain.
+    /// Creates a swapchain and adds it to the collection.
     ///
     /// # Panics
     ///
     /// - Panics if the instance of `surface` is not the same as that of `self.device()`.
-    /// - Panics if `flight_id` is invalid.
     /// - Panics if `create_info.min_image_count` is not greater than or equal to the number of
     ///   [frames] of the flight corresponding to `flight_id`.
     ///
@@ -241,19 +240,14 @@ impl Resources {
     ///
     /// [`add_swapchain`]: Self::add_swapchain
     pub fn create_swapchain(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         surface: &Arc<Surface>,
         create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
-        let frames_in_flight = self.flight(flight_id).unwrap().frame_count();
-
-        assert!(create_info.min_image_count >= frames_in_flight);
-
         let (swapchain, images) = Swapchain::new(self.device(), surface, create_info)?;
 
         // SAFETY: We just created the swapchain.
-        Ok(unsafe { self.add_swapchain_unchecked(flight_id, swapchain, images) }?)
+        Ok(unsafe { self.add_swapchain_unchecked(swapchain, images) }?)
     }
 
     /// Creates a new [flight] with `frame_count` [frames] and adds it to the collection.
@@ -338,32 +332,23 @@ impl Resources {
 
     /// Adds a swapchain to the collection. `(swapchain, images)` must correspond to the value
     /// returned by one of the [`Swapchain`] constructors or by [`Swapchain::recreate`].
-    /// `flight_id` is the [flight] which will own the swapchain.
     ///
     /// # Panics
     ///
     /// - Panics if any other references to the swapchain or its images exist.
     /// - Panics if the device of `swapchain` is not the same as that of `self`.
     /// - Panics if the `images` don't comprise the images of `swapchain`.
-    /// - Panics if `flight_id` is invalid.
-    /// - Panics if `swapchain.image_count()` is not greater than or equal to the number of
-    ///   [frames] of the flight corresponding to `flight_id`.
     ///
     /// # Errors
     ///
     /// - Returns an error when [`Semaphore::new_unchecked`] returns an error.
     pub fn add_swapchain(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         mut images: Vec<Arc<Image>>,
     ) -> Result<Id<Swapchain>, VulkanError> {
         assert_eq!(swapchain.device(), self.device());
         assert_eq!(images.len(), swapchain.image_count() as usize);
-
-        let frames_in_flight = self.flight(flight_id).unwrap().frame_count();
-
-        assert!(swapchain.image_count() >= frames_in_flight);
 
         for (index, image) in images.iter_mut().enumerate() {
             match image.memory() {
@@ -406,18 +391,17 @@ impl Resources {
             assert!(we_own_the_only_references);
         }
 
-        unsafe { self.add_swapchain_unchecked(flight_id, swapchain, images) }
+        unsafe { self.add_swapchain_unchecked(swapchain, images) }
     }
 
     unsafe fn add_swapchain_unchecked(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         images: Vec<Arc<Image>>,
     ) -> Result<Id<Swapchain>, VulkanError> {
         let guard = &self.storage.pin();
 
-        let state = SwapchainState::new(swapchain, images, self, flight_id)?;
+        let state = SwapchainState::new(swapchain, images, self)?;
 
         let id = self
             .storage
@@ -432,14 +416,15 @@ impl Resources {
     ///
     /// # Panics
     ///
+    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if the swapchain has already been recreated.
     /// - Panics if `f` panics.
     /// - Panics if [`Swapchain::recreate`] panics.
-    /// - Panics if `new_swapchain.image_count()` is not greater than or equal to the number of
-    ///   [frames] of the flight that owns the swapchain.
     ///
     /// # Errors
     ///
     /// - Returns an error when [`Swapchain::recreate`] returns an error.
+    #[track_caller]
     pub fn recreate_swapchain(
         &self,
         id: Id<Swapchain>,
@@ -448,15 +433,13 @@ impl Resources {
         let guard = &self.storage.pin();
 
         let state = self.storage.swapchain_protected(id, guard).unwrap();
+
+        let _lock_guard = state
+            .try_recreate()
+            .expect("failed to lock the swapchain for recreation");
+
         let swapchain = state.swapchain();
-        let flight_id = state.flight_id();
-        let flight = unsafe { self.storage.flight_unchecked_protected(flight_id, guard) };
-
         let (new_swapchain, new_images) = swapchain.recreate(&f(&swapchain.create_info()))?;
-
-        let frames_in_flight = flight.frame_count();
-
-        assert!(new_swapchain.image_count() >= frames_in_flight);
 
         let new_state = unsafe { SwapchainState::with_old_state(new_swapchain, new_images, state) };
 
@@ -465,12 +448,7 @@ impl Resources {
             .swapchains
             .insert_with_tag(new_state, Swapchain::TAG, guard);
 
-        let mut batch = self.create_deferred_batch();
-        batch.destroy_swapchain(id);
-
-        // SAFETY: Swapchains are owned by a flight in order to facilitates this. No other flight
-        // can be using the swapchain.
-        unsafe { batch.enqueue_with_flights(iter::once(flight_id)) };
+        unsafe { state.handle_recreation(id) };
 
         Ok(unsafe { new_id.parametrize() })
     }
@@ -1090,7 +1068,7 @@ pub struct ResourcesCreateInfo<'a> {
 
     /// The maximum number of [`Swapchain`]s that the collection can hold at once.
     ///
-    /// The default value is `256` (2<sup>8</sup>).
+    /// The default value is `16777216` (2<sup>24</sup>).
     pub max_swapchains: u32,
 
     /// The maximum number of [`Flight`]s that the collection can hold at once.
@@ -1124,7 +1102,7 @@ impl ResourcesCreateInfo<'_> {
         Self {
             max_buffers: 1 << 24,
             max_images: 1 << 24,
-            max_swapchains: 1 << 8,
+            max_swapchains: 1 << 24,
             max_flights: 1 << 8,
             bindless_context: None,
             _ne: crate::NE,
