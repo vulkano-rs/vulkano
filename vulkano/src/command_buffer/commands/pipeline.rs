@@ -11,7 +11,7 @@ use crate::{
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
-        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageViewInfo,
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageInfo,
     },
     device::{DeviceOwned, QueueFlags},
     format::{FormatFeatures, NumericType},
@@ -1758,10 +1758,17 @@ impl<L> AutoCommandBufferBuilder<L> {
                 |_set_num: u32,
                  _binding_num: u32,
                  _index: u32,
-                 _buffer_info: &DescriptorBufferInfo| Ok(());
+                 _buffer_info: &Option<DescriptorBufferInfo>| Ok(());
 
             let check_buffer_view =
-                |set_num: u32, binding_num: u32, index: u32, buffer_view: &Arc<BufferView>| {
+                |set_num: u32,
+                 binding_num: u32,
+                 index: u32,
+                 buffer_view: &Option<Arc<BufferView>>| {
+                    let Some(buffer_view) = buffer_view else {
+                        return Ok(());
+                    };
+
                     for desc_reqs in binding_reqs
                         .descriptors
                         .get(&Some(index))
@@ -2096,43 +2103,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                     Ok(())
                 };
 
-            let check_image_view =
-                |set_num: u32,
-                 binding_num: u32,
-                 index: u32,
-                 image_view_info: &DescriptorImageViewInfo| {
-                    let DescriptorImageViewInfo {
-                        image_view,
-                        image_layout: _,
-                    } = image_view_info;
-
-                    check_image_view_common(set_num, binding_num, index, image_view)?;
-
-                    if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                        check_sampler_common(set_num, binding_num, index, sampler)?;
-                    }
-
-                    Ok(())
-                };
-
-            let check_image_view_sampler = |set_num: u32,
-                                            binding_num: u32,
-                                            index: u32,
-                                            (image_view_info, sampler): &(
-                DescriptorImageViewInfo,
-                Arc<Sampler>,
-            )| {
-                let DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: _,
-                } = image_view_info;
-
-                check_image_view_common(set_num, binding_num, index, image_view)?;
-                check_sampler_common(set_num, binding_num, index, sampler)?;
-
-                Ok(())
-            };
-
             let check_sampler =
                 |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
                     check_sampler_common(set_num, binding_num, index, sampler)?;
@@ -2159,19 +2129,19 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 continue;
                             };
                             let resources = set.resources();
-                            let Some(DescriptorBindingResources::ImageView(elements)) =
+                            let Some(DescriptorBindingResources::Image(elements)) =
                                 resources.binding(*ibinding_num)
                             else {
                                 continue;
                             };
-                            let Some(Some(image_view_info)) = elements.get(*iindex as usize) else {
+                            let Some(Some(DescriptorImageInfo {
+                                sampler: _,
+                                image_view: Some(image_view),
+                                image_layout: _,
+                            })) = elements.get(*iindex as usize)
+                            else {
                                 continue;
                             };
-
-                            let DescriptorImageViewInfo {
-                                image_view,
-                                image_layout: _,
-                            } = image_view_info;
 
                             if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                                 return Err(Box::new(ValidationError {
@@ -2195,19 +2165,29 @@ impl<L> AutoCommandBufferBuilder<L> {
                     Ok(())
                 };
 
-            let check_acceleration_structure =
-                |_set_num: u32,
-                 _binding_num: u32,
-                 _index: u32,
-                 _acceleration_structure: &Arc<AccelerationStructure>| Ok(());
+            let check_image =
+                |set_num: u32, binding_num: u32, index: u32, image_info: &DescriptorImageInfo| {
+                    if let Some(sampler) = &image_info.sampler {
+                        check_sampler(set_num, binding_num, index, sampler)?;
+                    } else if let Some(&sampler) =
+                        layout_binding.immutable_samplers.get(index as usize)
+                    {
+                        check_sampler(set_num, binding_num, index, sampler)?;
+                    }
 
-            let check_none = |set_num: u32, binding_num: u32, index: u32, _: &()| {
-                if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                    check_sampler(set_num, binding_num, index, sampler)?;
-                }
+                    if let Some(image_view) = &image_info.image_view {
+                        check_image_view_common(set_num, binding_num, index, image_view)?;
+                    }
 
-                Ok(())
-            };
+                    Ok(())
+                };
+
+            let check_acceleration_structure = |_set_num: u32,
+                                                _binding_num: u32,
+                                                _index: u32,
+                                                _acceleration_structure: &Option<
+                Arc<AccelerationStructure>,
+            >| Ok(());
 
             let flags_skip_binding_validation =
                 DescriptorBindingFlags::UPDATE_AFTER_BIND | DescriptorBindingFlags::PARTIALLY_BOUND;
@@ -2233,14 +2213,14 @@ impl<L> AutoCommandBufferBuilder<L> {
                 let binding_resources = set_resources.binding(binding_num).unwrap();
 
                 match binding_resources {
-                    DescriptorBindingResources::None(elements) => {
+                    DescriptorBindingResources::Image(elements) => {
                         validate_resources(
                             vuid_type,
                             set_num,
                             binding_num,
                             binding_reqs,
                             elements,
-                            check_none,
+                            check_image,
                         )?;
                     }
                     DescriptorBindingResources::Buffer(elements) => {
@@ -2261,36 +2241,6 @@ impl<L> AutoCommandBufferBuilder<L> {
                             binding_reqs,
                             elements,
                             check_buffer_view,
-                        )?;
-                    }
-                    DescriptorBindingResources::ImageView(elements) => {
-                        validate_resources(
-                            vuid_type,
-                            set_num,
-                            binding_num,
-                            binding_reqs,
-                            elements,
-                            check_image_view,
-                        )?;
-                    }
-                    DescriptorBindingResources::ImageViewSampler(elements) => {
-                        validate_resources(
-                            vuid_type,
-                            set_num,
-                            binding_num,
-                            binding_reqs,
-                            elements,
-                            check_image_view_sampler,
-                        )?;
-                    }
-                    DescriptorBindingResources::Sampler(elements) => {
-                        validate_resources(
-                            vuid_type,
-                            set_num,
-                            binding_num,
-                            binding_reqs,
-                            elements,
-                            check_sampler,
                         )?;
                     }
                     // Spec:
@@ -3594,7 +3544,35 @@ impl<L> AutoCommandBufferBuilder<L> {
             let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
 
             match descriptor_set_state.resources().binding(binding).unwrap() {
-                DescriptorBindingResources::None(_) => (),
+                DescriptorBindingResources::Image(elements) => {
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some(DescriptorImageInfo {
+                            sampler: _,
+                            image_view: Some(image_view),
+                            image_layout,
+                        }) = element
+                        {
+                            let image_layout = if *image_layout == ImageLayout::Undefined {
+                                default_image_layout
+                            } else {
+                                *image_layout
+                            };
+
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Image {
+                                    image: image_view.image().clone(),
+                                    subresource_range: *image_view.subresource_range(),
+                                    memory_access,
+                                    start_layout: image_layout,
+                                    end_layout: image_layout,
+                                },
+                            ));
+                        }
+                    }
+                }
                 DescriptorBindingResources::Buffer(elements) => {
                     if matches!(
                         descriptor_type,
@@ -3603,7 +3581,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(buffer_info) = element {
+                            if let Some(Some(buffer_info)) = element {
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3628,7 +3606,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
                     } else {
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(buffer_info) = element {
+                            if let Some(Some(buffer_info)) = element {
                                 let &DescriptorBufferInfo {
                                     ref buffer,
                                     offset,
@@ -3651,7 +3629,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(buffer_view) = element {
+                        if let Some(Some(buffer_view)) = element {
                             let buffer = buffer_view.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
@@ -3666,65 +3644,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
                     }
                 }
-                DescriptorBindingResources::ImageView(elements) => {
-                    for (index, element) in elements.iter().enumerate() {
-                        if let Some(image_view_info) = element {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            let (use_ref, memory_access) = use_iter(index as u32);
-
-                            used_resources.push((
-                                use_ref,
-                                Resource::Image {
-                                    image: image_view.image().clone(),
-                                    subresource_range: *image_view.subresource_range(),
-                                    memory_access,
-                                    start_layout: image_layout,
-                                    end_layout: image_layout,
-                                },
-                            ));
-                        }
-                    }
-                }
-                DescriptorBindingResources::ImageViewSampler(elements) => {
-                    for (index, element) in elements.iter().enumerate() {
-                        if let Some((image_view_info, _sampler)) = element {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            let (use_ref, memory_access) = use_iter(index as u32);
-
-                            used_resources.push((
-                                use_ref,
-                                Resource::Image {
-                                    image: image_view.image().clone(),
-                                    subresource_range: *image_view.subresource_range(),
-                                    memory_access,
-                                    start_layout: image_layout,
-                                    end_layout: image_layout,
-                                },
-                            ));
-                        }
-                    }
-                }
-                DescriptorBindingResources::Sampler(_) => (),
                 DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(acceleration_structure) = element {
+                        if let Some(Some(acceleration_structure)) = element {
                             let buffer = acceleration_structure.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 

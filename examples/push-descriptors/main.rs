@@ -495,7 +495,7 @@ impl ApplicationHandler for App {
                         [
                             // If the binding is an immutable sampler, using push descriptors
                             // you must write a dummy value to the binding.
-                            WriteDescriptorSet::none(0),
+                            WriteDescriptorSet::sampler(0, None),
                             WriteDescriptorSet::image_view(1, self.texture.clone()),
                         ]
                         .into_iter()
