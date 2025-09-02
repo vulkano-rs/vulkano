@@ -2338,12 +2338,12 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             ResourceAccess::default();
             self.executable.graph.resources.reserved_len() as usize
         ];
-        let mut last_swapchain_stages = LinearMap::from_iter(
-            self.executable
-                .swapchains
-                .iter()
-                .map(|&swapchain_id| (swapchain_id, SwapchainSyncStage::SignalAcquire)),
-        );
+        let mut last_swapchain_stages = self
+            .executable
+            .swapchains
+            .iter()
+            .map(|&swapchain_id| (swapchain_id, SwapchainSyncStage::SignalAcquire))
+            .collect::<LinearMap<_, _>>();
         let instruction_range = 0..submissions[self.submission_count - 1].instruction_range.end;
 
         // Determine the last accesses of resources up until before the failed submission.
