@@ -770,35 +770,18 @@ impl Resources {
 
     /// Waits for all frames of all flights to finish.
     ///
-    /// This is a safe alternative to [`Device::wait_idle`], but unlike that method, this method
+    /// This is equivalent to [`Device::wait_idle`], but unlike that method, this method
     /// additionally collects outstanding garbage.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.storage.pin();
-        let mut fence_guards = SmallVec::<[_; 8]>::new();
         let mut frames = SmallVec::<[_; 8]>::new();
 
         for (_, flight) in self.storage.flights.iter(guard) {
             let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
-
-            if flight.is_biased_frame_complete(biased_frame) {
-                continue;
-            }
-
-            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fence_guards.push(flight.fences[frame_index as usize].read());
             frames.push((flight, biased_frame));
         }
 
-        let fences = fence_guards
-            .iter()
-            .map(|guard| &**guard)
-            .collect::<SmallVec<[_; 8]>>();
-
-        // SAFETY: We created these fences with the same device as `self`.
-        unsafe { Fence::multi_wait_unchecked(&fences, None) }?;
-
-        drop(fences);
-        drop(fence_guards);
+        self.device().wait_idle()?;
 
         let mut collect = false;
 
@@ -1001,27 +984,8 @@ impl Drop for Resources {
     fn drop(&mut self) {
         let guard = &self.storage.pin();
 
-        let mut fence_guards = SmallVec::<[_; 8]>::new();
-
-        for (_, flight) in self.storage.flights.iter(guard) {
-            let biased_frame = flight.current_frame() + u64::from(flight.frame_count());
-
-            if flight.is_biased_frame_complete(biased_frame) {
-                continue;
-            }
-
-            let frame_index = (biased_frame - 1) % NonZero::<u64>::from(flight.frame_count);
-            fence_guards.push(flight.fences[frame_index as usize].read());
-        }
-
-        let fences = fence_guards
-            .iter()
-            .map(|guard| &**guard)
-            .collect::<SmallVec<[_; 8]>>();
-
-        // SAFETY: We created these fences with the same device as `self`.
-        if let Err(err) = unsafe { Fence::multi_wait_unchecked(&fences, None) } {
-            if err != VulkanError::DeviceLost {
+        if let Err(err) = self.device().wait_idle() {
+            if err == VulkanError::DeviceLost {
                 return;
             }
 
@@ -1030,9 +994,6 @@ impl Drop for Resources {
             );
             std::process::abort();
         }
-
-        // FIXME:
-        let _ = unsafe { self.device().wait_idle() };
 
         for (_, flight) in self.storage.flights.iter(guard) {
             // SAFETY:
