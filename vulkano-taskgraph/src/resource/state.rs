@@ -30,7 +30,7 @@ use vulkano::{
     swapchain::{AcquireNextImageInfo, AcquiredImage, Swapchain},
     sync::{
         fence::{Fence, FenceCreateFlags, FenceCreateInfo},
-        semaphore::{Semaphore, SemaphoreCreateInfo},
+        semaphore::Semaphore,
     },
     Validated, VulkanError, VulkanObject,
 };
@@ -847,8 +847,7 @@ impl SwapchainSyncState {
             Ok(semaphore)
         } else {
             // SAFETY: The parameters are valid.
-            let semaphore =
-                unsafe { Semaphore::new_unchecked(&self.device, &SemaphoreCreateInfo::default()) }?;
+            let semaphore = unsafe { Semaphore::new_unchecked(&self.device, &Default::default()) }?;
 
             Ok(semaphore)
         }
@@ -863,7 +862,7 @@ impl SwapchainSyncState {
             Ok(fence)
         } else {
             // SAFETY: The parameters are valid.
-            let fence = unsafe { Fence::new_unchecked(&self.device, &FenceCreateInfo::default()) }?;
+            let fence = unsafe { Fence::new_unchecked(&self.device, &Default::default()) }?;
 
             Ok(fence)
         }
