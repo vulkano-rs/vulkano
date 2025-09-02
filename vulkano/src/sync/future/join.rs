@@ -93,14 +93,6 @@ where
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(_, _)) => {
-                self.second.flush()?;
-                SubmitAnyBuilder::SemaphoresWait(a)
-            }
-            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                self.first.flush()?;
-                SubmitAnyBuilder::SemaphoresWait(b)
-            }
             (
                 SubmitAnyBuilder::CommandBuffer(mut submit_info_a, fence_a),
                 SubmitAnyBuilder::CommandBuffer(submit_info_b, fence_b),
@@ -132,31 +124,6 @@ where
             }
             (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::CommandBuffer(_, _)) => {
                 unimplemented!()
-            }
-            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::QueuePresent(_)) => {
-                unimplemented!()
-            }
-            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::BindSparse(_, _)) => {
-                unimplemented!()
-            }
-            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::CommandBuffer(_, _)) => {
-                unimplemented!()
-            }
-            (SubmitAnyBuilder::CommandBuffer(_, _), SubmitAnyBuilder::BindSparse(_, _)) => {
-                unimplemented!()
-            }
-            (
-                SubmitAnyBuilder::BindSparse(mut bind_infos_a, fence_a),
-                SubmitAnyBuilder::BindSparse(bind_infos_b, fence_b),
-            ) => {
-                if fence_a.is_some() && fence_b.is_some() {
-                    // TODO: this happens if both bind sparse have been given a fence already
-                    //       annoying, but not impossible, to handle
-                    unimplemented!()
-                }
-
-                bind_infos_a.extend(bind_infos_b);
-                SubmitAnyBuilder::BindSparse(bind_infos_a, fence_a)
             }
         })
     }
