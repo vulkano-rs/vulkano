@@ -494,15 +494,6 @@ impl<'a> DescriptorPoolCreateInfo<'a> {
             }));
         }
 
-        if pool_sizes.is_empty() {
-            return Err(Box::new(ValidationError {
-                context: "pool_sizes".into(),
-                problem: "is empty".into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
         // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
         for &(descriptor_type, pool_size) in pool_sizes {
             flags.validate_device(device).map_err(|err| {
