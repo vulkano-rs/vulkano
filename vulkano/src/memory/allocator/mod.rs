@@ -1949,7 +1949,7 @@ mod array_vec {
     }
 }
 
-mod aliasable_box {
+pub(crate) mod aliasable_box {
     use slabbin::SlabAllocator;
     use std::{
         fmt,
