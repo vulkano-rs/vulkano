@@ -14,6 +14,8 @@
 
 ### Breaking changes
 
+- `DriverId::VeriSiliconPropertary` is now correctly spelled `DriverId::VeriSiliconProprietary`.
+
 Global changes:
 - Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
 - Where `Range` and `RangeInclusive` were previously used in parameters, two separate parameters for the offset/base and size/count are now used instead to match Vulkan.
