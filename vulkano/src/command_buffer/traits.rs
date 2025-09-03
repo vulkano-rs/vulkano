@@ -1,19 +1,14 @@
 use super::{
     CommandBuffer, CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferSubmitInfo, CommandBufferUsage, SecondaryCommandBufferResourcesUsage,
-    SemaphoreSubmitInfo, SubmitInfo,
+    CommandBufferUsage, OldSubmitInfo, SecondaryCommandBufferResourcesUsage,
 };
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
-    sync::{
-        future::{
-            now, queue_submit, AccessCheckError, AccessError, GpuFuture, NowFuture,
-            SubmitAnyBuilder,
-        },
-        PipelineStages,
+    sync::future::{
+        now, queue_submit, AccessCheckError, AccessError, GpuFuture, NowFuture, SubmitAnyBuilder,
     },
     DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -253,43 +248,28 @@ where
     unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         Ok(match unsafe { self.previous.build_submission() }? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
-                SubmitInfo {
-                    command_buffers: vec![CommandBufferSubmitInfo::new(
-                        self.command_buffer.clone(),
-                    )],
+                OldSubmitInfo {
+                    command_buffers: vec![self.command_buffer.clone()],
                     ..Default::default()
                 },
                 None,
             ),
-            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
-                SubmitAnyBuilder::CommandBuffer(
-                    SubmitInfo {
-                        wait_semaphores: semaphores
-                            .into_iter()
-                            .map(|semaphore| {
-                                SemaphoreSubmitInfo {
-                                    // TODO: correct stages ; hard
-                                    stages: PipelineStages::ALL_COMMANDS,
-                                    ..SemaphoreSubmitInfo::new(semaphore)
-                                }
-                            })
-                            .collect(),
-                        command_buffers: vec![CommandBufferSubmitInfo::new(
-                            self.command_buffer.clone(),
-                        )],
-                        ..Default::default()
-                    },
-                    None,
-                )
-            }
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => SubmitAnyBuilder::CommandBuffer(
+                OldSubmitInfo {
+                    wait_semaphores: semaphores.into_iter().collect(),
+                    command_buffers: vec![self.command_buffer.clone()],
+                    ..Default::default()
+                },
+                None,
+            ),
             SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                 // FIXME: add pipeline barrier
                 submit_info
                     .command_buffers
-                    .push(CommandBufferSubmitInfo::new(self.command_buffer.clone()));
+                    .push(self.command_buffer.clone());
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence)
             }
-            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_, _) => {
+            SubmitAnyBuilder::QueuePresent(_) => {
                 unimplemented!() // TODO:
                                  /*present.submit();     // TODO: wrong
                                  let mut builder = SubmitCommandBufferBuilder::new();

@@ -947,48 +947,48 @@ impl From<CommandBufferUsage> for vk::CommandBufferUsageFlags {
 
 /// Parameters to submit command buffers to a queue.
 #[derive(Clone, Debug)]
-pub struct SubmitInfo {
+pub struct SubmitInfo<'a> {
     /// The semaphores to wait for before beginning the execution of this batch of
     /// command buffer operations.
     ///
     /// The default value is empty.
-    pub wait_semaphores: Vec<SemaphoreSubmitInfo>,
+    pub wait_semaphores: &'a [SemaphoreSubmitInfo<'a>],
 
     /// The command buffers to execute.
     ///
     /// The default value is empty.
-    pub command_buffers: Vec<CommandBufferSubmitInfo>,
+    pub command_buffers: &'a [CommandBufferSubmitInfo<'a>],
 
     /// The semaphores to signal after the execution of this batch of command buffer operations
     /// has completed.
     ///
     /// The default value is empty.
-    pub signal_semaphores: Vec<SemaphoreSubmitInfo>,
+    pub signal_semaphores: &'a [SemaphoreSubmitInfo<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubmitInfo {
+impl Default for SubmitInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubmitInfo {
+impl SubmitInfo<'_> {
     /// Returns a default `SubmitInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
-            wait_semaphores: Vec::new(),
-            command_buffers: Vec::new(),
-            signal_semaphores: Vec::new(),
+            wait_semaphores: &[],
+            command_buffers: &[],
+            signal_semaphores: &[],
             _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let Self {
+        let &Self {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
@@ -1055,7 +1055,7 @@ impl SubmitInfo {
     }
 
     pub(crate) fn to_vk2_fields1(&self) -> SubmitInfo2Fields1Vk {
-        let Self {
+        let &Self {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
@@ -1113,7 +1113,7 @@ impl SubmitInfo {
         &self,
         fields1_vk: &'a SubmitInfoFields1Vk,
     ) -> SubmitInfoExtensionsVk<'a> {
-        let Self {
+        let &Self {
             wait_semaphores,
             command_buffers: _,
             signal_semaphores,
@@ -1145,7 +1145,7 @@ impl SubmitInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SubmitInfoFields1Vk {
-        let Self {
+        let &Self {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
@@ -1158,7 +1158,7 @@ impl SubmitInfo {
 
         for semaphore_submit_info in wait_semaphores {
             let &SemaphoreSubmitInfo {
-                ref semaphore,
+                semaphore,
                 value,
                 stages,
                 _ne: _,
@@ -1179,7 +1179,7 @@ impl SubmitInfo {
 
         for semaphore_submit_info in signal_semaphores {
             let &SemaphoreSubmitInfo {
-                ref semaphore,
+                semaphore,
                 value,
                 stages: _,
                 _ne: _,
@@ -1221,19 +1221,19 @@ pub(crate) struct SubmitInfoFields1Vk {
 
 /// Parameters for a command buffer in a queue submit operation.
 #[derive(Clone, Debug)]
-pub struct CommandBufferSubmitInfo {
+pub struct CommandBufferSubmitInfo<'a> {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
+    pub command_buffer: &'a CommandBuffer,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CommandBufferSubmitInfo {
+impl<'a> CommandBufferSubmitInfo<'a> {
     /// Returns a default `CommandBufferSubmitInfo` with the provided `command_buffer`.
     #[inline]
-    pub const fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
+    pub const fn new(command_buffer: &'a CommandBuffer) -> Self {
         Self {
             command_buffer,
             _ne: crate::NE,
@@ -1241,7 +1241,7 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let Self {
+        let &Self {
             command_buffer,
             _ne: _,
         } = self;
@@ -1253,7 +1253,7 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn to_vk2(&self) -> vk::CommandBufferSubmitInfo<'static> {
-        let Self {
+        let &Self {
             command_buffer,
             _ne: _,
         } = self;
@@ -1264,7 +1264,7 @@ impl CommandBufferSubmitInfo {
     }
 
     pub(crate) fn to_vk(&self) -> vk::CommandBuffer {
-        let Self {
+        let &Self {
             command_buffer,
             _ne: _,
         } = self;
@@ -1275,11 +1275,11 @@ impl CommandBufferSubmitInfo {
 
 /// Parameters for a semaphore signal or wait operation in a queue submit operation.
 #[derive(Clone, Debug)]
-pub struct SemaphoreSubmitInfo {
+pub struct SemaphoreSubmitInfo<'a> {
     /// The semaphore to signal or wait for.
     ///
     /// There is no default value.
-    pub semaphore: Arc<Semaphore>,
+    pub semaphore: &'a Semaphore,
 
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Timeline`], specifies the value that
     /// will be used for the semaphore operation:
@@ -1309,13 +1309,13 @@ pub struct SemaphoreSubmitInfo {
     /// [`synchronization2`]: crate::device::DeviceFeatures::synchronization2
     pub stages: PipelineStages,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl SemaphoreSubmitInfo {
+impl<'a> SemaphoreSubmitInfo<'a> {
     /// Returns a default `SemaphoreSubmitInfo` with the provided `semaphore`.
     #[inline]
-    pub const fn new(semaphore: Arc<Semaphore>) -> Self {
+    pub const fn new(semaphore: &'a Semaphore) -> Self {
         Self {
             semaphore,
             value: 0,
@@ -1326,7 +1326,7 @@ impl SemaphoreSubmitInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref semaphore,
+            semaphore,
             value,
             stages,
             _ne: _,
@@ -1519,7 +1519,7 @@ impl SemaphoreSubmitInfo {
 
     pub(crate) fn to_vk2(&self) -> vk::SemaphoreSubmitInfo<'static> {
         let &Self {
-            ref semaphore,
+            semaphore,
             value,
             stages,
             _ne: _,
@@ -1531,6 +1531,14 @@ impl SemaphoreSubmitInfo {
             .stage_mask(stages.into())
             .device_index(0) // TODO:
     }
+}
+
+#[derive(Clone, Debug, Default)]
+#[doc(hidden)]
+pub struct OldSubmitInfo {
+    pub(crate) wait_semaphores: Vec<Arc<Semaphore>>,
+    pub(crate) command_buffers: Vec<Arc<dyn PrimaryCommandBufferAbstract>>,
+    pub(crate) signal_semaphores: Vec<Arc<Semaphore>>,
 }
 
 #[derive(Debug, Default)]

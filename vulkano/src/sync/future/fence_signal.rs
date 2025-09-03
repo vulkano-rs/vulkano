@@ -1,14 +1,13 @@
 use super::{AccessCheckError, GpuFuture};
 use crate::{
     buffer::Buffer,
-    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
+    command_buffer::OldSubmitInfo,
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
         fence::Fence,
-        future::{queue_bind_sparse, queue_present, queue_submit, AccessError, SubmitAnyBuilder},
-        PipelineStages,
+        future::{queue_present, queue_submit, AccessError, SubmitAnyBuilder},
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
@@ -247,17 +246,8 @@ where
                 unsafe {
                     queue_submit(
                         &queue,
-                        SubmitInfo {
-                            wait_semaphores: semaphores
-                                .into_iter()
-                                .map(|semaphore| {
-                                    SemaphoreSubmitInfo {
-                                        // TODO: correct stages ; hard
-                                        stages: PipelineStages::ALL_COMMANDS,
-                                        ..SemaphoreSubmitInfo::new(semaphore)
-                                    }
-                                })
-                                .collect(),
+                        OldSubmitInfo {
+                            wait_semaphores: semaphores.into_iter().collect(),
                             ..Default::default()
                         },
                         None,
@@ -276,14 +266,6 @@ where
                 assert!(fence.is_none());
 
                 unsafe { queue_submit(&queue, submit_info, Some(new_fence.clone()), &previous) }
-                    .map_err(OutcomeErr::Full)
-            }
-            SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
-                debug_assert!(!partially_flushed);
-                // Same remark as `CommandBuffer`.
-                assert!(fence.is_none());
-
-                unsafe { queue_bind_sparse(&queue, bind_infos, Some(new_fence.clone())) }
                     .map_err(OutcomeErr::Full)
             }
             SubmitAnyBuilder::QueuePresent(present_info) => {

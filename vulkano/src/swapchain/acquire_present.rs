@@ -1115,14 +1115,6 @@ where
                     ..Default::default()
                 })
             }
-            SubmitAnyBuilder::BindSparse(_, _) => {
-                self.previous.flush()?;
-
-                SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchain_infos: vec![self.swapchain_info.clone()],
-                    ..Default::default()
-                })
-            }
             SubmitAnyBuilder::QueuePresent(mut present_info) => {
                 if present_info.swapchain_infos.first().is_some_and(|prev| {
                     prev.present_mode.is_some() != self.swapchain_info.present_mode.is_some()

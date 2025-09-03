@@ -113,8 +113,8 @@ mod linux {
         sampler: Arc<Sampler>,
         barrier: Arc<Barrier>,
         barrier_2: Arc<Barrier>,
-        acquire_sem: Arc<Semaphore>,
-        release_sem: Arc<Semaphore>,
+        acquire_sem: Semaphore,
+        release_sem: Semaphore,
         rcx: Option<RenderContext>,
     }
 
@@ -329,26 +329,22 @@ mod linux {
             let barrier = Arc::new(Barrier::new(2));
             let barrier_2 = Arc::new(Barrier::new(2));
 
-            let acquire_sem = Arc::new(
-                Semaphore::new(
-                    &device,
-                    &SemaphoreCreateInfo {
-                        export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
-                        ..Default::default()
-                    },
-                )
-                .unwrap(),
-            );
-            let release_sem = Arc::new(
-                Semaphore::new(
-                    &device,
-                    &SemaphoreCreateInfo {
-                        export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
-                        ..Default::default()
-                    },
-                )
-                .unwrap(),
-            );
+            let acquire_sem = Semaphore::new(
+                &device,
+                &SemaphoreCreateInfo {
+                    export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let release_sem = Semaphore::new(
+                &device,
+                &SemaphoreCreateInfo {
+                    export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
             let acquire_fd =
                 unsafe { acquire_sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd) }.unwrap();
@@ -608,8 +604,8 @@ mod linux {
                         .with(|mut q| unsafe {
                             q.submit(
                                 &[SubmitInfo {
-                                    signal_semaphores: vec![SemaphoreSubmitInfo::new(
-                                        self.acquire_sem.clone(),
+                                    signal_semaphores: &[SemaphoreSubmitInfo::new(
+                                        &self.acquire_sem,
                                     )],
                                     ..Default::default()
                                 }],
@@ -625,9 +621,7 @@ mod linux {
                         .with(|mut q| unsafe {
                             q.submit(
                                 &[SubmitInfo {
-                                    wait_semaphores: vec![SemaphoreSubmitInfo::new(
-                                        self.release_sem.clone(),
-                                    )],
+                                    wait_semaphores: &[SemaphoreSubmitInfo::new(&self.release_sem)],
                                     ..Default::default()
                                 }],
                                 None,
