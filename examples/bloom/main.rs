@@ -21,7 +21,7 @@ use vulkano::{
     memory::allocator::AllocationCreateInfo,
     pipeline::graphics::viewport::Viewport,
     swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo},
-    Validated, Version, VulkanError, VulkanLibrary,
+    Version, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
     descriptor_set::{BindlessContext, SampledImageId, SamplerId, StorageImageId},
@@ -211,7 +211,6 @@ impl ApplicationHandler for App {
 
             self.resources
                 .create_swapchain(
-                    self.flight_id,
                     &surface,
                     &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
@@ -423,7 +422,7 @@ impl ApplicationHandler for App {
                 } {
                     Ok(()) => {}
                     Err(ExecuteError::Swapchain {
-                        error: Validated::Error(VulkanError::OutOfDate),
+                        error: VulkanError::OutOfDate,
                         ..
                     }) => {
                         rcx.recreate_swapchain = true;
