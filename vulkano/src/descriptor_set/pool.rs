@@ -494,15 +494,6 @@ impl<'a> DescriptorPoolCreateInfo<'a> {
             }));
         }
 
-        if pool_sizes.is_empty() {
-            return Err(Box::new(ValidationError {
-                context: "pool_sizes".into(),
-                problem: "is empty".into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
         // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
         for &(descriptor_type, pool_size) in pool_sizes {
             flags.validate_device(device).map_err(|err| {
@@ -787,20 +778,6 @@ mod tests {
             &DescriptorPoolCreateInfo {
                 max_sets: 0,
                 pool_sizes: &[(DescriptorType::UniformBuffer, 1)],
-                ..Default::default()
-            },
-        )
-        .unwrap_err();
-    }
-
-    #[test]
-    fn zero_descriptors() {
-        let (device, _) = gfx_dev_and_queue!();
-
-        DescriptorPool::new(
-            &device,
-            &DescriptorPoolCreateInfo {
-                max_sets: 10,
                 ..Default::default()
             },
         )
