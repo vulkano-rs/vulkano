@@ -257,7 +257,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn bind_sparse(
         &mut self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_bind_sparse(bind_infos, fence)?;
@@ -267,7 +267,7 @@ impl QueueGuard<'_> {
 
     fn validate_bind_sparse(
         &self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
@@ -311,7 +311,7 @@ impl QueueGuard<'_> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_sparse_unchecked(
         &mut self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         let bind_infos_fields2_vk: SmallVec<[_; 4]> = bind_infos
@@ -526,7 +526,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn submit(
         &mut self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_submit(submit_infos, fence)?;
@@ -536,7 +536,7 @@ impl QueueGuard<'_> {
 
     fn validate_submit(
         &self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Box<ValidationError>> {
         let device = self.queue.device();
@@ -555,7 +555,7 @@ impl QueueGuard<'_> {
                 .validate(device)
                 .map_err(|err| err.add_context(format!("submit_infos[{}]", index)))?;
 
-            let SubmitInfo {
+            let &SubmitInfo {
                 wait_semaphores,
                 command_buffers,
                 signal_semaphores,
@@ -656,7 +656,7 @@ impl QueueGuard<'_> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn submit_unchecked(
         &mut self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
