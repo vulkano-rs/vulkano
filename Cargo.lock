@@ -205,15 +205,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buffer-allocator"
-version = "0.0.0"
-dependencies = [
- "vulkano",
- "vulkano-shaders",
- "winit",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
