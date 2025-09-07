@@ -50,6 +50,7 @@ Changes to external memory and external sync:
 - Added support for importing `D3D11Texture` and `D3D11TextureKmt` memory handles.
 - `ImageSubresourceLayers` and `ImageSubresourceRange` now implement `Default`.
 - Added proc macro `include_vulkano_glsl` to vulkano-shaders.
+- `Device::wait_idle` is now safe.
 
 ### Bugs fixed
 
