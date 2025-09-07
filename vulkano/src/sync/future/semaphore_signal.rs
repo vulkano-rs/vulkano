@@ -1,14 +1,13 @@
 use super::{queue_present, AccessCheckError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
-    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
+    command_buffer::OldSubmitInfo,
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
         future::{queue_submit, AccessError},
         semaphore::Semaphore,
-        PipelineStages,
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
@@ -86,10 +85,8 @@ where
                 unsafe {
                     queue_submit(
                         &queue,
-                        SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
-                                self.semaphore.clone(),
-                            )],
+                        OldSubmitInfo {
+                            signal_semaphores: vec![self.semaphore.clone()],
                             ..Default::default()
                         },
                         None,
@@ -101,20 +98,9 @@ where
                 unsafe {
                     queue_submit(
                         &queue,
-                        SubmitInfo {
-                            wait_semaphores: semaphores
-                                .into_iter()
-                                .map(|semaphore| {
-                                    SemaphoreSubmitInfo {
-                                        // TODO: correct stages ; hard
-                                        stages: PipelineStages::ALL_COMMANDS,
-                                        ..SemaphoreSubmitInfo::new(semaphore)
-                                    }
-                                })
-                                .collect(),
-                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
-                                self.semaphore.clone(),
-                            )],
+                        OldSubmitInfo {
+                            wait_semaphores: semaphores.into_iter().collect(),
+                            signal_semaphores: vec![self.semaphore.clone()],
                             ..Default::default()
                         },
                         None,
@@ -125,17 +111,9 @@ where
             SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                 debug_assert!(submit_info.signal_semaphores.is_empty());
 
-                submit_info
-                    .signal_semaphores
-                    .push(SemaphoreSubmitInfo::new(self.semaphore.clone()));
+                submit_info.signal_semaphores.push(self.semaphore.clone());
 
                 unsafe { queue_submit(&queue, submit_info, fence, &self.previous) }?;
-            }
-            SubmitAnyBuilder::BindSparse(_, _) => {
-                unimplemented!() // TODO: how to do that?
-                                 /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
-                                 builder.add_signal_semaphore(&self.semaphore);
-                                 builder.submit(&queue)?;*/
             }
             SubmitAnyBuilder::QueuePresent(present_info) => {
                 for swapchain_info in &present_info.swapchain_infos {
@@ -179,10 +157,8 @@ where
                 unsafe {
                     queue_submit(
                         &queue,
-                        SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
-                                self.semaphore.clone(),
-                            )],
+                        OldSubmitInfo {
+                            signal_semaphores: vec![self.semaphore.clone()],
                             ..Default::default()
                         },
                         None,

@@ -255,7 +255,7 @@ impl SwapchainState {
         let fence = sync_state.allocate_fence()?;
 
         let res = unsafe {
-            self.swapchain().acquire_next_image(&AcquireNextImageInfo {
+            self.swapchain.acquire_next_image(&AcquireNextImageInfo {
                 semaphore: Some(&semaphore),
                 fence: Some(&fence),
                 ..Default::default()

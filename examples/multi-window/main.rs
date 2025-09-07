@@ -391,7 +391,7 @@ impl ApplicationHandler for App {
                 // Unfortunately, the only way to guarantee that a swapchain is no longer being used
                 // by the presentation engine is to do a device-wide wait for idle. Without this,
                 // the swapchain would never get cleaned up.
-                unsafe { self.resources.wait_idle() }.unwrap();
+                self.resources.wait_idle().unwrap();
 
                 if self.rcxs.is_empty() {
                     event_loop.exit();

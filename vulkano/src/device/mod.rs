@@ -161,6 +161,8 @@ pub struct Device {
     fns: DeviceFunctions,
     active_queue_family_indices: SmallVec<[u32; 2]>,
 
+    queue_locks: Vec<Mutex<()>>,
+
     // This is required for validation in `memory::device_memory`, the count must only be modified
     // in that module.
     pub(crate) allocation_count: AtomicU32,
@@ -411,10 +413,13 @@ impl Device {
             fns,
             active_queue_family_indices,
 
+            queue_locks: (0..queues_to_get.len()).map(|_| Mutex::new(())).collect(),
+
             allocation_count: AtomicU32::new(0),
             fence_pool: Mutex::new(Vec::new()),
             semaphore_pool: Mutex::new(Vec::new()),
             event_pool: Mutex::new(Vec::new()),
+
             borrowed,
         });
 
@@ -422,7 +427,10 @@ impl Device {
             let device = device.clone();
             queues_to_get
                 .into_iter()
-                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
+                .enumerate()
+                .map(move |(lock_index, queue_info)| unsafe {
+                    Queue::new(&device, &queue_info, lock_index)
+                })
         };
 
         (device, queues_iter)
@@ -1321,14 +1329,9 @@ impl Device {
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
     /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
-    ///
-    /// # Safety
-    ///
-    /// This function is not thread-safe. You must not submit anything to any of the queue
-    /// of the device (either explicitly or implicitly, for example with a future's destructor)
-    /// while this function is waiting.
-    #[inline]
-    pub unsafe fn wait_idle(&self) -> Result<(), VulkanError> {
+    pub fn wait_idle(&self) -> Result<(), VulkanError> {
+        let _queue_lock_guards = self.queue_locks.iter().map(Mutex::lock).collect::<Vec<_>>();
+
         let fns = self.fns();
         unsafe { (fns.v1_0.device_wait_idle)(self.handle) }
             .result()
@@ -1353,10 +1356,13 @@ impl Debug for Device {
             fns,
             active_queue_family_indices,
 
+            queue_locks: _,
+
             allocation_count,
             fence_pool: _,
             semaphore_pool: _,
             event_pool: _,
+
             borrowed: _,
         } = self;
 

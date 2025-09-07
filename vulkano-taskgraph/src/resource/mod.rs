@@ -664,13 +664,7 @@ impl Resources {
     ///
     /// This is equivalent to [`Device::wait_idle`], but unlike that method, this method
     /// additionally collects outstanding garbage.
-    ///
-    /// # Safety
-    ///
-    /// See [the safety documentation of `Device::wait_idle`].
-    ///
-    /// [the safety documentation of `Device::wait_idle`]: Device::wait_idle#safety
-    pub unsafe fn wait_idle(&self) -> Result<(), VulkanError> {
+    pub fn wait_idle(&self) -> Result<(), VulkanError> {
         let guard = &self.storage.pin();
         let mut frames = SmallVec::<[_; 8]>::new();
 
@@ -681,8 +675,7 @@ impl Resources {
 
         let swapchain_garbage = mem::take(&mut *self.storage.swapchain_garbage.lock());
 
-        // SAFETY: Enforced by the caller.
-        if let Err(err) = unsafe { self.device().wait_idle() } {
+        if let Err(err) = self.device().wait_idle() {
             self.storage
                 .swapchain_garbage
                 .lock()
@@ -897,8 +890,7 @@ impl Drop for Resources {
     fn drop(&mut self) {
         let guard = &self.storage.pin();
 
-        // FIXME:
-        if let Err(err) = unsafe { self.device().wait_idle() } {
+        if let Err(err) = self.device().wait_idle() {
             if err == VulkanError::DeviceLost {
                 return;
             }

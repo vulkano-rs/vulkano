@@ -155,6 +155,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
 
+        // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
 
         res
