@@ -10,7 +10,7 @@ use crate::{
     VulkanObject,
 };
 use ash::vk;
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::MutexGuard;
 use smallvec::SmallVec;
 use std::{
     hash::{Hash, Hasher},
@@ -29,11 +29,15 @@ pub struct Queue {
     queue_family_index: u32,
     queue_index: u32, // index within family
 
-    state: Mutex<QueueState>,
+    lock_index: usize,
 }
 
 impl Queue {
-    pub(super) unsafe fn new(device: &Arc<Device>, queue_info: &DeviceQueueInfo<'_>) -> Arc<Self> {
+    pub(super) unsafe fn new(
+        device: &Arc<Device>,
+        queue_info: &DeviceQueueInfo<'_>,
+        lock_index: usize,
+    ) -> Arc<Self> {
         let queue_info_vk = queue_info.to_vk();
 
         let handle = {
@@ -64,15 +68,16 @@ impl Queue {
             unsafe { output.assume_init() }
         };
 
-        unsafe { Self::from_handle(device, handle, queue_info) }
+        unsafe { Self::from_handle(device, handle, queue_info, lock_index) }
     }
 
     // TODO: Make public
     #[inline]
-    pub(super) unsafe fn from_handle(
+    unsafe fn from_handle(
         device: &Arc<Device>,
         handle: vk::Queue,
         queue_info: &DeviceQueueInfo<'_>,
+        lock_index: usize,
     ) -> Arc<Self> {
         let &DeviceQueueInfo {
             flags,
@@ -87,7 +92,7 @@ impl Queue {
             flags,
             queue_family_index,
             queue_index,
-            state: Mutex::new(Default::default()),
+            lock_index,
         })
     }
 
@@ -121,20 +126,12 @@ impl Queue {
     pub fn with<'a, R>(self: &'a Arc<Self>, func: impl FnOnce(QueueGuard<'a>) -> R) -> R {
         func(QueueGuard {
             queue: self,
-            _state: self.state.lock(),
+            _lock_guard: self.device.queue_locks[self.lock_index].lock(),
         })
     }
 
     fn queue_family_properties(&self) -> &QueueFamilyProperties {
         &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
-    }
-}
-
-impl Drop for Queue {
-    #[inline]
-    fn drop(&mut self) {
-        let fns = self.device.fns();
-        let _ = unsafe { (fns.v1_0.queue_wait_idle)(self.handle) };
     }
 }
 
@@ -212,7 +209,7 @@ impl DeviceQueueInfo<'_> {
 
 pub struct QueueGuard<'a> {
     queue: &'a Arc<Queue>,
-    _state: MutexGuard<'a, QueueState>,
+    _lock_guard: MutexGuard<'a, ()>,
 }
 
 impl QueueGuard<'_> {
@@ -260,7 +257,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn bind_sparse(
         &mut self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_bind_sparse(bind_infos, fence)?;
@@ -270,7 +267,7 @@ impl QueueGuard<'_> {
 
     fn validate_bind_sparse(
         &self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
@@ -314,7 +311,7 @@ impl QueueGuard<'_> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_sparse_unchecked(
         &mut self,
-        bind_infos: &[BindSparseInfo],
+        bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         let bind_infos_fields2_vk: SmallVec<[_; 4]> = bind_infos
@@ -529,7 +526,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn submit(
         &mut self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_submit(submit_infos, fence)?;
@@ -539,7 +536,7 @@ impl QueueGuard<'_> {
 
     fn validate_submit(
         &self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), Box<ValidationError>> {
         let device = self.queue.device();
@@ -558,7 +555,7 @@ impl QueueGuard<'_> {
                 .validate(device)
                 .map_err(|err| err.add_context(format!("submit_infos[{}]", index)))?;
 
-            let SubmitInfo {
+            let &SubmitInfo {
                 wait_semaphores,
                 command_buffers,
                 signal_semaphores,
@@ -659,7 +656,7 @@ impl QueueGuard<'_> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn submit_unchecked(
         &mut self,
-        submit_infos: &[SubmitInfo],
+        submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
@@ -894,9 +891,6 @@ impl QueueGuard<'_> {
         };
     }
 }
-
-#[derive(Debug, Default)]
-struct QueueState {}
 
 /// Properties of a queue family in a physical device.
 #[derive(Clone, Debug)]

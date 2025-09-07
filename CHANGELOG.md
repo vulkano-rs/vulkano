@@ -14,6 +14,8 @@
 
 ### Breaking changes
 
+- `DriverId::VeriSiliconPropertary` is now correctly spelled `DriverId::VeriSiliconProprietary`.
+
 Global changes:
 - Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
 - Where `Range` and `RangeInclusive` were previously used in parameters, two separate parameters for the offset/base and size/count are now used instead to match Vulkan.
@@ -48,12 +50,14 @@ Changes to external memory and external sync:
 - Added support for importing `D3D11Texture` and `D3D11TextureKmt` memory handles.
 - `ImageSubresourceLayers` and `ImageSubresourceRange` now implement `Default`.
 - Added proc macro `include_vulkano_glsl` to vulkano-shaders.
+- `Device::wait_idle` is now safe.
 
 ### Bugs fixed
 
 - When using bindless, the validation checks for `DescriptorBindingRequirements` would panic.
 - [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
 - The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
+- [#1632](https://github.com/vulkano-rs/vulkano/issues/1632) Unneeded validation of `DescriptorPoolCreateInfo::pool_sizes` being non-empty. This would manifest itself as a panic when attempting to allocate a descriptor set with no descriptors.
 
 # Version 0.33.1, 0.34.2 and 0.35.2 (2025-08-16)
 

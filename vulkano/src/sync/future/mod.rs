@@ -92,12 +92,11 @@ use crate::{
     buffer::{Buffer, BufferState},
     command_buffer::{
         CommandBufferExecError, CommandBufferExecFuture, CommandBufferResourcesUsage,
-        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage,
-        PrimaryCommandBufferAbstract, SubmitInfo,
+        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage, OldSubmitInfo,
+        PrimaryCommandBufferAbstract, SemaphoreSubmitInfo, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout, ImageState},
-    memory::sparse::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -153,6 +152,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Once the caller has submitted the submission and has determined that the GPU has finished
     /// executing it, it should call `signal_finished`. Failure to do so will incur a large runtime
     /// overhead, as the future will have to block to make sure that it is finished.
+    #[doc(hidden)]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>>;
 
     /// Flushes the future and submits to the GPU the actions that will permit this future to
@@ -456,12 +456,12 @@ where
 
 /// Contains all the possible submission builders.
 #[derive(Debug)]
+#[doc(hidden)]
 pub enum SubmitAnyBuilder {
     Empty,
     SemaphoresWait(SmallVec<[Arc<Semaphore>; 8]>),
-    CommandBuffer(SubmitInfo, Option<Arc<Fence>>),
+    CommandBuffer(OldSubmitInfo, Option<Arc<Fence>>),
     QueuePresent(PresentInfo),
-    BindSparse(SmallVec<[BindSparseInfo; 1]>, Option<Arc<Fence>>),
 }
 
 impl SubmitAnyBuilder {
@@ -551,18 +551,6 @@ impl From<AccessError> for AccessCheckError {
     }
 }
 
-pub(crate) unsafe fn queue_bind_sparse(
-    queue: &Arc<Queue>,
-    bind_infos: impl IntoIterator<Item = BindSparseInfo>,
-    fence: Option<Arc<Fence>>,
-) -> Result<(), Validated<VulkanError>> {
-    let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-    queue
-        .with(|mut queue_guard| unsafe { queue_guard.bind_sparse(&bind_infos, fence.as_ref()) })?;
-
-    Ok(())
-}
-
 pub(crate) unsafe fn queue_present(
     queue: &Arc<Queue>,
     present_info: PresentInfo,
@@ -592,7 +580,7 @@ pub(crate) unsafe fn queue_present(
 
 pub(crate) unsafe fn queue_submit(
     queue: &Arc<Queue>,
-    submit_info: SubmitInfo,
+    submit_info: OldSubmitInfo,
     fence: Option<Arc<Fence>>,
     future: &dyn GpuFuture,
 ) -> Result<(), Validated<VulkanError>> {
@@ -600,12 +588,7 @@ pub(crate) unsafe fn queue_submit(
     let mut states = States::from_submit_infos(&submit_infos);
 
     for submit_info in &submit_infos {
-        for command_buffer_submit_info in &submit_info.command_buffers {
-            let CommandBufferSubmitInfo {
-                command_buffer,
-                _ne: _,
-            } = command_buffer_submit_info;
-
+        for command_buffer in &submit_info.command_buffers {
             let state = states
                 .command_buffers
                 .get(&command_buffer.handle())
@@ -747,22 +730,51 @@ pub(crate) unsafe fn queue_submit(
         }
     }
 
-    queue.with(|mut queue_guard| unsafe { queue_guard.submit(&submit_infos, fence.as_ref()) })?;
+    let new_submit_infos = submit_infos
+        .iter()
+        .map(|submit_info| {
+            (
+                submit_info
+                    .wait_semaphores
+                    .iter()
+                    .map(|semaphore| SemaphoreSubmitInfo::new(semaphore))
+                    .collect::<Vec<_>>(),
+                submit_info
+                    .command_buffers
+                    .iter()
+                    .map(|command_buffer| CommandBufferSubmitInfo::new(command_buffer.as_raw()))
+                    .collect::<Vec<_>>(),
+                submit_info
+                    .signal_semaphores
+                    .iter()
+                    .map(|semaphore| SemaphoreSubmitInfo::new(semaphore))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let new_submit_infos = new_submit_infos
+        .iter()
+        .map(
+            |(wait_semaphores, command_buffers, signal_semaphores)| SubmitInfo {
+                wait_semaphores,
+                command_buffers,
+                signal_semaphores,
+                ..Default::default()
+            },
+        )
+        .collect::<Vec<_>>();
+
+    queue
+        .with(|mut queue_guard| unsafe { queue_guard.submit(&new_submit_infos, fence.as_ref()) })?;
 
     for submit_info in &submit_infos {
-        let SubmitInfo {
+        let OldSubmitInfo {
             wait_semaphores: _,
             command_buffers,
             signal_semaphores: _,
-            _ne: _,
         } = submit_info;
 
-        for command_buffer_submit_info in command_buffers {
-            let CommandBufferSubmitInfo {
-                command_buffer,
-                _ne: _,
-            } = command_buffer_submit_info;
-
+        for command_buffer in command_buffers {
             let state = states
                 .command_buffers
                 .get_mut(&command_buffer.handle())
@@ -815,25 +827,19 @@ struct States<'a> {
 }
 
 impl<'a> States<'a> {
-    fn from_submit_infos(submit_infos: &'a [SubmitInfo]) -> Self {
+    fn from_submit_infos(submit_infos: &'a [OldSubmitInfo]) -> Self {
         let mut buffers = HashMap::default();
         let mut command_buffers = HashMap::default();
         let mut images = HashMap::default();
 
         for submit_info in submit_infos {
-            let SubmitInfo {
+            let OldSubmitInfo {
                 wait_semaphores: _,
                 command_buffers: info_command_buffers,
                 signal_semaphores: _,
-                _ne: _,
             } = submit_info;
 
-            for command_buffer_submit_info in info_command_buffers {
-                let CommandBufferSubmitInfo {
-                    command_buffer,
-                    _ne: _,
-                } = command_buffer_submit_info;
-
+            for command_buffer in info_command_buffers {
                 command_buffers
                     .entry(command_buffer.handle())
                     .or_insert_with(|| command_buffer.state());
