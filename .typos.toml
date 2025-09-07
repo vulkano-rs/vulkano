@@ -1,9 +1,10 @@
 [files]
 extend-exclude = [
     ".git/",
-    "vulkano/autogen-out/*",
     "autogen/spirv.core.grammar.json",
     "autogen/vk.xml",
+    "vulkano/autogen-out/*",
+    "CHANGELOG.md",
 ]
 ignore-hidden = false
 
