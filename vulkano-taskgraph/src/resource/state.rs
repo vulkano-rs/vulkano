@@ -116,31 +116,9 @@ pub struct SwapchainState {
     swapchain: Arc<Swapchain>,
     images: SmallVec<[Arc<Image>; 3]>,
     generation: u32,
-    sync_state: Arc<SwapchainLock>,
+    sync_state: Arc<SwapchainLock<SwapchainSyncState>>,
     current_image_index: AtomicU32,
     last_access: Mutex<ImageAccess>,
-}
-
-/// Swapchains have Super Duper Uber Special<sup>TM</sup> synchronization needs. Namely, a
-/// swapchain can't be used again after it has been recreated. This lock prevents that by assigning
-/// each swapchain in the chain of swapchain (re)creations a *generation*, which is just a
-/// monotonically increasing integer. When a swapchain is created, it gets a generation of 0, and
-/// every subsequent recreation gets a generation one higher than the previous. The lock stores the
-/// current generation and only successfully locks when the generation of the swapchain matches the
-/// current generation. The lock can be locked for use in a task graph execution or for use in a
-/// recreation. This ensures that a swapchain can't be used in more than one task graph execution
-/// at a time since that would be UB, and that it can't be used in an execution and recreation at
-/// the same time. The latter, coupled with the fact that a swapchain can't be used after being
-/// recreated, allows us to remove a swapchain from which an image has never been acquired
-/// immediately.
-///
-/// The swapchain can also be removed, which is similar to being locked except that this state is
-/// final. Like with locking, removal is mutually exclusive and ensures that the swapchain can't be
-/// used in a task graph execution when removed, which allows us to schedule the destruction of the
-/// swapchain, any of its old swapchains, and sync objects after a device wait for idle.
-struct SwapchainLock {
-    state: AtomicU32,
-    data: UnsafeCell<SwapchainSyncState>,
 }
 
 #[derive(Debug)]
@@ -873,95 +851,6 @@ impl SwapchainSyncState {
     }
 }
 
-const SWAPCHAIN_TAG_BITS: u32 = 2;
-const SWAPCHAIN_TAG_MASK: u32 = (1 << SWAPCHAIN_TAG_BITS) - 1;
-
-const SWAPCHAIN_UNUSED_TAG: u32 = 0;
-const SWAPCHAIN_EXECUTION_LOCKED_TAG: u32 = 1;
-const SWAPCHAIN_RECREATION_LOCKED_TAG: u32 = 2;
-const SWAPCHAIN_REMOVED_TAG: u32 = 3;
-
-unsafe impl Send for SwapchainLock {}
-unsafe impl Sync for SwapchainLock {}
-
-impl SwapchainLock {
-    const fn new(data: SwapchainSyncState) -> Self {
-        SwapchainLock {
-            state: AtomicU32::new(SWAPCHAIN_UNUSED_TAG),
-            data: UnsafeCell::new(data),
-        }
-    }
-
-    /// Tries to lock the swapchain for use in a task graph execution.
-    fn try_execute(&self, generation: u32) -> Result<(), SwapchainLockError> {
-        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
-        let new_state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_EXECUTION_LOCKED_TAG;
-
-        self.state
-            .compare_exchange(state, new_state, Acquire, Relaxed)
-            .map_err(SwapchainLockError::from_state)?;
-
-        Ok(())
-    }
-
-    /// Tries to lock the swapchain for use in a recreation.
-    fn try_recreate(&self, generation: u32) -> Result<(), SwapchainLockError> {
-        let new_generation = generation.wrapping_add(1);
-        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
-        let new_state = (new_generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_RECREATION_LOCKED_TAG;
-
-        self.state
-            .compare_exchange(state, new_state, Acquire, Relaxed)
-            .map_err(SwapchainLockError::from_state)?;
-
-        Ok(())
-    }
-
-    /// Returns a mutable reference to the data.
-    ///
-    /// # Safety
-    ///
-    /// - The swapchain must have been locked.
-    /// - There must not be other references to the data.
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn get_mut_unchecked(&self) -> &mut SwapchainSyncState {
-        // SAFETY: The caller must ensure that the lock has been locked -- which ensures correct
-        // synchronization -- and that there aren't other references.
-        unsafe { &mut *self.data.get() }
-    }
-
-    /// Unlocks the swapchain.
-    ///
-    /// # Safety
-    ///
-    /// - The swapchain must have been locked.
-    unsafe fn unlock(&self) {
-        const { assert!(SWAPCHAIN_UNUSED_TAG == 0) };
-
-        // This sets the tag back to `SWAPCHAIN_UNUSED_TAG` by exploiting the fact that
-        // `SWAPCHAIN_UNUSED_TAG` is `0`.
-        self.state.fetch_and(!SWAPCHAIN_TAG_MASK, Release);
-    }
-
-    /// Tries to remove the swapchain.
-    fn try_remove(&self, generation: u32) -> Result<(), SwapchainLockError> {
-        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
-        let new_state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_REMOVED_TAG;
-
-        self.state
-            .compare_exchange(state, new_state, Acquire, Relaxed)
-            .map_err(SwapchainLockError::from_state)?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Debug for SwapchainLock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SwapchainLock").finish_non_exhaustive()
-    }
-}
-
 pub(super) struct SwapchainLockGuard<'a> {
     state: &'a SwapchainState,
 }
@@ -971,42 +860,6 @@ impl Drop for SwapchainLockGuard<'_> {
         unsafe { self.state.unlock() };
     }
 }
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum SwapchainLockError {
-    Unused,
-    ExecutionLocked,
-    RecreationLocked,
-    Removed,
-}
-
-impl SwapchainLockError {
-    fn from_state(state: u32) -> Self {
-        match state & SWAPCHAIN_TAG_MASK {
-            SWAPCHAIN_UNUSED_TAG => SwapchainLockError::Unused,
-            SWAPCHAIN_EXECUTION_LOCKED_TAG => SwapchainLockError::ExecutionLocked,
-            SWAPCHAIN_RECREATION_LOCKED_TAG => SwapchainLockError::RecreationLocked,
-            SWAPCHAIN_REMOVED_TAG => SwapchainLockError::Removed,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl fmt::Display for SwapchainLockError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unused | Self::RecreationLocked => {
-                f.write_str("the swapchain has already been recreated")
-            }
-            Self::ExecutionLocked => {
-                f.write_str("a task graph using the swapchain is being executed")
-            }
-            Self::Removed => f.write_str("the swapchain has already been removed"),
-        }
-    }
-}
-
-impl Error for SwapchainLockError {}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SwapchainSyncStage {
@@ -1212,3 +1065,150 @@ impl Flight {
         self.current_frame.fetch_add(1, Relaxed);
     }
 }
+
+const SWAPCHAIN_TAG_BITS: u32 = 2;
+const SWAPCHAIN_TAG_MASK: u32 = (1 << SWAPCHAIN_TAG_BITS) - 1;
+
+const SWAPCHAIN_UNUSED_TAG: u32 = 0;
+const SWAPCHAIN_EXECUTION_LOCKED_TAG: u32 = 1;
+const SWAPCHAIN_RECREATION_LOCKED_TAG: u32 = 2;
+const SWAPCHAIN_REMOVED_TAG: u32 = 3;
+
+/// Swapchains have Super Duper Uber Special<sup>TM</sup> synchronization needs. Namely, a
+/// swapchain can't be used again after it has been recreated. This lock prevents that by assigning
+/// each swapchain in the chain of swapchain (re)creations a *generation*, which is just a
+/// monotonically increasing integer. When a swapchain is created, it gets a generation of 0, and
+/// every subsequent recreation gets a generation one higher than the previous. The lock stores the
+/// current generation and only successfully locks when the generation of the swapchain matches the
+/// current generation. The lock can be locked for use in a task graph execution or for use in a
+/// recreation. This ensures that a swapchain can't be used in more than one task graph execution
+/// at a time since that would be UB, and that it can't be used in an execution and recreation at
+/// the same time. The latter, coupled with the fact that a swapchain can't be used after being
+/// recreated, allows us to remove a swapchain from which an image has never been acquired
+/// immediately.
+///
+/// The swapchain can also be removed, which is similar to being locked except that this state is
+/// final. Like with locking, removal is mutually exclusive and ensures that the swapchain can't be
+/// used in a task graph execution when removed, which allows us to schedule the destruction of the
+/// swapchain, any of its old swapchains, and sync objects after a device wait for idle.
+struct SwapchainLock<T> {
+    state: AtomicU32,
+    data: UnsafeCell<T>,
+}
+
+unsafe impl<T: Send> Send for SwapchainLock<T> {}
+unsafe impl<T: Send> Sync for SwapchainLock<T> {}
+
+impl<T> SwapchainLock<T> {
+    const fn new(data: T) -> Self {
+        SwapchainLock {
+            state: AtomicU32::new(SWAPCHAIN_UNUSED_TAG),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    /// Tries to lock the swapchain for use in a task graph execution.
+    fn try_execute(&self, generation: u32) -> Result<(), SwapchainLockError> {
+        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
+        let new_state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_EXECUTION_LOCKED_TAG;
+
+        self.state
+            .compare_exchange(state, new_state, Acquire, Relaxed)
+            .map_err(SwapchainLockError::from_state)?;
+
+        Ok(())
+    }
+
+    /// Tries to lock the swapchain for use in a recreation.
+    fn try_recreate(&self, generation: u32) -> Result<(), SwapchainLockError> {
+        let new_generation = generation.wrapping_add(1);
+        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
+        let new_state = (new_generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_RECREATION_LOCKED_TAG;
+
+        self.state
+            .compare_exchange(state, new_state, Acquire, Relaxed)
+            .map_err(SwapchainLockError::from_state)?;
+
+        Ok(())
+    }
+
+    /// Returns a mutable reference to the data.
+    ///
+    /// # Safety
+    ///
+    /// - The swapchain must have been locked.
+    /// - There must not be other references to the data.
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn get_mut_unchecked(&self) -> &mut T {
+        // SAFETY: The caller must ensure that the lock has been locked -- which ensures correct
+        // synchronization -- and that there aren't other references.
+        unsafe { &mut *self.data.get() }
+    }
+
+    /// Unlocks the swapchain.
+    ///
+    /// # Safety
+    ///
+    /// - The swapchain must have been locked.
+    unsafe fn unlock(&self) {
+        const { assert!(SWAPCHAIN_UNUSED_TAG == 0) };
+
+        // This sets the tag back to `SWAPCHAIN_UNUSED_TAG` by exploiting the fact that
+        // `SWAPCHAIN_UNUSED_TAG` is `0`.
+        self.state.fetch_and(!SWAPCHAIN_TAG_MASK, Release);
+    }
+
+    /// Tries to remove the swapchain.
+    fn try_remove(&self, generation: u32) -> Result<(), SwapchainLockError> {
+        let state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_UNUSED_TAG;
+        let new_state = (generation << SWAPCHAIN_TAG_BITS) | SWAPCHAIN_REMOVED_TAG;
+
+        self.state
+            .compare_exchange(state, new_state, Acquire, Relaxed)
+            .map_err(SwapchainLockError::from_state)?;
+
+        Ok(())
+    }
+}
+
+impl<T> fmt::Debug for SwapchainLock<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SwapchainLock").finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SwapchainLockError {
+    Unused,
+    ExecutionLocked,
+    RecreationLocked,
+    Removed,
+}
+
+impl SwapchainLockError {
+    fn from_state(state: u32) -> Self {
+        match state & SWAPCHAIN_TAG_MASK {
+            SWAPCHAIN_UNUSED_TAG => SwapchainLockError::Unused,
+            SWAPCHAIN_EXECUTION_LOCKED_TAG => SwapchainLockError::ExecutionLocked,
+            SWAPCHAIN_RECREATION_LOCKED_TAG => SwapchainLockError::RecreationLocked,
+            SWAPCHAIN_REMOVED_TAG => SwapchainLockError::Removed,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl fmt::Display for SwapchainLockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unused | Self::RecreationLocked => {
+                f.write_str("the swapchain has already been recreated")
+            }
+            Self::ExecutionLocked => {
+                f.write_str("a task graph using the swapchain is being executed")
+            }
+            Self::Removed => f.write_str("the swapchain has already been removed"),
+        }
+    }
+}
+
+impl Error for SwapchainLockError {}
