@@ -53,7 +53,7 @@ use vulkano::{
     },
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync::Sharing,
-    DeviceSize, Validated, VulkanError, VulkanLibrary,
+    DeviceSize, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
     command_buffer::{
@@ -411,7 +411,6 @@ impl ApplicationHandler for App {
 
             self.resources
                 .create_swapchain(
-                    self.graphics_flight_id,
                     &surface,
                     &SwapchainCreateInfo {
                         min_image_count: surface_capabilities
@@ -632,7 +631,7 @@ impl ApplicationHandler for App {
                 } {
                     Ok(()) => {}
                     Err(ExecuteError::Swapchain {
-                        error: Validated::Error(VulkanError::OutOfDate),
+                        error: VulkanError::OutOfDate,
                         ..
                     }) => {
                         rcx.recreate_swapchain = true;

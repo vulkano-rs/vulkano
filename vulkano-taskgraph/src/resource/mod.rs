@@ -8,18 +8,16 @@ use crate::{
 };
 use ash::vk;
 use concurrent_slotmap::{hyaline, SlotMap};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use smallvec::SmallVec;
+pub(crate) use state::SwapchainSyncStage;
+pub use state::{BufferState, Flight, ImageState, SwapchainState};
 use std::{
     hash::Hash,
-    iter, mem,
+    mem,
     num::NonZero,
     ops::{BitOr, BitOrAssign},
-    sync::{
-        atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Weak,
-    },
-    time::Duration,
+    sync::Arc,
 };
 use vulkano::{
     buffer::{AllocateBufferError, Buffer, BufferCreateInfo},
@@ -29,13 +27,11 @@ use vulkano::{
     image::{AllocateImageError, Image, ImageCreateInfo, ImageLayout, ImageMemory},
     memory::allocator::{AllocationCreateInfo, DeviceLayout, StandardMemoryAllocator},
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
-    sync::{
-        fence::{Fence, FenceCreateFlags, FenceCreateInfo},
-        semaphore::Semaphore,
-        AccessFlags, PipelineStages,
-    },
+    sync::{fence::Fence, semaphore::Semaphore, AccessFlags, PipelineStages},
     Validated, VulkanError,
 };
+
+mod state;
 
 static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 
@@ -65,12 +61,7 @@ pub(crate) struct ResourceStorage {
     flights: SlotMap<Id, Flight>,
 
     garbage_queue: collector::GlobalQueue,
-}
-
-#[derive(Debug)]
-pub struct BufferState {
-    buffer: Arc<Buffer>,
-    last_access: Mutex<BufferAccess>,
+    swapchain_garbage: Mutex<Vec<SwapchainGarbage>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -78,12 +69,6 @@ pub struct BufferAccess {
     stage_mask: PipelineStages,
     access_mask: AccessFlags,
     queue_family_index: u32,
-}
-
-#[derive(Debug)]
-pub struct ImageState {
-    image: Arc<Image>,
-    last_access: Mutex<ImageAccess>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -94,36 +79,11 @@ pub struct ImageAccess {
     queue_family_index: u32,
 }
 
-// FIXME: imported/exported semaphores
-#[derive(Debug)]
-pub struct SwapchainState {
-    swapchain: Arc<Swapchain>,
-    images: SmallVec<[Arc<Image>; 3]>,
-    pub(crate) semaphores: Arc<[SwapchainSemaphoreState]>,
-    flight_id: Id<Flight>,
-    pub(crate) current_image_index: AtomicU32,
-    last_access: Mutex<ImageAccess>,
-}
-
-#[derive(Debug)]
-pub(crate) struct SwapchainSemaphoreState {
-    pub(crate) image_available_semaphore: Semaphore,
-    pub(crate) pre_present_complete_semaphore: Semaphore,
-    pub(crate) tasks_complete_semaphore: Semaphore,
-}
-
-// FIXME: imported/exported fences
-#[derive(Debug)]
-pub struct Flight {
-    // HACK: `Flight::wait` needs this in order to collect garbage.
-    resources: Weak<Resources>,
-    frame_count: NonZero<u32>,
-    biased_started_frame: AtomicU64,
-    current_frame: AtomicU64,
-    biased_complete_frame: AtomicU64,
-    fences: SmallVec<[RwLock<Fence>; 3]>,
-    garbage_queue: collector::LocalQueue,
-    pub(crate) state: Mutex<()>,
+#[derive(Debug, Default)]
+struct SwapchainGarbage {
+    swapchains: Vec<Id<Swapchain>>,
+    semaphores: Vec<Semaphore>,
+    fences: Vec<Fence>,
 }
 
 impl Resources {
@@ -191,6 +151,7 @@ impl Resources {
             },
             // SAFETY: Same as the previous.
             garbage_queue: unsafe { collector::GlobalQueue::new(hyaline_collector.clone()) },
+            swapchain_garbage: Mutex::new(Vec::new()),
             hyaline_collector,
         });
         let bindless_context = bindless_context
@@ -273,36 +234,26 @@ impl Resources {
         Ok(unsafe { self.add_image_unchecked(image) })
     }
 
-    /// Creates a swapchain and adds it to the collection. `flight_id` is the [flight] which will
-    /// own the swapchain.
+    /// Creates a swapchain and adds it to the collection.
     ///
     /// # Panics
     ///
     /// - Panics if the instance of `surface` is not the same as that of `self.device()`.
-    /// - Panics if `flight_id` is invalid.
     /// - Panics if `create_info.min_image_count` is not greater than or equal to the number of
     ///   [frames] of the flight corresponding to `flight_id`.
     ///
     /// # Errors
     ///
     /// - Returns an error when [`Swapchain::new`] returns an error.
-    /// - Returns an error when [`add_swapchain`] returns an error.
-    ///
-    /// [`add_swapchain`]: Self::add_swapchain
     pub fn create_swapchain(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         surface: &Arc<Surface>,
         create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
-        let frames_in_flight = self.flight(flight_id).unwrap().frame_count();
-
-        assert!(create_info.min_image_count >= frames_in_flight);
-
         let (swapchain, images) = Swapchain::new(self.device(), surface, create_info)?;
 
         // SAFETY: We just created the swapchain.
-        Ok(unsafe { self.add_swapchain_unchecked(flight_id, swapchain, images) }?)
+        Ok(unsafe { self.add_swapchain_unchecked(swapchain, images) })
     }
 
     /// Creates a new [flight] with `frame_count` [frames] and adds it to the collection.
@@ -318,32 +269,7 @@ impl Resources {
         let frame_count =
             NonZero::new(frame_count).expect("a flight with zero frames is not valid");
 
-        let fences = (0..frame_count.get())
-            .map(|_| {
-                // SAFETY: The parameters are valid.
-                unsafe {
-                    Fence::new_unchecked(
-                        self.device(),
-                        &FenceCreateInfo {
-                            flags: FenceCreateFlags::SIGNALED,
-                            ..Default::default()
-                        },
-                    )
-                }
-                .map(RwLock::new)
-            })
-            .collect::<Result<_, VulkanError>>()?;
-
-        let flight = Flight {
-            resources: Arc::downgrade(self),
-            frame_count,
-            biased_started_frame: AtomicU64::new(u64::from(frame_count.get())),
-            current_frame: AtomicU64::new(0),
-            biased_complete_frame: AtomicU64::new(u64::from(frame_count.get())),
-            fences,
-            garbage_queue: self.garbage_queue().register_local(),
-            state: Mutex::new(()),
-        };
+        let flight = Flight::new(self, frame_count)?;
 
         let id = self
             .storage
@@ -368,10 +294,7 @@ impl Resources {
     }
 
     unsafe fn add_buffer_unchecked(&self, buffer: Arc<Buffer>) -> Id<Buffer> {
-        let state = BufferState {
-            buffer,
-            last_access: Mutex::new(BufferAccess::NONE),
-        };
+        let state = BufferState::new(buffer);
 
         let id = self
             .storage
@@ -403,10 +326,7 @@ impl Resources {
     }
 
     unsafe fn add_image_unchecked(&self, image: Arc<Image>) -> Id<Image> {
-        let state = ImageState {
-            image,
-            last_access: Mutex::new(ImageAccess::NONE),
-        };
+        let state = ImageState::new(image);
 
         let id = self
             .storage
@@ -418,32 +338,19 @@ impl Resources {
 
     /// Adds a swapchain to the collection. `(swapchain, images)` must correspond to the value
     /// returned by one of the [`Swapchain`] constructors or by [`Swapchain::recreate`].
-    /// `flight_id` is the [flight] which will own the swapchain.
     ///
     /// # Panics
     ///
     /// - Panics if any other references to the swapchain or its images exist.
     /// - Panics if the device of `swapchain` is not the same as that of `self`.
     /// - Panics if the `images` don't comprise the images of `swapchain`.
-    /// - Panics if `flight_id` is invalid.
-    /// - Panics if `swapchain.image_count()` is not greater than or equal to the number of
-    ///   [frames] of the flight corresponding to `flight_id`.
-    ///
-    /// # Errors
-    ///
-    /// - Returns an error when [`Semaphore::new_unchecked`] returns an error.
     pub fn add_swapchain(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         mut images: Vec<Arc<Image>>,
-    ) -> Result<Id<Swapchain>, VulkanError> {
+    ) -> Id<Swapchain> {
         assert_eq!(swapchain.device(), self.device());
         assert_eq!(images.len(), swapchain.image_count() as usize);
-
-        let frames_in_flight = self.flight(flight_id).unwrap().frame_count();
-
-        assert!(swapchain.image_count() >= frames_in_flight);
 
         for (index, image) in images.iter_mut().enumerate() {
             match image.memory() {
@@ -486,57 +393,24 @@ impl Resources {
             assert!(we_own_the_only_references);
         }
 
-        unsafe { self.add_swapchain_unchecked(flight_id, swapchain, images) }
+        unsafe { self.add_swapchain_unchecked(swapchain, images) }
     }
 
     unsafe fn add_swapchain_unchecked(
-        &self,
-        flight_id: Id<Flight>,
+        self: &Arc<Self>,
         swapchain: Arc<Swapchain>,
         images: Vec<Arc<Image>>,
-    ) -> Result<Id<Swapchain>, VulkanError> {
+    ) -> Id<Swapchain> {
         let guard = &self.storage.pin();
 
-        let frames_in_flight = self
-            .storage
-            .flight_protected(flight_id, guard)
-            .unwrap()
-            .frame_count();
-
-        let semaphores = (0..frames_in_flight)
-            .map(|_| {
-                Ok(SwapchainSemaphoreState {
-                    // SAFETY: The parameters are valid.
-                    image_available_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device(), &Default::default())
-                    }?,
-                    // SAFETY: The parameters are valid.
-                    pre_present_complete_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device(), &Default::default())
-                    }?,
-                    // SAFETY: The parameters are valid.
-                    tasks_complete_semaphore: unsafe {
-                        Semaphore::new_unchecked(self.device(), &Default::default())
-                    }?,
-                })
-            })
-            .collect::<Result<_, VulkanError>>()?;
-
-        let state = SwapchainState {
-            swapchain,
-            images: images.into(),
-            semaphores,
-            flight_id,
-            current_image_index: AtomicU32::new(u32::MAX),
-            last_access: Mutex::new(ImageAccess::NONE),
-        };
+        let state = SwapchainState::new(swapchain, images, self);
 
         let id = self
             .storage
             .swapchains
             .insert_with_tag(state, Swapchain::TAG, guard);
 
-        Ok(unsafe { id.parametrize() })
+        unsafe { id.parametrize() }
     }
 
     /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
@@ -544,14 +418,15 @@ impl Resources {
     ///
     /// # Panics
     ///
+    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if the swapchain has already been recreated or removed.
     /// - Panics if `f` panics.
     /// - Panics if [`Swapchain::recreate`] panics.
-    /// - Panics if `new_swapchain.image_count()` is not greater than or equal to the number of
-    ///   [frames] of the flight that owns the swapchain.
     ///
     /// # Errors
     ///
     /// - Returns an error when [`Swapchain::recreate`] returns an error.
+    #[track_caller]
     pub fn recreate_swapchain(
         &self,
         id: Id<Swapchain>,
@@ -560,36 +435,22 @@ impl Resources {
         let guard = &self.storage.pin();
 
         let state = self.storage.swapchain_protected(id, guard).unwrap();
-        let swapchain = state.swapchain();
-        let flight_id = state.flight_id;
-        let flight = unsafe { self.storage.flight_unchecked_protected(flight_id, guard) };
 
+        let _lock_guard = state
+            .try_recreate()
+            .expect("failed to lock the swapchain for recreation");
+
+        let swapchain = state.swapchain();
         let (new_swapchain, new_images) = swapchain.recreate(&f(&swapchain.create_info()))?;
 
-        let frames_in_flight = flight.frame_count();
-
-        assert!(new_swapchain.image_count() >= frames_in_flight);
-
-        let new_state = SwapchainState {
-            swapchain: new_swapchain,
-            images: new_images.into(),
-            semaphores: state.semaphores.clone(),
-            flight_id,
-            current_image_index: AtomicU32::new(u32::MAX),
-            last_access: Mutex::new(ImageAccess::NONE),
-        };
+        let new_state = unsafe { SwapchainState::with_old_state(new_swapchain, new_images, state) };
 
         let new_id = self
             .storage
             .swapchains
             .insert_with_tag(new_state, Swapchain::TAG, guard);
 
-        let mut batch = self.create_deferred_batch();
-        batch.destroy_swapchain(id);
-
-        // SAFETY: Swapchains are owned by a flight in order to facilitates this. No other flight
-        // can be using the swapchain.
-        unsafe { batch.enqueue_with_flights(iter::once(flight_id)) };
+        unsafe { state.handle_recreation(id) };
 
         Ok(unsafe { new_id.parametrize() })
     }
@@ -657,6 +518,37 @@ impl Resources {
                 .swapchains
                 .remove_invalidated_unchecked(id.erase())
         };
+    }
+
+    /// Removes the swapchain corresponding to `id` from the collection.
+    ///
+    /// Note that if there are any pending present operations then the swapchain cannot be
+    /// collected until it's certain that the presentation engine is no longer using the swapchain
+    /// or any of its old swapchains. The only way to guarantee that is by calling [`wait_idle`]
+    /// after removing the swapchain.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if the swapchain has already been recreated or removed.
+    ///
+    /// [`wait_idle`]: Self::wait_idle
+    #[track_caller]
+    pub fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
+        let guard = self.storage.pin();
+
+        let state = self
+            .storage
+            .swapchains
+            // SAFETY: Same as in the `ResourceStorage::buffer` method below.
+            .get(id.erase(), unsafe {
+                mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
+            })
+            .ok_or(InvalidSlotError::new(id))?;
+
+        unsafe { state.remove(id) };
+
+        Ok(Ref::new(state, guard))
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -781,7 +673,15 @@ impl Resources {
             frames.push((flight, biased_frame));
         }
 
-        self.device().wait_idle()?;
+        let swapchain_garbage = mem::take(&mut *self.storage.swapchain_garbage.lock());
+
+        if let Err(err) = self.device().wait_idle() {
+            self.storage
+                .swapchain_garbage
+                .lock()
+                .extend(swapchain_garbage);
+            return Err(err);
+        }
 
         let mut collect = false;
 
@@ -795,6 +695,12 @@ impl Resources {
 
         if collect {
             unsafe { self.garbage_queue().collect(self, guard) };
+        }
+
+        for garbage in swapchain_garbage {
+            for swapchain_id in garbage.swapchains {
+                unsafe { self.remove_invalidated_swapchain_unchecked(swapchain_id) };
+            }
         }
 
         Ok(())
@@ -1001,7 +907,7 @@ impl Drop for Resources {
             //   can exist and that we have exclusive access to this queue.
             // * We waited on the flight above.
             // * `self` is the correct `Resources` collection.
-            unsafe { flight.garbage_queue.drop(self, guard) };
+            unsafe { flight.garbage_queue().drop(self, guard) };
         }
 
         // SAFETY: Same as the `drop` above.
@@ -1017,31 +923,6 @@ impl Drop for Resources {
             .unwrap();
 
         registered_devices.remove(index);
-    }
-}
-
-impl BufferState {
-    /// Returns the buffer.
-    #[inline]
-    #[must_use]
-    pub fn buffer(&self) -> &Arc<Buffer> {
-        &self.buffer
-    }
-
-    /// Returns the last access that was performed on the buffer.
-    #[inline]
-    pub fn access(&self) -> BufferAccess {
-        *self.last_access.lock()
-    }
-
-    /// Sets the last access that was performed on the buffer.
-    ///
-    /// # Safety
-    ///
-    /// - `access` must constitute the correct access that was last performed on the buffer.
-    #[inline]
-    pub unsafe fn set_access(&self, access: BufferAccess) {
-        *self.last_access.lock() = access;
     }
 }
 
@@ -1102,31 +983,6 @@ impl BufferAccess {
     #[must_use]
     pub const fn queue_family_index(&self) -> u32 {
         self.queue_family_index
-    }
-}
-
-impl ImageState {
-    /// Returns the image.
-    #[inline]
-    #[must_use]
-    pub fn image(&self) -> &Arc<Image> {
-        &self.image
-    }
-
-    /// Returns the last access that was performed on the image.
-    #[inline]
-    pub fn access(&self) -> ImageAccess {
-        *self.last_access.lock()
-    }
-
-    /// Sets the last access that was performed on the image.
-    ///
-    /// # Safety
-    ///
-    /// - `access` must constitute the correct access that was last performed on the image.
-    #[inline]
-    pub unsafe fn set_access(&self, access: ImageAccess) {
-        *self.last_access.lock() = access;
     }
 }
 
@@ -1205,199 +1061,6 @@ impl ImageAccess {
     }
 }
 
-impl SwapchainState {
-    /// Returns the swapchain.
-    #[inline]
-    #[must_use]
-    pub fn swapchain(&self) -> &Arc<Swapchain> {
-        &self.swapchain
-    }
-
-    /// Returns the images comprising the swapchain.
-    #[inline]
-    #[must_use]
-    pub fn images(&self) -> &[Arc<Image>] {
-        &self.images
-    }
-
-    /// Returns the ID of the [flight] which owns this swapchain.
-    #[inline]
-    #[must_use]
-    pub fn flight_id(&self) -> Id<Flight> {
-        self.flight_id
-    }
-
-    /// Returns the image index that's acquired in the current frame, or returns `None` if no image
-    /// index is acquired.
-    #[inline]
-    #[must_use]
-    pub fn current_image_index(&self) -> Option<u32> {
-        let index = self.current_image_index.load(Ordering::Relaxed);
-
-        if index == u32::MAX {
-            None
-        } else {
-            Some(index)
-        }
-    }
-
-    pub(crate) fn current_image(&self) -> &Arc<Image> {
-        &self.images[self.current_image_index.load(Ordering::Relaxed) as usize]
-    }
-
-    pub(crate) fn access(&self) -> ImageAccess {
-        *self.last_access.lock()
-    }
-
-    pub(crate) unsafe fn set_access(&self, access: ImageAccess) {
-        *self.last_access.lock() = access;
-    }
-}
-
-impl Flight {
-    /// Returns the number of [frames] in this [flight].
-    #[inline]
-    #[must_use]
-    pub fn frame_count(&self) -> u32 {
-        self.frame_count.get()
-    }
-
-    /// Returns the latest started frame stored at a bias of `frame_count + 1`. That means that if
-    /// this value reaches `n + frame_count + 1` then frame `n` has started execution. This starts
-    /// out at `frame_count` because no frame has started execution yet when a flight is created.
-    pub(crate) fn biased_started_frame(&self) -> u64 {
-        self.biased_started_frame.load(Ordering::Relaxed)
-    }
-
-    /// Returns the current frame counter value. This always starts out at `0` and increases by `1`
-    /// after every successful [task graph execution].
-    ///
-    /// [task graph execution]: crate::graph::ExecutableTaskGraph::execute
-    #[inline]
-    #[must_use]
-    pub fn current_frame(&self) -> u64 {
-        self.current_frame.load(Ordering::Relaxed)
-    }
-
-    /// Returns the latest complete frame stored at a bias of `frame_count + 1`. That means that if
-    /// this value reaches `n + frame_count + 1` then frame `n` has been waited on. This starts out
-    /// at `frame_count` because there is nothing to wait for in the first ever `frame_count`
-    /// frames.
-    fn biased_complete_frame(&self) -> u64 {
-        self.biased_complete_frame.load(Ordering::Relaxed)
-    }
-
-    /// Returns the index of the current [frame] in [flight].
-    #[inline]
-    #[must_use]
-    pub fn current_frame_index(&self) -> u32 {
-        (self.current_frame() % NonZero::<u64>::from(self.frame_count)) as u32
-    }
-
-    pub(crate) fn current_fence(&self) -> &RwLock<Fence> {
-        &self.fences[self.current_frame_index() as usize]
-    }
-
-    pub(crate) fn garbage_queue(&self) -> &collector::LocalQueue {
-        &self.garbage_queue
-    }
-
-    /// Waits for the oldest [frame] in [flight] to finish.
-    ///
-    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the current frame
-    /// index, but unlike that method, this method additionally collects outstanding garbage.
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        self.wait_for_biased_frame(self.current_frame() + 1, timeout)
-    }
-
-    /// Waits for the given [frame] to finish.
-    ///
-    /// `frame` must be a past (not including current) frame previously obtained using
-    /// [`current_frame`] on `self`.
-    ///
-    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the frame index `frame
-    /// % frame_count`, but unlike that method, this method additionally collects outstanding
-    /// garbage.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `frame` is greater than the current frame.
-    ///
-    /// [`current_frame`]: Self::current_frame
-    pub fn wait_for_frame(&self, frame: u64, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        assert!(frame < self.current_frame());
-
-        let biased_frame = frame + u64::from(self.frame_count()) + 1;
-
-        self.wait_for_biased_frame(biased_frame, timeout)
-    }
-
-    /// Waits for all [frames] in [flight] to finish.
-    ///
-    /// This is equivalent to [`Fence::wait`] on the fence corresponding to the previous frame
-    /// index, but unlike that method, this method additionally collects outstanding garbage.
-    pub fn wait_idle(&self) -> Result<(), VulkanError> {
-        let biased_frame = self.current_frame() + u64::from(self.frame_count());
-
-        self.wait_for_biased_frame(biased_frame, None)
-    }
-
-    fn wait_for_biased_frame(
-        &self,
-        biased_frame: u64,
-        timeout: Option<Duration>,
-    ) -> Result<(), VulkanError> {
-        if self.is_biased_frame_complete(biased_frame) {
-            return Ok(());
-        }
-
-        // The `frame_count` bias cancels out under the modulus, however the `1` bias doesn't, so we
-        // subtract it to get the same index as would be computed using the unbiased `frame`.
-        self.fences[((biased_frame - 1) % NonZero::<u64>::from(self.frame_count)) as usize]
-            .read()
-            .wait(timeout)?;
-
-        // SAFETY: We waited for the frame.
-        if unsafe { self.update_biased_complete_frame(biased_frame) }.is_ok() {
-            let resources = self.resources.upgrade().unwrap();
-            let guard = &resources.pin();
-
-            unsafe { self.garbage_queue.collect(&resources, self, guard) };
-            unsafe { resources.garbage_queue().collect(&resources, guard) };
-        }
-
-        Ok(())
-    }
-
-    unsafe fn update_biased_complete_frame(&self, biased_frame: u64) -> Result<u64, u64> {
-        self.biased_complete_frame.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |biased_complete_frame| (biased_complete_frame < biased_frame).then_some(biased_frame),
-        )
-    }
-
-    pub(crate) fn is_oldest_frame_complete(&self) -> bool {
-        self.biased_complete_frame() > self.current_frame()
-    }
-
-    pub(crate) fn is_biased_frame_complete(&self, biased_frame: u64) -> bool {
-        self.biased_complete_frame() >= biased_frame
-    }
-
-    pub(crate) unsafe fn start_next_frame(&self) {
-        self.biased_started_frame.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(crate) unsafe fn undo_start_next_frame(&self) {
-        self.biased_started_frame.fetch_sub(1, Ordering::Relaxed);
-    }
-
-    pub(crate) unsafe fn next_frame(&self) {
-        self.current_frame.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
 /// Parameters to create a new [`Resources`] collection.
 #[derive(Clone, Debug)]
 pub struct ResourcesCreateInfo<'a> {
@@ -1413,7 +1076,7 @@ pub struct ResourcesCreateInfo<'a> {
 
     /// The maximum number of [`Swapchain`]s that the collection can hold at once.
     ///
-    /// The default value is `256` (2<sup>8</sup>).
+    /// The default value is `16777216` (2<sup>24</sup>).
     pub max_swapchains: u32,
 
     /// The maximum number of [`Flight`]s that the collection can hold at once.
@@ -1447,7 +1110,7 @@ impl ResourcesCreateInfo<'_> {
         Self {
             max_buffers: 1 << 24,
             max_images: 1 << 24,
-            max_swapchains: 1 << 8,
+            max_swapchains: 1 << 24,
             max_flights: 1 << 8,
             bindless_context: None,
             _ne: crate::NE,
