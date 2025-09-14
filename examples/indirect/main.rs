@@ -368,7 +368,18 @@ impl ApplicationHandler for App {
         };
 
         // Each frame we generate a new set of vertices and each frame we need a new
-        // `DrawIndirectCommand` struct to set the number of vertices to draw.
+        // `DrawIndirectCommand` struct to set the number of vertices to draw. To allocate these
+        // buffers, we use one buffer allocator per frame in flight. This allows us to reset the
+        // allocator at the beginning of the frame, which is more efficient than allocating and
+        // deallocating individually. Addidionally, it allows us to use the most efficient
+        // allocation algorithm: bump allocation.
+        //
+        // We use a single allocator for both needs even though they need different buffer usage
+        // flags. We simply combine the usage flags, which is the most efficient way. There are no
+        // Vulkan implementations which care about buffer usage flags, and they never affect
+        // performance, no matter how many you have. The exception is `UNIFORM_BUFFER`, which has
+        // stricter limits, and the `SHADER_DEVICE_ADDRESS` and `ACCELERATION_STRUCTURE_STORAGE`,
+        // which may influence the available memory types.
         let buffer_allocators = (0..swapchain.image_count())
             .map(|_| {
                 BufferAllocator::new(
