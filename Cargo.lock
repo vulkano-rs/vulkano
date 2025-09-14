@@ -977,6 +977,7 @@ version = "0.0.0"
 dependencies = [
  "vulkano",
  "vulkano-shaders",
+ "vulkano-taskgraph",
  "winit",
 ]
 
