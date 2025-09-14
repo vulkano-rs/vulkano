@@ -5,10 +5,7 @@ use glam::{
 };
 use std::{error::Error, sync::Arc, time::Instant};
 use vulkano::{
-    buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
-    },
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo,
@@ -76,7 +73,6 @@ struct App {
     vertex_buffer: Subbuffer<[Position]>,
     normals_buffer: Subbuffer<[Normal]>,
     index_buffer: Subbuffer<[u16]>,
-    uniform_buffer_allocator: SubbufferAllocator,
     rcx: Option<RenderContext>,
 }
 
@@ -88,6 +84,7 @@ struct RenderContext {
     vs: EntryPoint,
     fs: EntryPoint,
     pipeline: Arc<GraphicsPipeline>,
+    uniform_buffers: Vec<Subbuffer<vs::Data>>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     rotation_start: Instant,
@@ -209,16 +206,6 @@ impl App {
         )
         .unwrap();
 
-        let uniform_buffer_allocator = SubbufferAllocator::new(
-            &memory_allocator,
-            &SubbufferAllocatorCreateInfo {
-                buffer_usage: BufferUsage::UNIFORM_BUFFER,
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        );
-
         App {
             instance,
             device,
@@ -229,7 +216,6 @@ impl App {
             vertex_buffer,
             normals_buffer,
             index_buffer,
-            uniform_buffer_allocator,
             rcx: None,
         }
     }
@@ -311,6 +297,24 @@ impl ApplicationHandler for App {
             &fs,
         );
 
+        let uniform_buffers = (0..swapchain.image_count())
+            .map(|_| {
+                Buffer::new_sized(
+                    &self.memory_allocator,
+                    &BufferCreateInfo {
+                        usage: BufferUsage::UNIFORM_BUFFER,
+                        ..Default::default()
+                    },
+                    &AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect();
+
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
         let rotation_start = Instant::now();
@@ -323,6 +327,7 @@ impl ApplicationHandler for App {
             vs,
             fs,
             pipeline,
+            uniform_buffers,
             recreate_swapchain: false,
             previous_frame_end,
             rotation_start,
@@ -374,6 +379,20 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = false;
                 }
 
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    rcx.swapchain.clone(),
+                    None,
+                )
+                .map_err(Validated::unwrap)
+                {
+                    Ok(r) => r,
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
+
                 let uniform_buffer = {
                     let elapsed = rcx.rotation_start.elapsed();
                     let rotation =
@@ -404,7 +423,7 @@ impl ApplicationHandler for App {
                         proj: proj.to_cols_array_2d(),
                     };
 
-                    let buffer = self.uniform_buffer_allocator.allocate_sized().unwrap();
+                    let buffer = rcx.uniform_buffers[image_index as usize].clone();
                     *buffer.write().unwrap() = uniform_data;
 
                     buffer
@@ -418,20 +437,6 @@ impl ApplicationHandler for App {
                     [],
                 )
                 .unwrap();
-
-                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
-                    rcx.swapchain.clone(),
-                    None,
-                )
-                .map_err(Validated::unwrap)
-                {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
-                        rcx.recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
-                };
 
                 if suboptimal {
                     rcx.recreate_swapchain = true;

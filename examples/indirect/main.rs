@@ -17,8 +17,8 @@
 use std::{error::Error, slice, sync::Arc};
 use vulkano::{
     buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferContents, BufferUsage,
+        allocator::{BufferAllocator, BufferAllocatorCreateInfo},
+        BufferContents, BufferUsage, Subbuffer,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -33,7 +33,7 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator},
+    memory::allocator::{BumpAllocator, DeviceLayout, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo,
         graphics::{
@@ -74,10 +74,9 @@ struct App {
     instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-    indirect_buffer_allocator: SubbufferAllocator,
-    vertex_buffer_allocator: SubbufferAllocator,
     compute_pipeline: Arc<ComputePipeline>,
     rcx: Option<RenderContext>,
 }
@@ -89,6 +88,7 @@ struct RenderContext {
     framebuffers: Vec<Arc<Framebuffer>>,
     pipeline: Arc<GraphicsPipeline>,
     viewport: Viewport,
+    buffer_allocators: Vec<BufferAllocator<BumpAllocator>>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
@@ -167,27 +167,6 @@ impl App {
             &Default::default(),
         ));
 
-        // Each frame we generate a new set of vertices and each frame we need a new
-        // `DrawIndirectCommand` struct to set the number of vertices to draw.
-        let indirect_buffer_allocator = SubbufferAllocator::new(
-            &memory_allocator,
-            &SubbufferAllocatorCreateInfo {
-                buffer_usage: BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        );
-        let vertex_buffer_allocator = SubbufferAllocator::new(
-            &memory_allocator,
-            &SubbufferAllocatorCreateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        );
-
         // A simple compute shader that generates vertices. It has two buffers bound: the first is
         // where we output the vertices, the second is the `IndirectDrawArgs` struct we passed the
         // `draw_indirect` so we can set the number to vertices to draw.
@@ -248,10 +227,9 @@ impl App {
             instance,
             device,
             queue,
+            memory_allocator,
             descriptor_set_allocator,
             command_buffer_allocator,
-            indirect_buffer_allocator,
-            vertex_buffer_allocator,
             compute_pipeline,
             rcx: None,
         }
@@ -389,6 +367,36 @@ impl ApplicationHandler for App {
             max_depth: 1.0,
         };
 
+        // Each frame we generate a new set of vertices and each frame we need a new
+        // `DrawIndirectCommand` struct to set the number of vertices to draw. To allocate these
+        // buffers, we use one buffer allocator per frame in flight. This allows us to reset the
+        // allocator at the beginning of the frame, which is more efficient than allocating and
+        // deallocating individually. Addidionally, it allows us to use the most efficient
+        // allocation algorithm: bump allocation.
+        //
+        // We use a single allocator for both needs even though they need different buffer usage
+        // flags. We simply combine the usage flags, which is the most efficient way. There are no
+        // Vulkan implementations which care about buffer usage flags, and they never affect
+        // performance, no matter how many you have. The exception is `UNIFORM_BUFFER`, which has
+        // stricter limits, and the `SHADER_DEVICE_ADDRESS` and `ACCELERATION_STRUCTURE_STORAGE`,
+        // which may influence the available memory types.
+        let buffer_allocators = (0..swapchain.image_count())
+            .map(|_| {
+                BufferAllocator::new(
+                    &self.memory_allocator,
+                    &BufferAllocatorCreateInfo {
+                        block_size: 1024,
+                        buffer_usage: BufferUsage::VERTEX_BUFFER
+                            | BufferUsage::INDIRECT_BUFFER
+                            | BufferUsage::STORAGE_BUFFER,
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect();
+
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
         self.rcx = Some(RenderContext {
@@ -398,6 +406,7 @@ impl ApplicationHandler for App {
             framebuffers,
             pipeline,
             viewport,
+            buffer_allocators,
             recreate_swapchain: false,
             previous_frame_end,
         });
@@ -460,6 +469,10 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = true;
                 }
 
+                let buffer_allocator = &mut rcx.buffer_allocators[image_index as usize];
+
+                buffer_allocator.reset();
+
                 // Allocate a buffer to hold the arguments for this frame's draw call. The compute
                 // shader will only update `vertex_count`, so set the other parameters correctly
                 // here.
@@ -469,10 +482,12 @@ impl ApplicationHandler for App {
                     first_vertex: 0,
                     first_instance: 0,
                 }];
-                let indirect_buffer = self
-                    .indirect_buffer_allocator
-                    .allocate_slice(indirect_commands.len() as _)
+                let indirect_buffer_allocation = buffer_allocator
+                    .allocate(DeviceLayout::for_value(&indirect_commands).unwrap())
                     .unwrap();
+                let indirect_buffer = Subbuffer::from(indirect_buffer_allocation.buffer.clone())
+                    .slice(indirect_buffer_allocation.as_range())
+                    .reinterpret::<[DrawIndirectCommand]>();
                 indirect_buffer
                     .write()
                     .unwrap()
@@ -481,11 +496,13 @@ impl ApplicationHandler for App {
                 // Allocate a buffer to hold this frame's vertices. This needs to be large enough
                 // to hold the worst case number of vertices generated by the compute shader.
                 let iter = (0..(6 * 16)).map(|_| MyVertex { position: [0.0; 2] });
-                let vertices = self
-                    .vertex_buffer_allocator
-                    .allocate_slice(iter.len() as _)
+                let vertex_buffer_allocation = buffer_allocator
+                    .allocate(DeviceLayout::new_unsized::<[MyVertex]>(iter.len() as _).unwrap())
                     .unwrap();
-                for (o, i) in vertices.write().unwrap().iter_mut().zip(iter) {
+                let vertex_buffer = Subbuffer::from(vertex_buffer_allocation.buffer.clone())
+                    .slice(vertex_buffer_allocation.as_range())
+                    .reinterpret::<[MyVertex]>();
+                for (o, i) in vertex_buffer.write().unwrap().iter_mut().zip(iter) {
                     *o = i;
                 }
 
@@ -495,7 +512,7 @@ impl ApplicationHandler for App {
                     self.descriptor_set_allocator.clone(),
                     layout.clone(),
                     [
-                        WriteDescriptorSet::buffer(0, vertices.clone()),
+                        WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
                         WriteDescriptorSet::buffer(1, indirect_buffer.clone()),
                     ],
                     [],
@@ -538,7 +555,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .bind_pipeline_graphics(rcx.pipeline.clone())
                     .unwrap()
-                    .bind_vertex_buffers(0, vertices)
+                    .bind_vertex_buffers(0, vertex_buffer)
                     .unwrap();
 
                 // The indirect draw call is placed in the command buffer with a reference to
