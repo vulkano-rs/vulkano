@@ -3,10 +3,13 @@ name: Rust
 on:
   push:
     paths-ignore:
-      - '**.md'
+    - '**.md'
   pull_request:
     paths-ignore:
-      - '**.md'
+    - '**.md'
+  merge_group:
+    paths-ignore:
+    - '**.md'
 
 jobs:
   build:
