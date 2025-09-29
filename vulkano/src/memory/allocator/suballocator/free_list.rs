@@ -54,12 +54,12 @@ use std::{cmp, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 ///
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
-/// [external fragmentation]: super#external-fragmentation
+/// [external fragmentation]: super::super#external-fragmentation
 /// [`BuddyAllocator`]: super::BuddyAllocator
 /// [`BumpAllocator`]: super::BumpAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
-/// [internal fragmentation]: super#internal-fragmentation
-/// [alignment requirements]: super#alignment
+/// [internal fragmentation]: super::super#internal-fragmentation
+/// [alignment requirements]: super::super#alignment
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: Region,

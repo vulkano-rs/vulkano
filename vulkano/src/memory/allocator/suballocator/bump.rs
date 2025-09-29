@@ -49,7 +49,7 @@ use std::iter::FusedIterator;
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
-/// [memory leaks]: super#leakage
+/// [memory leaks]: super::super#leakage
 /// [`reset`]: Self::reset
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
