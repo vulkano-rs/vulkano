@@ -53,8 +53,8 @@ use std::{cmp, num::NonZero};
 /// the highest order, which equates to *O*(log (*n*)) where *n* is the size of the region.
 ///
 /// [suballocator]: Suballocator
-/// [internal fragmentation]: super#internal-fragmentation
-/// [external fragmentation]: super#external-fragmentation
+/// [internal fragmentation]: super::super#internal-fragmentation
+/// [external fragmentation]: super::super#external-fragmentation
 /// [`FreeListAllocator`]: super::FreeListAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BuddyAllocator>
 /// [region]: Suballocator#regions
@@ -263,7 +263,7 @@ unsafe impl Suballocator for BuddyAllocator {
     /// allocator, which means that [internal fragmentation] is excluded.
     ///
     /// [region]: Suballocator#regions
-    /// [internal fragmentation]: super#internal-fragmentation
+    /// [internal fragmentation]: super::super#internal-fragmentation
     #[inline]
     fn free_size(&self) -> DeviceSize {
         self.free_size
