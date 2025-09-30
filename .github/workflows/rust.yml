@@ -66,5 +66,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
     - name: Run typos
-      uses: crate-ci/typos@master
+      run: nix develop .#CI -c typos

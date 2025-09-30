@@ -59,6 +59,9 @@
 
             # Vulkan dependencies
             shaderc
+
+            # Workflow dependencies
+            typos
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
