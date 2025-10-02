@@ -8,8 +8,6 @@ on:
     paths-ignore:
     - '**.md'
   merge_group:
-    paths-ignore:
-    - '**.md'
 
 jobs:
   build:
