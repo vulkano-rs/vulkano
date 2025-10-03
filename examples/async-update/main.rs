@@ -191,7 +191,7 @@ impl App {
                 // 4096 which should be more than coarse enough so we just check that it is.
                 && q.min_image_transfer_granularity[0..2]
                     .iter()
-                    .all(|&g| TRANSFER_GRANULARITY % g == 0)
+                    .all(|&g| TRANSFER_GRANULARITY.is_multiple_of(g))
             })
             .min_by_key(|(_, q)| q.queue_flags.count())
             .unwrap()
