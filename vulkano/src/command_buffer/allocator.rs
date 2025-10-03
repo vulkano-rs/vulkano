@@ -22,7 +22,7 @@ use std::{
     cell::UnsafeCell,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    mem, ptr,
+    ptr,
     sync::{Arc, Weak},
 };
 use thread_local::ThreadLocal;
@@ -127,11 +127,9 @@ impl AllocationHandle {
     /// Stores an index inside an `AllocationHandle`.
     ///
     /// Use this if you want to associate an allocation with some index.
-    #[allow(clippy::useless_transmute)]
     #[inline]
     pub const fn from_index(index: usize) -> Self {
-        // SAFETY: `usize` and `*mut ()` have the same layout.
-        AllocationHandle(unsafe { mem::transmute::<usize, *mut ()>(index) })
+        AllocationHandle(ptr::without_provenance_mut(index))
     }
 
     /// Retrieves a previously-stored pointer from the `AllocationHandle`.
@@ -151,11 +149,9 @@ impl AllocationHandle {
     /// result.
     ///
     /// [`from_index`]: Self::from_index
-    #[allow(clippy::transmutes_expressible_as_ptr_casts)]
     #[inline]
     pub fn as_index(self) -> usize {
-        // SAFETY: `usize` and `*mut ()` have the same layout.
-        unsafe { mem::transmute::<*mut (), usize>(self.0) }
+        self.0.addr()
     }
 }
 
