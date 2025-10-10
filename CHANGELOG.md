@@ -52,6 +52,7 @@ Changes to external memory and external sync:
 - Added proc macro `include_vulkano_glsl` to vulkano-shaders.
 - `Device::wait_idle` is now safe.
 - Added `BufferAllocator` for creating buffer allocations with any suballocation algorithm; `SubbufferAllocator` has been deprecated.
+- Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 
 ### Bugs fixed
 
