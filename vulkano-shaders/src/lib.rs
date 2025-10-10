@@ -151,6 +151,8 @@
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
 //! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
+//! An optional `define: [("NAME", "VALUE"), ...]` list sets pre-processor definitions
+//! for just this source file.
 //!
 //! ## `include: ["...", "...", ...]`
 //!
@@ -297,7 +299,15 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     let mut types_code = Vec::with_capacity(shaders.len());
     let mut type_registry = TypeRegistry::default();
 
-    for (name, (shader_kind, source_kind)) in shaders {
+    for (
+        name,
+        ShaderFields {
+            shader_kind,
+            source_kind,
+            macro_defines,
+        },
+    ) in shaders
+    {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
                 let (artifact, includes) = codegen::compile(
@@ -306,6 +316,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     root_path,
                     &source.value(),
                     shader_kind.unwrap(),
+                    &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
@@ -333,6 +344,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     root_path,
                     &source_code,
                     shader_kind.unwrap(),
+                    &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
@@ -388,11 +400,17 @@ enum SourceKind {
     Bytes(LitStr),
 }
 
+struct ShaderFields {
+    shader_kind: Option<ShaderKind>,
+    source_kind: SourceKind,
+    macro_defines: Vec<(String, String)>,
+}
+
 struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
-    macro_defines: Vec<(String, String)>,
-    shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
+    global_macro_defines: Vec<(String, String)>,
+    shaders: HashMap<String, ShaderFields>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
     generate_structs: bool,
@@ -407,7 +425,7 @@ impl MacroInput {
         MacroInput {
             root_path_env: None,
             include_directories: Vec::new(),
-            macro_defines: Vec::new(),
+            global_macro_defines: Vec::new(),
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
@@ -423,9 +441,16 @@ impl Parse for MacroInput {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
 
+        #[derive(Default)]
+        struct MaybeShaderFields {
+            shader_kind: Option<ShaderKind>,
+            source_kind: Option<SourceKind>,
+            macro_defines: Vec<(String, String)>,
+        }
+
         let mut root_path_env = None;
         let mut include_directories = Vec::new();
-        let mut macro_defines = Vec::new();
+        let mut global_macro_defines = Vec::new();
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
@@ -435,18 +460,18 @@ impl Parse for MacroInput {
         let mut dump = None;
 
         fn parse_shader_fields(
-            output: &mut (Option<ShaderKind>, Option<SourceKind>),
+            output: &mut MaybeShaderFields,
             name: &str,
             input: ParseStream<'_>,
         ) -> Result<()> {
             match name {
                 "ty" => {
                     let lit = input.parse::<LitStr>()?;
-                    if output.0.is_some() {
+                    if output.shader_kind.is_some() {
                         bail!(lit, "field `ty` is already defined");
                     }
 
-                    output.0 = Some(match lit.value().as_str() {
+                    output.shader_kind = Some(match lit.value().as_str() {
                         "vertex" => ShaderKind::Vertex,
                         "tess_ctrl" => ShaderKind::TessControl,
                         "tess_eval" => ShaderKind::TessEvaluation,
@@ -471,36 +496,54 @@ impl Parse for MacroInput {
                 }
                 "bytes" => {
                     let lit = input.parse::<LitStr>()?;
-                    if output.1.is_some() {
+                    if output.source_kind.is_some() {
                         bail!(
                             lit,
                             "only one of `src`, `path`, or `bytes` can be defined per shader entry",
                         );
                     }
 
-                    output.1 = Some(SourceKind::Bytes(lit));
+                    output.source_kind = Some(SourceKind::Bytes(lit));
                 }
                 "path" => {
                     let lit = input.parse::<LitStr>()?;
-                    if output.1.is_some() {
+                    if output.source_kind.is_some() {
                         bail!(
                             lit,
                             "only one of `src`, `path` or `bytes` can be defined per shader entry",
                         );
                     }
 
-                    output.1 = Some(SourceKind::Path(lit));
+                    output.source_kind = Some(SourceKind::Path(lit));
                 }
                 "src" => {
                     let lit = input.parse::<LitStr>()?;
-                    if output.1.is_some() {
+                    if output.source_kind.is_some() {
                         bail!(
                             lit,
                             "only one of `src`, `path` or `bytes` can be defined per shader entry",
                         );
                     }
 
-                    output.1 = Some(SourceKind::Src(lit));
+                    output.source_kind = Some(SourceKind::Src(lit));
+                }
+                "define" => {
+                    let array_input;
+                    bracketed!(array_input in input);
+
+                    while !array_input.is_empty() {
+                        let tuple_input;
+                        parenthesized!(tuple_input in array_input);
+
+                        let name = tuple_input.parse::<LitStr>()?;
+                        tuple_input.parse::<Token![,]>()?;
+                        let value = tuple_input.parse::<LitStr>()?;
+                        output.macro_defines.push((name.value(), value.value()));
+
+                        if !array_input.is_empty() {
+                            array_input.parse::<Token![,]>()?;
+                        }
+                    }
                 }
                 _ => unreachable!(),
             }
@@ -554,7 +597,7 @@ impl Parse for MacroInput {
                             let field = field_ident.to_string();
 
                             match field.as_str() {
-                                "bytes" | "src" | "path" | "ty" => {
+                                "bytes" | "src" | "path" | "ty" | "define" => {
                                     parse_shader_fields(
                                         shaders.entry(name.clone()).or_default(),
                                         &field,
@@ -578,10 +621,14 @@ impl Parse for MacroInput {
                         }
 
                         match shaders.get(&name).unwrap() {
-                            (None, _) => bail!(
+                            MaybeShaderFields {
+                                shader_kind: None, ..
+                            } => bail!(
                                 "please specify a type for shader `{name}` e.g. `ty: \"vertex\"`",
                             ),
-                            (_, None) => bail!(
+                            MaybeShaderFields {
+                                source_kind: None, ..
+                            } => bail!(
                                 "please specify a source for shader `{name}` e.g. \
                                 `path: \"entry_point.glsl\"`",
                             ),
@@ -604,7 +651,7 @@ impl Parse for MacroInput {
                         let name = tuple_input.parse::<LitStr>()?;
                         tuple_input.parse::<Token![,]>()?;
                         let value = tuple_input.parse::<LitStr>()?;
-                        macro_defines.push((name.value(), value.value()));
+                        global_macro_defines.push((name.value(), value.value()));
 
                         if !array_input.is_empty() {
                             array_input.parse::<Token![,]>()?;
@@ -741,31 +788,51 @@ impl Parse for MacroInput {
             bail!(r#"please specify at least one shader e.g. `ty: "vertex", src: "<GLSL code>"`"#);
         }
 
-        match shaders.get("") {
-            // if source is bytes, the shader type should not be declared
-            Some((None, Some(SourceKind::Bytes(_)))) => {}
-            Some((_, Some(SourceKind::Bytes(_)))) => {
-                bail!(
-                    r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
-                );
+        if let Some(fields) = shaders.get("") {
+            match fields {
+                MaybeShaderFields {
+                    shader_kind: None,
+                    source_kind: Some(SourceKind::Bytes(_)),
+                    ..
+                } => {}
+                MaybeShaderFields {
+                    shader_kind: Some(_),
+                    source_kind: Some(SourceKind::Bytes(_)),
+                    ..
+                } => {
+                    bail!(
+                        r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
+                    );
+                }
+                MaybeShaderFields {
+                    shader_kind: None, ..
+                } => {
+                    bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
+                }
+                MaybeShaderFields {
+                    source_kind: None, ..
+                } => {
+                    bail!(r#"please specify the source of the shader e.g. `src: "<GLSLcode>"`"#);
+                }
+                _ => {}
             }
-            Some((None, _)) => {
-                bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
-            }
-            Some((_, None)) => {
-                bail!(r#"please specify the source of the shader e.g. `src: "<GLSL code>"`"#);
-            }
-            _ => {}
         }
 
         Ok(MacroInput {
             root_path_env,
             include_directories,
-            macro_defines,
+            global_macro_defines,
             shaders: shaders
                 .into_iter()
-                .map(|(key, (shader_kind, shader_source))| {
-                    (key, (shader_kind, shader_source.unwrap()))
+                .map(|(key, fields)| {
+                    (
+                        key,
+                        ShaderFields {
+                            shader_kind: fields.shader_kind,
+                            source_kind: fields.source_kind.unwrap(),
+                            macro_defines: fields.macro_defines,
+                        },
+                    )
                 })
                 .collect(),
             vulkan_version,
