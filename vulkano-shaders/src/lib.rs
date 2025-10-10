@@ -151,7 +151,7 @@
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
 //! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
-//! An optional `define: [("NAME", "VALUE"), ...]` list sets pre-processor definitions
+//! An optional `define: [("NAME", "VALUE"), ...]` list sets preprocessor definitions
 //! for just this source file.
 //!
 //! ## `include: ["...", "...", ...]`
