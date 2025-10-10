@@ -400,12 +400,6 @@ enum SourceKind {
     Bytes(LitStr),
 }
 
-struct ShaderFields {
-    shader_kind: Option<ShaderKind>,
-    source_kind: SourceKind,
-    macro_defines: Vec<(String, String)>,
-}
-
 struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
@@ -417,6 +411,12 @@ struct MacroInput {
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
     dump: LitBool,
+}
+
+struct ShaderFields {
+    shader_kind: Option<ShaderKind>,
+    source_kind: SourceKind,
+    macro_defines: Vec<(String, String)>,
 }
 
 impl MacroInput {
