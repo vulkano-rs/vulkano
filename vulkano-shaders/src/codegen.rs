@@ -150,6 +150,7 @@ pub(super) fn compile(
     base_path: &Path,
     code: &str,
     shader_kind: ShaderKind,
+    macro_defines: &[(String, String)],
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
     let includes = RefCell::new(Vec::new());
     let compiler = Compiler::new().or(Err("failed to create GLSL compiler"))?;
@@ -186,7 +187,7 @@ pub(super) fn compile(
         },
     );
 
-    for (macro_name, macro_value) in &input.macro_defines {
+    for (macro_name, macro_value) in input.global_macro_defines.iter().chain(macro_defines) {
         compile_options.add_macro_definition(macro_name, Some(macro_value));
     }
 
@@ -328,6 +329,7 @@ mod tests {
                 void main() {}
             "#,
             ShaderKind::Vertex,
+            &[],
         )
         .expect("cannot resolve include files");
 
@@ -348,6 +350,7 @@ mod tests {
                 void main() {}
             "#,
             ShaderKind::Vertex,
+            &[],
         )
         .expect("cannot resolve include files");
 
@@ -380,6 +383,7 @@ mod tests {
                 void main() {}
             "#,
             ShaderKind::Vertex,
+            &[],
         )
         .expect("cannot resolve include files");
 
@@ -417,6 +421,7 @@ mod tests {
                 "#,
             ),
             ShaderKind::Vertex,
+            &[],
         )
         .expect("cannot resolve include files");
 
@@ -446,6 +451,7 @@ mod tests {
                 void main() {}
             "#,
             ShaderKind::Vertex,
+            &[],
         )
         .expect("cannot resolve include files");
 
@@ -483,18 +489,36 @@ mod tests {
             Path::new(""),
             need_defines,
             ShaderKind::Vertex,
+            &[],
         );
         assert!(compile_no_defines.is_err());
 
         compile(
             &MacroInput {
-                macro_defines: vec![("NAME1".into(), "".into()), ("NAME2".into(), "58".into())],
+                global_macro_defines: vec![
+                    ("NAME1".into(), "".into()),
+                    ("NAME2".into(), "58".into()),
+                ],
                 ..MacroInput::empty()
             },
             None,
             Path::new(""),
             need_defines,
             ShaderKind::Vertex,
+            &[],
+        )
+        .expect("setting global shader macros did not work");
+
+        compile(
+            &MacroInput {
+                global_macro_defines: vec![("NAME1".into(), "".into())],
+                ..MacroInput::empty()
+            },
+            None,
+            Path::new(""),
+            need_defines,
+            ShaderKind::Vertex,
+            &[("NAME2".into(), "58".into())],
         )
         .expect("setting shader macros did not work");
     }
@@ -680,6 +704,7 @@ mod tests {
                 }
             "#,
             ShaderKind::Vertex,
+            &[],
         )
         .unwrap()
     }
