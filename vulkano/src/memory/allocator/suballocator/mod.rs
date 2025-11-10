@@ -51,7 +51,243 @@ mod free_list;
 ///
 /// # Examples
 ///
-/// TODO
+/// The suballocator API was designed to be completely agnostic to what it's suballocating, such
+/// that it can suballocate anything from bytes to array elements as well as suballocations
+/// thereof. Here are some examples of common patterns.
+///
+/// #### Suballocating bytes
+///
+/// Allocating a lot of small buffers is inefficient and should be avoided. You can instead use a
+/// suballocator to suballocate one buffer into smaller ones. Note that while we use a buffer here
+/// as an example, as mentioned above, the suballocator is completely agnostic to what it's
+/// suballocating, so you could instead be suballocating any other kind of buffer, including a
+/// non-Vulkan one.
+///
+/// No Vulkan implementation actually cares about [`BufferUsage`] flags. Therefore, using one
+/// buffer per usage flag is wasteful. You should instead allocate everything you can in one buffer
+/// for optimal performance. The only exceptions are buffer usage flags such as [`UNIFORM_BUFFER`],
+/// which has stricter limits, and [`SHADER_DEVICE_ADDRESS`], [`ACCELERATION_STRUCTURE_STORAGE`],
+/// and [`SHADER_BINDING_TABLE`], which may influence the available memory types.
+///
+/// ```
+/// use vulkano::{
+///     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+///     memory::{
+///         allocator::{
+///             suballocator::Region, AllocationCreateInfo, AllocationType, DeviceLayout,
+///             FreeListAllocator, Suballocator,
+///         },
+///         DeviceAlignment,
+///     },
+/// };
+///
+/// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
+/// #
+/// // Allocate a byte buffer with all the flags we'll need. Note the alignment of 4; this must be
+/// // the maximum alignment that any suballocation can have.
+/// let buffer = Subbuffer::from(
+///     Buffer::new(
+///         &memory_allocator,
+///         &BufferCreateInfo {
+///             usage: BufferUsage::STORAGE_BUFFER
+///                 | BufferUsage::INDEX_BUFFER
+///                 | BufferUsage::VERTEX_BUFFER,
+///             ..Default::default()
+///         },
+///         &AllocationCreateInfo::default(),
+///         DeviceLayout::from_size_alignment(16 * 1024 * 1024, 4).unwrap(),
+///     )
+///     .unwrap(),
+/// );
+///
+/// // Since we want to suballocate the whole buffer, the region is created to match the buffer.
+/// let allocator = FreeListAllocator::new(Region::new(0, buffer.len()).unwrap());
+///
+/// // We can then allocate whatever type of data we need and reinterpret the bytes to that type.
+/// # let index_count = return;
+/// let index_buffer_allocation = allocator
+///     .allocate(
+///         DeviceLayout::new_unsized::<[u32]>(index_count).unwrap(),
+///         AllocationType::Linear,
+///         DeviceAlignment::MIN,
+///     )
+///     .unwrap();
+/// let index_buffer = buffer
+///     .slice(index_buffer_allocation.as_range())
+///     .reinterpret::<[u32]>();
+///
+/// # type MyVertex = u32;
+/// #
+/// # let vertex_count = return;
+/// let vertex_buffer_allocation = allocator
+///     .allocate(
+///         DeviceLayout::new_unsized::<[MyVertex]>(vertex_count).unwrap(),
+///         AllocationType::Linear,
+///         DeviceAlignment::MIN,
+///     )
+///     .unwrap();
+/// let vertex_buffer = buffer
+///     .slice(vertex_buffer_allocation.as_range())
+///     .reinterpret::<[MyVertex]>();
+///
+/// // ...use the allocations...
+///
+/// // Once the allocations are no longer in use, you should deallocate them or reset the allocator
+/// // (if you know that no other allocations exist). That means that if you use the allocations in
+/// // a command buffer, you must only deallocate them after the command buffer is no longer being
+/// // executed. The best way to do this is to keep some frame-local data, where each frame in
+/// // flight has its own data associated with it. At the beginning of each frame, after waiting
+/// // for the frame to finish, you deallocate everything associated with that frame.
+/// unsafe { allocator.deallocate(index_buffer_allocation) };
+/// unsafe { allocator.deallocate(vertex_buffer_allocation) };
+/// ```
+///
+/// #### Suballocating elements
+///
+/// Suballocating bytes like in the first example allows you to put multiple types of data into the
+/// same buffer. However, if you have a buffer that contains nothing but an array, you can also
+/// suballocate the array's elements instead of bytes. This is very useful for indirect draws,
+/// where you are forced to specify offsets and sizes in elements rather than bytes. Again, while
+/// we use a buffer here as an example, you could be suballocating any array, including a
+/// non-Vulkan one.
+///
+/// ```no_run
+/// use vulkano::{
+///     buffer::Subbuffer,
+///     memory::{
+///         allocator::{
+///             suballocator::Region, AllocationType, DeviceLayout, FreeListAllocator, Suballocator,
+///         },
+///         DeviceAlignment,
+///     },
+/// };
+///
+/// # type MyVertex = u32;
+/// #
+/// # fn allocate_vertex_buffer() -> Subbuffer<[MyVertex]> {
+/// #     unimplemented!()
+/// # }
+/// #
+/// // This could be its own buffer or a suballocation like in the first example.
+/// let vertex_buffer: Subbuffer<[MyVertex]> = allocate_vertex_buffer();
+///
+/// // Since we want to suballocate the whole buffer, the region is created to match the buffer.
+/// // Note that unlike in the first example, this time the region is not in bytes.
+/// let allocator = FreeListAllocator::new(Region::new(0, vertex_buffer.len()).unwrap());
+///
+/// // We can then allocate some elements. Note that unlike in the first example, we have to use
+/// // `DeviceLayout::from_size_alignment` directly. This is because our layout is in elements
+/// // rather than bytes. The other constructors of `DeviceLayout` exist to create a layout in
+/// // bytes from type information and element counts. Since we need elements and our
+/// // `vertex_count` is in elements, we use that as the size. Note also that the alignment loses
+/// // its meaning because it's also in elements. An alignment of, say, 4 is not going to create an
+/// // allocation that is aligned to 4 bytes. Therefore, using any other alignment than 1 is
+/// // nonsensical.
+/// # let vertex_count = return;
+/// let allocation = allocator
+///     .allocate(
+///         DeviceLayout::from_size_alignment(vertex_count, 1).unwrap(),
+///         AllocationType::Linear,
+///         DeviceAlignment::MIN,
+///     )
+///     .unwrap();
+/// let vertex_subbuffer = vertex_buffer.slice(allocation.as_range());
+///
+/// // ...use the allocations...
+///
+/// // Once the allocations are no longer in use, you should deallocate them or reset the allocator
+/// // (if you know that no other allocations exist). That means that if you use the allocations in
+/// // a command buffer, you must only deallocate them after the command buffer is no longer being
+/// // executed. The best way to do this is to keep some frame-local data, where each frame in
+/// // flight has its own data associated with it. At the beginning of each frame, after waiting
+/// // for the frame to finish, you deallocate everything associated with that frame.
+/// unsafe { allocator.deallocate(allocation) };
+/// ```
+///
+/// #### Suballocating relative to a parent allocation
+///
+/// There are two ways to suballocate a suballocation. One way is to create a region that matches
+/// the suballocation to be suballocated; that is, with an offset of 0 and size equal to its size.
+/// This is usually the way to go and what the other examples do. However, when you need your
+/// offsets to be relative to some parent of the suballocation to be suballocated, you can instead
+/// use a region with an offset that of its offset from the parent. This way, all allocation
+/// offsets will be relative to the parent, but still in bounds of the child.
+///
+/// One use case for this is to ensure an allocation is aligned relative to the `DeviceMemory`
+/// block. When you allocate a buffer using a memory allocator, it's going to be aligned according
+/// to the alignment used when allocating it. Suballocating this buffer with an alignment greater
+/// than its alignment is a mistake. This is because the suballocation is going to be aligned to at
+/// most the alignment of the buffer even if you allocate the suballocation with a greater
+/// alignment. The simplest way to fix this is to ensure that the buffer is aligned to the maximum
+/// (or greater) alignment any suballocation can have. However, if you don't know what alignment
+/// that is, you can use the approach in this example. Note that aligning relative to the
+/// `DeviceMemory` block means that the suballcations will be at most as aligned as the
+/// `DeviceMemory` block, so the same problem presents itself. However, Vulkan guarantees that host
+/// memory mappings are aligned to at least 64 bytes. As for the device, `DeviceMemory` blocks will
+/// always be aligned such that they satisfy any requirements imposed by the implementation.
+///
+/// ```
+/// use vulkano::{
+///     buffer::{Buffer, BufferCreateInfo, BufferUsage, BufferMemory, Subbuffer},
+///     memory::{
+///         allocator::{
+///             suballocator::Region, AllocationCreateInfo, AllocationType, DeviceLayout,
+///             FreeListAllocator, Suballocator,
+///         },
+///         DeviceAlignment,
+///     },
+/// };
+///
+/// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
+/// #
+/// // Allocate a byte buffer with all the flags we'll need. Note that unlike in the first example,
+/// // the alignment is 1.
+/// let buffer = Subbuffer::from(
+///     Buffer::new(
+///         &memory_allocator,
+///         &BufferCreateInfo {
+///             usage: BufferUsage::STORAGE_BUFFER
+///                 | BufferUsage::INDEX_BUFFER
+///                 | BufferUsage::VERTEX_BUFFER,
+///             ..Default::default()
+///         },
+///         &AllocationCreateInfo::default(),
+///         DeviceLayout::from_size_alignment(16 * 1024 * 1024, 1).unwrap(),
+///     )
+///     .unwrap(),
+/// );
+///
+/// let offset = match buffer.buffer().memory() {
+///     BufferMemory::Normal(allocation) => allocation.offset(),
+///     _ => unreachable!(),
+/// };
+///
+/// // Since we want to suballocate the parent `DeviceMemory` block, but only the portion that's
+/// // taken up by the buffer, the region is created with the offset and size of the buffer.
+/// let allocator = FreeListAllocator::new(Region::new(offset, buffer.len()).unwrap());
+///
+/// // We can then allocate whatever type of data we need. Note that unlike in the first example,
+/// // we don't know what the alignment might be. We subtract the offset of the buffer to get a
+/// // suballocation relative to the buffer rather than the parent `DeviceMemory` block. Don't
+/// // forget to add the offset back when you deallocate!
+/// # let layout: DeviceLayout = return;
+/// let mut allocation = allocator
+///     .allocate(layout, AllocationType::Linear, DeviceAlignment::MIN)
+///     .unwrap();
+/// allocation.offset -= offset;
+/// let subbuffer = buffer.slice(allocation.as_range());
+///
+/// // ...use the allocations...
+///
+/// // Once the allocations are no longer in use, you should deallocate them or reset the allocator
+/// // (if you know that no other allocations exist). That means that if you use the allocations in
+/// // a command buffer, you must only deallocate them after the command buffer is no longer being
+/// // executed. The best way to do this is to keep some frame-local data, where each frame in
+/// // flight has its own data associated with it. At the beginning of each frame, after waiting
+/// // for the frame to finish, you deallocate everything associated with that frame.
+/// allocation.offset += offset;
+/// unsafe { allocator.deallocate(allocation) };
+/// ```
 ///
 /// # Safety
 ///
@@ -76,6 +312,11 @@ mod free_list;
 ///   clones or all of the clones have been dropped.
 ///
 /// [`DeviceMemory`]: crate::memory::DeviceMemory
+/// [`BufferUsage`]: crate::buffer::BufferUsage
+/// [`UNIFORM_BUFFER`]: crate::buffer::BufferUsage::UNIFORM_BUFFER
+/// [`SHADER_DEVICE_ADDRESS`]: crate::buffer::BufferUsage::SHADER_DEVICE_ADDRESS
+/// [`ACCELERATION_STRUCTURE_STORAGE`]: crate::buffer::BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+/// [`SHADER_BINDING_TABLE`]: crate::buffer::BufferUsage::SHADER_BINDING_TABLE
 /// [page]: super#pages
 /// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
