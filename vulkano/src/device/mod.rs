@@ -299,7 +299,37 @@ impl Device {
             unsafe { output.assume_init() }
         };
 
-        Ok(unsafe { Self::from_handle(physical_device, handle, &create_info) })
+        let device = unsafe { Self::from_handle(physical_device, handle, &create_info) };
+
+        let mut queues_to_get: SmallVec<[_; 2]> =
+            SmallVec::with_capacity(create_info.queue_create_infos.len());
+
+        for queue_create_info in create_info.queue_create_infos {
+            let &QueueCreateInfo {
+                flags,
+                queue_family_index,
+                queues,
+                _ne: _,
+            } = queue_create_info;
+
+            queues_to_get.extend((0..queues.len() as u32).map(move |queue_index| {
+                DeviceQueueInfo {
+                    flags,
+                    queue_family_index,
+                    queue_index,
+                    ..Default::default()
+                }
+            }));
+        }
+
+        let queues_iter = {
+            let device = device.clone();
+            queues_to_get
+                .into_iter()
+                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
+        };
+
+        Ok((device, queues_iter))
     }
 
     /// Creates a new `Device` from a raw object handle.
@@ -307,16 +337,15 @@ impl Device {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
-    /// - `create_info` must match the info used to create the object.
+    /// - `create_info` must match the info used to create the object. The `queue_create_infos`
+    ///   don't have to match exactly: only the `queue_family_index` parameters are used by this
+    ///   function.
     /// - `handle` must not be freed, as it will be owned by the returned `Device`.
     pub unsafe fn from_handle(
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, false) }
     }
 
@@ -325,7 +354,9 @@ impl Device {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
-    /// - `create_info` must match the info used to create the object.
+    /// - `create_info` must match the info used to create the object. The `queue_create_infos`
+    ///   don't have to match exactly: only the `queue_family_index` parameters are used by this
+    ///   function.
     /// - `handle` must not be freed while the returned `Device` object is still alive. This means
     ///   all copies of the returned `Arc` must be dropped first. Note `DeviceOwned` objects all
     ///   hold a reference to the device internally.
@@ -333,10 +364,7 @@ impl Device {
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, true) }
     }
 
@@ -345,10 +373,7 @@ impl Device {
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
         borrowed: bool,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         let &DeviceCreateInfo {
             queue_create_infos,
             enabled_features,
@@ -368,25 +393,9 @@ impl Device {
 
         let mut active_queue_family_indices: SmallVec<[_; 2]> =
             SmallVec::with_capacity(queue_create_infos.len());
-        let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create_infos.len());
 
         for queue_create_info in queue_create_infos {
-            let &QueueCreateInfo {
-                flags,
-                queue_family_index,
-                queues,
-                _ne: _,
-            } = queue_create_info;
-
-            active_queue_family_indices.push(queue_family_index);
-            queues_to_get.extend((0..queues.len() as u32).map(move |queue_index| {
-                DeviceQueueInfo {
-                    flags,
-                    queue_family_index,
-                    queue_index,
-                    ..Default::default()
-                }
-            }));
+            active_queue_family_indices.push(queue_create_info.queue_family_index);
         }
 
         active_queue_family_indices.sort_unstable();
@@ -403,7 +412,7 @@ impl Device {
                 .collect()
         };
 
-        let device = Arc::new(Device {
+        Arc::new(Device {
             handle,
             physical_device: InstanceOwnedDebugWrapper(physical_device.clone()),
             id: Self::next_id(),
@@ -424,16 +433,7 @@ impl Device {
             event_pool: Mutex::new(Vec::new()),
 
             borrowed,
-        });
-
-        let queues_iter = {
-            let device = device.clone();
-            queues_to_get
-                .into_iter()
-                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
-        };
-
-        (device, queues_iter)
+        })
     }
 
     /// Returns the Vulkan version supported by the device.
