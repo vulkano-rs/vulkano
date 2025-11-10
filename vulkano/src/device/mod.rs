@@ -96,10 +96,13 @@
 //!
 //! TODO: write
 
-use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
+use self::physical::PhysicalDevice;
 pub use self::{
     properties::DeviceProperties,
-    queue::{Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
+    queue::{
+        DefaultQueueMutex, DeviceQueueInfo, Queue, QueueFamilyProperties, QueueFlags, QueueGuard,
+        QueueMutex,
+    },
 };
 pub use crate::fns::DeviceFunctions;
 use crate::{
@@ -161,7 +164,7 @@ pub struct Device {
     fns: DeviceFunctions,
     active_queue_family_indices: SmallVec<[u32; 2]>,
 
-    queue_locks: Vec<Mutex<()>>,
+    queue_locks: Mutex<Vec<(NonZero<u64>, Arc<dyn QueueMutex>)>>,
 
     // This is required for validation in `memory::device_memory`, the count must only be modified
     // in that module.
@@ -413,7 +416,7 @@ impl Device {
             fns,
             active_queue_family_indices,
 
-            queue_locks: (0..queues_to_get.len()).map(|_| Mutex::new(())).collect(),
+            queue_locks: Mutex::new(Vec::new()),
 
             allocation_count: AtomicU32::new(0),
             fence_pool: Mutex::new(Vec::new()),
@@ -427,10 +430,7 @@ impl Device {
             let device = device.clone();
             queues_to_get
                 .into_iter()
-                .enumerate()
-                .map(move |(lock_index, queue_info)| unsafe {
-                    Queue::new(&device, &queue_info, lock_index)
-                })
+                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
         };
 
         (device, queues_iter)
@@ -1330,7 +1330,32 @@ impl Device {
     ///
     /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
-        let _queue_lock_guards = self.queue_locks.iter().map(Mutex::lock).collect::<Vec<_>>();
+        struct UnlockGuard<'a> {
+            queue_locks: &'a [(NonZero<u64>, Arc<dyn QueueMutex>)],
+            locked_count: usize,
+        }
+
+        impl Drop for UnlockGuard<'_> {
+            fn drop(&mut self) {
+                for (_, queue_lock) in &self.queue_locks[..self.locked_count] {
+                    // SAFETY: The code below ensures that the `locked_count` is incremented after a
+                    // lock is locked such that our `..locked_count` range always denotes the locked
+                    // locks. Notably, this ensures that locks are soundly unlocked even if one of
+                    // the locks in the middle panics.
+                    unsafe { queue_lock.unlock() };
+                }
+            }
+        }
+
+        let mut unlock_guard = UnlockGuard {
+            queue_locks: &self.queue_locks.lock(),
+            locked_count: 0,
+        };
+
+        for (_, queue_lock) in unlock_guard.queue_locks {
+            queue_lock.lock();
+            unlock_guard.locked_count += 1;
+        }
 
         let fns = self.fns();
         unsafe { (fns.v1_0.device_wait_idle)(self.handle) }
