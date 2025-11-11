@@ -29,7 +29,7 @@ use vulkano::{
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let library = VulkanLibrary::new().unwrap();
+    let library = unsafe { VulkanLibrary::new() }.unwrap();
     let instance = Instance::new(
         &library,
         &InstanceCreateInfo {

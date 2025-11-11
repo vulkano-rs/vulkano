@@ -53,7 +53,7 @@
 //! };
 //!
 //! let instance = {
-//!     let library = VulkanLibrary::new()
+//!     let library = unsafe { VulkanLibrary::new() }
 //!         .unwrap_or_else(|err| panic!("couldn't load Vulkan library: {:?}", err));
 //!
 //!     let extensions = InstanceExtensions {

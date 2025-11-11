@@ -95,7 +95,7 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-        let library = VulkanLibrary::new().unwrap();
+        let library = unsafe { VulkanLibrary::new() }.unwrap();
         let required_extensions = Surface::required_extensions(event_loop).unwrap();
         let instance = Instance::new(
             &library,

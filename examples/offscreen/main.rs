@@ -35,7 +35,7 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the `triangle`
     // example if you haven't done so yet.
 
-    let library = VulkanLibrary::new().unwrap();
+    let library = unsafe { VulkanLibrary::new() }.unwrap();
 
     let instance = Instance::new(
         &library,

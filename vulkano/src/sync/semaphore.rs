@@ -2194,7 +2194,7 @@ mod tests {
 
     #[test]
     fn semaphore_export_fd() {
-        let library = match VulkanLibrary::new() {
+        let library = match unsafe { VulkanLibrary::new() } {
             Ok(x) => x,
             Err(_) => return,
         };
