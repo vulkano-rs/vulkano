@@ -73,6 +73,11 @@ impl Queue {
 
     /// Creates a new `Queue` from a raw object handle.
     ///
+    /// When creating queues this way, it is important to ensure that each queue locks its own
+    /// mutex. Otherwise, it would be possible to lock one queue, then lock another queue, and end
+    /// up with a deadlock (even on a single thread). It is assumed that this doesn't happen, as
+    /// it's fundamentally incompatible with internally-locked queues.
+    ///
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle retrieved from `device`.
