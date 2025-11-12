@@ -87,6 +87,7 @@ use std::{
 };
 
 mod builder;
+mod commands;
 
 pub struct PrimaryAutoCommandBuffer {
     inner: CommandBuffer,
