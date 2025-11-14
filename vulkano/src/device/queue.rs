@@ -2,7 +2,7 @@ use super::{Device, DeviceOwned, QueueCreateFlags};
 use crate::{
     command_buffer::{CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo},
     instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
-    macros::vulkan_bitflags,
+    macros::{impl_id_counter, vulkan_bitflags},
     memory::sparse::BindSparseInfo,
     swapchain::{PresentInfo, SwapchainPresentInfo},
     sync::{fence::Fence, PipelineStages},
@@ -10,11 +10,12 @@ use crate::{
     VulkanObject,
 };
 use ash::vk;
-use parking_lot::MutexGuard;
+use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    hash::{Hash, Hasher},
-    mem::MaybeUninit,
+    fmt::{Debug, Formatter, Result as FmtResult},
+    mem::{self, MaybeUninit},
+    num::NonZero,
     sync::Arc,
 };
 
@@ -24,20 +25,17 @@ use std::{
 pub struct Queue {
     handle: vk::Queue,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
+    id: NonZero<u64>,
 
     flags: QueueCreateFlags,
     queue_family_index: u32,
     queue_index: u32, // index within family
 
-    lock_index: usize,
+    lock: Arc<dyn QueueMutex>,
 }
 
 impl Queue {
-    pub(super) unsafe fn new(
-        device: &Arc<Device>,
-        queue_info: &DeviceQueueInfo<'_>,
-        lock_index: usize,
-    ) -> Arc<Self> {
+    pub(super) unsafe fn new(device: &Arc<Device>, queue_info: &DeviceQueueInfo<'_>) -> Arc<Self> {
         let queue_info_vk = queue_info.to_vk();
 
         let handle = {
@@ -68,16 +66,33 @@ impl Queue {
             unsafe { output.assume_init() }
         };
 
-        unsafe { Self::from_handle(device, handle, queue_info, lock_index) }
+        let lock = Arc::new(DefaultQueueMutex::new());
+
+        unsafe { Self::from_handle(device, handle, queue_info, lock) }
     }
 
-    // TODO: Make public
+    /// Creates a new `Queue` from a raw object handle.
+    ///
+    /// When creating queues this way, it is important to ensure that each queue locks its own
+    /// mutex. Otherwise, it would be possible to lock one queue, then lock another queue, and end
+    /// up with a deadlock (even on a single thread). It is assumed that this doesn't happen, as
+    /// it's fundamentally incompatible with internally-locked queues.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle retrieved from `device`.
+    /// - `create_info` must match the info used to create the object. If you aren't given the
+    ///   `queue_index`, it's fine to make it up, as vulkano doesn't use it itself. Just make sure
+    ///   nothing else uses it. If you aren't given any queue create flags, it's safe to assume
+    ///   that there are none.
+    /// - The external code you share the queue with must use the same queue lock as vulkano. The
+    ///   `lock` parameter must be used to ensure this.
     #[inline]
-    unsafe fn from_handle(
+    pub unsafe fn from_handle(
         device: &Arc<Device>,
         handle: vk::Queue,
         queue_info: &DeviceQueueInfo<'_>,
-        lock_index: usize,
+        lock: Arc<dyn QueueMutex>,
     ) -> Arc<Self> {
         let &DeviceQueueInfo {
             flags,
@@ -86,13 +101,18 @@ impl Queue {
             _ne: _,
         } = queue_info;
 
+        let id = Self::next_id();
+
+        device.queue_locks.lock().push((id, lock.clone()));
+
         Arc::new(Queue {
             handle,
             device: InstanceOwnedDebugWrapper(device.clone()),
+            id,
             flags,
             queue_family_index,
             queue_index,
-            lock_index,
+            lock,
         })
     }
 
@@ -124,14 +144,29 @@ impl Queue {
     /// can be used to perform operations on the queue, such as command buffer submissions.
     #[inline]
     pub fn with<'a, R>(self: &'a Arc<Self>, func: impl FnOnce(QueueGuard<'a>) -> R) -> R {
-        func(QueueGuard {
-            queue: self,
-            _lock_guard: self.device.queue_locks[self.lock_index].lock(),
-        })
+        self.lock.lock();
+
+        // SAFETY: We have just locked the queue above.
+        func(unsafe { QueueGuard::new(self) })
     }
 
     fn queue_family_properties(&self) -> &QueueFamilyProperties {
         &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
+    }
+}
+
+impl Drop for Queue {
+    #[inline]
+    fn drop(&mut self) {
+        let mut queue_locks = self.device.queue_locks.lock();
+
+        // This can't panic because we inserted our lock on creation and only remove it here.
+        let index = queue_locks
+            .iter()
+            .position(|(id, _)| *id == self.id)
+            .unwrap();
+
+        queue_locks.remove(index);
     }
 }
 
@@ -151,32 +186,95 @@ unsafe impl DeviceOwned for Queue {
     }
 }
 
-impl PartialEq for Queue {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.queue_index == other.queue_index
-            && self.queue_family_index == other.queue_family_index
-            && self.device == other.device
+impl_id_counter!(Queue);
+
+/// A trait allowing you to supply a custom queue lock implementation.
+///
+/// This is necessary when there is external code with which you share your queue(s). If the
+/// external code doesn't get the memo that vulkano has locked the queue or vice versa then it
+/// could happen that both use the queue at the same time, which would be undefined behavior.
+/// Typically, you would use the external library's functions for locking and unlocking a queue in
+/// order to implement this trait.
+///
+/// # Safety
+///
+/// `lock` and `unlock` must have the semantics of a mutual exclusion lock: after `lock` is called,
+/// further calls to `lock` must block until `unlock` is called, at which point at most one thread
+/// in the wait queue must be woken up and return from `lock`.
+pub unsafe trait QueueMutex: Send + Sync + 'static {
+    /// Locks the mutex.
+    fn lock(&self);
+
+    /// Unlocks the mutex.
+    ///
+    /// # Safety
+    ///
+    /// - The lock must have been locked.
+    unsafe fn unlock(&self);
+}
+
+impl Debug for dyn QueueMutex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("QueueMutex").finish_non_exhaustive()
     }
 }
 
-impl Eq for Queue {}
+/// The default queue lock implementation.
+///
+/// This uses its own mutex internally that is not shared with any external code. As such, it
+/// should not be used when external code is sharing a queue with vulkano.
+pub struct DefaultQueueMutex {
+    inner: Mutex<()>,
+}
 
-impl Hash for Queue {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.queue_index.hash(state);
-        self.queue_family_index.hash(state);
-        self.device.hash(state);
+impl Default for DefaultQueueMutex {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DefaultQueueMutex {
+    /// Creates a new `DefaultQueueMutex`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            inner: Mutex::new(()),
+        }
+    }
+}
+
+// SAFETY: We lock the mutex correctly.
+unsafe impl QueueMutex for DefaultQueueMutex {
+    fn lock(&self) {
+        mem::forget(self.inner.lock());
+    }
+
+    unsafe fn unlock(&self) {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.inner.force_unlock() };
     }
 }
 
 /// Parameters to retrieve a [`Queue`] from the device.
 #[derive(Clone, Debug)]
-pub(super) struct DeviceQueueInfo<'a> {
-    pub(super) flags: QueueCreateFlags,
-    pub(super) queue_family_index: u32,
-    pub(super) queue_index: u32,
-    pub(super) _ne: crate::NonExhaustive<'a>,
+pub struct DeviceQueueInfo<'a> {
+    /// Additional properties of the queue.
+    ///
+    /// The default value is empty.
+    pub flags: QueueCreateFlags,
+
+    /// The queue family index the queue is from.
+    ///
+    /// The default value is `0`.
+    pub queue_family_index: u32,
+
+    /// The queue index within the queue family.
+    ///
+    /// The default value is `0`.
+    pub queue_index: u32,
+
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
 impl Default for DeviceQueueInfo<'_> {
@@ -209,10 +307,13 @@ impl DeviceQueueInfo<'_> {
 
 pub struct QueueGuard<'a> {
     queue: &'a Arc<Queue>,
-    _lock_guard: MutexGuard<'a, ()>,
 }
 
-impl QueueGuard<'_> {
+impl<'a> QueueGuard<'a> {
+    unsafe fn new(queue: &'a Arc<Queue>) -> Self {
+        Self { queue }
+    }
+
     /// Waits until all work on this queue has finished, then releases ownership of all resources
     /// that were in use by the queue.
     ///
@@ -889,6 +990,14 @@ impl QueueGuard<'_> {
                 &label_info_vk,
             )
         };
+    }
+}
+
+impl Drop for QueueGuard<'_> {
+    #[inline]
+    fn drop(&mut self) {
+        // SAFETY: The caller of `QueueGuard::new` must ensure that the queue has been locked.
+        unsafe { self.queue.lock.unlock() };
     }
 }
 

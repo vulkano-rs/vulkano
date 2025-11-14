@@ -96,10 +96,13 @@
 //!
 //! TODO: write
 
-use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
+use self::physical::PhysicalDevice;
 pub use self::{
     properties::DeviceProperties,
-    queue::{Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
+    queue::{
+        DefaultQueueMutex, DeviceQueueInfo, Queue, QueueFamilyProperties, QueueFlags, QueueGuard,
+        QueueMutex,
+    },
 };
 pub use crate::fns::DeviceFunctions;
 use crate::{
@@ -161,7 +164,7 @@ pub struct Device {
     fns: DeviceFunctions,
     active_queue_family_indices: SmallVec<[u32; 2]>,
 
-    queue_locks: Vec<Mutex<()>>,
+    queue_locks: Mutex<Vec<(NonZero<u64>, Arc<dyn QueueMutex>)>>,
 
     // This is required for validation in `memory::device_memory`, the count must only be modified
     // in that module.
@@ -296,7 +299,37 @@ impl Device {
             unsafe { output.assume_init() }
         };
 
-        Ok(unsafe { Self::from_handle(physical_device, handle, &create_info) })
+        let device = unsafe { Self::from_handle(physical_device, handle, &create_info) };
+
+        let mut queues_to_get: SmallVec<[_; 2]> =
+            SmallVec::with_capacity(create_info.queue_create_infos.len());
+
+        for queue_create_info in create_info.queue_create_infos {
+            let &QueueCreateInfo {
+                flags,
+                queue_family_index,
+                queues,
+                _ne: _,
+            } = queue_create_info;
+
+            queues_to_get.extend((0..queues.len() as u32).map(move |queue_index| {
+                DeviceQueueInfo {
+                    flags,
+                    queue_family_index,
+                    queue_index,
+                    ..Default::default()
+                }
+            }));
+        }
+
+        let queues_iter = {
+            let device = device.clone();
+            queues_to_get
+                .into_iter()
+                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
+        };
+
+        Ok((device, queues_iter))
     }
 
     /// Creates a new `Device` from a raw object handle.
@@ -304,16 +337,15 @@ impl Device {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
-    /// - `create_info` must match the info used to create the object.
+    /// - `create_info` must match the info used to create the object. The `queue_create_infos`
+    ///   don't have to match exactly: only the `queue_family_index` parameters are used by this
+    ///   function.
     /// - `handle` must not be freed, as it will be owned by the returned `Device`.
     pub unsafe fn from_handle(
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, false) }
     }
 
@@ -322,7 +354,9 @@ impl Device {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `physical_device`.
-    /// - `create_info` must match the info used to create the object.
+    /// - `create_info` must match the info used to create the object. The `queue_create_infos`
+    ///   don't have to match exactly: only the `queue_family_index` parameters are used by this
+    ///   function.
     /// - `handle` must not be freed while the returned `Device` object is still alive. This means
     ///   all copies of the returned `Arc` must be dropped first. Note `DeviceOwned` objects all
     ///   hold a reference to the device internally.
@@ -330,10 +364,7 @@ impl Device {
         physical_device: &Arc<PhysicalDevice>,
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         unsafe { Self::from_handle_inner(physical_device, handle, create_info, true) }
     }
 
@@ -342,10 +373,7 @@ impl Device {
         handle: vk::Device,
         create_info: &DeviceCreateInfo<'_>,
         borrowed: bool,
-    ) -> (
-        Arc<Device>,
-        impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-    ) {
+    ) -> Arc<Device> {
         let &DeviceCreateInfo {
             queue_create_infos,
             enabled_features,
@@ -365,25 +393,9 @@ impl Device {
 
         let mut active_queue_family_indices: SmallVec<[_; 2]> =
             SmallVec::with_capacity(queue_create_infos.len());
-        let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create_infos.len());
 
         for queue_create_info in queue_create_infos {
-            let &QueueCreateInfo {
-                flags,
-                queue_family_index,
-                queues,
-                _ne: _,
-            } = queue_create_info;
-
-            active_queue_family_indices.push(queue_family_index);
-            queues_to_get.extend((0..queues.len() as u32).map(move |queue_index| {
-                DeviceQueueInfo {
-                    flags,
-                    queue_family_index,
-                    queue_index,
-                    ..Default::default()
-                }
-            }));
+            active_queue_family_indices.push(queue_create_info.queue_family_index);
         }
 
         active_queue_family_indices.sort_unstable();
@@ -400,7 +412,7 @@ impl Device {
                 .collect()
         };
 
-        let device = Arc::new(Device {
+        Arc::new(Device {
             handle,
             physical_device: InstanceOwnedDebugWrapper(physical_device.clone()),
             id: Self::next_id(),
@@ -413,7 +425,7 @@ impl Device {
             fns,
             active_queue_family_indices,
 
-            queue_locks: (0..queues_to_get.len()).map(|_| Mutex::new(())).collect(),
+            queue_locks: Mutex::new(Vec::new()),
 
             allocation_count: AtomicU32::new(0),
             fence_pool: Mutex::new(Vec::new()),
@@ -421,19 +433,7 @@ impl Device {
             event_pool: Mutex::new(Vec::new()),
 
             borrowed,
-        });
-
-        let queues_iter = {
-            let device = device.clone();
-            queues_to_get
-                .into_iter()
-                .enumerate()
-                .map(move |(lock_index, queue_info)| unsafe {
-                    Queue::new(&device, &queue_info, lock_index)
-                })
-        };
-
-        (device, queues_iter)
+        })
     }
 
     /// Returns the Vulkan version supported by the device.
@@ -1330,7 +1330,32 @@ impl Device {
     ///
     /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
-        let _queue_lock_guards = self.queue_locks.iter().map(Mutex::lock).collect::<Vec<_>>();
+        struct UnlockGuard<'a> {
+            queue_locks: &'a [(NonZero<u64>, Arc<dyn QueueMutex>)],
+            locked_count: usize,
+        }
+
+        impl Drop for UnlockGuard<'_> {
+            fn drop(&mut self) {
+                for (_, queue_lock) in &self.queue_locks[..self.locked_count] {
+                    // SAFETY: The code below ensures that the `locked_count` is incremented after a
+                    // lock is locked such that our `..locked_count` range always denotes the locked
+                    // locks. Notably, this ensures that locks are soundly unlocked even if one of
+                    // the locks in the middle panics.
+                    unsafe { queue_lock.unlock() };
+                }
+            }
+        }
+
+        let mut unlock_guard = UnlockGuard {
+            queue_locks: &self.queue_locks.lock(),
+            locked_count: 0,
+        };
+
+        for (_, queue_lock) in unlock_guard.queue_locks {
+            queue_lock.lock();
+            unlock_guard.locked_count += 1;
+        }
 
         let fns = self.fns();
         unsafe { (fns.v1_0.device_wait_idle)(self.handle) }
