@@ -18,7 +18,7 @@ impl LayerProperties {
     /// ```no_run
     /// use vulkano::VulkanLibrary;
     ///
-    /// let library = VulkanLibrary::new().unwrap();
+    /// let library = unsafe { VulkanLibrary::new() }.unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
     ///     println!("Layer name: {}", layer.name());
@@ -38,7 +38,7 @@ impl LayerProperties {
     /// ```no_run
     /// use vulkano::VulkanLibrary;
     ///
-    /// let library = VulkanLibrary::new().unwrap();
+    /// let library = unsafe { VulkanLibrary::new() }.unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
     ///     println!("Layer description: {}", layer.description());
@@ -56,7 +56,7 @@ impl LayerProperties {
     /// ```no_run
     /// use vulkano::{Version, VulkanLibrary};
     ///
-    /// let library = VulkanLibrary::new().unwrap();
+    /// let library = unsafe { VulkanLibrary::new() }.unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
     ///     if layer.vulkan_version() >= Version::major_minor(2, 0) {
@@ -78,7 +78,7 @@ impl LayerProperties {
     /// ```no_run
     /// use vulkano::VulkanLibrary;
     ///
-    /// let library = VulkanLibrary::new().unwrap();
+    /// let library = unsafe { VulkanLibrary::new() }.unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
     ///     println!(
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn layers_list() {
-        let library = match VulkanLibrary::new() {
+        let library = match unsafe { VulkanLibrary::new() } {
             Ok(x) => x,
             Err(_) => return,
         };

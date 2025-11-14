@@ -654,7 +654,7 @@ mod tests {
         // It's useful to be able to initialize a DebugUtilsMessenger on one thread
         // and keep it alive on another thread.
         let instance = {
-            let library = match VulkanLibrary::new() {
+            let library = match unsafe { VulkanLibrary::new() } {
                 Ok(x) => x,
                 Err(_) => return,
             };

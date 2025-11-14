@@ -5,7 +5,7 @@ macro_rules! instance {
     () => {{
         use crate::{instance::Instance, VulkanLibrary};
 
-        let library = match VulkanLibrary::new() {
+        let library = match unsafe { VulkanLibrary::new() } {
             Ok(x) => x,
             Err(_) => return,
         };

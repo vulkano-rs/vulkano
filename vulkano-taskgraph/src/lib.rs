@@ -997,7 +997,7 @@ fn panic_nounwind(message: &'static str) -> ! {
 mod tests {
     macro_rules! test_queues {
         () => {{
-            let Ok(library) = vulkano::VulkanLibrary::new() else {
+            let Ok(library) = (unsafe { vulkano::VulkanLibrary::new() }) else {
                 return;
             };
             let Ok(instance) = vulkano::instance::Instance::new(&library, &Default::default())

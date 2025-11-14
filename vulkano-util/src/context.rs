@@ -111,7 +111,7 @@ impl VulkanoContext {
     ///
     /// - Panics where the underlying Vulkano struct creations fail
     pub fn new(config: VulkanoConfig<'_>) -> Self {
-        let library = match VulkanLibrary::new() {
+        let library = match unsafe { VulkanLibrary::new() } {
             Ok(x) => x,
             #[cfg(target_vendor = "apple")]
             Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => panic!(

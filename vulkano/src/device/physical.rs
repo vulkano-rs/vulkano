@@ -47,7 +47,7 @@ use std::{
 /// # };
 /// use vulkano::device::physical::PhysicalDevice;
 ///
-/// # let library = VulkanLibrary::new().unwrap();
+/// # let library = unsafe { VulkanLibrary::new() }.unwrap();
 /// # let instance = Instance::new(&library, &Default::default()).unwrap();
 /// #
 /// for physical_device in instance.enumerate_physical_devices().unwrap() {

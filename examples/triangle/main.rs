@@ -76,7 +76,7 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-        let library = VulkanLibrary::new().unwrap();
+        let library = unsafe { VulkanLibrary::new() }.unwrap();
 
         // The first step of any Vulkan program is to create an instance.
         //

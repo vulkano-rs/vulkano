@@ -24,7 +24,7 @@ use vulkano::{
 };
 
 fn main() {
-    let library = VulkanLibrary::new().unwrap();
+    let library = unsafe { VulkanLibrary::new() }.unwrap();
     let instance = Instance::new(
         &library,
         &InstanceCreateInfo {

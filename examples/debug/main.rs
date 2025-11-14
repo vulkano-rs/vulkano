@@ -27,7 +27,7 @@ fn main() {
         ..InstanceExtensions::empty()
     };
 
-    let library = VulkanLibrary::new().unwrap();
+    let library = unsafe { VulkanLibrary::new() }.unwrap();
 
     // You also need to specify (unless you've used the methods linked above) which debugging
     // layers your code should use. Each layer is a bunch of checks or messages that provide

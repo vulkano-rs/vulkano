@@ -87,7 +87,7 @@ use vulkano::{
 
 fn main() {
     // The usual Vulkan initialization.
-    let library = VulkanLibrary::new().unwrap();
+    let library = unsafe { VulkanLibrary::new() }.unwrap();
     let instance = Instance::new(
         &library,
         &InstanceCreateInfo {

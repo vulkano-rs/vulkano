@@ -10,7 +10,7 @@
 //!     Version, VulkanLibrary,
 //! };
 //!
-//! let library = VulkanLibrary::new()
+//! let library = unsafe { VulkanLibrary::new() }
 //!     .unwrap_or_else(|err| panic!("couldn't load Vulkan library: {:?}", err));
 //! let instance = Instance::new(&library, &Default::default())
 //!     .unwrap_or_else(|err| panic!("couldn't create instance: {:?}", err));
@@ -26,7 +26,7 @@
 //! # };
 //! use vulkano::device::physical::PhysicalDevice;
 //!
-//! # let library = VulkanLibrary::new().unwrap();
+//! # let library = unsafe { VulkanLibrary::new() }.unwrap();
 //! # let instance = Instance::new(&library, &Default::default()).unwrap();
 //! #
 //! for physical_device in instance.enumerate_physical_devices().unwrap() {
@@ -130,7 +130,7 @@ include!(crate::autogen_output!("instance_extensions.rs"));
 ///     Version, VulkanLibrary,
 /// };
 ///
-/// let library = VulkanLibrary::new().unwrap();
+/// let library = unsafe { VulkanLibrary::new() }.unwrap();
 /// let _instance =
 ///     Instance::new(&library, &InstanceCreateInfo::application_from_cargo_toml()).unwrap();
 /// # }
@@ -188,7 +188,7 @@ include!(crate::autogen_output!("instance_extensions.rs"));
 ///     Version, VulkanLibrary,
 /// };
 ///
-/// let library = VulkanLibrary::new()
+/// let library = unsafe { VulkanLibrary::new() }
 ///     .unwrap_or_else(|err| panic!("couldn't load Vulkan library: {:?}", err));
 ///
 /// let extensions = InstanceExtensions {
@@ -240,7 +240,7 @@ include!(crate::autogen_output!("instance_extensions.rs"));
 /// # };
 /// #
 /// # fn test() -> Result<Arc<Instance>, Box<dyn Error>> {
-/// let library = VulkanLibrary::new()?;
+/// let library = unsafe { VulkanLibrary::new() }?;
 ///
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
@@ -515,7 +515,7 @@ impl Instance {
     /// #     Version, VulkanLibrary,
     /// # };
     /// #
-    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let library = unsafe { VulkanLibrary::new() }.unwrap();
     /// # let instance = Instance::new(&library, &Default::default()).unwrap();
     /// #
     /// for physical_device in instance.enumerate_physical_devices().unwrap() {

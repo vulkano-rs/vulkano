@@ -2,17 +2,21 @@
 //!
 //! Before Vulkano can do anything, it first needs to find a library containing an implementation
 //! of Vulkan. A Vulkan implementation is defined as a single `vkGetInstanceProcAddr` function,
-//! which can be accessed through the `Loader` trait.
+//! which can be accessed through [`VulkanLibrary`].
 //!
-//! This module provides various implementations of the `Loader` trait.
+//! You can create a `VulkanLibrary` by [loading the default Vulkan library for the platform], by
+//! [loading from a specific path], or by [using a statically-linked Vulkan library]. Once you have
+//! created a `VulkanLibrary`, you can use it to create an [`Instance`].
 //!
-//! Once you have a type that implements `Loader`, you can create a `VulkanLibrary`
-//! from it and use this `VulkanLibrary` struct to build an `Instance`.
+//! [loading the default Vulkan library for the platform]: VulkanLibrary::new
+//! [loading from a specific path]: VulkanLibrary::from_path
+//! [using a statically-linked Vulkan library]: statically_linked_vulkan_library
+//! [`Instance`]: crate::instance::Instance
 
 pub use crate::fns::EntryFunctions;
 use crate::{
     instance::{InstanceExtensions, LayerProperties},
-    ExtensionProperties, SafeDeref, Version, VulkanError,
+    ExtensionProperties, Version, VulkanError,
 };
 use ash::vk;
 use libloading::{Error as LibloadingError, Library};
@@ -20,7 +24,7 @@ use std::{
     error::Error,
     ffi::CString,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    mem::transmute,
+    mem,
     os::raw::c_char,
     path::Path,
     ptr,
@@ -30,7 +34,8 @@ use std::{
 /// A loaded library containing a valid Vulkan implementation.
 #[derive(Debug)]
 pub struct VulkanLibrary {
-    loader: Box<dyn Loader>,
+    get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+    _library: Option<Library>,
     fns: EntryFunctions,
 
     api_version: Version,
@@ -39,18 +44,20 @@ pub struct VulkanLibrary {
 }
 
 impl VulkanLibrary {
-    /// Loads the default Vulkan library for this system.
-    pub fn new() -> Result<Arc<Self>, LoadingError> {
+    /// Creates a new `VulkanLibrary` by loading the default Vulkan library for this platform.
+    ///
+    /// # Safety
+    ///
+    /// - If there is a library at the default path for this platform, it must be a valid Vulkan
+    ///   implementation.
+    /// - Library loading is inherently unsafe.
+    pub unsafe fn new() -> Result<Arc<Self>, LoadingError> {
         #[cfg(any(target_os = "ios", target_os = "tvos"))]
-        #[allow(non_snake_case)]
-        fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
-            let loader = crate::statically_linked_vulkan_loader!();
-
-            Ok(Box::new(loader))
+        {
+            unsafe { crate::statically_linked_vulkan_library!() }
         }
-
         #[cfg(not(any(target_os = "ios", target_os = "tvos")))]
-        fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
+        {
             #[cfg(windows)]
             const PATHS: [&str; 1] = ["vulkan-1.dll"];
             #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
@@ -73,26 +80,58 @@ impl VulkanLibrary {
             let mut err: Option<LoadingError> = None;
 
             for path in PATHS {
-                match unsafe { DynamicLibraryLoader::new(path) } {
-                    Ok(library) => return Ok(Box::new(library)),
+                match unsafe { Self::from_path(path) } {
+                    Ok(library) => return Ok(library),
                     Err(e) => err = Some(e),
                 }
             }
 
             Err(err.unwrap())
         }
-
-        def_loader_impl().and_then(VulkanLibrary::with_loader)
     }
 
-    /// Loads a custom Vulkan library.
-    pub fn with_loader(loader: impl Loader + 'static) -> Result<Arc<Self>, LoadingError> {
+    /// Creates a new `VulkanLibrary` loaded from the given path.
+    ///
+    /// # Safety
+    ///
+    /// - If there is a library at the given `path`, it must be a valid Vulkan implementation.
+    /// - Library loading is inherently unsafe.
+    pub unsafe fn from_path(path: impl AsRef<Path>) -> Result<Arc<Self>, LoadingError> {
+        unsafe { Self::from_path_inner(path.as_ref()) }
+    }
+
+    unsafe fn from_path_inner(path: &Path) -> Result<Arc<Self>, LoadingError> {
+        let library = unsafe { Library::new(path) }.map_err(LoadingError::LibraryLoadFailure)?;
+
+        let get_instance_proc_addr = *unsafe { library.get(b"vkGetInstanceProcAddr") }
+            .map_err(LoadingError::LibraryLoadFailure)?;
+
+        unsafe { Self::from_loader_inner(get_instance_proc_addr, Some(library)) }
+    }
+
+    /// Creates a Vulkan library from an existing loader.
+    ///
+    /// # Safety
+    ///
+    /// - `get_instance_proc_addr` must be the loader of a valid Vulkan implementation.
+    /// - `get_instance_proc_addr` and any function pointers loaded through it must be valid for as
+    ///   long as the returned `VulkanLibrary` exists.
+    pub unsafe fn from_loader(
+        get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+    ) -> Result<Arc<Self>, LoadingError> {
+        unsafe { Self::from_loader_inner(get_instance_proc_addr, None) }
+    }
+
+    unsafe fn from_loader_inner(
+        get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+        library: Option<Library>,
+    ) -> Result<Arc<Self>, LoadingError> {
         let fns = EntryFunctions::load(|name| {
-            unsafe { loader.get_instance_proc_addr(vk::Instance::null(), name.as_ptr()) }
+            unsafe { get_instance_proc_addr(vk::Instance::null(), name.as_ptr()) }
                 .map_or(ptr::null(), |func| func as _)
         });
 
-        let api_version = unsafe { Self::get_api_version(&loader) }?;
+        let api_version = unsafe { Self::get_api_version(get_instance_proc_addr) }?;
         let extension_properties = unsafe { Self::get_extension_properties(&fns, None) }?;
         let supported_extensions = InstanceExtensions::from_vk(
             extension_properties
@@ -101,7 +140,8 @@ impl VulkanLibrary {
         );
 
         Ok(Arc::new(VulkanLibrary {
-            loader: Box::new(loader),
+            get_instance_proc_addr,
+            _library: library,
             fns,
             api_version,
             extension_properties,
@@ -109,25 +149,27 @@ impl VulkanLibrary {
         }))
     }
 
-    unsafe fn get_api_version(loader: &impl Loader) -> Result<Version, VulkanError> {
+    unsafe fn get_api_version(
+        get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+    ) -> Result<Version, VulkanError> {
         // Per the Vulkan spec:
         // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
         // to determine the version of Vulkan.
 
         let func = unsafe {
-            loader.get_instance_proc_addr(
-                vk::Instance::null(),
-                c"vkEnumerateInstanceVersion".as_ptr(),
-            )
+            get_instance_proc_addr(vk::Instance::null(), c"vkEnumerateInstanceVersion".as_ptr())
         };
 
-        let version = if let Some(func) = func {
-            let func: vk::PFN_vkEnumerateInstanceVersion = unsafe { transmute(func) };
+        let version = if func.is_some() {
+            let func = unsafe {
+                mem::transmute::<vk::PFN_vkVoidFunction, vk::PFN_vkEnumerateInstanceVersion>(func)
+            };
             let mut api_version = 0;
             unsafe { func(&mut api_version) }
                 .result()
                 .map_err(VulkanError::from)?;
+
             Version::from(api_version)
         } else {
             Version {
@@ -182,6 +224,14 @@ impl VulkanLibrary {
         }
     }
 
+    /// Returns the `get_instance_proc_addr` function pointer.
+    ///
+    /// The function pointer must not be used after `self` has been dropped.
+    #[inline]
+    pub fn loader(&self) -> vk::PFN_vkGetInstanceProcAddr {
+        self.get_instance_proc_addr
+    }
+
     /// Returns pointers to the raw global Vulkan functions of the library.
     #[inline]
     pub fn fns(&self) -> &EntryFunctions {
@@ -223,7 +273,7 @@ impl VulkanLibrary {
     /// ```no_run
     /// use vulkano::VulkanLibrary;
     ///
-    /// let library = VulkanLibrary::new().unwrap();
+    /// let library = unsafe { VulkanLibrary::new() }.unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
     ///     println!("Available layer: {}", layer.name());
@@ -298,79 +348,9 @@ impl VulkanLibrary {
             })
     }
 
-    /// Calls `get_instance_proc_addr` on the underlying loader.
+    /// Calls the underlying `get_instance_proc_addr` function.
     #[inline]
     pub unsafe fn get_instance_proc_addr(
-        &self,
-        instance: vk::Instance,
-        name: *const c_char,
-    ) -> vk::PFN_vkVoidFunction {
-        unsafe { self.loader.get_instance_proc_addr(instance, name) }
-    }
-}
-
-/// Implemented on objects that grant access to a Vulkan implementation.
-pub unsafe trait Loader: Send + Sync {
-    /// Calls the `vkGetInstanceProcAddr` function. The parameters are the same.
-    ///
-    /// The returned function must stay valid for as long as `self` is alive.
-    unsafe fn get_instance_proc_addr(
-        &self,
-        instance: vk::Instance,
-        name: *const c_char,
-    ) -> vk::PFN_vkVoidFunction;
-}
-
-unsafe impl<T> Loader for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: Loader,
-{
-    unsafe fn get_instance_proc_addr(
-        &self,
-        instance: vk::Instance,
-        name: *const c_char,
-    ) -> vk::PFN_vkVoidFunction {
-        unsafe { (**self).get_instance_proc_addr(instance, name) }
-    }
-}
-
-impl Debug for dyn Loader {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        f.debug_struct("Loader").finish_non_exhaustive()
-    }
-}
-
-/// Implementation of `Loader` that loads Vulkan from a dynamic library.
-pub struct DynamicLibraryLoader {
-    _vk_lib: Library,
-    get_instance_proc_addr: vk::PFN_vkGetInstanceProcAddr,
-}
-
-impl DynamicLibraryLoader {
-    /// Tries to load the dynamic library at the given path, and tries to
-    /// load `vkGetInstanceProcAddr` in it.
-    ///
-    /// # Safety
-    ///
-    /// - The dynamic library must be a valid Vulkan implementation.
-    pub unsafe fn new(path: impl AsRef<Path>) -> Result<DynamicLibraryLoader, LoadingError> {
-        let vk_lib =
-            unsafe { Library::new(path.as_ref()) }.map_err(LoadingError::LibraryLoadFailure)?;
-
-        let get_instance_proc_addr = *unsafe { vk_lib.get(b"vkGetInstanceProcAddr") }
-            .map_err(LoadingError::LibraryLoadFailure)?;
-
-        Ok(DynamicLibraryLoader {
-            _vk_lib: vk_lib,
-            get_instance_proc_addr,
-        })
-    }
-}
-
-unsafe impl Loader for DynamicLibraryLoader {
-    #[inline]
-    unsafe fn get_instance_proc_addr(
         &self,
         instance: vk::Instance,
         name: *const c_char,
@@ -379,37 +359,26 @@ unsafe impl Loader for DynamicLibraryLoader {
     }
 }
 
-/// Expression that returns a loader that assumes that Vulkan is linked to the executable you're
-/// compiling.
+/// Creates a new `VulkanLibrary`, assuming that the Vulkan library is linked statically.
 ///
-/// If you use this macro, you must linked to a library that provides the `vkGetInstanceProcAddr`
-/// symbol.
+/// If you use this macro, you must link to a library that provides the `vkGetInstanceProcAddr`
+/// symbol. Because of this, this is provided as a macro, as the macro expands to an `extern` block
+/// that expects this symbol to exist.
 ///
-/// This is provided as a macro and not as a regular function, because the macro contains an
-/// `extern {}` block.
-// TODO: should this be unsafe?
+/// # Safety
+///
+/// - The statically linked library must be a valid Vulkan implementation.
 #[macro_export]
-macro_rules! statically_linked_vulkan_loader {
+macro_rules! statically_linked_vulkan_library {
     () => {{
-        extern "C" {
+        unsafe extern "system" {
             fn vkGetInstanceProcAddr(
                 instance: vk::Instance,
                 pName: *const c_char,
             ) -> vk::PFN_vkVoidFunction;
         }
 
-        struct StaticallyLinkedVulkanLoader;
-        unsafe impl Loader for StaticallyLinkedVulkanLoader {
-            unsafe fn get_instance_proc_addr(
-                &self,
-                instance: vk::Instance,
-                name: *const c_char,
-            ) -> vk::PFN_vkVoidFunction {
-                vkGetInstanceProcAddr(instance, name)
-            }
-        }
-
-        StaticallyLinkedVulkanLoader
+        $crate::VulkanLibrary::from_loader(vkGetInstanceProcAddr)
     }};
 }
 
@@ -445,18 +414,5 @@ impl Display for LoadingError {
 impl From<VulkanError> for LoadingError {
     fn from(err: VulkanError) -> Self {
         Self::VulkanError(err)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{DynamicLibraryLoader, LoadingError};
-
-    #[test]
-    fn dl_open_error() {
-        match unsafe { DynamicLibraryLoader::new("_non_existing_library.void") } {
-            Err(LoadingError::LibraryLoadFailure(_)) => (),
-            _ => panic!(),
-        }
     }
 }
