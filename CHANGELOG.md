@@ -22,6 +22,15 @@ Global changes:
 - All structs containing `ImageSubresourceLayers` and `ImageSubresourceRange` now use `Default::default()` as the default value for that field, instead of an empty value (all zeroes).
 - `DeviceFeatures`, `DeviceExtensions` and `InstanceExtensions` now implement `IntoIterator` by reference instead of by value and the `IntoIter` associated type is now an opaque type.
 
+Changes to Vulkan initialization:
+- `VulkanLibrary::new` is now marked unsafe. It has always been unsafe, but marked incorrectly.
+- `Loader` was removed. The `get_instance_proc_addr` function pointer is now used directly instead.
+- `VulkanLibrary::with_loader` was renamed to `VulkanLibrary::from_loader`.
+- `statically_linked_vulkan_loader` was replaced with `statically_linked_vulkan_library`.
+
+Changes to devices and queues:
+- `Device::from_handle[_borrowed]` no longer retrieves queues, as this was impossible to use soundly. You should instead use `Queue::from_handle` to create queues when working with an external API.
+
 Changes to images:
 - `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
 
@@ -52,6 +61,10 @@ Changes to external memory and external sync:
 - Added proc macro `include_vulkano_glsl` to vulkano-shaders.
 - `Device::wait_idle` is now safe.
 - Added `BufferAllocator` for creating buffer allocations with any suballocation algorithm; `SubbufferAllocator` has been deprecated.
+- Added `Queue::from_handle` and `DeviceQueueInfo`.
+- Added the `QueueMutex` trait, which allows you to provide an external queue locking mechanism.
+- Added `VulkanLibrary::loader`, which allows you to get the `get_instance_proc_addr` function pointer and give it to an external library.
+- Added `VulkanLibrary::from_path`, which allows you to load a Vulkan library from a specific path.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 
 ### Bugs fixed
