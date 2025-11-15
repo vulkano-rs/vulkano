@@ -221,7 +221,7 @@ mod free_list;
 /// alignment. The simplest way to fix this is to ensure that the buffer is aligned to the maximum
 /// (or greater) alignment any suballocation can have. However, if you don't know what alignment
 /// that is, you can use the approach in this example. Note that aligning relative to the
-/// `DeviceMemory` block means that the suballcations will be at most as aligned as the
+/// `DeviceMemory` block means that the suballocations will be at most as aligned as the
 /// `DeviceMemory` block, so the same problem presents itself. However, Vulkan guarantees that host
 /// memory mappings are aligned to at least 64 bytes. As for the device, `DeviceMemory` blocks will
 /// always be aligned such that they satisfy any requirements imposed by the implementation.
