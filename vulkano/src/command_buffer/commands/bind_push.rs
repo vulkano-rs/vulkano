@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferContents, BufferUsage, IndexBuffer, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferUsage, IndexType},
     command_buffer::sys::RecordingCommandBuffer,
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
@@ -23,14 +23,14 @@ impl RecordingCommandBuffer {
     pub unsafe fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         first_set: u32,
         descriptor_sets: &[&RawDescriptorSet],
         dynamic_offsets: &[u32],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_descriptor_sets(
             pipeline_bind_point,
-            pipeline_layout,
+            layout,
             first_set,
             descriptor_sets,
             dynamic_offsets,
@@ -39,7 +39,7 @@ impl RecordingCommandBuffer {
         Ok(unsafe {
             self.bind_descriptor_sets_unchecked(
                 pipeline_bind_point,
-                pipeline_layout,
+                layout,
                 first_set,
                 descriptor_sets,
                 dynamic_offsets,
@@ -50,14 +50,14 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_bind_descriptor_sets(
         &self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         first_set: u32,
         descriptor_sets: &[&RawDescriptorSet],
         dynamic_offsets: &[u32],
     ) -> Result<(), Box<ValidationError>> {
         self.validate_bind_descriptor_sets_inner(
             pipeline_bind_point,
-            pipeline_layout,
+            layout,
             first_set,
             descriptor_sets.len(),
         )?;
@@ -67,13 +67,13 @@ impl RecordingCommandBuffer {
         let mut required_dynamic_offset_count = 0;
 
         for (descriptor_sets_index, set) in descriptor_sets.iter().enumerate() {
-            let set_num = first_set + descriptor_sets_index as u32;
+            let set_num = first_set as usize + descriptor_sets_index;
 
             // VUID-vkCmdBindDescriptorSets-commonparent
             assert_eq!(self.device(), set.device());
 
             let set_layout = set.layout();
-            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+            let pipeline_set_layout = &layout.set_layouts()[set_num];
 
             if !pipeline_set_layout.is_compatible_with(set_layout) {
                 return Err(Box::new(ValidationError {
@@ -183,7 +183,7 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_bind_descriptor_sets_inner(
         &self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         first_set: u32,
         descriptor_sets: usize,
     ) -> Result<(), Box<ValidationError>> {
@@ -256,7 +256,10 @@ impl RecordingCommandBuffer {
             }
         }
 
-        if first_set + descriptor_sets as u32 > pipeline_layout.set_layouts().len() as u32 {
+        if (first_set as usize)
+            .checked_add(descriptor_sets)
+            .is_none_or(|end| end > layout.set_layouts().len())
+        {
             return Err(Box::new(ValidationError {
                 problem: "`first_set + descriptor_sets.len()` is greater than \
                     `pipeline_layout.set_layouts().len()`"
@@ -273,7 +276,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn bind_descriptor_sets_unchecked(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         first_set: u32,
         descriptor_sets: &[&RawDescriptorSet],
         dynamic_offsets: &[u32],
@@ -290,7 +293,7 @@ impl RecordingCommandBuffer {
             (fns.v1_0.cmd_bind_descriptor_sets)(
                 self.handle(),
                 pipeline_bind_point.into(),
-                pipeline_layout.handle(),
+                layout.handle(),
                 first_set,
                 descriptor_sets_vk.len() as u32,
                 descriptor_sets_vk.as_ptr(),
@@ -305,16 +308,22 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn bind_index_buffer(
         &mut self,
-        index_buffer: &IndexBuffer,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        size: DeviceSize,
+        index_type: IndexType,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_bind_index_buffer(index_buffer)?;
+        self.validate_bind_index_buffer(buffer, offset, size, index_type)?;
 
-        Ok(unsafe { self.bind_index_buffer_unchecked(index_buffer) })
+        Ok(unsafe { self.bind_index_buffer_unchecked(buffer, offset, size, index_type) })
     }
 
     pub(crate) fn validate_bind_index_buffer(
         &self,
-        index_buffer: &IndexBuffer,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        size: DeviceSize,
+        index_type: IndexType,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -325,61 +334,97 @@ impl RecordingCommandBuffer {
                 problem: "the queue family of the command buffer does not support \
                     graphics operations"
                     .into(),
-                vuids: &["VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool"],
+                vuids: &["VUID-vkCmdBindIndexBuffer2-commandBuffer-cmdpool"],
                 ..Default::default()
             }));
         }
 
-        let index_buffer_bytes = index_buffer.as_bytes();
+        // VUID-vkCmdBindIndexBuffer2-commonparent
+        assert_eq!(self.device(), buffer.device());
 
-        // VUID-vkCmdBindIndexBuffer-commonparent
-        assert_eq!(self.device(), index_buffer_bytes.device());
-
-        if !index_buffer_bytes
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDEX_BUFFER)
-        {
+        if offset >= buffer.size() {
             return Err(Box::new(ValidationError {
-                context: "index_buffer.usage()".into(),
+                context: "offset".into(),
+                problem: "is not less than `buffer.size()`".into(),
+                vuids: &["VUID-vkCmdBindIndexBuffer2-offset-08782"],
+                ..Default::default()
+            }));
+        }
+
+        if !buffer.usage().intersects(BufferUsage::INDEX_BUFFER) {
+            return Err(Box::new(ValidationError {
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDEX_BUFFER`".into(),
-                vuids: &["VUID-vkCmdBindIndexBuffer-buffer-00433"],
+                vuids: &["VUID-vkCmdBindIndexBuffer2-buffer-08784"],
                 ..Default::default()
             }));
         }
 
-        if matches!(index_buffer, IndexBuffer::U8(_))
-            && !self.device().enabled_features().index_type_uint8
-        {
+        if index_type == IndexType::U8 && !self.device().enabled_features().index_type_uint8 {
             return Err(Box::new(ValidationError {
-                context: "index_buffer".into(),
-                problem: "is `IndexBuffer::U8`".into(),
+                context: "index_type".into(),
+                problem: "is `IndexType::U8`".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "index_type_uint8",
                 )])]),
-                vuids: &["VUID-vkCmdBindIndexBuffer-indexType-02765"],
+                vuids: &["VUID-vkCmdBindIndexBuffer2-indexType-08787"],
+            }));
+        }
+
+        if size % index_type.size() != 0 {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is not a multiple of `index_type.size()`".into(),
+                vuids: &["VUID-vkCmdBindIndexBuffer2-size-08767"],
+                ..Default::default()
+            }));
+        }
+
+        if size > buffer.size() - offset {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is greater than `buffer.size() - offset`".into(),
+                vuids: &["VUID-vkCmdBindIndexBuffer2-size-08768"],
+                ..Default::default()
             }));
         }
 
         // TODO:
-        // VUID-vkCmdBindIndexBuffer-offset-00432
+        // VUID-vkCmdBindIndexBuffer2-offset-08783
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn bind_index_buffer_unchecked(&mut self, index_buffer: &IndexBuffer) -> &mut Self {
-        let index_buffer_bytes = index_buffer.as_bytes();
-
+    pub unsafe fn bind_index_buffer_unchecked(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        size: DeviceSize,
+        index_type: IndexType,
+    ) -> &mut Self {
         let fns = self.device().fns();
-        unsafe {
-            (fns.v1_0.cmd_bind_index_buffer)(
-                self.handle(),
-                index_buffer_bytes.buffer().handle(),
-                index_buffer_bytes.offset(),
-                index_buffer.index_type().into(),
-            )
-        };
+
+        if self.device().enabled_extensions().khr_maintenance5 {
+            unsafe {
+                (fns.khr_maintenance5.cmd_bind_index_buffer2_khr)(
+                    self.handle(),
+                    buffer.handle(),
+                    offset,
+                    size,
+                    index_type.into(),
+                )
+            };
+        } else {
+            unsafe {
+                (fns.v1_0.cmd_bind_index_buffer)(
+                    self.handle(),
+                    buffer.handle(),
+                    offset,
+                    index_type.into(),
+                )
+            };
+        }
 
         self
     }
@@ -541,17 +586,25 @@ impl RecordingCommandBuffer {
     pub unsafe fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
-        vertex_buffers: &[Subbuffer<[u8]>],
+        buffers: &[&Buffer],
+        offsets: &[DeviceSize],
+        sizes: &[DeviceSize],
+        strides: &[DeviceSize],
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_bind_vertex_buffers(first_binding, vertex_buffers)?;
+        self.validate_bind_vertex_buffers(first_binding, buffers, offsets, sizes, strides)?;
 
-        Ok(unsafe { self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers) })
+        Ok(unsafe {
+            self.bind_vertex_buffers_unchecked(first_binding, buffers, offsets, sizes, strides)
+        })
     }
 
     pub(crate) fn validate_bind_vertex_buffers(
         &self,
         first_binding: u32,
-        vertex_buffers: &[Subbuffer<[u8]>],
+        buffers: &[&Buffer],
+        offsets: &[DeviceSize],
+        sizes: &[DeviceSize],
+        strides: &[DeviceSize],
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -569,34 +622,86 @@ impl RecordingCommandBuffer {
 
         let properties = self.device().physical_device().properties();
 
-        if first_binding + vertex_buffers.len() as u32 > properties.max_vertex_input_bindings {
+        if first_binding >= properties.max_vertex_input_bindings {
             return Err(Box::new(ValidationError {
-                problem: "`first_binding + vertex_buffers.len()` is greater than the \
-                    `max_vertex_input_bindings` limit"
+                problem: "`first_binding` is not less than the `max_vertex_input_bindings` limit"
                     .into(),
-                vuids: &[
-                    "VUID-vkCmdBindVertexBuffers-firstBinding-00624",
-                    "VUID-vkCmdBindVertexBuffers-firstBinding-00625",
-                ],
+                vuids: &["VUID-vkCmdBindVertexBuffers2-firstBinding-03355"],
                 ..Default::default()
             }));
         }
 
-        for (vertex_buffers_index, buffer) in vertex_buffers.iter().enumerate() {
-            // VUID-vkCmdBindVertexBuffers-commonparent
+        if buffers.len() > (properties.max_vertex_input_bindings - first_binding) as usize {
+            return Err(Box::new(ValidationError {
+                problem: "`first_binding + buffers.len()` is greater than the \
+                    `max_vertex_input_bindings` limit"
+                    .into(),
+                vuids: &["VUID-vkCmdBindVertexBuffers2-firstBinding-03356"],
+                ..Default::default()
+            }));
+        }
+
+        assert_eq!(offsets.len(), buffers.len());
+
+        for (buffers_index, (&buffer, &offset)) in buffers.iter().zip(offsets).enumerate() {
+            // VUID-vkCmdBindVertexBuffers2-commonparent
             assert_eq!(self.device(), buffer.device());
 
-            if !buffer
-                .buffer()
-                .usage()
-                .intersects(BufferUsage::VERTEX_BUFFER)
-            {
+            if offset >= buffer.size() {
                 return Err(Box::new(ValidationError {
-                    context: format!("vertex_buffers[{}].usage()", vertex_buffers_index).into(),
-                    problem: "does not contain `BufferUsage::VERTEX_BUFFER`".into(),
-                    vuids: &["VUID-vkCmdBindVertexBuffers-pBuffers-00627"],
+                    context: format!("offsets[{}]", buffers_index).into(),
+                    problem: format!("is not less than `buffers[{}].size()`", buffers_index).into(),
+                    vuids: &["VUID-vkCmdBindVertexBuffers2-pOffsets-03357"],
                     ..Default::default()
                 }));
+            }
+
+            if !buffer.usage().intersects(BufferUsage::VERTEX_BUFFER) {
+                return Err(Box::new(ValidationError {
+                    context: format!("buffers[{}].usage()", buffers_index).into(),
+                    problem: "does not contain `BufferUsage::VERTEX_BUFFER`".into(),
+                    vuids: &["VUID-vkCmdBindVertexBuffers2-pBuffers-03359"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !sizes.is_empty() {
+            assert_eq!(sizes.len(), buffers.len());
+
+            for (buffers_index, ((&buffer, &offset), &size)) in
+                buffers.iter().zip(offsets).zip(sizes).enumerate()
+            {
+                if size > buffer.size() - offset {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`offsets[{0}] + sizes[{0}]` is greater than `buffers[{0}].size()`",
+                            buffers_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdBindVertexBuffers2-pBuffers-03359"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if !strides.is_empty() {
+            assert_eq!(strides.len(), buffers.len());
+
+            for (buffers_index, &stride) in strides.iter().enumerate() {
+                if stride > properties.max_vertex_input_binding_stride as DeviceSize {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`strides[{}]` is greater than the `max_vertex_input_binding_stride` \
+                            limit",
+                            buffers_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdBindVertexBuffers2-pStrides-03362"],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
@@ -607,9 +712,12 @@ impl RecordingCommandBuffer {
     pub unsafe fn bind_vertex_buffers_unchecked(
         &mut self,
         first_binding: u32,
-        vertex_buffers: &[Subbuffer<[u8]>],
+        buffers: &[&Buffer],
+        offsets: &[DeviceSize],
+        sizes: &[DeviceSize],
+        strides: &[DeviceSize],
     ) -> &mut Self {
-        if vertex_buffers.is_empty() {
+        if buffers.is_empty() {
             return self;
         }
 
@@ -619,15 +727,10 @@ impl RecordingCommandBuffer {
             || device.enabled_extensions().ext_extended_dynamic_state
             || device.enabled_extensions().ext_shader_object
         {
-            let mut buffers_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
-            let mut offsets_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
-            let mut sizes_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
-
-            for buffer in vertex_buffers {
-                buffers_vk.push(buffer.buffer().handle());
-                offsets_vk.push(buffer.offset());
-                sizes_vk.push(buffer.size());
-            }
+            let buffers_vk = buffers
+                .iter()
+                .map(VulkanObject::handle)
+                .collect::<SmallVec<[_; 2]>>();
 
             let fns = self.device().fns();
             let cmd_bind_vertex_buffers2 = if device.api_version() >= Version::V1_3 {
@@ -644,19 +747,24 @@ impl RecordingCommandBuffer {
                     first_binding,
                     buffers_vk.len() as u32,
                     buffers_vk.as_ptr(),
-                    offsets_vk.as_ptr(),
-                    sizes_vk.as_ptr(),
-                    ptr::null(),
+                    offsets.as_ptr(),
+                    if sizes.is_empty() {
+                        ptr::null()
+                    } else {
+                        sizes.as_ptr()
+                    },
+                    if strides.is_empty() {
+                        ptr::null()
+                    } else {
+                        strides.as_ptr()
+                    },
                 )
             }
         } else {
-            let mut buffers_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
-            let mut offsets_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
-
-            for buffer in vertex_buffers {
-                buffers_vk.push(buffer.buffer().handle());
-                offsets_vk.push(buffer.offset());
-            }
+            let buffers_vk = buffers
+                .iter()
+                .map(VulkanObject::handle)
+                .collect::<SmallVec<[_; 2]>>();
 
             let fns = self.device().fns();
             unsafe {
@@ -665,7 +773,7 @@ impl RecordingCommandBuffer {
                     first_binding,
                     buffers_vk.len() as u32,
                     buffers_vk.as_ptr(),
-                    offsets_vk.as_ptr(),
+                    offsets.as_ptr(),
                 )
             };
         }
@@ -674,27 +782,24 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn push_constants<Pc>(
+    pub unsafe fn push_constants(
         &mut self,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         offset: u32,
-        push_constants: &Pc,
-    ) -> Result<&mut Self, Box<ValidationError>>
-    where
-        Pc: BufferContents,
-    {
-        self.validate_push_constants(pipeline_layout, offset, push_constants)?;
+        values: &(impl BufferContents + ?Sized),
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_push_constants(layout, offset, size_of_val(values).try_into().unwrap())?;
 
-        Ok(unsafe { self.push_constants_unchecked(pipeline_layout, offset, push_constants) })
+        Ok(unsafe { self.push_constants_unchecked(layout, offset, values) })
     }
 
-    pub(crate) fn validate_push_constants<Pc: BufferContents>(
+    pub(crate) fn validate_push_constants(
         &self,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         offset: u32,
-        _push_constants: &Pc,
+        size: u32,
     ) -> Result<(), Box<ValidationError>> {
-        let mut remaining_size = size_of::<Pc>();
+        let mut remaining_size = size as usize;
 
         if offset % 4 != 0 {
             return Err(Box::new(ValidationError {
@@ -707,7 +812,7 @@ impl RecordingCommandBuffer {
 
         if remaining_size % 4 != 0 {
             return Err(Box::new(ValidationError {
-                context: "push_constants".into(),
+                context: "values".into(),
                 problem: "the size is not a multiple of 4".into(),
                 vuids: &["VUID-vkCmdPushConstants-size-00369"],
                 ..Default::default()
@@ -725,10 +830,13 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset as usize + remaining_size > properties.max_push_constants_size as usize {
+        if (offset as usize)
+            .checked_add(remaining_size)
+            .is_none_or(|end| end > properties.max_push_constants_size as usize)
+        {
             return Err(Box::new(ValidationError {
-                problem: "`offset` + the size of `push_constants` is not less than or \
-                    equal to the `max_push_constants_size` limit"
+                problem: "`offset + size_of_val(values)` is greater than the \
+                    `max_push_constants_size` limit"
                     .into(),
                 vuids: &["VUID-vkCmdPushConstants-size-00371"],
                 ..Default::default()
@@ -737,19 +845,19 @@ impl RecordingCommandBuffer {
 
         let mut current_offset = offset as usize;
 
-        for range in pipeline_layout
+        for range in layout
             .push_constant_ranges_disjoint()
             .iter()
             .skip_while(|range| range.offset + range.size <= offset)
         {
-            // there is a gap between ranges, but the passed push_constants contains
-            // some bytes in this gap, exit the loop and report error
+            // There is a gap between ranges, but the passed `values` contain some bytes in this
+            // gap. Exit the loop and report error.
             if range.offset as usize > current_offset {
                 break;
             }
 
-            // push the minimum of the whole remaining data, and the part until the end of this
-            // range
+            // Push the minimum of the whole remaining data and the part until the end of this
+            // range.
             let push_size =
                 remaining_size.min(range.offset as usize + range.size as usize - current_offset);
             current_offset += push_size;
@@ -762,8 +870,8 @@ impl RecordingCommandBuffer {
 
         if remaining_size != 0 {
             return Err(Box::new(ValidationError {
-                problem: "one or more bytes of `push_constants` are not within any push constant \
-                    range of `pipeline_layout`"
+                problem: "one or more bytes of `values` are not within any push constant range of \
+                    `layout`"
                     .into(),
                 vuids: &["VUID-vkCmdPushConstants-offset-01795"],
                 ..Default::default()
@@ -774,17 +882,29 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn push_constants_unchecked<Pc>(
+    pub unsafe fn push_constants_unchecked(
         &mut self,
-        pipeline_layout: &PipelineLayout,
+        layout: &PipelineLayout,
         offset: u32,
-        push_constants: &Pc,
-    ) -> &mut Self
-    where
-        Pc: BufferContents,
-    {
-        let size = u32::try_from(size_of::<Pc>()).unwrap();
+        values: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe {
+            self.push_constants_unchecked_inner(
+                layout,
+                offset,
+                <*const _>::cast(values),
+                size_of_val(values) as u32,
+            )
+        }
+    }
 
+    unsafe fn push_constants_unchecked_inner(
+        &mut self,
+        layout: &PipelineLayout,
+        offset: u32,
+        values: *const c_void,
+        size: u32,
+    ) -> &mut Self {
         if size == 0 {
             return self;
         }
@@ -793,32 +913,32 @@ impl RecordingCommandBuffer {
         let mut current_offset = offset;
         let mut remaining_size = size;
 
-        for range in pipeline_layout
+        for range in layout
             .push_constant_ranges_disjoint()
             .iter()
             .skip_while(|range| range.offset + range.size <= offset)
         {
-            // there is a gap between ranges, but the passed push_constants contains
-            // some bytes in this gap, exit the loop and report error
+            // There is a gap between ranges, but the passed `values` contain some bytes in this
+            // gap.
             if range.offset > current_offset {
-                break;
+                std::process::abort();
             }
 
-            // push the minimum of the whole remaining data, and the part until the end of this
-            // range
+            // Push the minimum of the whole remaining data and the part until the end of this
+            // range.
             let push_size = remaining_size.min(range.offset + range.size - current_offset);
-            let data_offset = (current_offset - offset) as usize;
-            debug_assert!(data_offset < size as usize);
-            let data = unsafe { <*const _>::cast::<c_void>(push_constants).add(data_offset) };
+            let push_offset = (current_offset - offset) as usize;
+            debug_assert!(push_offset < size as usize);
+            let push_values = unsafe { values.add(push_offset) };
 
             unsafe {
                 (fns.v1_0.cmd_push_constants)(
                     self.handle(),
-                    pipeline_layout.handle(),
+                    layout.handle(),
                     range.stages.into(),
                     current_offset,
                     push_size,
-                    data,
+                    push_values,
                 )
             };
 
@@ -830,8 +950,6 @@ impl RecordingCommandBuffer {
             }
         }
 
-        debug_assert!(remaining_size == 0);
-
         self
     }
 
@@ -839,22 +957,17 @@ impl RecordingCommandBuffer {
     pub unsafe fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
-        set_num: u32,
+        pipeline: &PipelineLayout,
+        set: u32,
         descriptor_writes: &[WriteDescriptorSet],
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_push_descriptor_set(
-            pipeline_bind_point,
-            pipeline_layout,
-            set_num,
-            descriptor_writes,
-        )?;
+        self.validate_push_descriptor_set(pipeline_bind_point, pipeline, set, descriptor_writes)?;
 
         Ok(unsafe {
             self.push_descriptor_set_unchecked(
                 pipeline_bind_point,
-                pipeline_layout,
-                set_num,
+                pipeline,
+                set,
                 descriptor_writes,
             )
         })
@@ -863,8 +976,8 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_push_descriptor_set(
         &self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
-        set_num: u32,
+        layout: &PipelineLayout,
+        set: u32,
         descriptor_writes: &[WriteDescriptorSet],
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_extensions().khr_push_descriptor {
@@ -944,9 +1057,9 @@ impl RecordingCommandBuffer {
         }
 
         // VUID-vkCmdPushDescriptorSetKHR-commonparent
-        assert_eq!(self.device(), pipeline_layout.device());
+        assert_eq!(self.device(), layout.device());
 
-        if set_num as usize > pipeline_layout.set_layouts().len() {
+        if set as usize > layout.set_layouts().len() {
             return Err(Box::new(ValidationError {
                 problem: "`set_num` is greater than the number of descriptor set layouts in \
                     `pipeline_layout`"
@@ -956,7 +1069,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+        let descriptor_set_layout = &layout.set_layouts()[set as usize];
 
         if !descriptor_set_layout
             .flags()
@@ -985,15 +1098,15 @@ impl RecordingCommandBuffer {
     pub unsafe fn push_descriptor_set_unchecked(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
-        set_num: u32,
+        layout: &PipelineLayout,
+        set: u32,
         descriptor_writes: &[WriteDescriptorSet],
     ) -> &mut Self {
         if descriptor_writes.is_empty() {
             return self;
         }
 
-        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+        let set_layout = &layout.set_layouts()[set as usize];
         let writes_fields1_vk: SmallVec<[_; 8]> = descriptor_writes
             .iter()
             .map(|write| {
@@ -1029,8 +1142,8 @@ impl RecordingCommandBuffer {
             (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
                 self.handle(),
                 pipeline_bind_point.into(),
-                pipeline_layout.handle(),
-                set_num,
+                layout.handle(),
+                set,
                 writes_vk.len() as u32,
                 writes_vk.as_ptr(),
             )

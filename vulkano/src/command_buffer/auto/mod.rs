@@ -87,7 +87,7 @@ use std::{
 };
 
 mod builder;
-mod commands;
+pub(crate) mod commands;
 
 pub struct PrimaryAutoCommandBuffer {
     inner: CommandBuffer,

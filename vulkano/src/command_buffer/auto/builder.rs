@@ -6,6 +6,7 @@ use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
+        raw,
         sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
@@ -329,13 +330,65 @@ impl<L> AutoCommandBufferBuilder<L> {
         for (command_index, (_, record_func)) in self.commands.iter().enumerate() {
             if let Some(barriers) = barriers.remove(&command_index) {
                 for dependency_info in barriers {
+                    let memory_barriers_raw = dependency_info
+                        .memory_barriers
+                        .iter()
+                        .map(|memory_barrier| raw::MemoryBarrier {
+                            src_stages: memory_barrier.src_stages,
+                            src_access: memory_barrier.src_access,
+                            dst_stages: memory_barrier.dst_stages,
+                            dst_access: memory_barrier.dst_access,
+                            _ne: crate::NE,
+                        })
+                        .collect::<SmallVec<[_; 2]>>();
+                    let buffer_memory_barriers_raw = dependency_info
+                        .buffer_memory_barriers
+                        .iter()
+                        .map(|buffer_memory_barrier| raw::BufferMemoryBarrier {
+                            src_stages: buffer_memory_barrier.src_stages,
+                            src_access: buffer_memory_barrier.src_access,
+                            dst_stages: buffer_memory_barrier.dst_stages,
+                            dst_access: buffer_memory_barrier.dst_access,
+                            queue_family_ownership_transfer: buffer_memory_barrier
+                                .queue_family_ownership_transfer,
+                            buffer: &buffer_memory_barrier.buffer,
+                            offset: buffer_memory_barrier.offset,
+                            size: buffer_memory_barrier.size,
+                            _ne: crate::NE,
+                        })
+                        .collect::<SmallVec<[_; 8]>>();
+                    let image_memory_barriers_raw = dependency_info
+                        .image_memory_barriers
+                        .iter()
+                        .map(|image_memory_barrier| raw::ImageMemoryBarrier {
+                            src_stages: image_memory_barrier.src_stages,
+                            src_access: image_memory_barrier.src_access,
+                            dst_stages: image_memory_barrier.dst_stages,
+                            dst_access: image_memory_barrier.dst_access,
+                            queue_family_ownership_transfer: image_memory_barrier
+                                .queue_family_ownership_transfer,
+                            image: &image_memory_barrier.image,
+                            old_layout: image_memory_barrier.old_layout,
+                            new_layout: image_memory_barrier.new_layout,
+                            subresource_range: image_memory_barrier.subresource_range,
+                            _ne: crate::NE,
+                        })
+                        .collect::<SmallVec<[_; 8]>>();
+                    let dependency_info_raw = raw::DependencyInfo {
+                        dependency_flags: dependency_info.dependency_flags,
+                        memory_barriers: &memory_barriers_raw,
+                        buffer_memory_barriers: &buffer_memory_barriers_raw,
+                        image_memory_barriers: &image_memory_barriers_raw,
+                        _ne: crate::NE,
+                    };
+
                     #[cfg(debug_assertions)]
-                    unsafe { self.inner.pipeline_barrier(&dependency_info) }
+                    unsafe { self.inner.pipeline_barrier(&dependency_info_raw) }
                         .expect("bug in Vulkano");
 
                     #[cfg(not(debug_assertions))]
                     unsafe {
-                        self.inner.pipeline_barrier_unchecked(&dependency_info)
+                        self.inner.pipeline_barrier_unchecked(&dependency_info_raw)
                     };
                 }
             }
@@ -346,12 +399,65 @@ impl<L> AutoCommandBufferBuilder<L> {
         // Record final barriers
         if let Some(final_barriers) = barriers.remove(&final_barrier_index) {
             for dependency_info in final_barriers {
+                let memory_barriers_raw = dependency_info
+                    .memory_barriers
+                    .iter()
+                    .map(|memory_barrier| raw::MemoryBarrier {
+                        src_stages: memory_barrier.src_stages,
+                        src_access: memory_barrier.src_access,
+                        dst_stages: memory_barrier.dst_stages,
+                        dst_access: memory_barrier.dst_access,
+                        _ne: crate::NE,
+                    })
+                    .collect::<SmallVec<[_; 2]>>();
+                let buffer_memory_barriers_raw = dependency_info
+                    .buffer_memory_barriers
+                    .iter()
+                    .map(|buffer_memory_barrier| raw::BufferMemoryBarrier {
+                        src_stages: buffer_memory_barrier.src_stages,
+                        src_access: buffer_memory_barrier.src_access,
+                        dst_stages: buffer_memory_barrier.dst_stages,
+                        dst_access: buffer_memory_barrier.dst_access,
+                        queue_family_ownership_transfer: buffer_memory_barrier
+                            .queue_family_ownership_transfer,
+                        buffer: &buffer_memory_barrier.buffer,
+                        offset: buffer_memory_barrier.offset,
+                        size: buffer_memory_barrier.size,
+                        _ne: crate::NE,
+                    })
+                    .collect::<SmallVec<[_; 8]>>();
+                let image_memory_barriers_raw = dependency_info
+                    .image_memory_barriers
+                    .iter()
+                    .map(|image_memory_barrier| raw::ImageMemoryBarrier {
+                        src_stages: image_memory_barrier.src_stages,
+                        src_access: image_memory_barrier.src_access,
+                        dst_stages: image_memory_barrier.dst_stages,
+                        dst_access: image_memory_barrier.dst_access,
+                        queue_family_ownership_transfer: image_memory_barrier
+                            .queue_family_ownership_transfer,
+                        image: &image_memory_barrier.image,
+                        old_layout: image_memory_barrier.old_layout,
+                        new_layout: image_memory_barrier.new_layout,
+                        subresource_range: image_memory_barrier.subresource_range,
+                        _ne: crate::NE,
+                    })
+                    .collect::<SmallVec<[_; 8]>>();
+                let dependency_info_raw = raw::DependencyInfo {
+                    dependency_flags: dependency_info.dependency_flags,
+                    memory_barriers: &memory_barriers_raw,
+                    buffer_memory_barriers: &buffer_memory_barriers_raw,
+                    image_memory_barriers: &image_memory_barriers_raw,
+                    _ne: crate::NE,
+                };
+
                 #[cfg(debug_assertions)]
-                unsafe { self.inner.pipeline_barrier(&dependency_info) }.expect("bug in Vulkano");
+                unsafe { self.inner.pipeline_barrier(&dependency_info_raw) }
+                    .expect("bug in Vulkano");
 
                 #[cfg(not(debug_assertions))]
                 unsafe {
-                    self.inner.pipeline_barrier_unchecked(&dependency_info)
+                    self.inner.pipeline_barrier_unchecked(&dependency_info_raw)
                 };
             }
         }

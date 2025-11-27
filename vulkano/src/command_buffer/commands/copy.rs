@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferUsage},
     command_buffer::sys::RecordingCommandBuffer,
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
@@ -11,16 +11,13 @@ use crate::{
 };
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::{
-    cmp::{max, min},
-    sync::Arc,
-};
+use std::cmp::{max, min};
 
 impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn copy_buffer(
         &mut self,
-        copy_buffer_info: &CopyBufferInfo,
+        copy_buffer_info: &CopyBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer(copy_buffer_info)?;
 
@@ -29,7 +26,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_copy_buffer(
         &self,
-        copy_buffer_info: &CopyBufferInfo,
+        copy_buffer_info: &CopyBufferInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -53,11 +50,10 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn copy_buffer_unchecked(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
-        if copy_buffer_info.regions.is_empty() {
-            return self;
-        }
-
+    pub unsafe fn copy_buffer_unchecked(
+        &mut self,
+        copy_buffer_info: &CopyBufferInfo<'_>,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -100,7 +96,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn copy_image(
         &mut self,
-        copy_image_info: &CopyImageInfo,
+        copy_image_info: &CopyImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image(copy_image_info)?;
 
@@ -109,7 +105,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_copy_image(
         &self,
-        copy_image_info: &CopyImageInfo,
+        copy_image_info: &CopyImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -130,7 +126,7 @@ impl RecordingCommandBuffer {
             .validate(self.device())
             .map_err(|err| err.add_context("copy_image_info"))?;
 
-        let CopyImageInfo {
+        let &CopyImageInfo {
             src_image,
             src_image_layout: _,
             dst_image,
@@ -403,11 +399,10 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn copy_image_unchecked(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
-        if copy_image_info.regions.is_empty() {
-            return self;
-        }
-
+    pub unsafe fn copy_image_unchecked(
+        &mut self,
+        copy_image_info: &CopyImageInfo<'_>,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -451,7 +446,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn copy_buffer_to_image(
         &mut self,
-        copy_buffer_to_image_info: &CopyBufferToImageInfo,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer_to_image(copy_buffer_to_image_info)?;
 
@@ -460,7 +455,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_copy_buffer_to_image(
         &self,
-        copy_buffer_to_image_info: &CopyBufferToImageInfo,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -483,9 +478,9 @@ impl RecordingCommandBuffer {
 
         let &CopyBufferToImageInfo {
             src_buffer: _,
-            ref dst_image,
+            dst_image,
             dst_image_layout: _,
-            ref regions,
+            regions,
             _ne,
         } = copy_buffer_to_image_info;
 
@@ -568,7 +563,7 @@ impl RecordingCommandBuffer {
                                 graphics operations, but \
                                 `regions[{}].image_subresource.aspects` contains \
                                 `ImageAspects::DEPTH` or `ImageAspects::STENCIL`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-vkCmdCopyBufferToImage2-commandBuffer-07739"],
@@ -676,12 +671,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn copy_buffer_to_image_unchecked(
         &mut self,
-        copy_buffer_to_image_info: &CopyBufferToImageInfo,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
     ) -> &mut Self {
-        if copy_buffer_to_image_info.regions.is_empty() {
-            return self;
-        }
-
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -731,7 +722,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn copy_image_to_buffer(
         &mut self,
-        copy_image_to_buffer_info: &CopyImageToBufferInfo,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image_to_buffer(copy_image_to_buffer_info)?;
 
@@ -740,7 +731,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_copy_image_to_buffer(
         &self,
-        copy_image_to_buffer_info: &CopyImageToBufferInfo,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -762,10 +753,10 @@ impl RecordingCommandBuffer {
             .map_err(|err| err.add_context("copy_image_to_buffer_info"))?;
 
         let &CopyImageToBufferInfo {
-            ref src_image,
+            src_image,
             src_image_layout: _,
             dst_buffer: _,
-            ref regions,
+            regions,
             _ne,
         } = copy_image_to_buffer_info;
 
@@ -825,10 +816,10 @@ impl RecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "create_info".into(),
                         problem: format!(
-                            "the queue family of the command buffer does not support \
-                                graphics or compute operations, but \
-                                `regions[{}].buffer_offset` is not a multiple of 4",
-                            region_index
+                            "the queue family of the command buffer does not support graphics or \
+                            compute operations, but `regions[{}].buffer_offset` is not a multiple \
+                            of 4",
+                            region_index,
                         )
                         .into(),
                         vuids: &["VUID-vkCmdCopyImageToBuffer2-commandBuffer-07746"],
@@ -935,12 +926,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn copy_image_to_buffer_unchecked(
         &mut self,
-        copy_image_to_buffer_info: &CopyImageToBufferInfo,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
     ) -> &mut Self {
-        if copy_image_to_buffer_info.regions.is_empty() {
-            return self;
-        }
-
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -990,7 +977,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn blit_image(
         &mut self,
-        blit_image_info: &BlitImageInfo,
+        blit_image_info: &BlitImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_blit_image(blit_image_info)?;
 
@@ -999,7 +986,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_blit_image(
         &self,
-        blit_image_info: &BlitImageInfo,
+        blit_image_info: &BlitImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -1023,11 +1010,10 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn blit_image_unchecked(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
-        if blit_image_info.regions.is_empty() {
-            return self;
-        }
-
+    pub unsafe fn blit_image_unchecked(
+        &mut self,
+        blit_image_info: &BlitImageInfo<'_>,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -1073,7 +1059,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn resolve_image(
         &mut self,
-        resolve_image_info: &ResolveImageInfo,
+        resolve_image_info: &ResolveImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_resolve_image(resolve_image_info)?;
 
@@ -1082,7 +1068,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_resolve_image(
         &self,
-        resolve_image_info: &ResolveImageInfo,
+        resolve_image_info: &ResolveImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -1108,12 +1094,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn resolve_image_unchecked(
         &mut self,
-        resolve_image_info: &ResolveImageInfo,
+        resolve_image_info: &ResolveImageInfo<'_>,
     ) -> &mut Self {
-        if resolve_image_info.regions.is_empty() {
-            return self;
-        }
-
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -1162,54 +1144,40 @@ impl RecordingCommandBuffer {
 ///
 /// The fields of `regions` represent bytes.
 #[derive(Clone, Debug)]
-pub struct CopyBufferInfo {
+pub struct CopyBufferInfo<'a> {
     /// The buffer to copy from.
     ///
     /// There is no default value.
-    pub src_buffer: Subbuffer<[u8]>,
+    pub src_buffer: &'a Buffer,
 
     /// The buffer to copy to.
     ///
     /// There is no default value.
-    pub dst_buffer: Subbuffer<[u8]>,
+    pub dst_buffer: &'a Buffer,
 
     /// The regions of both buffers to copy between, specified in bytes.
     ///
     /// The default value is a single region, with zero offsets and a `size` equal to the smallest
     /// of the two buffers.
-    pub regions: SmallVec<[BufferCopy; 1]>,
+    pub regions: &'a [BufferCopy<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyBufferInfo {
+impl<'a> CopyBufferInfo<'a> {
     /// Returns a default `CopyBufferInfo` with the provided `src_buffer` and `dst_buffer`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
-        let region = BufferCopy {
-            src_offset: 0,
-            dst_offset: 0,
-            size: min(src_buffer.size(), dst_buffer.size()),
-            ..Default::default()
-        };
-
+    pub const fn new(src_buffer: &'a Buffer, dst_buffer: &'a Buffer) -> Self {
         Self {
-            src_buffer: src_buffer.into_bytes(),
-            dst_buffer: dst_buffer.into_bytes(),
-            regions: smallvec![region],
+            src_buffer,
+            dst_buffer,
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn buffers(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
-        Self::new(src_buffer, dst_buffer)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let Self {
+        let &Self {
             src_buffer,
             dst_buffer,
             regions,
@@ -1220,33 +1188,25 @@ impl CopyBufferInfo {
         assert_eq!(device, src_buffer.device().as_ref());
         assert_eq!(device, dst_buffer.device().as_ref());
 
-        if !src_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_SRC)
-        {
+        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
             return Err(Box::new(ValidationError {
-                context: "src_buffer.buffer().usage()".into(),
+                context: "src_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_SRC`".into(),
                 vuids: &["VUID-VkCopyBufferInfo2-srcBuffer-00118"],
                 ..Default::default()
             }));
         }
 
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(Box::new(ValidationError {
-                context: "dst_buffer.buffer().usage()".into(),
+                context: "dst_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
                 vuids: &["VUID-VkCopyBufferInfo2-dstBuffer-00120"],
                 ..Default::default()
             }));
         }
 
-        let same_buffer = src_buffer.buffer() == dst_buffer.buffer();
+        let same_buffer = src_buffer == dst_buffer;
         let mut overlap_indices = None;
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -1261,12 +1221,15 @@ impl CopyBufferInfo {
                 _ne: _,
             } = region;
 
-            if src_offset + size > src_buffer.size() {
+            if src_offset
+                .checked_add(size)
+                .is_none_or(|end| end > src_buffer.size())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset + regions[{0}].size` is greater than \
                         `src_buffer.size()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &[
@@ -1277,12 +1240,15 @@ impl CopyBufferInfo {
                 }));
             }
 
-            if dst_offset + size > dst_buffer.size() {
+            if dst_offset
+                .checked_add(size)
+                .is_none_or(|end| end > dst_buffer.size())
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset + regions[{0}].size` is greater than \
                         `dst_buffer.size()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &[
@@ -1296,14 +1262,12 @@ impl CopyBufferInfo {
             // VUID-VkCopyBufferInfo2-pRegions-00117
             if same_buffer {
                 let src_region_index = region_index;
-                let src_range =
-                    src_buffer.offset() + src_offset..src_buffer.offset() + src_offset + size;
+                let src_range = src_offset..src_offset + size;
 
                 for (dst_region_index, dst_region) in regions.iter().enumerate() {
                     let &BufferCopy { dst_offset, .. } = dst_region;
 
-                    let dst_range =
-                        dst_buffer.offset() + dst_offset..dst_buffer.offset() + dst_offset + size;
+                    let dst_range = dst_offset..dst_offset + size;
 
                     if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
                         // The regions do not overlap
@@ -1318,9 +1282,9 @@ impl CopyBufferInfo {
         if let Some((src_region_index, dst_region_index)) = overlap_indices {
             return Err(Box::new(ValidationError {
                 problem: format!(
-                    "`src_buffer.buffer()` is equal to `dst_buffer.buffer()`, and \
-                    the source of `regions[{}]` overlaps with the destination of `regions[{}]`",
-                    src_region_index, dst_region_index
+                    "`src_buffer` is equal to `dst_buffer`, and the source of `regions[{}]` \
+                    overlaps with the destination of `regions[{}]`",
+                    src_region_index, dst_region_index,
                 )
                 .into(),
                 vuids: &["VUID-VkCopyBufferInfo2-pRegions-00117"],
@@ -1331,11 +1295,11 @@ impl CopyBufferInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::BufferCopy2<'static>],
     ) -> vk::CopyBufferInfo2<'a> {
-        let Self {
+        let &Self {
             src_buffer,
             dst_buffer,
             regions: _,
@@ -1343,32 +1307,33 @@ impl CopyBufferInfo {
         } = self;
 
         vk::CopyBufferInfo2::default()
-            .src_buffer(src_buffer.buffer().handle())
-            .dst_buffer(dst_buffer.buffer().handle())
+            .src_buffer(src_buffer.handle())
+            .dst_buffer(dst_buffer.handle())
             .regions(regions_vk)
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferCopy2<'static>; 8]> {
-        let Self {
+        let &Self {
             src_buffer,
             dst_buffer,
             regions,
             _ne: _,
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk2();
-                region_vk.src_offset += src_buffer.offset();
-                region_vk.dst_offset += dst_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferCopy2::default()
+                .src_offset(0)
+                .dst_offset(0)
+                .size(min(src_buffer.size(), dst_buffer.size()));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferCopy::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> CopyBufferInfoVk {
-        let Self {
+        let &Self {
             src_buffer,
             dst_buffer,
             regions: _,
@@ -1376,28 +1341,30 @@ impl CopyBufferInfo {
         } = self;
 
         CopyBufferInfoVk {
-            src_buffer_vk: src_buffer.buffer().handle(),
-            dst_buffer_vk: dst_buffer.buffer().handle(),
+            src_buffer_vk: src_buffer.handle(),
+            dst_buffer_vk: dst_buffer.handle(),
         }
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferCopy; 8]> {
-        let Self {
+        let &Self {
             src_buffer,
             dst_buffer,
             regions,
             _ne: _,
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk();
-                region_vk.src_offset += src_buffer.offset();
-                region_vk.dst_offset += dst_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: min(src_buffer.size(), dst_buffer.size()),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferCopy::to_vk).collect()
+        }
     }
 }
 
@@ -1406,82 +1373,9 @@ pub(crate) struct CopyBufferInfoVk {
     pub(crate) dst_buffer_vk: vk::Buffer,
 }
 
-/// Parameters to copy data from a buffer to another buffer, with type information.
-///
-/// The fields of `regions` represent elements of `T`.
-#[derive(Clone, Debug)]
-pub struct CopyBufferInfoTyped<T> {
-    /// The buffer to copy from.
-    ///
-    /// There is no default value.
-    pub src_buffer: Subbuffer<[T]>,
-
-    /// The buffer to copy to.
-    ///
-    /// There is no default value.
-    pub dst_buffer: Subbuffer<[T]>,
-
-    /// The regions of both buffers to copy between, specified in elements of `T`.
-    ///
-    /// The default value is a single region, with zero offsets and a `size` equal to the smallest
-    /// of the two buffers.
-    pub regions: SmallVec<[BufferCopy; 1]>,
-
-    pub _ne: crate::NonExhaustive<'static>,
-}
-
-impl<T> CopyBufferInfoTyped<T> {
-    /// Returns a default `CopyBufferInfoTyped` with the provided `src_buffer` and `dst_buffer`.
-    // TODO: make const
-    #[inline]
-    pub fn new(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
-        let region = BufferCopy {
-            size: min(src_buffer.len(), dst_buffer.len()),
-            ..Default::default()
-        };
-
-        Self {
-            src_buffer,
-            dst_buffer,
-            regions: smallvec![region],
-            _ne: crate::NE,
-        }
-    }
-
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn buffers(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
-        Self::new(src_buffer, dst_buffer)
-    }
-}
-
-impl<T> From<CopyBufferInfoTyped<T>> for CopyBufferInfo {
-    fn from(typed: CopyBufferInfoTyped<T>) -> Self {
-        let CopyBufferInfoTyped {
-            src_buffer,
-            dst_buffer,
-            mut regions,
-            _ne: _,
-        } = typed;
-
-        for region in &mut regions {
-            region.src_offset *= size_of::<T>() as DeviceSize;
-            region.dst_offset *= size_of::<T>() as DeviceSize;
-            region.size *= size_of::<T>() as DeviceSize;
-        }
-
-        Self {
-            src_buffer: src_buffer.as_bytes().clone(),
-            dst_buffer: dst_buffer.as_bytes().clone(),
-            regions,
-            _ne: crate::NE,
-        }
-    }
-}
-
 /// A region of data to copy between buffers.
 #[derive(Clone, Debug)]
-pub struct BufferCopy {
+pub struct BufferCopy<'a> {
     /// The offset in bytes or elements from the start of `src_buffer` that copying will
     /// start from.
     ///
@@ -1499,17 +1393,17 @@ pub struct BufferCopy {
     /// The default value is `0`, which must be overridden.
     pub size: DeviceSize,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for BufferCopy {
+impl Default for BufferCopy<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BufferCopy {
+impl BufferCopy<'_> {
     /// Returns a default `BufferCopy`.
     #[inline]
     pub const fn new() -> Self {
@@ -1573,11 +1467,11 @@ impl BufferCopy {
 
 /// Parameters to copy data from an image to another image.
 #[derive(Clone, Debug)]
-pub struct CopyImageInfo {
+pub struct CopyImageInfo<'a> {
     /// The image to copy from.
     ///
     /// There is no default value.
-    pub src_image: Arc<Image>,
+    pub src_image: &'a Image,
 
     /// The layout used for `src_image` during the copy operation.
     ///
@@ -1591,7 +1485,7 @@ pub struct CopyImageInfo {
     /// The image to copy to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<Image>,
+    pub dst_image: &'a Image,
 
     /// The layout used for `dst_image` during the copy operation.
     ///
@@ -1607,62 +1501,32 @@ pub struct CopyImageInfo {
     /// The default value is a single region, covering the first mip level, and the smallest of the
     /// array layers and extent of the two images. All aspects of each image are selected, or
     /// `plane0` if the image is multi-planar.
-    pub regions: SmallVec<[ImageCopy; 1]>,
+    pub regions: &'a [ImageCopy<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyImageInfo {
+impl<'a> CopyImageInfo<'a> {
     /// Returns a default `CopyImageInfo` with the provided `src_image` and `dst_image`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
-        let region = ImageCopy {
-            src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..src_image.subresource_layers()
-            },
-            dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..dst_image.subresource_layers()
-            },
-            extent: {
-                let src_extent = src_image.extent();
-                let dst_extent = dst_image.extent();
-
-                [
-                    src_extent[0].min(dst_extent[0]),
-                    src_extent[1].min(dst_extent[1]),
-                    src_extent[2].min(dst_extent[2]),
-                ]
-            },
-            ..Default::default()
-        };
-
+    pub fn new(src_image: &'a Image, dst_image: &'a Image) -> Self {
         Self {
             src_image,
             src_image_layout: ImageLayout::TransferSrcOptimal,
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
-            regions: smallvec![region],
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        Self::new(src_image, dst_image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
-            ref regions,
+            regions,
             _ne: _,
         } = self;
 
@@ -1815,7 +1679,7 @@ impl CopyImageInfo {
                     problem: format!(
                         "`regions[{}].src_subresource.mip_level` is not less than \
                         `src_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07967"],
@@ -1833,7 +1697,7 @@ impl CopyImageInfo {
                         problem: format!(
                             "`regions[{}].src_subresource.aspects` is not a subset of \
                             `src_image.format().aspects()`",
-                            region_index
+                            region_index,
                         )
                         .into(),
                         vuids: &["VUID-VkCopyImageInfo2-aspectMask-00142"],
@@ -1988,10 +1852,10 @@ impl CopyImageInfo {
                 }
             }
 
-            if !src_subresource
+            if src_subresource
                 .base_array_layer
                 .checked_add(src_subresource.layer_count)
-                .is_some_and(|end| end <= src_image.array_layers())
+                .is_none_or(|end| end > src_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -2006,7 +1870,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if src_offset[0] + extent[0] > src_subresource_extent[0] {
+            if src_offset[0]
+                .checked_add(extent[0])
+                .is_none_or(|end| end > src_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[0] + regions[{0}].extent[0]` is greater \
@@ -2020,7 +1887,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if src_offset[1] + extent[1] > src_subresource_extent[1] {
+            if src_offset[1]
+                .checked_add(extent[1])
+                .is_none_or(|end| end > src_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[1] + regions[{0}].extent[1]` is greater \
@@ -2034,7 +1904,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if src_offset[2] + extent[2] > src_subresource_extent[2] {
+            if src_offset[2]
+                .checked_add(extent[2])
+                .is_none_or(|end| end > src_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[2] + regions[{0}].extent[2]` is greater \
@@ -2190,7 +2063,7 @@ impl CopyImageInfo {
                     problem: format!(
                         "`regions[{}].dst_subresource.mip_level` is not less than \
                         `dst_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07967"],
@@ -2208,7 +2081,7 @@ impl CopyImageInfo {
                         problem: format!(
                             "`regions[{}].dst_subresource.aspects` is not a subset of \
                             `dst_image.format().aspects()`",
-                            region_index
+                            region_index,
                         )
                         .into(),
                         vuids: &["VUID-VkCopyImageInfo2-aspectMask-00143"],
@@ -2363,10 +2236,10 @@ impl CopyImageInfo {
                 }
             }
 
-            if !dst_subresource
+            if dst_subresource
                 .base_array_layer
                 .checked_add(dst_subresource.layer_count)
-                .is_some_and(|end| end <= dst_image.array_layers())
+                .is_none_or(|end| end > dst_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -2381,7 +2254,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if dst_offset[0] + extent[0] > dst_subresource_extent[0] {
+            if dst_offset[0]
+                .checked_add(extent[0])
+                .is_none_or(|end| end > dst_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[0] + regions[{0}].extent[0]` is greater \
@@ -2395,7 +2271,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if dst_offset[1] + extent[1] > dst_subresource_extent[1] {
+            if dst_offset[1]
+                .checked_add(extent[1])
+                .is_none_or(|end| end > dst_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[1] + regions[{0}].extent[1]` is greater \
@@ -2409,7 +2288,10 @@ impl CopyImageInfo {
                 }));
             }
 
-            if dst_offset[2] + extent[2] > dst_subresource_extent[2] {
+            if dst_offset[2]
+                .checked_add(extent[2])
+                .is_none_or(|end| end > dst_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[2] + regions[{0}].extent[2]` is greater \
@@ -2572,7 +2454,7 @@ impl CopyImageInfo {
                                 multi-planar formats, but \
                                 `regions[{0}].src_subresource.aspects` does not equal \
                                 `regions[{0}].dst_subresource.aspects`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-srcImage-01551"],
@@ -2600,7 +2482,7 @@ impl CopyImageInfo {
                                 `dst_image.format()` is not a multi-planar format, but \
                                 `regions[{}].dst_subresource.aspects` is not \
                                 `ImageAspects::COLOR`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-srcImage-01556"],
@@ -2616,7 +2498,7 @@ impl CopyImageInfo {
                                 the block size of the plane of `src_image.format()` selected by \
                                 `regions[{}].src_subresource.aspects` does not equal \
                                 `dst_image.format().block_size()`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-None-01549"],
@@ -2632,7 +2514,7 @@ impl CopyImageInfo {
                                 `dst_image.format()` is a multi-planar format, but \
                                 `regions[{}].src_subresource.aspects` is not \
                                 `ImageAspects::COLOR`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-dstImage-01557"],
@@ -2648,7 +2530,7 @@ impl CopyImageInfo {
                                 `src_image.format().block_size()` does not equal \
                                 the block size of the plane of `dst_image.format()` selected by \
                                 `regions[{}].dst_subresource.aspects`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-None-01549"],
@@ -2666,7 +2548,7 @@ impl CopyImageInfo {
                                 `regions[{0}].src_subresource.aspects` does not equal \
                                 the block size of the plane of `dst_image.format()` selected by \
                                 `regions[{0}].dst_subresource.aspects`",
-                                region_index
+                                region_index,
                             )
                             .into(),
                             vuids: &["VUID-VkCopyImageInfo2-None-01549"],
@@ -2820,7 +2702,7 @@ impl CopyImageInfo {
                     overlaps with `regions[{1}].dst_subresource`, but \
                     the `src_offset` and `extent` of `regions[{0}]` overlaps with \
                     the `dst_offset` and `extent` of `regions[{1}]`",
-                    src_region_index, dst_region_index
+                    src_region_index, dst_region_index,
                 )
                 .into(),
                 vuids: &["VUID-VkCopyImageInfo2-pRegions-00124"],
@@ -2835,7 +2717,7 @@ impl CopyImageInfo {
                         "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
                         overlaps with `regions[{1}].dst_subresource`, but \
                         `src_image_layout` does not equal `dst_image_layout`",
-                        src_region_index, dst_region_index
+                        src_region_index, dst_region_index,
                     )
                     .into(),
                     vuids: &[
@@ -2850,14 +2732,14 @@ impl CopyImageInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::ImageCopy2<'static>],
     ) -> vk::CopyImageInfo2<'a> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
@@ -2872,14 +2754,45 @@ impl CopyImageInfo {
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageCopy2<'static>; 8]> {
-        self.regions.iter().map(ImageCopy::to_vk2).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let src_extent = src_image.extent();
+            let dst_extent = dst_image.extent();
+            let region_vk = vk::ImageCopy2::default()
+                .src_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                })
+                .src_offset(convert_offset([0; 3]))
+                .dst_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..dst_image.subresource_layers().to_vk()
+                })
+                .dst_offset(convert_offset([0; 3]))
+                .extent(convert_extent([
+                    min(src_extent[0], dst_extent[0]),
+                    min(src_extent[1], dst_extent[1]),
+                    min(src_extent[2], dst_extent[2]),
+                ]));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageCopy::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> CopyImageInfoVk {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
@@ -2894,7 +2807,39 @@ impl CopyImageInfo {
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageCopy; 8]> {
-        self.regions.iter().map(ImageCopy::to_vk).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let src_extent = src_image.extent();
+            let dst_extent = dst_image.extent();
+            let region_vk = vk::ImageCopy {
+                src_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                },
+                src_offset: convert_offset([0; 3]),
+                dst_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..dst_image.subresource_layers().to_vk()
+                },
+                dst_offset: convert_offset([0; 3]),
+                extent: convert_extent([
+                    min(src_extent[0], dst_extent[0]),
+                    min(src_extent[1], dst_extent[1]),
+                    min(src_extent[2], dst_extent[2]),
+                ]),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageCopy::to_vk).collect()
+        }
     }
 }
 
@@ -2907,7 +2852,7 @@ pub(crate) struct CopyImageInfoVk {
 
 /// A region of data to copy between images.
 #[derive(Clone, Debug)]
-pub struct ImageCopy {
+pub struct ImageCopy<'a> {
     /// The subresource of `src_image` to copy from.
     ///
     /// The default value is [`ImageSubresourceLayers::default()`].
@@ -2933,17 +2878,17 @@ pub struct ImageCopy {
     /// The default value is `[0; 3]`, which must be overridden.
     pub extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageCopy {
+impl Default for ImageCopy<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageCopy {
+impl ImageCopy<'_> {
     /// Returns a default `ImageCopy`.
     #[inline]
     pub const fn new() -> Self {
@@ -3094,16 +3039,16 @@ impl ImageCopy {
 
 /// Parameters to copy data from a buffer to an image.
 #[derive(Clone, Debug)]
-pub struct CopyBufferToImageInfo {
+pub struct CopyBufferToImageInfo<'a> {
     /// The buffer to copy from.
     ///
     /// There is no default value.
-    pub src_buffer: Subbuffer<[u8]>,
+    pub src_buffer: &'a Buffer,
 
     /// The image to copy to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<Image>,
+    pub dst_image: &'a Image,
 
     /// The layout used for `dst_image` during the copy operation.
     ///
@@ -3118,44 +3063,31 @@ pub struct CopyBufferToImageInfo {
     ///
     /// The default value is a single region, covering all of the buffer and the first mip level of
     /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
-    pub regions: SmallVec<[BufferImageCopy; 1]>,
+    pub regions: &'a [BufferImageCopy<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyBufferToImageInfo {
+impl<'a> CopyBufferToImageInfo<'a> {
     /// Returns a default `CopyBufferToImageInfo` with the provided `src_buffer` and
     /// `dst_image`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
-        let region = BufferImageCopy {
-            image_subresource: dst_image.subresource_layers(),
-            image_extent: dst_image.extent(),
-            ..Default::default()
-        };
-
+    pub const fn new(src_buffer: &'a Buffer, dst_image: &'a Image) -> Self {
         Self {
-            src_buffer: src_buffer.into_bytes(),
+            src_buffer,
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
-            regions: smallvec![region],
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn buffer_image(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
-        Self::new(src_buffer, dst_image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_buffer,
-            ref dst_image,
+            src_buffer,
+            dst_image,
             dst_image_layout,
-            ref regions,
+            regions,
             _ne: _,
         } = self;
 
@@ -3177,13 +3109,9 @@ impl CopyBufferToImageInfo {
                 s.subsampled_extent(dst_image.extent())
             });
 
-        if !src_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_SRC)
-        {
+        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
             return Err(Box::new(ValidationError {
-                context: "src_buffer.buffer().usage()".into(),
+                context: "src_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_SRC`".into(),
                 vuids: &["VUID-VkCopyBufferToImageInfo2-srcBuffer-00174"],
                 ..Default::default()
@@ -3259,7 +3187,7 @@ impl CopyBufferToImageInfo {
                     problem: format!(
                         "`regions[{}].image_subresource.mip_level` is not less than \
                         `dst_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-01701"],
@@ -3277,7 +3205,7 @@ impl CopyBufferToImageInfo {
                         problem: format!(
                             "`regions[{}].image_subresource.aspects` is not a subset of \
                             `dst_image.format().aspects()`",
-                            region_index
+                            region_index,
                         )
                         .into(),
                         vuids: &["VUID-VkCopyBufferToImageInfo2-aspectMask-00211"],
@@ -3443,10 +3371,10 @@ impl CopyBufferToImageInfo {
                 }
             }
 
-            if !image_subresource
+            if image_subresource
                 .base_array_layer
                 .checked_add(image_subresource.layer_count)
-                .is_some_and(|end| end <= dst_image.array_layers())
+                .is_none_or(|end| end > dst_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -3461,7 +3389,10 @@ impl CopyBufferToImageInfo {
                 }));
             }
 
-            if image_offset[0] + image_extent[0] > image_subresource_extent[0] {
+            if image_offset[0]
+                .checked_add(image_extent[0])
+                .is_none_or(|end| end > image_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is greater \
@@ -3475,7 +3406,10 @@ impl CopyBufferToImageInfo {
                 }));
             }
 
-            if image_offset[1] + image_extent[1] > image_subresource_extent[1] {
+            if image_offset[1]
+                .checked_add(image_extent[1])
+                .is_none_or(|end| end > image_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is greater \
@@ -3489,7 +3423,10 @@ impl CopyBufferToImageInfo {
                 }));
             }
 
-            if image_offset[2] + image_extent[2] > image_subresource_extent[2] {
+            if image_offset[2]
+                .checked_add(image_extent[2])
+                .is_none_or(|end| end > image_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is greater \
@@ -3611,28 +3548,23 @@ impl CopyBufferToImageInfo {
             let image_subresource_format_block_size = image_subresource_format.block_size();
 
             if dst_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
-                if (src_buffer.offset() + buffer_offset) % 4 != 0 {
+                if buffer_offset % 4 != 0 {
                     return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`dst_image.format()` is a depth/stencil format, but \
-                            `src_buffer.offset() + regions[{0}].buffer_offset` is not a \
-                            multiple of 4",
-                            region_index,
-                        )
-                        .into(),
+                        problem: "`dst_image.format()` is a depth/stencil format, but \
+                            `buffer_offset` is not a multiple of 4"
+                            .into(),
                         vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07978"],
                         ..Default::default()
                     }));
                 }
             } else {
-                if (src_buffer.offset() + buffer_offset) % image_subresource_format_block_size != 0
-                {
+                if buffer_offset % image_subresource_format_block_size != 0 {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`dst_image.format()` is not a depth/stencil format, but \
-                            `src_buffer.offset() + regions[{0}].buffer_offset` is not a \
-                            multiple of the block size of the format of the subresource of \
-                            `dst_image` selected by `regions[{0}].image_subresource`",
+                            `buffer_offset` is not a multiple of the block size of the format of \
+                            the subresource of `dst_image` selected by \
+                            `regions[{0}].image_subresource`",
                             region_index,
                         )
                         .into(),
@@ -3691,7 +3623,10 @@ impl CopyBufferToImageInfo {
                 }));
             }
 
-            if buffer_offset + region.buffer_copy_size(image_subresource_format) > src_buffer.size()
+            if region
+                .buffer_copy_size(image_subresource_format)
+                .and_then(|copy_size| buffer_offset.checked_add(copy_size))
+                .is_none_or(|end| end > src_buffer.size())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -3715,73 +3650,80 @@ impl CopyBufferToImageInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::BufferImageCopy2<'static>],
     ) -> vk::CopyBufferToImageInfo2<'a> {
         let &Self {
-            ref src_buffer,
-            ref dst_image,
+            src_buffer,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
         } = self;
 
         vk::CopyBufferToImageInfo2::default()
-            .src_buffer(src_buffer.buffer().handle())
+            .src_buffer(src_buffer.handle())
             .dst_image(dst_image.handle())
             .dst_image_layout(dst_image_layout.into())
             .regions(regions_vk)
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferImageCopy2<'static>; 8]> {
-        let Self {
-            src_buffer,
-            regions,
-            ..
+        let &Self {
+            dst_image, regions, ..
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk2();
-                region_vk.buffer_offset += src_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferImageCopy2::default()
+                .buffer_offset(0)
+                .buffer_row_length(0)
+                .buffer_image_height(0)
+                .image_subresource(dst_image.subresource_layers().to_vk())
+                .image_offset(convert_offset([0; 3]))
+                .image_extent(convert_extent(dst_image.extent()));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferImageCopy::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> CopyBufferToImageInfoVk {
         let &Self {
-            ref src_buffer,
-            ref dst_image,
+            src_buffer,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
         } = self;
 
         CopyBufferToImageInfoVk {
-            src_buffer_vk: src_buffer.buffer().handle(),
+            src_buffer_vk: src_buffer.handle(),
             dst_image_vk: dst_image.handle(),
             dst_image_layout_vk: dst_image_layout.into(),
         }
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferImageCopy; 8]> {
-        let Self {
-            src_buffer,
-            regions,
-            ..
+        let &Self {
+            dst_image, regions, ..
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk();
-                region_vk.buffer_offset += src_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: 0,
+                buffer_image_height: 0,
+                image_subresource: dst_image.subresource_layers().to_vk(),
+                image_offset: convert_offset([0; 3]),
+                image_extent: convert_extent(dst_image.extent()),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferImageCopy::to_vk).collect()
+        }
     }
 }
 
@@ -3793,11 +3735,11 @@ pub(crate) struct CopyBufferToImageInfoVk {
 
 /// Parameters to copy data from an image to a buffer.
 #[derive(Clone, Debug)]
-pub struct CopyImageToBufferInfo {
+pub struct CopyImageToBufferInfo<'a> {
     /// The image to copy from.
     ///
     /// There is no default value.
-    pub src_image: Arc<Image>,
+    pub src_image: &'a Image,
 
     /// The layout used for `src_image` during the copy operation.
     ///
@@ -3811,50 +3753,37 @@ pub struct CopyImageToBufferInfo {
     /// The buffer to copy to.
     ///
     /// There is no default value.
-    pub dst_buffer: Subbuffer<[u8]>,
+    pub dst_buffer: &'a Buffer,
 
     /// The regions of the image and buffer to copy between.
     ///
     /// The default value is a single region, covering all of the buffer and the first mip level of
     /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
-    pub regions: SmallVec<[BufferImageCopy; 1]>,
+    pub regions: &'a [BufferImageCopy<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyImageToBufferInfo {
+impl<'a> CopyImageToBufferInfo<'a> {
     /// Returns a default `CopyImageToBufferInfo` with the provided `src_image` and
     /// `dst_buffer`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
-        let region = BufferImageCopy {
-            image_subresource: src_image.subresource_layers(),
-            image_extent: src_image.extent(),
-            ..Default::default()
-        };
-
+    pub const fn new(src_image: &'a Image, dst_buffer: &'a Buffer) -> Self {
         Self {
             src_image,
             src_image_layout: ImageLayout::TransferSrcOptimal,
-            dst_buffer: dst_buffer.into_bytes(),
-            regions: smallvec![region],
+            dst_buffer,
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn image_buffer(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
-        Self::new(src_image, dst_buffer)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_buffer,
-            ref regions,
+            dst_buffer,
+            regions,
             _ne: _,
         } = self;
 
@@ -3876,13 +3805,9 @@ impl CopyImageToBufferInfo {
                 s.subsampled_extent(src_image.extent())
             });
 
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(Box::new(ValidationError {
-                context: "dst_buffer.buffer().usage()".into(),
+                context: "dst_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
                 vuids: &["VUID-VkCopyImageToBufferInfo2-dstBuffer-00191"],
                 ..Default::default()
@@ -3958,7 +3883,7 @@ impl CopyImageToBufferInfo {
                     problem: format!(
                         "`regions[{}].image_subresource.mip_level` is not less than \
                         `src_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07967"],
@@ -3976,7 +3901,7 @@ impl CopyImageToBufferInfo {
                         problem: format!(
                             "`regions[{}].image_subresource.aspects` is not a subset of \
                             `src_image.format().aspects()`",
-                            region_index
+                            region_index,
                         )
                         .into(),
                         vuids: &["VUID-VkCopyImageToBufferInfo2-aspectMask-00211"],
@@ -4142,10 +4067,10 @@ impl CopyImageToBufferInfo {
                 }
             }
 
-            if !image_subresource
+            if image_subresource
                 .base_array_layer
                 .checked_add(image_subresource.layer_count)
-                .is_some_and(|end| end <= src_image.array_layers())
+                .is_none_or(|end| end > src_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -4160,7 +4085,10 @@ impl CopyImageToBufferInfo {
                 }));
             }
 
-            if image_offset[0] + image_extent[0] > image_subresource_extent[0] {
+            if image_offset[0]
+                .checked_add(image_extent[0])
+                .is_none_or(|end| end > image_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is greater \
@@ -4174,7 +4102,10 @@ impl CopyImageToBufferInfo {
                 }));
             }
 
-            if image_offset[1] + image_extent[1] > image_subresource_extent[1] {
+            if image_offset[1]
+                .checked_add(image_extent[1])
+                .is_none_or(|end| end > image_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is greater \
@@ -4188,7 +4119,10 @@ impl CopyImageToBufferInfo {
                 }));
             }
 
-            if image_offset[2] + image_extent[2] > image_subresource_extent[2] {
+            if image_offset[2]
+                .checked_add(image_extent[2])
+                .is_none_or(|end| end > image_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is greater \
@@ -4310,28 +4244,23 @@ impl CopyImageToBufferInfo {
             let image_subresource_format_block_size = image_subresource_format.block_size();
 
             if src_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
-                if (dst_buffer.offset() + buffer_offset) % 4 != 0 {
+                if buffer_offset % 4 != 0 {
                     return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`src_image.format()` is a depth/stencil format, but \
-                            `dst_buffer.offset() + regions[{0}].buffer_offset` is not a \
-                            multiple of 4",
-                            region_index,
-                        )
-                        .into(),
+                        problem: "`src_image.format()` is a depth/stencil format, but \
+                            `buffer_offset` is not a multiple of 4"
+                            .into(),
                         vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07978"],
                         ..Default::default()
                     }));
                 }
             } else {
-                if (dst_buffer.offset() + buffer_offset) % image_subresource_format_block_size != 0
-                {
+                if buffer_offset % image_subresource_format_block_size != 0 {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`src_image.format()` is not a depth/stencil format, but \
-                            `dst_buffer.offset() + regions[{0}].buffer_offset` is not a \
-                            multiple of the block size of the format of the subresource of \
-                            `src_image` selected by `regions[{0}].image_subresource`",
+                            `buffer_offset` is not a multiple of the block size of the format of \
+                            the subresource of `src_image` selected by \
+                            `regions[{0}].image_subresource`",
                             region_index,
                         )
                         .into(),
@@ -4390,7 +4319,10 @@ impl CopyImageToBufferInfo {
                 }));
             }
 
-            if buffer_offset + region.buffer_copy_size(image_subresource_format) > dst_buffer.size()
+            if region
+                .buffer_copy_size(image_subresource_format)
+                .and_then(|copy_size| buffer_offset.checked_add(copy_size))
+                .is_none_or(|end| end > dst_buffer.size())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -4411,14 +4343,14 @@ impl CopyImageToBufferInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::BufferImageCopy2<'static>],
     ) -> vk::CopyImageToBufferInfo2<'a> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_buffer,
+            dst_buffer,
             regions: _,
             _ne: _,
         } = self;
@@ -4426,32 +4358,35 @@ impl CopyImageToBufferInfo {
         vk::CopyImageToBufferInfo2::default()
             .src_image(src_image.handle())
             .src_image_layout(src_image_layout.into())
-            .dst_buffer(dst_buffer.buffer().handle())
+            .dst_buffer(dst_buffer.handle())
             .regions(regions_vk)
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::BufferImageCopy2<'static>; 8]> {
-        let Self {
-            dst_buffer,
-            regions,
-            ..
+        let &Self {
+            src_image, regions, ..
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk2();
-                region_vk.buffer_offset += dst_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferImageCopy2::default()
+                .buffer_offset(0)
+                .buffer_row_length(0)
+                .buffer_image_height(0)
+                .image_subresource(src_image.subresource_layers().to_vk())
+                .image_offset(convert_offset([0; 3]))
+                .image_extent(convert_extent(src_image.extent()));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferImageCopy::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> CopyImageToBufferInfoVk {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_buffer,
+            dst_buffer,
             regions: _,
             _ne: _,
         } = self;
@@ -4459,25 +4394,29 @@ impl CopyImageToBufferInfo {
         CopyImageToBufferInfoVk {
             src_image_vk: src_image.handle(),
             src_image_layout_vk: src_image_layout.into(),
-            dst_buffer_vk: dst_buffer.buffer().handle(),
+            dst_buffer_vk: dst_buffer.handle(),
         }
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::BufferImageCopy; 8]> {
-        let Self {
-            dst_buffer,
-            regions,
-            ..
+        let &Self {
+            src_image, regions, ..
         } = self;
 
-        regions
-            .iter()
-            .map(|region| {
-                let mut region_vk = region.to_vk();
-                region_vk.buffer_offset += dst_buffer.offset();
-                region_vk
-            })
-            .collect()
+        if regions.is_empty() {
+            let region_vk = vk::BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: 0,
+                buffer_image_height: 0,
+                image_subresource: src_image.subresource_layers().to_vk(),
+                image_offset: convert_offset([0; 3]),
+                image_extent: convert_extent(src_image.extent()),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(BufferImageCopy::to_vk).collect()
+        }
     }
 }
 
@@ -4489,7 +4428,7 @@ pub(crate) struct CopyImageToBufferInfoVk {
 
 /// A region of data to copy between a buffer and an image.
 #[derive(Clone, Debug)]
-pub struct BufferImageCopy {
+pub struct BufferImageCopy<'a> {
     /// The offset in bytes from the start of the buffer that copying will start from.
     ///
     /// The default value is `0`.
@@ -4524,17 +4463,17 @@ pub struct BufferImageCopy {
     /// The default value is `[0; 3]`, which must be overridden.
     pub image_extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for BufferImageCopy {
+impl Default for BufferImageCopy<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BufferImageCopy {
+impl BufferImageCopy<'_> {
     /// Returns a default `BufferImageCopy`.
     #[inline]
     pub const fn new() -> Self {
@@ -4551,7 +4490,7 @@ impl BufferImageCopy {
 
     // Following
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
-    pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
+    pub(crate) fn buffer_copy_size(&self, format: Format) -> Option<DeviceSize> {
         let &Self {
             buffer_offset: _,
             mut buffer_row_length,
@@ -4583,13 +4522,15 @@ impl BufferImageCopy {
         image_extent[2] = max(image_extent[2], image_subresource.layer_count);
 
         let blocks_to_last_slice = (image_extent[2] as DeviceSize - 1)
-            * buffer_image_height as DeviceSize
-            * buffer_row_length as DeviceSize;
+            .checked_mul(buffer_image_height as DeviceSize)?
+            .checked_mul(buffer_row_length as DeviceSize)?;
         let blocks_to_last_row =
-            (image_extent[1] as DeviceSize - 1) * buffer_row_length as DeviceSize;
-        let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
+            (image_extent[1] as DeviceSize - 1).checked_mul(buffer_row_length as DeviceSize)?;
+        let num_blocks = blocks_to_last_slice
+            .checked_add(blocks_to_last_row)?
+            .checked_add(image_extent[0] as DeviceSize)?;
 
-        num_blocks * format.block_size()
+        num_blocks.checked_mul(format.block_size())
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -4726,11 +4667,11 @@ impl BufferImageCopy {
 
 /// Parameters to blit image data.
 #[derive(Clone, Debug)]
-pub struct BlitImageInfo {
+pub struct BlitImageInfo<'a> {
     /// The image to blit from.
     ///
     /// There is no default value.
-    pub src_image: Arc<Image>,
+    pub src_image: &'a Image,
 
     /// The layout used for `src_image` during the blit operation.
     ///
@@ -4744,7 +4685,7 @@ pub struct BlitImageInfo {
     /// The image to blit to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<Image>,
+    pub dst_image: &'a Image,
 
     /// The layout used for `dst_image` during the blit operation.
     ///
@@ -4761,7 +4702,7 @@ pub struct BlitImageInfo {
     /// array layers of the two images. The whole extent of each image is covered, scaling if
     /// necessary. All aspects of each image are selected, or `plane0` if the image is
     /// multi-planar.
-    pub regions: SmallVec<[ImageBlit; 1]>,
+    pub regions: &'a [ImageBlit<'a>],
 
     /// The filter to use for sampling `src_image` when the `src_extent` and
     /// `dst_extent` of a region are not the same size.
@@ -4769,53 +4710,31 @@ pub struct BlitImageInfo {
     /// The default value is [`Filter::Nearest`].
     pub filter: Filter,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl BlitImageInfo {
+impl<'a> BlitImageInfo<'a> {
     /// Returns a default `BlitImageInfo` with the provided `src_image` and `dst_image`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
-        let region = ImageBlit {
-            src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..src_image.subresource_layers()
-            },
-            src_offsets: [[0; 3], src_image.extent()],
-            dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..dst_image.subresource_layers()
-            },
-            dst_offsets: [[0; 3], dst_image.extent()],
-            ..Default::default()
-        };
-
+    pub const fn new(src_image: &'a Image, dst_image: &'a Image) -> Self {
         Self {
             src_image,
             src_image_layout: ImageLayout::TransferSrcOptimal,
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
-            regions: smallvec![region],
+            regions: &[],
             filter: Filter::Nearest,
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        Self::new(src_image, dst_image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
-            ref regions,
+            regions,
             filter,
             _ne: _,
         } = self;
@@ -5066,7 +4985,7 @@ impl BlitImageInfo {
                     problem: format!(
                         "`regions[{}].src_subresource.mip_level` is not less than \
                         `src_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01705"],
@@ -5082,7 +5001,7 @@ impl BlitImageInfo {
                     problem: format!(
                         "`regions[{}].src_subresource.aspects` is not a subset of \
                         `src_image.format().aspects()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-aspectMask-00241"],
@@ -5189,10 +5108,10 @@ impl BlitImageInfo {
                 }
             }
 
-            if !src_subresource
+            if src_subresource
                 .base_array_layer
                 .checked_add(src_subresource.layer_count)
-                .is_some_and(|end| end <= src_image.array_layers())
+                .is_none_or(|end| end > src_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -5264,7 +5183,7 @@ impl BlitImageInfo {
                     problem: format!(
                         "`regions[{}].dst_subresource.mip_level` is not less than \
                         `dst_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01705"],
@@ -5280,7 +5199,7 @@ impl BlitImageInfo {
                     problem: format!(
                         "`regions[{}].dst_subresource.aspects` is not a subset of \
                         `dst_image.format().aspects()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkBlitImageInfo2-aspectMask-00242"],
@@ -5527,7 +5446,7 @@ impl BlitImageInfo {
                     overlaps with `regions[{1}].dst_subresource`, but \
                     the `src_offsets` of `regions[{0}]` overlaps with \
                     the `dst_offsets` of `regions[{1}]`",
-                    src_region_index, dst_region_index
+                    src_region_index, dst_region_index,
                 )
                 .into(),
                 vuids: &["VUID-VkBlitImageInfo2-pRegions-00217"],
@@ -5542,7 +5461,7 @@ impl BlitImageInfo {
                         "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
                         overlaps with `regions[{1}].dst_subresource`, but \
                         `src_image_layout` does not equal `dst_image_layout`",
-                        src_region_index, dst_region_index
+                        src_region_index, dst_region_index,
                     )
                     .into(),
                     vuids: &[
@@ -5557,14 +5476,14 @@ impl BlitImageInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::ImageBlit2<'static>],
     ) -> vk::BlitImageInfo2<'a> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             filter,
@@ -5581,14 +5500,38 @@ impl BlitImageInfo {
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageBlit2<'static>; 8]> {
-        self.regions.iter().map(ImageBlit::to_vk2).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let region_vk = vk::ImageBlit2::default()
+                .src_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                })
+                .src_offsets([[0; 3], src_image.extent()].map(convert_offset))
+                .dst_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                })
+                .dst_offsets([[0; 3], dst_image.extent()].map(convert_offset));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageBlit::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> BlitImageInfoVk {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             filter,
@@ -5605,7 +5548,32 @@ impl BlitImageInfo {
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageBlit; 8]> {
-        self.regions.iter().map(ImageBlit::to_vk).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let region_vk = vk::ImageBlit {
+                src_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                },
+                src_offsets: [[0; 3], src_image.extent()].map(convert_offset),
+                dst_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..dst_image.subresource_layers().to_vk()
+                },
+                dst_offsets: [[0; 3], dst_image.extent()].map(convert_offset),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageBlit::to_vk).collect()
+        }
     }
 }
 
@@ -5619,7 +5587,7 @@ pub(crate) struct BlitImageInfoVk {
 
 /// A region of data to blit between images.
 #[derive(Clone, Debug)]
-pub struct ImageBlit {
+pub struct ImageBlit<'a> {
     /// The subresource of `src_image` to blit from.
     ///
     /// The default value is [`ImageSubresourceLayers::default()`].
@@ -5646,17 +5614,17 @@ pub struct ImageBlit {
     /// The default value is `[[0; 3]; 2]`, which must be overridden.
     pub dst_offsets: [[u32; 3]; 2],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageBlit {
+impl Default for ImageBlit<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageBlit {
+impl ImageBlit<'_> {
     /// Returns a default `ImageBlit`.
     #[inline]
     pub const fn new() -> Self {
@@ -5788,11 +5756,11 @@ impl ImageBlit {
 
 /// Parameters to resolve image data.
 #[derive(Clone, Debug)]
-pub struct ResolveImageInfo {
+pub struct ResolveImageInfo<'a> {
     /// The multisampled image to resolve from.
     ///
     /// There is no default value.
-    pub src_image: Arc<Image>,
+    pub src_image: &'a Image,
 
     /// The layout used for `src_image` during the resolve operation.
     ///
@@ -5806,7 +5774,7 @@ pub struct ResolveImageInfo {
     /// The non-multisampled image to resolve into.
     ///
     /// There is no default value.
-    pub dst_image: Arc<Image>,
+    pub dst_image: &'a Image,
 
     /// The layout used for `dst_image` during the resolve operation.
     ///
@@ -5822,62 +5790,32 @@ pub struct ResolveImageInfo {
     /// The default value is a single region, covering the first mip level, and the smallest of the
     /// array layers and extent of the two images. All aspects of each image are selected, or
     /// `plane0` if the image is multi-planar.
-    pub regions: SmallVec<[ImageResolve; 1]>,
+    pub regions: &'a [ImageResolve<'a>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ResolveImageInfo {
+impl<'a> ResolveImageInfo<'a> {
     /// Returns a default `ResolveImageInfo` with the provided `src_image` and `dst_image`.
-    // TODO: make const
     #[inline]
-    pub fn new(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
-        let region = ImageResolve {
-            src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..src_image.subresource_layers()
-            },
-            dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
-                ..dst_image.subresource_layers()
-            },
-            extent: {
-                let src_extent = src_image.extent();
-                let dst_extent = dst_image.extent();
-
-                [
-                    src_extent[0].min(dst_extent[0]),
-                    src_extent[1].min(dst_extent[1]),
-                    src_extent[2].min(dst_extent[2]),
-                ]
-            },
-            ..Default::default()
-        };
-
+    pub const fn new(src_image: &'a Image, dst_image: &'a Image) -> Self {
         Self {
             src_image,
             src_image_layout: ImageLayout::TransferSrcOptimal,
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
-            regions: smallvec![region],
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        Self::new(src_image, dst_image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
-            ref regions,
+            regions,
             _ne: _,
         } = self;
 
@@ -6037,7 +5975,7 @@ impl ResolveImageInfo {
                     problem: format!(
                         "`regions[{}].src_subresource.mip_level` is not less than \
                         `src_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01709"],
@@ -6147,10 +6085,10 @@ impl ResolveImageInfo {
                 }
             }
 
-            if !src_subresource
+            if src_subresource
                 .base_array_layer
                 .checked_add(src_subresource.layer_count)
-                .is_some_and(|end| end <= src_image.array_layers())
+                .is_some_and(|end| end > src_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -6165,7 +6103,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if src_offset[0] + extent[0] > src_subresource_extent[0] {
+            if src_offset[0]
+                .checked_add(extent[0])
+                .is_none_or(|end| end > src_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[0] + regions[{0}].extent[0]` is greater \
@@ -6179,7 +6120,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if src_offset[1] + extent[1] > src_subresource_extent[1] {
+            if src_offset[1]
+                .checked_add(extent[1])
+                .is_none_or(|end| end > src_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[1] + regions[{0}].extent[1]` is greater \
@@ -6193,7 +6137,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if src_offset[2] + extent[2] > src_subresource_extent[2] {
+            if src_offset[2]
+                .checked_add(extent[2])
+                .is_none_or(|end| end > src_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].src_offset[2] + regions[{0}].extent[2]` is greater \
@@ -6216,7 +6163,7 @@ impl ResolveImageInfo {
                     problem: format!(
                         "`regions[{}].dst_subresource.mip_level` is not less than \
                         `dst_image.mip_levels()`",
-                        region_index
+                        region_index,
                     )
                     .into(),
                     vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01710"],
@@ -6326,10 +6273,10 @@ impl ResolveImageInfo {
                 }
             }
 
-            if !dst_subresource
+            if dst_subresource
                 .base_array_layer
                 .checked_add(dst_subresource.layer_count)
-                .is_some_and(|end| end <= dst_image.array_layers())
+                .is_some_and(|end| end > dst_image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -6344,7 +6291,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if dst_offset[0] + extent[0] > dst_subresource_extent[0] {
+            if dst_offset[0]
+                .checked_add(extent[0])
+                .is_none_or(|end| end > dst_subresource_extent[0])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[0] + regions[{0}].extent[0]` is greater \
@@ -6358,7 +6308,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if dst_offset[1] + extent[1] > dst_subresource_extent[1] {
+            if dst_offset[1]
+                .checked_add(extent[1])
+                .is_none_or(|end| end > dst_subresource_extent[1])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[1] + regions[{0}].extent[1]` is greater \
@@ -6372,7 +6325,10 @@ impl ResolveImageInfo {
                 }));
             }
 
-            if dst_offset[2] + extent[2] > dst_subresource_extent[2] {
+            if dst_offset[2]
+                .checked_add(extent[2])
+                .is_none_or(|end| end > dst_subresource_extent[2])
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`regions[{0}].dst_offset[2] + regions[{0}].extent[2]` is greater \
@@ -6394,14 +6350,14 @@ impl ResolveImageInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk2<'a>(
+    pub(crate) fn to_vk2(
         &self,
         regions_vk: &'a [vk::ImageResolve2<'static>],
     ) -> vk::ResolveImageInfo2<'a> {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
@@ -6416,14 +6372,45 @@ impl ResolveImageInfo {
     }
 
     pub(crate) fn to_vk2_regions(&self) -> SmallVec<[vk::ImageResolve2<'static>; 8]> {
-        self.regions.iter().map(ImageResolve::to_vk2).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let src_extent = src_image.extent();
+            let dst_extent = dst_image.extent();
+            let region_vk = vk::ImageResolve2::default()
+                .src_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                })
+                .src_offset(convert_offset([0; 3]))
+                .dst_subresource(vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                })
+                .dst_offset(convert_offset([0; 3]))
+                .extent(convert_extent([
+                    min(src_extent[0], dst_extent[0]),
+                    min(src_extent[1], dst_extent[1]),
+                    min(src_extent[2], dst_extent[2]),
+                ]));
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageResolve::to_vk2).collect()
+        }
     }
 
     pub(crate) fn to_vk(&self) -> ResolveImageInfoVk {
         let &Self {
-            ref src_image,
+            src_image,
             src_image_layout,
-            ref dst_image,
+            dst_image,
             dst_image_layout,
             regions: _,
             _ne: _,
@@ -6438,7 +6425,39 @@ impl ResolveImageInfo {
     }
 
     pub(crate) fn to_vk_regions(&self) -> SmallVec<[vk::ImageResolve; 8]> {
-        self.regions.iter().map(ImageResolve::to_vk).collect()
+        let &Self {
+            src_image,
+            dst_image,
+            regions,
+            ..
+        } = self;
+
+        if regions.is_empty() {
+            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let src_extent = src_image.extent();
+            let dst_extent = dst_image.extent();
+            let region_vk = vk::ImageResolve {
+                src_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..src_image.subresource_layers().to_vk()
+                },
+                src_offset: convert_offset([0; 3]),
+                dst_subresource: vk::ImageSubresourceLayers {
+                    layer_count: min_array_layers,
+                    ..dst_image.subresource_layers().to_vk()
+                },
+                dst_offset: convert_offset([0; 3]),
+                extent: convert_extent([
+                    min(src_extent[0], dst_extent[0]),
+                    min(src_extent[1], dst_extent[1]),
+                    min(src_extent[2], dst_extent[2]),
+                ]),
+            };
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageResolve::to_vk).collect()
+        }
     }
 }
 
@@ -6451,7 +6470,7 @@ pub(crate) struct ResolveImageInfoVk {
 
 /// A region of data to resolve between images.
 #[derive(Clone, Debug)]
-pub struct ImageResolve {
+pub struct ImageResolve<'a> {
     /// The subresource of `src_image` to resolve from.
     ///
     /// The default value is [`ImageSubresourceLayers::default()`].
@@ -6477,17 +6496,17 @@ pub struct ImageResolve {
     /// The default value is `[0; 3]`, which must be overridden.
     pub extent: [u32; 3],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ImageResolve {
+impl Default for ImageResolve<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ImageResolve {
+impl ImageResolve<'_> {
     /// Returns a default `ImageResolve`.
     #[inline]
     pub const fn new() -> Self {
@@ -6607,6 +6626,22 @@ impl ImageResolve {
                 depth: extent[2],
             },
         }
+    }
+}
+
+fn convert_offset(offset: [u32; 3]) -> vk::Offset3D {
+    vk::Offset3D {
+        x: offset[0] as i32,
+        y: offset[1] as i32,
+        z: offset[2] as i32,
+    }
+}
+
+fn convert_extent(extent: [u32; 3]) -> vk::Extent3D {
+    vk::Extent3D {
+        width: extent[0],
+        height: extent[1],
+        depth: extent[2],
     }
 }
 

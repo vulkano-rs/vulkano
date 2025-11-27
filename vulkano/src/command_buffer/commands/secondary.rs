@@ -1,13 +1,13 @@
 use crate::{
     command_buffer::{
         sys::{CommandBuffer, RecordingCommandBuffer},
-        CommandBufferLevel, SecondaryCommandBufferAbstract,
+        CommandBufferLevel,
     },
     device::{DeviceOwned, QueueFlags},
-    SafeDeref, ValidationError, VulkanObject,
+    ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{cmp::min, sync::Arc};
+use std::cmp::min;
 
 impl RecordingCommandBuffer {
     #[inline]
@@ -104,64 +104,5 @@ impl RecordingCommandBuffer {
             .fold(self.usage, min);
 
         self
-    }
-
-    pub(crate) unsafe fn execute_commands_locked(
-        &mut self,
-        command_buffers: &[DropUnlockCommandBuffer],
-    ) -> &mut Self {
-        if command_buffers.is_empty() {
-            return self;
-        }
-
-        let command_buffers_vk: SmallVec<[_; 4]> =
-            command_buffers.iter().map(|cb| cb.handle()).collect();
-
-        let fns = self.device().fns();
-        unsafe {
-            (fns.v1_0.cmd_execute_commands)(
-                self.handle(),
-                command_buffers_vk.len() as u32,
-                command_buffers_vk.as_ptr(),
-            )
-        };
-
-        // If the secondary is non-concurrent or one-time use, that restricts the primary as
-        // well.
-        self.usage = command_buffers
-            .iter()
-            .map(|cb| cb.usage())
-            .fold(self.usage, min);
-
-        self
-    }
-}
-
-pub(crate) struct DropUnlockCommandBuffer(Arc<dyn SecondaryCommandBufferAbstract>);
-
-impl DropUnlockCommandBuffer {
-    pub(crate) fn new(
-        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
-    ) -> Result<Self, Box<ValidationError>> {
-        command_buffer.lock_record()?;
-        Ok(Self(command_buffer))
-    }
-}
-
-impl std::ops::Deref for DropUnlockCommandBuffer {
-    type Target = Arc<dyn SecondaryCommandBufferAbstract>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-unsafe impl SafeDeref for DropUnlockCommandBuffer {}
-
-impl Drop for DropUnlockCommandBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            self.unlock();
-        }
     }
 }

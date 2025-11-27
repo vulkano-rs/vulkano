@@ -2197,11 +2197,12 @@ impl RecordingCommandBuffer {
                 > properties.max_extra_primitive_overestimation_size.unwrap()
         {
             return Err(Box::new(ValidationError {
-                context: "overestimation size".into(),
-                problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
-                vuids: &[
-                    "VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-extraPrimitiveOverestimationSize-07428",
-                ],
+                context: "extra_primitive_overestimation_size".into(),
+                problem: "is not in the range of 0.0 to `max_extra_primitive_overestimation_size` \
+                    inclusive"
+                    .into(),
+                vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-\
+                    extraPrimitiveOverestimationSize-07428"],
                 ..Default::default()
             }));
         }

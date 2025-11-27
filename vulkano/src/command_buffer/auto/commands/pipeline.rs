@@ -151,7 +151,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         indirect_buffer: &Subbuffer<[u8]>,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_dispatch_indirect(indirect_buffer)?;
+        self.inner
+            .validate_dispatch_indirect(indirect_buffer.buffer(), indirect_buffer.offset())?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -201,7 +202,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             "dispatch",
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.dispatch_indirect_unchecked(&indirect_buffer) };
+                unsafe {
+                    out.dispatch_indirect_unchecked(
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                    )
+                };
             },
         );
 
@@ -437,8 +443,12 @@ impl<L> AutoCommandBufferBuilder<L> {
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_draw_indirect(indirect_buffer, draw_count, stride)?;
+        self.inner.validate_draw_indirect(
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            draw_count,
+            stride,
+        )?;
 
         let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -500,7 +510,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             "draw_indirect",
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride) };
+                unsafe {
+                    out.draw_indirect_unchecked(
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        draw_count,
+                        stride,
+                    )
+                };
             },
         );
 
@@ -562,8 +579,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_draw_indirect_count(
-            indirect_buffer,
-            count_buffer,
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            count_buffer.buffer(),
+            count_buffer.offset(),
             max_draw_count,
             stride,
         )?;
@@ -632,8 +651,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
                     out.draw_indirect_count_unchecked(
-                        &indirect_buffer,
-                        &count_buffer,
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        count_buffer.buffer(),
+                        count_buffer.offset(),
                         max_draw_count,
                         stride,
                     )
@@ -931,8 +952,12 @@ impl<L> AutoCommandBufferBuilder<L> {
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
+        self.inner.validate_draw_indexed_indirect(
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            draw_count,
+            stride,
+        )?;
 
         let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -1004,7 +1029,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
-                    out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride)
+                    out.draw_indexed_indirect_unchecked(
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        draw_count,
+                        stride,
+                    )
                 };
             },
         );
@@ -1073,8 +1103,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_draw_indexed_indirect_count(
-            indirect_buffer,
-            count_buffer,
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            count_buffer.buffer(),
+            count_buffer.offset(),
             max_draw_count,
             stride,
         )?;
@@ -1152,8 +1184,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
                     out.draw_indexed_indirect_count_unchecked(
-                        &indirect_buffer,
-                        &count_buffer,
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        count_buffer.buffer(),
+                        count_buffer.offset(),
                         max_draw_count,
                         stride,
                     )
@@ -1387,8 +1421,12 @@ impl<L> AutoCommandBufferBuilder<L> {
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_draw_mesh_tasks_indirect(indirect_buffer, draw_count, stride)?;
+        self.inner.validate_draw_mesh_tasks_indirect(
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            draw_count,
+            stride,
+        )?;
 
         let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -1460,7 +1498,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
-                    out.draw_mesh_tasks_indirect_unchecked(&indirect_buffer, draw_count, stride)
+                    out.draw_mesh_tasks_indirect_unchecked(
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        draw_count,
+                        stride,
+                    )
                 };
             },
         );
@@ -1522,8 +1565,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_draw_mesh_tasks_indirect_count(
-            indirect_buffer,
-            count_buffer,
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+            count_buffer.buffer(),
+            count_buffer.offset(),
             max_draw_count,
             stride,
         )?;
@@ -1601,8 +1646,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
                     out.draw_mesh_tasks_indirect_count_unchecked(
-                        &indirect_buffer,
-                        &count_buffer,
+                        indirect_buffer.buffer(),
+                        indirect_buffer.offset(),
+                        count_buffer.buffer(),
+                        count_buffer.offset(),
                         max_draw_count,
                         stride,
                     )

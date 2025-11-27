@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferUsage},
     command_buffer::{
         sys::RecordingCommandBuffer, DispatchIndirectCommand, DrawIndexedIndirectCommand,
         DrawIndirectCommand, DrawMeshTasksIndirectCommand,
@@ -88,16 +88,18 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
+        self.validate_dispatch_indirect(buffer, offset)?;
 
-        Ok(unsafe { self.dispatch_indirect_unchecked(indirect_buffer) })
+        Ok(unsafe { self.dispatch_indirect_unchecked(buffer, offset) })
     }
 
     pub(crate) fn validate_dispatch_indirect(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -114,33 +116,38 @@ impl RecordingCommandBuffer {
         }
 
         // VUID-vkCmdDispatchIndirect-commonparent
-        assert_eq!(self.device(), indirect_buffer.device());
+        assert_eq!(self.device(), buffer.device());
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDispatchIndirect-buffer-02709"],
                 ..Default::default()
             }));
         }
 
-        if size_of::<DispatchIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+        if offset % 4 != 0 {
             return Err(Box::new(ValidationError {
-                problem: "`size_of::<DrawIndirectCommand>()` is greater than \
-                    `indirect_buffer.size()`"
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-offset-02710"],
+                ..Default::default()
+            }));
+        }
+
+        if offset
+            .checked_add(size_of::<DispatchIndirectCommand>() as DeviceSize)
+            .is_none_or(|end| end > buffer.size())
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`offset + size_of::<DispatchIndirectCommand>()` is greater than \
+                    `buffer.size()`"
                     .into(),
                 vuids: &["VUID-vkCmdDispatchIndirect-offset-00407"],
                 ..Default::default()
             }));
         }
-
-        // VUID-vkCmdDispatchIndirect-offset-02710
-        // TODO:
 
         Ok(())
     }
@@ -148,16 +155,11 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn dispatch_indirect_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
     ) -> &mut Self {
         let fns = self.device().fns();
-        unsafe {
-            (fns.v1_0.cmd_dispatch_indirect)(
-                self.handle(),
-                indirect_buffer.buffer().handle(),
-                indirect_buffer.offset(),
-            )
-        };
+        unsafe { (fns.v1_0.cmd_dispatch_indirect)(self.handle(), buffer.handle(), offset) };
 
         self
     }
@@ -226,18 +228,20 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+        self.validate_draw_indirect(buffer, offset, draw_count, stride)?;
 
-        Ok(unsafe { self.draw_indirect_unchecked(indirect_buffer, draw_count, stride) })
+        Ok(unsafe { self.draw_indirect_unchecked(buffer, offset, draw_count, stride) })
     }
 
     pub(crate) fn validate_draw_indirect(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -255,15 +259,20 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndirect-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndirect-offset-02710"],
                 ..Default::default()
             }));
         }
@@ -282,8 +291,7 @@ impl RecordingCommandBuffer {
 
             if stride % 4 != 0 {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not a multiple of 4"
+                    problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndirect-drawCount-00476"],
                     ..Default::default()
@@ -292,32 +300,37 @@ impl RecordingCommandBuffer {
 
             if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not greater than `size_of::<DrawIndirectCommand>()`"
+                    problem: "`draw_count` is greater than 1, but `stride` is less than \
+                        `size_of::<DrawIndirectCommand>()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndirect-drawCount-00476"],
                     ..Default::default()
                 }));
             }
 
-            if stride as DeviceSize * (draw_count as DeviceSize - 1)
-                + size_of::<DrawIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            if (stride as DeviceSize)
+                .checked_mul(draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| x.checked_add(size_of::<DrawIndirectCommand>() as DeviceSize))
+                .is_none_or(|end| end > buffer.size())
             {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is greater than 1, but \
-                        `stride * (draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
-                        greater than `indirect_buffer.size()`"
+                        `stride * (draw_count - 1) + offset + size_of::<DrawIndirectCommand>()` is \
+                        greater than `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndirect-drawCount-00488"],
                     ..Default::default()
                 }));
             }
         } else {
-            if size_of::<DrawIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            if offset
+                .checked_add(size_of::<DrawIndirectCommand>() as DeviceSize)
+                .is_none_or(|end| end > buffer.size())
+            {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is 1, but `size_of::<DrawIndirectCommand>()` is \
-                        greater than `indirect_buffer.size()`"
+                    problem: "`draw_count` is 1, but `offset + size_of::<DrawIndirectCommand>()` \
+                        is greater than `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndirect-drawCount-00487"],
                     ..Default::default()
@@ -342,19 +355,14 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indirect_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
         let fns = self.device().fns();
         unsafe {
-            (fns.v1_0.cmd_draw_indirect)(
-                self.handle(),
-                indirect_buffer.buffer().handle(),
-                indirect_buffer.offset(),
-                draw_count,
-                stride,
-            )
+            (fns.v1_0.cmd_draw_indirect)(self.handle(), buffer.handle(), offset, draw_count, stride)
         };
 
         self
@@ -363,22 +371,28 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_indirect_count(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw_indirect_count(
-            indirect_buffer.as_bytes(),
-            count_buffer.as_bytes(),
+            buffer,
+            offset,
+            count_buffer,
+            count_buffer_offset,
             max_draw_count,
             stride,
         )?;
 
         Ok(unsafe {
             self.draw_indirect_count_unchecked(
-                indirect_buffer,
+                buffer,
+                offset,
                 count_buffer,
+                count_buffer_offset,
                 max_draw_count,
                 stride,
             )
@@ -387,8 +401,10 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_draw_indirect_count(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
-        count_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -416,21 +432,25 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndirectCount-buffer-02709"],
                 ..Default::default()
             }));
         }
 
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-offset-02710"],
+                ..Default::default()
+            }));
+        }
+
         if !count_buffer
-            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
@@ -438,6 +458,15 @@ impl RecordingCommandBuffer {
                 context: "count_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndirectCount-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if count_buffer_offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer_offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-countBufferOffset-02716"],
                 ..Default::default()
             }));
         }
@@ -454,23 +483,38 @@ impl RecordingCommandBuffer {
         if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
-                problem: "is not greater than `size_of::<DrawIndirectCommand>()`".into(),
+                problem: "is less than `size_of::<DrawIndirectCommand>()`".into(),
                 vuids: &["VUID-vkCmdDrawIndirectCount-stride-03110"],
                 ..Default::default()
             }));
         }
 
         if max_draw_count >= 1
-            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
-                + size_of::<DrawIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            && (stride as DeviceSize)
+                .checked_mul(max_draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| x.checked_add(size_of::<DrawIndirectCommand>() as DeviceSize))
+                .is_none_or(|end| end > buffer.size())
         {
             return Err(Box::new(ValidationError {
                 problem: "`max_draw_count` is equal to or greater than 1, but \
-                    `stride * (max_draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
-                    greater than `indirect_buffer.size()`"
+                    `stride * (max_draw_count - 1) + offset + size_of::<DrawIndirectCommand>()` is \
+                    greater than `buffer.size()`"
                     .into(),
                 vuids: &["VUID-vkCmdDrawIndirectCount-maxDrawCount-03111"],
+                ..Default::default()
+            }));
+        }
+
+        if count_buffer_offset
+            .checked_add(size_of::<u32>() as DeviceSize)
+            .is_none_or(|end| end > count_buffer.size())
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`count_buffer_offset + size_of::<u32>()` is greater than \
+                    `count_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-countBufferOffset-04129"],
                 ..Default::default()
             }));
         }
@@ -481,52 +525,36 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indirect_count_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> &mut Self {
         let device = self.device();
         let fns = device.fns();
-
-        if device.api_version() >= Version::V1_2 {
-            unsafe {
-                (fns.v1_2.cmd_draw_indirect_count)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
+        let cmd_draw_indirect_count = if device.api_version() >= Version::V1_2 {
+            fns.v1_2.cmd_draw_indirect_count
         } else if device.enabled_extensions().khr_draw_indirect_count {
-            unsafe {
-                (fns.khr_draw_indirect_count.cmd_draw_indirect_count_khr)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
+            fns.khr_draw_indirect_count.cmd_draw_indirect_count_khr
+        } else if device.enabled_extensions().amd_draw_indirect_count {
+            fns.amd_draw_indirect_count.cmd_draw_indirect_count_amd
         } else {
-            debug_assert!(device.enabled_extensions().amd_draw_indirect_count);
-            unsafe {
-                (fns.amd_draw_indirect_count.cmd_draw_indirect_count_amd)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
-        }
+            std::process::abort();
+        };
+
+        unsafe {
+            cmd_draw_indirect_count(
+                self.handle(),
+                buffer.handle(),
+                offset,
+                count_buffer.handle(),
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        };
 
         self
     }
@@ -611,18 +639,20 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+        self.validate_draw_indexed_indirect(buffer, offset, draw_count, stride)?;
 
-        Ok(unsafe { self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride) })
+        Ok(unsafe { self.draw_indexed_indirect_unchecked(buffer, offset, draw_count, stride) })
     }
 
     pub(crate) fn validate_draw_indexed_indirect(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -640,15 +670,20 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndexedIndirect-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-offset-02710"],
                 ..Default::default()
             }));
         }
@@ -667,8 +702,7 @@ impl RecordingCommandBuffer {
 
             if stride % 4 != 0 {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not a multiple of 4"
+                    problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00528"],
                     ..Default::default()
@@ -677,32 +711,37 @@ impl RecordingCommandBuffer {
 
             if (stride as DeviceSize) < size_of::<DrawIndexedIndirectCommand>() as DeviceSize {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not greater than `size_of::<DrawIndexedIndirectCommand>()`"
+                    problem: "`draw_count` is greater than 1, but `stride` is less than \
+                        `size_of::<DrawIndexedIndirectCommand>()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00528"],
                     ..Default::default()
                 }));
             }
 
-            if stride as DeviceSize * (draw_count as DeviceSize - 1)
-                + size_of::<DrawIndexedIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            if (stride as DeviceSize)
+                .checked_mul(draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| x.checked_add(size_of::<DrawIndexedIndirectCommand>() as DeviceSize))
+                .is_none_or(|end| end > buffer.size())
             {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride * (draw_count - 1) + size_of::<DrawIndexedIndirectCommand>()` is \
-                        greater than `indirect_buffer.size()`"
+                    problem: "`draw_count` is greater than 1, but `stride * (draw_count - 1) + \
+                        offset + size_of::<DrawIndexedIndirectCommand>()` is greater than \
+                        `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00540"],
                     ..Default::default()
                 }));
             }
         } else {
-            if size_of::<DrawIndexedIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            if offset
+                .checked_add(size_of::<DrawIndexedIndirectCommand>() as DeviceSize)
+                .is_none_or(|end| end > buffer.size())
+            {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is 1, but `size_of::<DrawIndexedIndirectCommand>()` is \
-                        greater than `indirect_buffer.size()`"
+                    problem: "`draw_count` is 1, but `offset + \
+                        size_of::<DrawIndexedIndirectCommand>()` is greater than `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00539"],
                     ..Default::default()
@@ -727,7 +766,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indexed_indirect_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -735,8 +775,8 @@ impl RecordingCommandBuffer {
         unsafe {
             (fns.v1_0.cmd_draw_indexed_indirect)(
                 self.handle(),
-                indirect_buffer.buffer().handle(),
-                indirect_buffer.offset(),
+                buffer.handle(),
+                offset,
                 draw_count,
                 stride,
             )
@@ -748,22 +788,28 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_indexed_indirect_count(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw_indexed_indirect_count(
-            indirect_buffer.as_bytes(),
-            count_buffer.as_bytes(),
+            buffer,
+            offset,
+            count_buffer,
+            count_buffer_offset,
             max_draw_count,
             stride,
         )?;
 
         Ok(unsafe {
             self.draw_indexed_indirect_count_unchecked(
-                indirect_buffer,
+                buffer,
+                offset,
                 count_buffer,
+                count_buffer_offset,
                 max_draw_count,
                 stride,
             )
@@ -772,8 +818,10 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_draw_indexed_indirect_count(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
-        count_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -801,21 +849,25 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndexedIndirectCount-buffer-02709"],
                 ..Default::default()
             }));
         }
 
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-offset-02710"],
+                ..Default::default()
+            }));
+        }
+
         if !count_buffer
-            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
@@ -823,6 +875,15 @@ impl RecordingCommandBuffer {
                 context: "count_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawIndexedIndirectCount-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if count_buffer_offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer_offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-countBufferOffset-02716"],
                 ..Default::default()
             }));
         }
@@ -839,23 +900,38 @@ impl RecordingCommandBuffer {
         if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
-                problem: "is not greater than `size_of::<DrawIndirectCommand>()`".into(),
+                problem: "is less than `size_of::<DrawIndirectCommand>()`".into(),
                 vuids: &["VUID-vkCmdDrawIndexedIndirectCount-stride-03142"],
                 ..Default::default()
             }));
         }
 
         if max_draw_count >= 1
-            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
-                + size_of::<DrawIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            && (stride as DeviceSize)
+                .checked_mul(max_draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| x.checked_add(size_of::<DrawIndirectCommand>() as DeviceSize))
+                .is_none_or(|end| end > buffer.size())
         {
             return Err(Box::new(ValidationError {
-                problem: "`max_draw_count` is equal to or greater than 1, but \
-                    `stride * (max_draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
-                    greater than `indirect_buffer.size()`"
+                problem: "`max_draw_count` is equal to or greater than 1, but `stride * \
+                    (max_draw_count - 1) + offset + size_of::<DrawIndirectCommand>()` is greater \
+                    than `buffer.size()`"
                     .into(),
                 vuids: &["VUID-vkCmdDrawIndexedIndirectCount-maxDrawCount-03143"],
+                ..Default::default()
+            }));
+        }
+
+        if count_buffer_offset
+            .checked_add(size_of::<u32>() as DeviceSize)
+            .is_none_or(|end| end > count_buffer.size())
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`count_buffer_offset + size_of::<u32>()` is greater than \
+                    `count_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-countBufferOffset-04129"],
                 ..Default::default()
             }));
         }
@@ -866,54 +942,38 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indexed_indirect_count_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> &mut Self {
         let device = self.device();
         let fns = device.fns();
-
-        if device.api_version() >= Version::V1_2 {
-            unsafe {
-                (fns.v1_2.cmd_draw_indexed_indirect_count)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
+        let cmd_draw_indexed_indirect_count = if device.api_version() >= Version::V1_2 {
+            fns.v1_2.cmd_draw_indexed_indirect_count
         } else if device.enabled_extensions().khr_draw_indirect_count {
-            unsafe {
-                (fns.khr_draw_indirect_count
-                    .cmd_draw_indexed_indirect_count_khr)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
+            fns.khr_draw_indirect_count
+                .cmd_draw_indexed_indirect_count_khr
+        } else if device.enabled_extensions().amd_draw_indirect_count {
+            fns.amd_draw_indirect_count
+                .cmd_draw_indexed_indirect_count_amd
         } else {
-            debug_assert!(device.enabled_extensions().amd_draw_indirect_count);
-            unsafe {
-                (fns.amd_draw_indirect_count
-                    .cmd_draw_indexed_indirect_count_amd)(
-                    self.handle(),
-                    indirect_buffer.buffer().handle(),
-                    indirect_buffer.offset(),
-                    count_buffer.buffer().handle(),
-                    count_buffer.offset(),
-                    max_draw_count,
-                    stride,
-                )
-            };
-        }
+            std::process::abort();
+        };
+
+        unsafe {
+            cmd_draw_indexed_indirect_count(
+                self.handle(),
+                buffer.handle(),
+                offset,
+                count_buffer.handle(),
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        };
 
         self
     }
@@ -976,18 +1036,20 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_mesh_tasks_indirect(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_draw_mesh_tasks_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+        self.validate_draw_mesh_tasks_indirect(buffer, offset, draw_count, stride)?;
 
-        Ok(unsafe { self.draw_mesh_tasks_indirect_unchecked(indirect_buffer, draw_count, stride) })
+        Ok(unsafe { self.draw_mesh_tasks_indirect_unchecked(buffer, offset, draw_count, stride) })
     }
 
     pub(crate) fn validate_draw_mesh_tasks_indirect(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -1015,27 +1077,22 @@ impl RecordingCommandBuffer {
         }
 
         // VUID-vkCmdDrawMeshTasksIndirectEXT-commonparent
-        assert_eq!(self.device(), indirect_buffer.device());
+        assert_eq!(self.device(), buffer.device());
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-buffer-02709"],
                 ..Default::default()
             }));
         }
 
-        if size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+        if offset % 4 != 0 {
             return Err(Box::new(ValidationError {
-                problem: "`size_of::<DrawMeshTasksIndirectCommand>()` is greater than \
-                    `indirect_buffer.size()`"
-                    .into(),
-                vuids: &["VUID-vkCmdDispatchIndirect-offset-00407"],
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-offset-02710"],
                 ..Default::default()
             }));
         }
@@ -1054,8 +1111,7 @@ impl RecordingCommandBuffer {
 
             if stride % 4 != 0 {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not a multiple of 4"
+                    problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07088"],
                     ..Default::default()
@@ -1064,32 +1120,39 @@ impl RecordingCommandBuffer {
 
             if (stride as DeviceSize) < size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is greater than 1, but \
-                        `stride` is not greater than `size_of::<DrawMeshTasksIndirectCommand>()`"
+                    problem: "`draw_count` is greater than 1, but `stride` is less than \
+                        `size_of::<DrawMeshTasksIndirectCommand>()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07088"],
                     ..Default::default()
                 }));
             }
 
-            if stride as DeviceSize * (draw_count as DeviceSize - 1)
-                + size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            if (stride as DeviceSize)
+                .checked_mul(draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| {
+                    x.checked_add(size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize)
+                })
+                .is_none_or(|end| end > buffer.size())
             {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is greater than 1, but \
                         `stride * (draw_count - 1) + size_of::<DrawMeshTasksIndirectCommand>()` \
-                        is greater than `indirect_buffer.size()`"
+                        is greater than `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07090"],
                     ..Default::default()
                 }));
             }
         } else {
-            if size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            if offset
+                .checked_add(size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize)
+                .is_none_or(|end| end > buffer.size())
+            {
                 return Err(Box::new(ValidationError {
-                    problem: "`draw_count` is 1, but `size_of::<DrawMeshTasksIndirectCommand>()` \
-                        is greater than `indirect_buffer.size()`"
+                    problem: "`draw_count` is 1, but `offset + \
+                        size_of::<DrawMeshTasksIndirectCommand>()` is greater than `buffer.size()`"
                         .into(),
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07089"],
                     ..Default::default()
@@ -1114,7 +1177,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_mesh_tasks_indirect_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -1122,8 +1186,8 @@ impl RecordingCommandBuffer {
         unsafe {
             (fns.ext_mesh_shader.cmd_draw_mesh_tasks_indirect_ext)(
                 self.handle(),
-                indirect_buffer.buffer().handle(),
-                indirect_buffer.offset(),
+                buffer.handle(),
+                offset,
                 draw_count,
                 stride,
             )
@@ -1135,22 +1199,28 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn draw_mesh_tasks_indirect_count(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw_mesh_tasks_indirect_count(
-            indirect_buffer.as_bytes(),
-            count_buffer.as_bytes(),
+            buffer,
+            offset,
+            count_buffer,
+            count_buffer_offset,
             max_draw_count,
             stride,
         )?;
 
         Ok(unsafe {
             self.draw_mesh_tasks_indirect_count_unchecked(
-                indirect_buffer,
+                buffer,
+                offset,
                 count_buffer,
+                count_buffer_offset,
                 max_draw_count,
                 stride,
             )
@@ -1159,8 +1229,10 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_draw_mesh_tasks_indirect_count(
         &self,
-        indirect_buffer: &Subbuffer<[u8]>,
-        count_buffer: &Subbuffer<[u8]>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> Result<(), Box<ValidationError>> {
@@ -1197,21 +1269,25 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "indirect_buffer.usage()".into(),
+                context: "buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-buffer-02709"],
                 ..Default::default()
             }));
         }
 
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-offset-02710"],
+                ..Default::default()
+            }));
+        }
+
         if !count_buffer
-            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
@@ -1219,6 +1295,15 @@ impl RecordingCommandBuffer {
                 context: "count_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if count_buffer_offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer_offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-countBufferOffset-02716"],
                 ..Default::default()
             }));
         }
@@ -1235,21 +1320,25 @@ impl RecordingCommandBuffer {
         if (stride as DeviceSize) < size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
-                problem: "is not greater than `size_of::<DrawMeshTasksIndirectCommand>()`".into(),
+                problem: "is less than `size_of::<DrawMeshTasksIndirectCommand>()`".into(),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-stride-07096"],
                 ..Default::default()
             }));
         }
 
         if max_draw_count >= 1
-            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
-                + size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize
-                > indirect_buffer.size()
+            && (stride as DeviceSize)
+                .checked_mul(max_draw_count as DeviceSize - 1)
+                .and_then(|x| x.checked_add(offset))
+                .and_then(|x| {
+                    x.checked_add(size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize)
+                })
+                .is_none_or(|end| end > buffer.size())
         {
             return Err(Box::new(ValidationError {
-                problem: "`max_draw_count` is equal to or greater than 1, but \
-                    `stride * (max_draw_count - 1) + size_of::<DrawMeshTasksIndirectCommand>()` \
-                    is greater than `indirect_buffer.size()`"
+                problem: "`max_draw_count` is equal to or greater than 1, but `stride * \
+                    (max_draw_count - 1) + offset + size_of::<DrawMeshTasksIndirectCommand>()` is \
+                    greater than `buffer.size()`"
                     .into(),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-maxDrawCount-07097"],
                 ..Default::default()
@@ -1262,8 +1351,10 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_mesh_tasks_indirect_count_unchecked(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
-        count_buffer: &Subbuffer<u32>,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
         max_draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -1272,10 +1363,10 @@ impl RecordingCommandBuffer {
         unsafe {
             (fns.ext_mesh_shader.cmd_draw_mesh_tasks_indirect_count_ext)(
                 self.handle(),
-                indirect_buffer.buffer().handle(),
-                indirect_buffer.offset(),
-                count_buffer.buffer().handle(),
-                count_buffer.offset(),
+                buffer.handle(),
+                offset,
+                count_buffer.handle(),
+                count_buffer_offset,
                 max_draw_count,
                 stride,
             )

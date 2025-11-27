@@ -287,7 +287,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         index_buffer: &IndexBuffer,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_bind_index_buffer(index_buffer)?;
+        let index_buffer_bytes = index_buffer.as_bytes();
+        self.inner.validate_bind_index_buffer(
+            index_buffer_bytes.buffer(),
+            index_buffer_bytes.offset(),
+            index_buffer_bytes.size(),
+            index_buffer.index_type(),
+        )?;
 
         Ok(())
     }
@@ -303,7 +309,15 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_index_buffer",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.bind_index_buffer_unchecked(&index_buffer) };
+                let index_buffer_bytes = index_buffer.as_bytes();
+                unsafe {
+                    out.bind_index_buffer_unchecked(
+                        index_buffer_bytes.buffer(),
+                        index_buffer_bytes.offset(),
+                        index_buffer_bytes.size(),
+                        index_buffer.index_type(),
+                    )
+                };
             },
         );
 
@@ -432,8 +446,26 @@ impl<L> AutoCommandBufferBuilder<L> {
         first_binding: u32,
         vertex_buffers: &[Subbuffer<[u8]>],
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_bind_vertex_buffers(first_binding, vertex_buffers)?;
+        let buffers_raw = vertex_buffers
+            .iter()
+            .map(Subbuffer::buffer)
+            .map(Arc::as_ref)
+            .collect::<SmallVec<[_; 2]>>();
+        let offsets_raw = vertex_buffers
+            .iter()
+            .map(Subbuffer::offset)
+            .collect::<SmallVec<[_; 2]>>();
+        let sizes_raw = vertex_buffers
+            .iter()
+            .map(Subbuffer::size)
+            .collect::<SmallVec<[_; 2]>>();
+        self.inner.validate_bind_vertex_buffers(
+            first_binding,
+            &buffers_raw,
+            &offsets_raw,
+            &sizes_raw,
+            &[],
+        )?;
 
         Ok(())
     }
@@ -456,7 +488,28 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_vertex_buffers",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers) };
+                let buffers_raw = vertex_buffers
+                    .iter()
+                    .map(Subbuffer::buffer)
+                    .map(Arc::as_ref)
+                    .collect::<SmallVec<[_; 2]>>();
+                let offsets_raw = vertex_buffers
+                    .iter()
+                    .map(Subbuffer::offset)
+                    .collect::<SmallVec<[_; 2]>>();
+                let sizes_raw = vertex_buffers
+                    .iter()
+                    .map(Subbuffer::size)
+                    .collect::<SmallVec<[_; 2]>>();
+                unsafe {
+                    out.bind_vertex_buffers_unchecked(
+                        first_binding,
+                        &buffers_raw,
+                        &offsets_raw,
+                        &sizes_raw,
+                        &[],
+                    )
+                };
             },
         );
 
@@ -473,9 +526,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     where
         Pc: BufferContents,
     {
-        let size = size_of::<Pc>() as u32;
-
-        if size == 0 {
+        if size_of::<Pc>() == 0 {
             return Ok(self);
         }
 
@@ -490,8 +541,11 @@ impl<L> AutoCommandBufferBuilder<L> {
         offset: u32,
         push_constants: &Pc,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner
-            .validate_push_constants(pipeline_layout, offset, push_constants)?;
+        self.inner.validate_push_constants(
+            pipeline_layout,
+            offset,
+            size_of_val(push_constants).try_into().unwrap(),
+        )?;
 
         Ok(())
     }

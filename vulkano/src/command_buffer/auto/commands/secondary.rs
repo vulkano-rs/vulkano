@@ -2,16 +2,16 @@ use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::RecordingCommandBuffer,
-        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, DropUnlockCommandBuffer,
-        ResourceInCommand, SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, ResourceInCommand,
+        SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::DeviceOwned,
     query::QueryType,
-    Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
-use std::{iter, sync::Arc};
+use std::{cmp::min, iter, sync::Arc};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
@@ -546,5 +546,64 @@ impl<L> AutoCommandBufferBuilder<L> {
         );
 
         self
+    }
+}
+
+impl RecordingCommandBuffer {
+    unsafe fn execute_commands_locked(
+        &mut self,
+        command_buffers: &[DropUnlockCommandBuffer],
+    ) -> &mut Self {
+        if command_buffers.is_empty() {
+            return self;
+        }
+
+        let command_buffers_vk: SmallVec<[_; 4]> =
+            command_buffers.iter().map(|cb| cb.handle()).collect();
+
+        let fns = self.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_execute_commands)(
+                self.handle(),
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        };
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as
+        // well.
+        self.usage = command_buffers
+            .iter()
+            .map(|cb| cb.usage())
+            .fold(self.usage, min);
+
+        self
+    }
+}
+
+pub(crate) struct DropUnlockCommandBuffer(Arc<dyn SecondaryCommandBufferAbstract>);
+
+impl DropUnlockCommandBuffer {
+    pub(crate) fn new(
+        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
+    ) -> Result<Self, Box<ValidationError>> {
+        command_buffer.lock_record()?;
+        Ok(Self(command_buffer))
+    }
+}
+
+impl std::ops::Deref for DropUnlockCommandBuffer {
+    type Target = Arc<dyn SecondaryCommandBufferAbstract>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for DropUnlockCommandBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.unlock();
+        }
     }
 }

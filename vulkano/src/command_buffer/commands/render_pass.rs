@@ -1,7 +1,8 @@
+pub use crate::command_buffer::{ClearAttachment, ClearRect};
 use crate::{
     command_buffer::{sys::RecordingCommandBuffer, CommandBufferLevel, SubpassContents},
     device::{Device, DeviceOwned, QueueFlags},
-    format::{ClearColorValue, ClearValue, NumericType},
+    format::{ClearValue, NumericType},
     image::{view::ImageView, ImageAspects, ImageLayout, ImageUsage, SampleCount},
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
@@ -11,14 +12,13 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::sync::Arc;
 
 impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
-        render_pass_begin_info: &RenderPassBeginInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_render_pass(render_pass_begin_info, subpass_begin_info)?;
 
@@ -27,8 +27,8 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_begin_render_pass(
         &self,
-        render_pass_begin_info: &RenderPassBeginInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -60,7 +60,7 @@ impl RecordingCommandBuffer {
             .validate(self.device())
             .map_err(|err| err.add_context("subpass_begin_info"))?;
 
-        let RenderPassBeginInfo {
+        let &RenderPassBeginInfo {
             render_pass,
             framebuffer,
             render_area_offset: _,
@@ -365,8 +365,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn begin_render_pass_unchecked(
         &mut self,
-        render_pass_begin_info: &RenderPassBeginInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> &mut Self {
         let render_pass_begin_info_fields1_vk = render_pass_begin_info.to_vk_fields1();
         let render_pass_begin_info_vk =
@@ -414,8 +414,8 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn next_subpass(
         &mut self,
-        subpass_end_info: &SubpassEndInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_next_subpass(subpass_end_info, subpass_begin_info)?;
 
@@ -424,8 +424,8 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_next_subpass(
         &self,
-        subpass_end_info: &SubpassEndInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -463,8 +463,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn next_subpass_unchecked(
         &mut self,
-        subpass_end_info: &SubpassEndInfo,
-        subpass_begin_info: &SubpassBeginInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
     ) -> &mut Self {
         let fns = self.device().fns();
 
@@ -504,7 +504,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn end_render_pass(
         &mut self,
-        subpass_end_info: &SubpassEndInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_render_pass(subpass_end_info)?;
 
@@ -513,7 +513,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_end_render_pass(
         &self,
-        subpass_end_info: &SubpassEndInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -547,7 +547,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn end_render_pass_unchecked(
         &mut self,
-        subpass_end_info: &SubpassEndInfo,
+        subpass_end_info: &SubpassEndInfo<'_>,
     ) -> &mut Self {
         let subpass_end_info_vk = subpass_end_info.to_vk();
 
@@ -578,16 +578,18 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_rendering(
         &mut self,
-        rendering_info: &RenderingInfo,
+        rendering_info: &RenderingInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_begin_rendering(rendering_info)?;
+        let mut rendering_info = rendering_info.clone();
+        rendering_info.set_auto_extent_layers();
+        self.validate_begin_rendering(&rendering_info)?;
 
-        Ok(unsafe { self.begin_rendering_unchecked(rendering_info) })
+        Ok(unsafe { self.begin_rendering_unchecked(&rendering_info) })
     }
 
     pub(crate) fn validate_begin_rendering(
         &self,
-        rendering_info: &RenderingInfo,
+        rendering_info: &RenderingInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let device = self.device();
 
@@ -649,8 +651,11 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn begin_rendering_unchecked(
         &mut self,
-        rendering_info: &RenderingInfo,
+        rendering_info: &RenderingInfo<'_>,
     ) -> &mut Self {
+        let mut rendering_info = rendering_info.clone();
+        rendering_info.set_auto_extent_layers();
+
         let rendering_info_fields1_vk = rendering_info.to_vk_fields1();
         let rendering_info_vk = rendering_info.to_vk(&rendering_info_fields1_vk);
 
@@ -814,19 +819,19 @@ impl RecordingCommandBuffer {
 
 /// Parameters to begin a new render pass.
 #[derive(Clone, Debug)]
-pub struct RenderPassBeginInfo {
+pub struct RenderPassBeginInfo<'a> {
     /// The render pass to begin.
     ///
     /// If this is not the render pass that `framebuffer` was created with, it must be compatible
     /// with that render pass.
     ///
     /// The default value is the render pass of `framebuffer`.
-    pub render_pass: Arc<RenderPass>,
+    pub render_pass: &'a RenderPass,
 
     /// The framebuffer to use for rendering.
     ///
     /// There is no default value.
-    pub framebuffer: Arc<Framebuffer>,
+    pub framebuffer: &'a Framebuffer,
 
     /// The offset from the top left corner of the framebuffer that will be rendered to.
     ///
@@ -850,33 +855,35 @@ pub struct RenderPassBeginInfo {
     /// To skip over an attachment whose load operation is something else, provide `None`.
     ///
     /// The default value is empty, which must be overridden if the framebuffer has attachments.
-    pub clear_values: Vec<Option<ClearValue>>,
+    pub clear_values: &'a [Option<ClearValue>],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl RenderPassBeginInfo {
+impl<'a> RenderPassBeginInfo<'a> {
+    /// Returns a default `RenderPassBeginInfo` with the provided `framebuffer`.
+    // TODO: make const
     #[inline]
-    pub fn framebuffer(framebuffer: Arc<Framebuffer>) -> Self {
+    pub fn new(framebuffer: &'a Framebuffer) -> Self {
         let render_area_extent = framebuffer.extent();
 
         Self {
-            render_pass: framebuffer.render_pass().clone(),
+            render_pass: framebuffer.render_pass(),
             framebuffer,
             render_area_offset: [0, 0],
             render_area_extent,
-            clear_values: Vec::new(),
+            clear_values: &[],
             _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref render_pass,
-            ref framebuffer,
+            render_pass,
+            framebuffer,
             render_area_offset,
             render_area_extent,
-            ref clear_values,
+            clear_values,
             _ne,
         } = self;
 
@@ -996,13 +1003,13 @@ impl RenderPassBeginInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a RenderPassBeginInfoFields1Vk,
     ) -> vk::RenderPassBeginInfo<'a> {
         let &Self {
-            ref render_pass,
-            ref framebuffer,
+            render_pass,
+            framebuffer,
             render_area_offset,
             render_area_extent,
             clear_values: _,
@@ -1047,23 +1054,23 @@ pub(crate) struct RenderPassBeginInfoFields1Vk {
 
 /// Parameters to begin a new subpass within a render pass.
 #[derive(Clone, Debug)]
-pub struct SubpassBeginInfo {
+pub struct SubpassBeginInfo<'a> {
     /// What kinds of commands will be recorded in the subpass.
     ///
     /// The default value is [`SubpassContents::Inline`].
     pub contents: SubpassContents,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubpassBeginInfo {
+impl Default for SubpassBeginInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubpassBeginInfo {
+impl SubpassBeginInfo<'_> {
     /// Returns a default `SubpassBeginInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1093,18 +1100,18 @@ impl SubpassBeginInfo {
 
 /// Parameters to end the current subpass within a render pass.
 #[derive(Clone, Debug)]
-pub struct SubpassEndInfo {
-    pub _ne: crate::NonExhaustive<'static>,
+pub struct SubpassEndInfo<'a> {
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SubpassEndInfo {
+impl Default for SubpassEndInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SubpassEndInfo {
+impl SubpassEndInfo<'_> {
     /// Returns a default `SubpassEndInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1126,7 +1133,7 @@ impl SubpassEndInfo {
 
 /// Parameters to begin rendering.
 #[derive(Clone, Debug)]
-pub struct RenderingInfo {
+pub struct RenderingInfo<'a> {
     /// The offset from the top left corner of the attachments that will be rendered to.
     ///
     /// This value must be smaller than the smallest width and height of the attachment images.
@@ -1174,7 +1181,7 @@ pub struct RenderingInfo {
     /// the physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
-    pub color_attachments: Vec<Option<RenderingAttachmentInfo>>,
+    pub color_attachments: &'a [Option<RenderingAttachmentInfo<'a>>],
 
     /// The depth attachment to use for rendering.
     ///
@@ -1182,7 +1189,7 @@ pub struct RenderingInfo {
     /// `color_attachments`.
     ///
     /// The default value is `None`.
-    pub depth_attachment: Option<RenderingAttachmentInfo>,
+    pub depth_attachment: Option<&'a Option<RenderingAttachmentInfo<'a>>>,
 
     /// The stencil attachment to use for rendering.
     ///
@@ -1190,7 +1197,7 @@ pub struct RenderingInfo {
     /// `color_attachments`.
     ///
     /// The default value is `None`.
-    pub stencil_attachment: Option<RenderingAttachmentInfo>,
+    pub stencil_attachment: Option<&'a Option<RenderingAttachmentInfo<'a>>>,
 
     /// What kinds of commands will be recorded in the render pass: either inline draw commands, or
     /// executions of secondary command buffers.
@@ -1200,17 +1207,17 @@ pub struct RenderingInfo {
     /// The default value is [`SubpassContents::Inline`].
     pub contents: SubpassContents,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for RenderingInfo {
+impl Default for RenderingInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RenderingInfo {
+impl RenderingInfo<'_> {
     /// Returns a default `RenderingInfo`.
     #[inline]
     pub const fn new() -> Self {
@@ -1219,7 +1226,7 @@ impl RenderingInfo {
             render_area_extent: [0, 0],
             layer_count: 0,
             view_mask: 0,
-            color_attachments: Vec::new(),
+            color_attachments: &[],
             depth_attachment: None,
             stencil_attachment: None,
             contents: SubpassContents::Inline,
@@ -1233,9 +1240,9 @@ impl RenderingInfo {
             ref mut render_area_extent,
             ref mut layer_count,
             view_mask,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
+            color_attachments,
+            depth_attachment,
+            stencil_attachment,
             contents: _,
             _ne: _,
         } = self;
@@ -1245,8 +1252,8 @@ impl RenderingInfo {
 
         if (is_auto_extent || is_auto_layers)
             && !(color_attachments.is_empty()
-                && depth_attachment.is_none()
-                && stencil_attachment.is_none())
+                && depth_attachment.is_none_or(Option::is_none)
+                && stencil_attachment.is_none_or(Option::is_none))
         {
             let mut auto_extent = [u32::MAX, u32::MAX];
             let mut auto_layers = if view_mask != 0 { 1 } else { u32::MAX };
@@ -1266,8 +1273,8 @@ impl RenderingInfo {
             for image_view in color_attachments
                 .iter()
                 .flatten()
-                .chain(depth_attachment.iter())
-                .chain(stencil_attachment.iter())
+                .chain(depth_attachment.and_then(Option::as_ref))
+                .chain(stencil_attachment.and_then(Option::as_ref))
                 .flat_map(|attachment_info| {
                     Some(&attachment_info.image_view).into_iter().chain(
                         attachment_info
@@ -1308,9 +1315,9 @@ impl RenderingInfo {
             render_area_extent,
             layer_count,
             view_mask,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
+            color_attachments,
+            depth_attachment,
+            stencil_attachment,
             contents,
             _ne: _,
         } = self;
@@ -1419,10 +1426,10 @@ impl RenderingInfo {
                 err.add_context(format!("color_attachments[{}]", attachment_index))
             })?;
 
-            let RenderingAttachmentInfo {
+            let &RenderingAttachmentInfo {
                 image_view,
                 image_layout,
-                resolve_info,
+                ref resolve_info,
                 load_op: _,
                 store_op: _,
                 clear_value: _,
@@ -1559,15 +1566,15 @@ impl RenderingInfo {
             }
         }
 
-        if let Some(attachment_info) = depth_attachment {
+        if let Some(Some(attachment_info)) = depth_attachment {
             attachment_info
                 .validate(device)
                 .map_err(|err| err.add_context("depth_attachment"))?;
 
-            let RenderingAttachmentInfo {
+            let &RenderingAttachmentInfo {
                 image_view,
                 image_layout,
-                resolve_info,
+                ref resolve_info,
                 load_op: _,
                 store_op: _,
                 clear_value: _,
@@ -1683,15 +1690,15 @@ impl RenderingInfo {
             }
         }
 
-        if let Some(attachment_info) = stencil_attachment {
+        if let Some(Some(attachment_info)) = stencil_attachment {
             attachment_info
                 .validate(device)
                 .map_err(|err| err.add_context("stencil_attachment"))?;
 
-            let RenderingAttachmentInfo {
+            let &RenderingAttachmentInfo {
                 image_view,
                 image_layout,
-                resolve_info,
+                ref resolve_info,
                 load_op: _,
                 store_op: _,
                 clear_value: _,
@@ -1805,7 +1812,7 @@ impl RenderingInfo {
             }
         }
 
-        if let (Some(depth_attachment_info), Some(stencil_attachment_info)) =
+        if let (Some(Some(depth_attachment_info)), Some(Some(stencil_attachment_info))) =
             (depth_attachment, stencil_attachment)
         {
             if depth_attachment_info.image_view != stencil_attachment_info.image_view {
@@ -1947,7 +1954,7 @@ impl RenderingInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> RenderingInfoFields1Vk {
-        let Self {
+        let &Self {
             color_attachments,
             depth_attachment,
             stencil_attachment,
@@ -1964,12 +1971,12 @@ impl RenderingInfo {
             })
             .collect();
 
-        let depth_attachment_vk = depth_attachment.as_ref().map_or(
+        let depth_attachment_vk = depth_attachment.and_then(Option::as_ref).map_or(
             vk::RenderingAttachmentInfo::default().image_view(vk::ImageView::null()),
             RenderingAttachmentInfo::to_vk,
         );
 
-        let stencil_attachment_vk = stencil_attachment.as_ref().map_or(
+        let stencil_attachment_vk = stencil_attachment.and_then(Option::as_ref).map_or(
             vk::RenderingAttachmentInfo::default().image_view(vk::ImageView::null()),
             RenderingAttachmentInfo::to_vk,
         );
@@ -1990,11 +1997,11 @@ pub(crate) struct RenderingInfoFields1Vk {
 
 /// Parameters to specify properties of an attachment.
 #[derive(Clone, Debug)]
-pub struct RenderingAttachmentInfo {
+pub struct RenderingAttachmentInfo<'a> {
     /// The image view to use as the attachment.
     ///
     /// There is no default value.
-    pub image_view: Arc<ImageView>,
+    pub image_view: &'a ImageView,
 
     /// The image layout that `image_view` should be in during rendering.
     ///
@@ -2006,7 +2013,7 @@ pub struct RenderingAttachmentInfo {
     /// The resolve operation that should be performed at the end of rendering.
     ///
     /// The default value is `None`.
-    pub resolve_info: Option<RenderingAttachmentResolveInfo>,
+    pub resolve_info: Option<RenderingAttachmentResolveInfo<'a>>,
 
     /// What the implementation should do with the attachment at the start of rendering.
     ///
@@ -2026,14 +2033,14 @@ pub struct RenderingAttachmentInfo {
     /// The default value is `None`.
     pub clear_value: Option<ClearValue>,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl RenderingAttachmentInfo {
+impl<'a> RenderingAttachmentInfo<'a> {
     /// Returns a default `RenderingAttachmentInfo` with the provided `image_view`.
     // TODO: make const
     #[inline]
-    pub fn new(image_view: Arc<ImageView>) -> Self {
+    pub fn new(image_view: &'a ImageView) -> Self {
         let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
@@ -2052,20 +2059,14 @@ impl RenderingAttachmentInfo {
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn image_view(image_view: Arc<ImageView>) -> Self {
-        Self::new(image_view)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref image_view,
+            image_view,
             image_layout,
             ref resolve_info,
             load_op,
             store_op,
-            ref clear_value,
+            clear_value,
             _ne,
         } = self;
 
@@ -2115,7 +2116,7 @@ impl RenderingAttachmentInfo {
                 .validate(device)
                 .map_err(|err| err.add_context("resolve_info"))?;
 
-            let RenderingAttachmentResolveInfo {
+            let &RenderingAttachmentResolveInfo {
                 mode: _,
                 image_view: resolve_image_view,
                 image_layout: _,
@@ -2172,12 +2173,12 @@ impl RenderingAttachmentInfo {
 
     pub(crate) fn to_vk(&self) -> vk::RenderingAttachmentInfo<'static> {
         let &Self {
-            ref image_view,
+            image_view,
             image_layout,
             ref resolve_info,
             load_op,
             store_op,
-            ref clear_value,
+            clear_value,
             _ne: _,
         } = self;
 
@@ -2209,7 +2210,7 @@ impl RenderingAttachmentInfo {
 
 /// Parameters to specify the resolve behavior of an attachment.
 #[derive(Clone, Debug)]
-pub struct RenderingAttachmentResolveInfo {
+pub struct RenderingAttachmentResolveInfo<'a> {
     /// How the resolve operation should be performed.
     ///
     /// The default value is [`ResolveMode::Average`].
@@ -2218,7 +2219,7 @@ pub struct RenderingAttachmentResolveInfo {
     /// The image view that the result of the resolve operation should be written to.
     ///
     /// There is no default value.
-    pub image_view: Arc<ImageView>,
+    pub image_view: &'a ImageView,
 
     /// The image layout that `image_view` should be in during the resolve operation.
     ///
@@ -2228,11 +2229,11 @@ pub struct RenderingAttachmentResolveInfo {
     pub image_layout: ImageLayout,
 }
 
-impl RenderingAttachmentResolveInfo {
+impl<'a> RenderingAttachmentResolveInfo<'a> {
     /// Returns a default `RenderingAttachmentResolveInfo` with the provided `image_view`.
     // TODO: make const
     #[inline]
-    pub fn new(image_view: Arc<ImageView>) -> Self {
+    pub fn new(image_view: &'a ImageView) -> Self {
         let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
@@ -2247,16 +2248,10 @@ impl RenderingAttachmentResolveInfo {
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn image_view(image_view: Arc<ImageView>) -> Self {
-        Self::new(image_view)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             mode,
-            ref image_view,
+            image_view,
             image_layout,
         } = self;
 
@@ -2345,140 +2340,10 @@ impl RenderingAttachmentResolveInfo {
     pub(crate) fn to_vk(&self) -> (vk::ResolveModeFlags, vk::ImageView, vk::ImageLayout) {
         let &Self {
             mode,
-            ref image_view,
+            image_view,
             image_layout,
         } = self;
 
         (mode.into(), image_view.handle(), image_layout.into())
-    }
-}
-
-/// Clear attachment type, used in [`clear_attachments`] command.
-///
-/// [`clear_attachments`]: AutoCommandBufferBuilder::clear_attachments
-#[derive(Clone, Copy, Debug)]
-pub enum ClearAttachment {
-    /// Clear the color attachment at the specified index, with the specified clear value.
-    Color {
-        color_attachment: u32,
-        clear_value: ClearColorValue,
-    },
-
-    /// Clear the depth attachment with the specified depth value.
-    Depth(f32),
-
-    /// Clear the stencil attachment with the specified stencil value.
-    Stencil(u32),
-
-    /// Clear the depth and stencil attachments with the specified depth and stencil values.
-    DepthStencil((f32, u32)),
-}
-
-impl ClearAttachment {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        if let ClearAttachment::Depth(depth) | ClearAttachment::DepthStencil((depth, _)) = self {
-            if !(0.0..=1.0).contains(depth)
-                && !device.enabled_extensions().ext_depth_range_unrestricted
-            {
-                return Err(Box::new(ValidationError {
-                    problem: "is `ClearAttachment::Depth` or `ClearAttachment::DepthStencil`, and \
-                        the depth value is not between 0.0 and 1.0 inclusive"
-                        .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_depth_range_unrestricted",
-                    )])]),
-                    vuids: &["VUID-VkClearDepthStencilValue-depth-00022"],
-                    ..Default::default()
-                }));
-            }
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    #[doc(hidden)]
-    pub fn to_vk(&self) -> vk::ClearAttachment {
-        match *self {
-            ClearAttachment::Color {
-                color_attachment,
-                clear_value,
-            } => vk::ClearAttachment {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                color_attachment,
-                clear_value: vk::ClearValue {
-                    color: clear_value.to_vk(),
-                },
-            },
-            ClearAttachment::Depth(depth) => vk::ClearAttachment {
-                aspect_mask: vk::ImageAspectFlags::DEPTH,
-                color_attachment: 0,
-                clear_value: vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue { depth, stencil: 0 },
-                },
-            },
-            ClearAttachment::Stencil(stencil) => vk::ClearAttachment {
-                aspect_mask: vk::ImageAspectFlags::STENCIL,
-                color_attachment: 0,
-                clear_value: vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 0.0,
-                        stencil,
-                    },
-                },
-            },
-            ClearAttachment::DepthStencil((depth, stencil)) => vk::ClearAttachment {
-                aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                color_attachment: 0,
-                clear_value: vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
-                },
-            },
-        }
-    }
-}
-
-/// Specifies the clear region for the [`clear_attachments`] command.
-///
-/// [`clear_attachments`]: AutoCommandBufferBuilder::clear_attachments
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClearRect {
-    /// The rectangle offset.
-    pub offset: [u32; 2],
-
-    /// The width and height of the rectangle.
-    pub extent: [u32; 2],
-
-    /// The first array layer to be cleared.
-    pub base_array_layer: u32,
-
-    /// The number of array layers to be cleared.
-    pub layer_count: u32,
-}
-
-impl ClearRect {
-    #[doc(hidden)]
-    pub fn to_vk(&self) -> vk::ClearRect {
-        let &Self {
-            offset,
-            extent,
-            base_array_layer,
-            layer_count,
-        } = self;
-
-        vk::ClearRect {
-            rect: vk::Rect2D {
-                offset: vk::Offset2D {
-                    x: offset[0] as i32,
-                    y: offset[1] as i32,
-                },
-                extent: vk::Extent2D {
-                    width: extent[0],
-                    height: extent[1],
-                },
-            },
-            base_array_layer,
-            layer_count,
-        }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferContents, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferUsage},
     command_buffer::sys::RecordingCommandBuffer,
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
@@ -8,13 +8,13 @@ use crate::{
 };
 use ash::vk;
 use smallvec::{smallvec, SmallVec};
-use std::sync::Arc;
+use std::ffi::c_void;
 
 impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn clear_color_image(
         &mut self,
-        clear_info: &ClearColorImageInfo,
+        clear_info: &ClearColorImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_color_image(clear_info)?;
 
@@ -23,7 +23,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_clear_color_image(
         &self,
-        clear_info: &ClearColorImageInfo,
+        clear_info: &ClearColorImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -49,12 +49,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn clear_color_image_unchecked(
         &mut self,
-        clear_info: &ClearColorImageInfo,
+        clear_info: &ClearColorImageInfo<'_>,
     ) -> &mut Self {
-        if clear_info.regions.is_empty() {
-            return self;
-        }
-
         let clear_info_vk = clear_info.to_vk();
         let ranges_vk = clear_info.to_vk_ranges();
 
@@ -76,7 +72,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
-        clear_info: &ClearDepthStencilImageInfo,
+        clear_info: &ClearDepthStencilImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_depth_stencil_image(clear_info)?;
 
@@ -85,7 +81,7 @@ impl RecordingCommandBuffer {
 
     pub(crate) fn validate_clear_depth_stencil_image(
         &self,
-        clear_info: &ClearDepthStencilImageInfo,
+        clear_info: &ClearDepthStencilImageInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
@@ -111,12 +107,8 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn clear_depth_stencil_image_unchecked(
         &mut self,
-        clear_info: &ClearDepthStencilImageInfo,
+        clear_info: &ClearDepthStencilImageInfo<'_>,
     ) -> &mut Self {
-        if clear_info.regions.is_empty() {
-            return self;
-        }
-
         let clear_info_vk = clear_info.to_vk();
         let ranges_vk = clear_info.to_vk_ranges();
 
@@ -138,18 +130,16 @@ impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn fill_buffer(
         &mut self,
-        dst_buffer: &Subbuffer<[u32]>,
-        data: u32,
+        fill_info: &FillBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_fill_buffer(dst_buffer, data)?;
+        self.validate_fill_buffer(fill_info)?;
 
-        Ok(unsafe { self.fill_buffer_unchecked(dst_buffer, data) })
+        Ok(unsafe { self.fill_buffer_unchecked(fill_info) })
     }
 
     pub(crate) fn validate_fill_buffer(
         &self,
-        dst_buffer: &Subbuffer<[u32]>,
-        _data: u32,
+        fill_info: &FillBufferInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
         let device = self.device();
         let queue_family_properties = self.queue_family_properties();
@@ -182,50 +172,25 @@ impl RecordingCommandBuffer {
             }
         }
 
-        // VUID-vkCmdFillBuffer-commonparent
-        assert_eq!(device, dst_buffer.device());
-
-        // VUID-vkCmdFillBuffer-size-00026
-        // Guaranteed by `Subbuffer`
-
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
-            return Err(Box::new(ValidationError {
-                context: "dst_buffer.buffer().usage()".into(),
-                problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
-                vuids: &["VUID-vkCmdFillBuffer-dstBuffer-00029"],
-                ..Default::default()
-            }));
-        }
-
-        // VUID-vkCmdFillBuffer-dstOffset-00024
-        // VUID-vkCmdFillBuffer-size-00027
-        // Guaranteed by `Subbuffer`
-
-        // VUID-vkCmdFillBuffer-dstOffset-00025
-        // VUID-vkCmdFillBuffer-size-00028
-        // Guaranteed because we take `Subbuffer<[u32]>`
+        fill_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("fill_info"))?;
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn fill_buffer_unchecked(
-        &mut self,
-        dst_buffer: &Subbuffer<[u32]>,
-        data: u32,
-    ) -> &mut Self {
+    pub unsafe fn fill_buffer_unchecked(&mut self, fill_info: &FillBufferInfo<'_>) -> &mut Self {
+        let fill_info_vk = fill_info.to_vk();
+
         let fns = self.device().fns();
         unsafe {
             (fns.v1_0.cmd_fill_buffer)(
                 self.handle(),
-                dst_buffer.buffer().handle(),
-                dst_buffer.offset(),
-                dst_buffer.size(),
-                data,
+                fill_info_vk.dst_buffer,
+                fill_info_vk.dst_offset,
+                fill_info_vk.size,
+                fill_info_vk.data,
             )
         };
 
@@ -233,26 +198,25 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn update_buffer<D>(
+    pub unsafe fn update_buffer(
         &mut self,
-        dst_buffer: &Subbuffer<D>,
-        data: &D,
-    ) -> Result<&mut Self, Box<ValidationError>>
-    where
-        D: BufferContents + ?Sized,
-    {
+        dst_buffer: &Buffer,
+        dst_offset: DeviceSize,
+        data: &(impl BufferContents + ?Sized),
+    ) -> Result<&mut Self, Box<ValidationError>> {
         if size_of_val(data) == 0 {
             return Ok(self);
         }
 
-        self.validate_update_buffer(dst_buffer.as_bytes(), size_of_val(data) as DeviceSize)?;
+        self.validate_update_buffer(dst_buffer, dst_offset, size_of_val(data) as DeviceSize)?;
 
-        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, data) })
+        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, dst_offset, data) })
     }
 
     pub(crate) fn validate_update_buffer(
         &self,
-        dst_buffer: &Subbuffer<[u8]>,
+        dst_buffer: &Buffer,
+        dst_offset: DeviceSize,
         data_size: DeviceSize,
     ) -> Result<(), Box<ValidationError>> {
         if !self
@@ -277,31 +241,34 @@ impl RecordingCommandBuffer {
         // VUID-vkCmdUpdateBuffer-dataSize-arraylength
         // Ensured because we return when the size is 0.
 
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
+        if dst_offset >= dst_buffer.size() {
             return Err(Box::new(ValidationError {
-                context: "dst_buffer.buffer().usage()".into(),
+                context: "dst_offset".into(),
+                problem: "is not less than `dst_buffer.size()`".into(),
+                vuids: &["VUID-vkCmdUpdateBuffer-dataSize-00032"],
+                ..Default::default()
+            }));
+        }
+
+        if data_size > dst_buffer.size() - dst_offset {
+            return Err(Box::new(ValidationError {
+                problem: "the size of `data` is greater than `dst_buffer.size() - dst_offset`"
+                    .into(),
+                vuids: &["VUID-vkCmdUpdateBuffer-dataSize-00033"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+            return Err(Box::new(ValidationError {
+                context: "dst_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
                 vuids: &["VUID-vkCmdUpdateBuffer-dstBuffer-00034"],
                 ..Default::default()
             }));
         }
 
-        if data_size > dst_buffer.size() {
-            return Err(Box::new(ValidationError {
-                problem: "the size of `data` is greater than `dst_buffer.size()`".into(),
-                vuids: &[
-                    "VUID-vkCmdUpdateBuffer-dstOffset-00032",
-                    "VUID-vkCmdUpdateBuffer-dataSize-00033",
-                ],
-                ..Default::default()
-            }));
-        }
-
-        if dst_buffer.offset() % 4 != 0 {
+        if dst_offset % 4 != 0 {
             return Err(Box::new(ValidationError {
                 context: "dst_buffer.offset()".into(),
                 problem: "is not a multiple of 4".into(),
@@ -332,15 +299,30 @@ impl RecordingCommandBuffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn update_buffer_unchecked<D>(
+    pub unsafe fn update_buffer_unchecked(
         &mut self,
-        dst_buffer: &Subbuffer<D>,
-        data: &D,
-    ) -> &mut Self
-    where
-        D: BufferContents + ?Sized,
-    {
-        if size_of_val(data) == 0 {
+        dst_buffer: &Buffer,
+        dst_offset: DeviceSize,
+        data: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe {
+            self.update_buffer_unchecked_inner(
+                dst_buffer,
+                dst_offset,
+                <*const _>::cast(data),
+                size_of_val(data) as DeviceSize,
+            )
+        }
+    }
+
+    unsafe fn update_buffer_unchecked_inner(
+        &mut self,
+        dst_buffer: &Buffer,
+        dst_offset: DeviceSize,
+        data: *const c_void,
+        data_size: DeviceSize,
+    ) -> &mut Self {
+        if data_size == 0 {
             return self;
         }
 
@@ -348,10 +330,10 @@ impl RecordingCommandBuffer {
         unsafe {
             (fns.v1_0.cmd_update_buffer)(
                 self.handle(),
-                dst_buffer.buffer().handle(),
-                dst_buffer.offset(),
-                size_of_val(data) as DeviceSize,
-                <*const _>::cast(data),
+                dst_buffer.handle(),
+                dst_offset,
+                data_size,
+                data,
             )
         };
 
@@ -361,11 +343,11 @@ impl RecordingCommandBuffer {
 
 /// Parameters to clear a color image.
 #[derive(Clone, Debug)]
-pub struct ClearColorImageInfo {
+pub struct ClearColorImageInfo<'a> {
     /// The image to clear.
     ///
     /// There is no default value.
-    pub image: Arc<Image>,
+    pub image: &'a Image,
 
     /// The layout used for `image` during the clear operation.
     ///
@@ -384,39 +366,30 @@ pub struct ClearColorImageInfo {
     /// The subresource ranges of `image` to clear.
     ///
     /// The default value is a single region, covering the whole image.
-    pub regions: SmallVec<[ImageSubresourceRange; 1]>,
+    pub regions: &'a [ImageSubresourceRange],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ClearColorImageInfo {
+impl<'a> ClearColorImageInfo<'a> {
     /// Returns a default `ClearColorImageInfo` with the provided `image`.
-    // TODO: make const
     #[inline]
-    pub fn new(image: Arc<Image>) -> Self {
-        let range = image.subresource_range();
-
+    pub const fn new(image: &'a Image) -> Self {
         Self {
             image,
             image_layout: ImageLayout::TransferDstOptimal,
             clear_value: ClearColorValue::Float([0.0; 4]),
-            regions: smallvec![range],
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
-        Self::new(image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref image,
+            image,
             image_layout,
             clear_value: _,
-            ref regions,
+            regions,
             _ne: _,
         } = self;
 
@@ -510,10 +483,10 @@ impl ClearColorImageInfo {
                 }));
             }
 
-            if !subresource_range
+            if subresource_range
                 .base_mip_level
                 .checked_add(subresource_range.level_count)
-                .is_some_and(|end| end <= image.mip_levels())
+                .is_none_or(|end| end > image.mip_levels())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -530,10 +503,10 @@ impl ClearColorImageInfo {
                 }));
             }
 
-            if !subresource_range
+            if subresource_range
                 .base_array_layer
                 .checked_add(subresource_range.layer_count)
-                .is_some_and(|end| end <= image.array_layers())
+                .is_none_or(|end| end > image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -556,7 +529,7 @@ impl ClearColorImageInfo {
 
     pub(crate) fn to_vk(&self) -> ClearColorImageInfoVk {
         let &Self {
-            ref image,
+            image,
             image_layout,
             clear_value,
             regions: _,
@@ -571,10 +544,15 @@ impl ClearColorImageInfo {
     }
 
     pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
-        self.regions
-            .iter()
-            .map(ImageSubresourceRange::to_vk)
-            .collect()
+        let &Self { image, regions, .. } = self;
+
+        if regions.is_empty() {
+            let region_vk = image.subresource_range().to_vk();
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageSubresourceRange::to_vk).collect()
+        }
     }
 }
 
@@ -586,11 +564,11 @@ pub(crate) struct ClearColorImageInfoVk {
 
 /// Parameters to clear a depth/stencil image.
 #[derive(Clone, Debug)]
-pub struct ClearDepthStencilImageInfo {
+pub struct ClearDepthStencilImageInfo<'a> {
     /// The image to clear.
     ///
     /// There is no default value.
-    pub image: Arc<Image>,
+    pub image: &'a Image,
 
     /// The layout used for `image` during the clear operation.
     ///
@@ -609,39 +587,33 @@ pub struct ClearDepthStencilImageInfo {
     /// The subresource ranges of `image` to clear.
     ///
     /// The default value is a single region, covering the whole image.
-    pub regions: SmallVec<[ImageSubresourceRange; 1]>,
+    pub regions: &'a [ImageSubresourceRange],
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl ClearDepthStencilImageInfo {
+impl<'a> ClearDepthStencilImageInfo<'a> {
     /// Returns a default `ClearDepthStencilImageInfo` with the provided `image`.
-    // TODO: make const
     #[inline]
-    pub fn new(image: Arc<Image>) -> Self {
-        let range = image.subresource_range();
-
+    pub const fn new(image: &'a Image) -> Self {
         Self {
             image,
             image_layout: ImageLayout::TransferDstOptimal,
-            clear_value: ClearDepthStencilValue::default(),
-            regions: smallvec![range],
+            clear_value: ClearDepthStencilValue {
+                depth: 0.0,
+                stencil: 0,
+            },
+            regions: &[],
             _ne: crate::NE,
         }
     }
 
-    #[deprecated(since = "0.36.0", note = "use `new` instead")]
-    #[inline]
-    pub fn image(image: Arc<Image>) -> Self {
-        Self::new(image)
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref image,
+            image,
             image_layout,
             clear_value,
-            ref regions,
+            regions,
             _ne: _,
         } = self;
 
@@ -762,10 +734,10 @@ impl ClearDepthStencilImageInfo {
                 }));
             }
 
-            if !subresource_range
+            if subresource_range
                 .base_mip_level
                 .checked_add(subresource_range.level_count)
-                .is_some_and(|end| end <= image.mip_levels())
+                .is_none_or(|end| end > image.mip_levels())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -782,10 +754,10 @@ impl ClearDepthStencilImageInfo {
                 }));
             }
 
-            if !subresource_range
+            if subresource_range
                 .base_array_layer
                 .checked_add(subresource_range.layer_count)
-                .is_some_and(|end| end <= image.array_layers())
+                .is_none_or(|end| end > image.array_layers())
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -808,7 +780,7 @@ impl ClearDepthStencilImageInfo {
 
     pub(crate) fn to_vk(&self) -> ClearDepthStencilImageInfoVk {
         let &Self {
-            ref image,
+            image,
             image_layout,
             clear_value,
             regions: _,
@@ -823,10 +795,15 @@ impl ClearDepthStencilImageInfo {
     }
 
     pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
-        self.regions
-            .iter()
-            .map(ImageSubresourceRange::to_vk)
-            .collect()
+        let &Self { image, regions, .. } = self;
+
+        if regions.is_empty() {
+            let region_vk = image.subresource_range().to_vk();
+
+            smallvec![region_vk]
+        } else {
+            regions.iter().map(ImageSubresourceRange::to_vk).collect()
+        }
     }
 }
 
@@ -834,4 +811,142 @@ pub(crate) struct ClearDepthStencilImageInfoVk {
     pub(crate) image: vk::Image,
     pub(crate) image_layout: vk::ImageLayout,
     pub(crate) depth_stencil: vk::ClearDepthStencilValue,
+}
+
+/// Parameters to fill a region of a buffer with repeated copies of a value.
+#[derive(Clone, Debug)]
+pub struct FillBufferInfo<'a> {
+    /// The buffer to fill.
+    ///
+    /// There is no default value.
+    pub dst_buffer: &'a Buffer,
+
+    /// The offset in bytes from the start of `dst_buffer` that filling will start from.
+    ///
+    /// This must be a multiple of 4.
+    ///
+    /// The default value is `0`.
+    pub dst_offset: DeviceSize,
+
+    /// The number of bytes to fill.
+    ///
+    /// This must be a multiple of 4.
+    ///
+    /// The default value is the size of `dst_buffer`, rounded down to the nearest multiple of 4.
+    pub size: DeviceSize,
+
+    /// The data to fill with.
+    ///
+    /// The default value is `0`.
+    pub data: u32,
+
+    pub _ne: crate::NonExhaustive<'a>,
+}
+
+impl<'a> FillBufferInfo<'a> {
+    /// Returns a default `FillBufferInfo` with the provided `dst_buffer`.
+    // TODO: make const
+    #[inline]
+    pub fn new(dst_buffer: &'a Buffer) -> Self {
+        Self {
+            dst_buffer,
+            dst_offset: 0,
+            size: dst_buffer.size() & !3,
+            data: 0,
+            _ne: crate::NE,
+        }
+    }
+
+    fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            dst_buffer,
+            dst_offset,
+            size,
+            data: _,
+            _ne: _,
+        } = self;
+
+        // VUID-vkCmdFillBuffer-commonparent
+        assert_eq!(device, dst_buffer.device().as_ref());
+
+        if dst_offset >= dst_buffer.size() {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is not less than `dst_buffer.size()`".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00024"],
+                ..Default::default()
+            }));
+        }
+
+        if dst_offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00025"],
+                ..Default::default()
+            }));
+        }
+
+        if size == 0 {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00026"],
+                ..Default::default()
+            }));
+        }
+
+        if size > dst_buffer.size() - dst_offset {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is greater than `dst_buffer.size() - dst_offset`".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00027"],
+                ..Default::default()
+            }));
+        }
+
+        if size % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00028"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+            return Err(Box::new(ValidationError {
+                context: "dst_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-vkCmdFillBuffer-dstBuffer-00029"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    fn to_vk(&self) -> FillBufferInfoVk {
+        let &Self {
+            dst_buffer,
+            dst_offset,
+            size,
+            data,
+            _ne: _,
+        } = self;
+
+        FillBufferInfoVk {
+            dst_buffer: dst_buffer.handle(),
+            dst_offset,
+            size,
+            data,
+        }
+    }
+}
+
+pub(crate) struct FillBufferInfoVk {
+    pub(crate) dst_buffer: vk::Buffer,
+    pub(crate) dst_offset: DeviceSize,
+    pub(crate) size: DeviceSize,
+    pub(crate) data: u32,
 }

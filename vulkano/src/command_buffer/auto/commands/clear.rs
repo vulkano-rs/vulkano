@@ -1,12 +1,16 @@
 use crate::{
     buffer::{BufferContents, Subbuffer},
     command_buffer::{
-        auto::Resource, sys::RecordingCommandBuffer, AutoCommandBufferBuilder, ClearColorImageInfo,
-        ClearDepthStencilImageInfo, ResourceInCommand,
+        auto::Resource, raw, sys::RecordingCommandBuffer, AutoCommandBufferBuilder,
+        ResourceInCommand,
     },
+    format::{ClearColorValue, ClearDepthStencilValue},
+    image::{Image, ImageLayout, ImageSubresourceRange},
     sync::PipelineStageAccessFlags,
     DeviceSize, SafeDeref, ValidationError,
 };
+use smallvec::{smallvec, SmallVec};
+use std::sync::Arc;
 
 /// # Commands to fill resources with new data.
 impl<L> AutoCommandBufferBuilder<L> {
@@ -24,7 +28,14 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         clear_info: &ClearColorImageInfo,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_clear_color_image(clear_info)?;
+        let clear_info_raw = raw::ClearColorImageInfo {
+            image: &clear_info.image,
+            image_layout: clear_info.image_layout,
+            clear_value: clear_info.clear_value,
+            regions: &clear_info.regions,
+            _ne: crate::NE,
+        };
+        self.inner.validate_clear_color_image(&clear_info_raw)?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -69,7 +80,14 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.clear_color_image_unchecked(&clear_info) };
+                let clear_info_raw = raw::ClearColorImageInfo {
+                    image: &clear_info.image,
+                    image_layout: clear_info.image_layout,
+                    clear_value: clear_info.clear_value,
+                    regions: &clear_info.regions,
+                    _ne: crate::NE,
+                };
+                unsafe { out.clear_color_image_unchecked(&clear_info_raw) };
             },
         );
 
@@ -90,7 +108,15 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         clear_info: &ClearDepthStencilImageInfo,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_clear_depth_stencil_image(clear_info)?;
+        let clear_info_raw = raw::ClearDepthStencilImageInfo {
+            image: &clear_info.image,
+            image_layout: clear_info.image_layout,
+            clear_value: clear_info.clear_value,
+            regions: &clear_info.regions,
+            _ne: crate::NE,
+        };
+        self.inner
+            .validate_clear_depth_stencil_image(&clear_info_raw)?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -135,7 +161,14 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.clear_depth_stencil_image_unchecked(&clear_info) };
+                let clear_info_raw = raw::ClearDepthStencilImageInfo {
+                    image: &clear_info.image,
+                    image_layout: clear_info.image_layout,
+                    clear_value: clear_info.clear_value,
+                    regions: &clear_info.regions,
+                    _ne: crate::NE,
+                };
+                unsafe { out.clear_depth_stencil_image_unchecked(&clear_info_raw) };
             },
         );
 
@@ -161,7 +194,14 @@ impl<L> AutoCommandBufferBuilder<L> {
         dst_buffer: &Subbuffer<[u32]>,
         data: u32,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_fill_buffer(dst_buffer, data)?;
+        let fill_info_raw = raw::FillBufferInfo {
+            dst_buffer: dst_buffer.buffer(),
+            dst_offset: dst_buffer.offset(),
+            size: dst_buffer.size(),
+            data,
+            _ne: crate::NE,
+        };
+        self.inner.validate_fill_buffer(&fill_info_raw)?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -193,7 +233,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.fill_buffer_unchecked(&dst_buffer, data) };
+                let fill_info_raw = raw::FillBufferInfo {
+                    dst_buffer: dst_buffer.buffer(),
+                    dst_offset: dst_buffer.offset(),
+                    size: dst_buffer.size(),
+                    data,
+                    _ne: crate::NE,
+                };
+                unsafe { out.fill_buffer_unchecked(&fill_info_raw) };
             },
         );
 
@@ -223,7 +270,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         dst_buffer: &Subbuffer<[u8]>,
         data_size: DeviceSize,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_update_buffer(dst_buffer, data_size)?;
+        self.inner
+            .validate_update_buffer(dst_buffer.buffer(), dst_buffer.offset(), data_size)?;
 
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
@@ -259,10 +307,116 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.update_buffer_unchecked(&dst_buffer, &data) };
+                unsafe {
+                    out.update_buffer_unchecked(dst_buffer.buffer(), dst_buffer.offset(), &*data)
+                };
             },
         );
 
         self
+    }
+}
+
+/// Parameters to clear a color image.
+#[derive(Clone, Debug)]
+pub struct ClearColorImageInfo {
+    /// The image to clear.
+    ///
+    /// There is no default value.
+    pub image: Arc<Image>,
+
+    /// The layout used for `image` during the clear operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferDstOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferDstOptimal`].
+    pub image_layout: ImageLayout,
+
+    /// The color value to clear the image to.
+    ///
+    /// The default value is `ClearColorValue::Float([0.0; 4])`.
+    pub clear_value: ClearColorValue,
+
+    /// The subresource ranges of `image` to clear.
+    ///
+    /// The default value is a single region, covering the whole image.
+    pub regions: SmallVec<[ImageSubresourceRange; 1]>,
+
+    pub _ne: crate::NonExhaustive<'static>,
+}
+
+impl ClearColorImageInfo {
+    /// Returns a default `ClearColorImageInfo` with the provided `image`.
+    #[inline]
+    pub fn new(image: Arc<Image>) -> Self {
+        let range = image.subresource_range();
+
+        Self {
+            image,
+            image_layout: ImageLayout::TransferDstOptimal,
+            clear_value: ClearColorValue::Float([0.0; 4]),
+            regions: smallvec![range],
+            _ne: crate::NE,
+        }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
+    }
+}
+
+/// Parameters to clear a depth/stencil image.
+#[derive(Clone, Debug)]
+pub struct ClearDepthStencilImageInfo {
+    /// The image to clear.
+    ///
+    /// There is no default value.
+    pub image: Arc<Image>,
+
+    /// The layout used for `image` during the clear operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferDstOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferDstOptimal`].
+    pub image_layout: ImageLayout,
+
+    /// The depth/stencil values to clear the image to.
+    ///
+    /// The default value is zero for both.
+    pub clear_value: ClearDepthStencilValue,
+
+    /// The subresource ranges of `image` to clear.
+    ///
+    /// The default value is a single region, covering the whole image.
+    pub regions: SmallVec<[ImageSubresourceRange; 1]>,
+
+    pub _ne: crate::NonExhaustive<'static>,
+}
+
+impl ClearDepthStencilImageInfo {
+    /// Returns a default `ClearDepthStencilImageInfo` with the provided `image`.
+    #[inline]
+    pub fn new(image: Arc<Image>) -> Self {
+        let range = image.subresource_range();
+
+        Self {
+            image,
+            image_layout: ImageLayout::TransferDstOptimal,
+            clear_value: ClearDepthStencilValue::default(),
+            regions: smallvec![range],
+            _ne: crate::NE,
+        }
+    }
+
+    #[deprecated(since = "0.36.0", note = "use `new` instead")]
+    #[inline]
+    pub fn image(image: Arc<Image>) -> Self {
+        Self::new(image)
     }
 }
