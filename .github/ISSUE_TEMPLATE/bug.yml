@@ -47,6 +47,6 @@ body:
       label: Minimal reproducible example
       description: >
         Please upload a reasonably minimal reproducible example demonstrating the issue, or link to
-        an exising example that reproduces the issue.
+        an existing example that reproduces the issue.
     validations:
       required: true
