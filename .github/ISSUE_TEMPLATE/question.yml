@@ -1,0 +1,10 @@
+name: Question
+description: 'Ask a question. Our #support Discord channel is preferred for questions.'
+type: Question
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Question description
+    validations:
+      required: true
