@@ -67,6 +67,26 @@
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
           SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
         };
+        devShells.CI-MSRV = let
+          manifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+          msrv = manifest.workspace.package.rust-version;
+        in with pkgs; mkShell rec {
+          buildInputs = [
+            (rust-bin.stable.${msrv}.minimal.override {
+              # Windows CI unfortunately needs to cross-compile from within WSL because Nix doesn't
+              # work on Windows.
+              targets = [ "x86_64-pc-windows-msvc" ];
+            })
+            # We use nightly rustfmt features.
+            (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
+
+            # Vulkan dependencies
+            shaderc
+          ];
+
+          LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
+          SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
+        };
       }
     );
 }
