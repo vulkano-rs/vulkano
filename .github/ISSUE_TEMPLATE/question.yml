@@ -4,7 +4,7 @@ type: Question
 body:
   - type: markdown
     attributes:
-      value: |
+      value: >
         Our #support Discord channel is preferred for questions, but if you don't have Discord,
         feel free to ask here. Please don't create an issue to ask if feature X is supported. We
         have a [COVERAGE.md](https://github.com/vulkano-rs/vulkano/blob/master/COVERAGE.md) file.
