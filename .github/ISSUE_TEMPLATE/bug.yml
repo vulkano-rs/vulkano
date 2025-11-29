@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Version of vulkano
-      placeholder: 0.35.2
+      placeholder: '0.35.2'
     validations:
       required: true
   - type: input
