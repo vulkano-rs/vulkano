@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a bug in vulkano.
+description: Report a bug in vulkano
 type: Bug
 body:
   - type: input

@@ -1,5 +1,5 @@
 name: Question
-description: 'Ask a question. Our #support Discord channel is preferred for questions.'
+description: Ask a question
 type: Question
 body:
   - type: markdown
