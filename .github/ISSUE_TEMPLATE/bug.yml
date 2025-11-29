@@ -39,7 +39,7 @@ body:
       description: >
         Please describe the issue in as much detail as possible and provide any additional
         information that would help us resolve it.
-    validation:
+    validations:
       required: true
   - type: textarea
     id: mre
@@ -48,5 +48,5 @@ body:
       description: >
         Please upload a reasonably minimal reproducible example demonstrating the issue, or link to
         an exising example that reproduces the issue.
-    validation:
+    validations:
       required: true
