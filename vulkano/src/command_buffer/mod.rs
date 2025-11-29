@@ -93,9 +93,9 @@
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 #[allow(unused_imports)] // everything is exported for future-proofing
-pub use self::commands::{
+pub use self::auto::commands::{
     acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
-    query::*, render_pass::*, secondary::*, sync::*,
+    query::*, render_pass::*, secondary::*,
 };
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
@@ -137,6 +137,14 @@ mod commands;
 pub mod pool;
 mod sys;
 mod traits;
+
+pub mod raw {
+    #[allow(unused_imports)] // everything is exported for future-proofing
+    pub use crate::command_buffer::commands::{
+        acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
+        query::*, render_pass::*, secondary::*, sync::*,
+    };
+}
 
 /// Used as buffer contents to provide input for the
 /// [`AutoCommandBufferBuilder::dispatch_indirect`] command.
