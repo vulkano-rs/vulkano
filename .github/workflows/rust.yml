@@ -44,10 +44,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
         if: ${{ ! matrix.self-hosted }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@151eeee51b94b648db7d5aa68ce6a3cad1ddea4e
         if: ${{ ! matrix.self-hosted }}
         with:
-          shared-key: ${{ matrix.name }}
+          cache-bin: false
+          cmd-format: nix develop .#CI -c {0}
       - name: Run clippy
         run: nix develop .#CI -c cargo clippy ${{ env.common_args }} -- -Dwarnings
       - name: Build tests
