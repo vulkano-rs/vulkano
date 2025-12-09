@@ -18,13 +18,14 @@
 
 pub use self::framebuffer::{Framebuffer, FramebufferCreateFlags, FramebufferCreateInfo};
 use crate::{
+    command_buffer::raw::MemoryBarrier,
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearValueType, Format, FormatFeatures, NumericType},
     image::{ImageAspects, ImageLayout, SampleCount},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     self_referential::self_referential,
-    sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
+    sync::{AccessFlags, DependencyFlags, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
