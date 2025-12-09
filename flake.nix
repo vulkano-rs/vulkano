@@ -77,8 +77,6 @@
               # work on Windows.
               targets = [ "x86_64-pc-windows-msvc" ];
             })
-            # We use nightly rustfmt features.
-            (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
 
             # Vulkan dependencies
             shaderc
