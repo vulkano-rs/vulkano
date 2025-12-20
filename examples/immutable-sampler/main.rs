@@ -405,7 +405,7 @@ impl ApplicationHandler for App {
 
         let layout = &pipeline.layout().set_layouts()[0];
 
-        // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the
+        // Use `image_view` instead of `image`, since the sampler is already in the
         // layout.
         let descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
