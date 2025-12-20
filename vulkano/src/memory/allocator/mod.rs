@@ -216,8 +216,8 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
-    MemoryPropertyFlags, MemoryRequirements,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
+    MemoryRequirements,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -1090,14 +1090,7 @@ impl<S> GenericMemoryAllocator<S> {
             // - We checked that the memory is host-visible.
             // - The memory can't be mapped already, because we just allocated it.
             // - Mapping the whole range is always valid.
-            unsafe {
-                memory.map_unchecked(&MemoryMapInfo {
-                    flags: MemoryMapFlags::empty(),
-                    offset: 0,
-                    size: memory.allocation_size(),
-                    _ne: crate::NE,
-                })
-            }?;
+            unsafe { memory.map_unchecked(&MemoryMapInfo::default()) }?;
         }
 
         Ok(Arc::new(memory))

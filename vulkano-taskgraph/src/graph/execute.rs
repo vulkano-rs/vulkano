@@ -778,10 +778,10 @@ unsafe fn create_framebuffers(
                         subresource_range: ImageSubresourceRange {
                             aspects: attachment.format.aspects(),
                             base_mip_level: attachment.mip_level,
-                            level_count: 1,
+                            level_count: Some(1),
                             base_array_layer: attachment.base_array_layer,
                             // FIXME:
-                            layer_count: 1,
+                            layer_count: Some(1),
                         },
                         ..Default::default()
                     },

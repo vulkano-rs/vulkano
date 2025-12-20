@@ -27,7 +27,7 @@ impl RecordingCommandBuffer<'_> {
         &mut self,
         buffer: Id<Buffer>,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
         index_type: IndexType,
     ) -> Result<&mut Self> {
         Ok(unsafe { self.bind_index_buffer_unchecked(buffer, offset, size, index_type) })
@@ -37,7 +37,7 @@ impl RecordingCommandBuffer<'_> {
         &mut self,
         buffer: Id<Buffer>,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
         index_type: IndexType,
     ) -> &mut Self {
         let buffer = unsafe { self.accesses.buffer_unchecked(buffer) };
@@ -50,7 +50,7 @@ impl RecordingCommandBuffer<'_> {
                     self.handle(),
                     buffer.handle(),
                     offset,
-                    size,
+                    size.unwrap_or(vk::WHOLE_SIZE),
                     index_type.into(),
                 )
             };

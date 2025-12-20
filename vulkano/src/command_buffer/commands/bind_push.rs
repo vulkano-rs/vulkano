@@ -310,7 +310,7 @@ impl RecordingCommandBuffer {
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
         index_type: IndexType,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_index_buffer(buffer, offset, size, index_type)?;
@@ -322,7 +322,7 @@ impl RecordingCommandBuffer {
         &self,
         buffer: &Buffer,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
         index_type: IndexType,
     ) -> Result<(), Box<ValidationError>> {
         if !self
@@ -371,22 +371,24 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if size % index_type.size() != 0 {
-            return Err(Box::new(ValidationError {
-                context: "size".into(),
-                problem: "is not a multiple of `index_type.size()`".into(),
-                vuids: &["VUID-vkCmdBindIndexBuffer2-size-08767"],
-                ..Default::default()
-            }));
-        }
+        if let Some(size) = size {
+            if size % index_type.size() != 0 {
+                return Err(Box::new(ValidationError {
+                    context: "size".into(),
+                    problem: "is not a multiple of `index_type.size()`".into(),
+                    vuids: &["VUID-vkCmdBindIndexBuffer2-size-08767"],
+                    ..Default::default()
+                }));
+            }
 
-        if size > buffer.size() - offset {
-            return Err(Box::new(ValidationError {
-                context: "size".into(),
-                problem: "is greater than `buffer.size() - offset`".into(),
-                vuids: &["VUID-vkCmdBindIndexBuffer2-size-08768"],
-                ..Default::default()
-            }));
+            if size > buffer.size() - offset {
+                return Err(Box::new(ValidationError {
+                    context: "size".into(),
+                    problem: "is greater than `buffer.size() - offset`".into(),
+                    vuids: &["VUID-vkCmdBindIndexBuffer2-size-08768"],
+                    ..Default::default()
+                }));
+            }
         }
 
         // TODO:
@@ -400,7 +402,7 @@ impl RecordingCommandBuffer {
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
         index_type: IndexType,
     ) -> &mut Self {
         let fns = self.device().fns();
@@ -411,7 +413,7 @@ impl RecordingCommandBuffer {
                     self.handle(),
                     buffer.handle(),
                     offset,
-                    size,
+                    size.unwrap_or(vk::WHOLE_SIZE),
                     index_type.into(),
                 )
             };

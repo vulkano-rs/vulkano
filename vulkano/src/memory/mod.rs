@@ -428,7 +428,7 @@ impl ResourceMemory {
             _ne: _,
         } = memory_range;
 
-        if !(offset <= self.size() && size <= self.size() - offset) {
+        if !(offset <= self.size() && size.is_none_or(|size| size <= self.size() - offset)) {
             return Err(Box::new(ValidationError {
                 context: "memory_range".into(),
                 problem: "is not contained within the allocation".into(),
@@ -444,14 +444,14 @@ impl ResourceMemory {
         memory_range: &MappedMemoryRange<'_>,
     ) -> MappedMemoryRange<'static> {
         let &MappedMemoryRange {
-            mut offset,
-            mut size,
+            offset,
+            size,
             _ne: _,
         } = memory_range;
 
         let memory = self.device_memory();
-
-        offset += self.offset();
+        let offset = self.offset() + offset;
+        let mut size = size.unwrap_or(self.size() - memory_range.offset);
 
         // VUID-VkMappedMemoryRange-size-01390
         if memory_range.offset + size == self.size() {
@@ -467,7 +467,7 @@ impl ResourceMemory {
 
         MappedMemoryRange {
             offset,
-            size,
+            size: Some(size),
             _ne: crate::NE,
         }
     }

@@ -356,7 +356,7 @@ where
         if allocation.atom_size().is_some() {
             let memory_range = MappedMemoryRange {
                 offset: range.start,
-                size: range.end - range.start,
+                size: Some(range.end - range.start),
                 _ne: crate::NE,
             };
 
@@ -450,7 +450,7 @@ where
         if allocation.atom_size().is_some() {
             let memory_range = MappedMemoryRange {
                 offset: range.start,
-                size: range.end - range.start,
+                size: Some(range.end - range.start),
                 _ne: crate::NE,
             };
 
@@ -707,7 +707,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
         if allocation.atom_size().is_some() && !thread::panicking() {
             let memory_range = MappedMemoryRange {
                 offset: self.range.start,
-                size: self.range.end - self.range.start,
+                size: Some(self.range.end - self.range.start),
                 _ne: crate::NE,
             };
 

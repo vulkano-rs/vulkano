@@ -102,19 +102,28 @@ impl ImageView {
             }));
         }
 
-        if !subresource_range
-            .base_mip_level
-            .checked_add(subresource_range.level_count)
-            .is_some_and(|end| end <= image.mip_levels())
-        {
+        if subresource_range.base_mip_level >= image.mip_levels() {
             return Err(Box::new(ValidationError {
-                problem: "`create_info.subresource_range.base_mip_level + \
-                    create_info.subresource_range.level_count` is greater than \
+                problem: "`create_info.subresource_range.base_mip_level` is not less than \
                     `image.mip_levels()`"
                     .into(),
-                vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-01718"],
+                vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-01478"],
                 ..Default::default()
             }));
+        }
+
+        if let Some(subresource_range_level_count) = subresource_range.level_count {
+            if subresource_range_level_count > image.mip_levels() - subresource_range.base_mip_level
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`create_info.subresource_range.base_mip_level + \
+                        create_info.subresource_range.level_count` is greater than \
+                        `image.mip_levels()`"
+                        .into(),
+                    vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-01718"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if matches!(view_type, ImageViewType::Cube | ImageViewType::CubeArray)
@@ -181,7 +190,7 @@ impl ImageView {
                 _ => unreachable!(),
             }
 
-            if subresource_range.level_count != 1 {
+            if subresource_range.level_count != Some(1) {
                 return Err(Box::new(ValidationError {
                     problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
                         `ImageViewType::Dim2dArray`, and \
@@ -199,42 +208,61 @@ impl ImageView {
             let mip_level_extent =
                 mip_level_extent(image.extent(), subresource_range.base_mip_level).unwrap();
 
-            if !subresource_range
-                .base_array_layer
-                .checked_add(subresource_range.layer_count)
-                .is_some_and(|end| end <= mip_level_extent[2])
-            {
+            if subresource_range.base_array_layer >= mip_level_extent[2] {
                 return Err(Box::new(ValidationError {
                     problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
                         `ImageViewType::Dim2dArray`, and `image.image_type()` is \
-                        `ImageType::Dim3d`, but `create_info.subresource_range.base_array_layer + \
-                        create_info.subresource_range.layer_count` is greater than the depth of \
-                        the mip level `create_info.subresource_range.base_mip_level` of `image`"
+                        `ImageType::Dim3d`, but `create_info.subresource_range.base_array_layer` \
+                        is not less than the depth of the mip level \
+                        `create_info.subresource_range.base_mip_level` of `image`"
                         .into(),
-                    vuids: &[
-                        "VUID-VkImageViewCreateInfo-image-02724",
-                        "VUID-VkImageViewCreateInfo-subresourceRange-02725",
-                    ],
+                    vuids: &["VUID-VkImageViewCreateInfo-image-02724"],
                     ..Default::default()
                 }));
             }
+
+            if let Some(subresource_range_layer_count) = subresource_range.layer_count {
+                if subresource_range_layer_count
+                    > mip_level_extent[2] - subresource_range.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
+                            `ImageViewType::Dim2dArray`, and `image.image_type()` is \
+                            `ImageType::Dim3d`, but \
+                            `create_info.subresource_range.base_array_layer + \
+                            create_info.subresource_range.layer_count` is greater than the depth \
+                            of the mip level `create_info.subresource_range.base_mip_level` of \
+                            `image`"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-02725"],
+                        ..Default::default()
+                    }));
+                }
+            }
         } else {
-            if !subresource_range
-                .base_array_layer
-                .checked_add(subresource_range.layer_count)
-                .is_some_and(|end| end <= image.array_layers())
-            {
+            if subresource_range.base_array_layer >= image.array_layers() {
                 return Err(Box::new(ValidationError {
-                    problem: "`create_info.subresource_range.base_array_layer + \
-                        create_info.subresource_range.layer_count` is greater than \
+                    problem: "`create_info.subresource_range.base_array_layer` is not less than \
                         `image.array_layers()`"
                         .into(),
-                    vuids: &[
-                        "VUID-VkImageViewCreateInfo-image-06724",
-                        "VUID-VkImageViewCreateInfo-subresourceRange-06725",
-                    ],
+                    vuids: &["VUID-VkImageViewCreateInfo-image-06724"],
                     ..Default::default()
                 }));
+            }
+
+            if let Some(subresource_range_layer_count) = subresource_range.layer_count {
+                if subresource_range_layer_count
+                    > image.array_layers() - subresource_range.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`create_info.subresource_range.base_array_layer + \
+                            create_info.subresource_range.layer_count` is greater than \
+                            `image.array_layers()`"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-06725"],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
@@ -450,19 +478,7 @@ impl ImageView {
                     }));
                 }
 
-                if subresource_range.layer_count != 1 {
-                    return Err(Box::new(ValidationError {
-                        problem: "`image.flags()` contains \
-                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
-                            `create_info.format` is an uncompressed format, but \
-                            `create_info.subresource_range.layer_count` is not 1"
-                            .into(),
-                        vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
-                        ..Default::default()
-                    }));
-                }
-
-                if subresource_range.level_count != 1 {
+                if subresource_range.level_count != Some(1) {
                     return Err(Box::new(ValidationError {
                         problem: "`image.flags()` contains \
                             `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
@@ -470,6 +486,18 @@ impl ImageView {
                             `create_info.subresource_range.level_count` is not 1"
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
+                        ..Default::default()
+                    }));
+                }
+
+                if subresource_range.layer_count != Some(1) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image.flags()` contains \
+                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                            `create_info.format` is an uncompressed format, but \
+                            `create_info.subresource_range.layer_count` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-image-09487"],
                         ..Default::default()
                     }));
                 }
@@ -627,7 +655,7 @@ impl ImageView {
             view_type,
             format,
             component_mapping,
-            subresource_range,
+            mut subresource_range,
             mut usage,
             sampler_ycbcr_conversion,
             _ne: _,
@@ -637,6 +665,16 @@ impl ImageView {
 
         if usage.is_empty() {
             usage = get_implicit_default_usage(subresource_range.aspects, image);
+        }
+
+        if subresource_range.level_count.is_none() {
+            subresource_range.level_count =
+                Some(image.mip_levels() - subresource_range.base_mip_level);
+        }
+
+        if subresource_range.layer_count.is_none() {
+            subresource_range.layer_count =
+                Some(image.array_layers() - subresource_range.base_array_layer);
         }
 
         let format_features = unsafe { get_format_features(format, image) };
@@ -712,9 +750,22 @@ impl ImageView {
     }
 
     /// Returns the subresource range of the wrapped image that this view exposes.
+    ///
+    /// The `level_count` and `layer_count` fields are guaranteed to be `Some` even if `None` was
+    /// used when creating the image view.
     #[inline]
     pub fn subresource_range(&self) -> &ImageSubresourceRange {
         &self.subresource_range
+    }
+
+    pub(crate) fn subresource_range_level_count(&self) -> u32 {
+        // SAFETY: We ensure that `layer_count` is set to `Some` when creating the image view.
+        unsafe { self.subresource_range.level_count.unwrap_unchecked() }
+    }
+
+    pub(crate) fn subresource_range_layer_count(&self) -> u32 {
+        // SAFETY: We ensure that `layer_count` is set to `Some` when creating the image view.
+        unsafe { self.subresource_range.layer_count.unwrap_unchecked() }
     }
 
     /// Returns the usage of the image view.
@@ -939,7 +990,10 @@ impl<'a> ImageViewCreateInfo<'a> {
 
         match view_type {
             ImageViewType::Dim1d | ImageViewType::Dim2d | ImageViewType::Dim3d => {
-                if subresource_range.layer_count != 1 {
+                if subresource_range
+                    .layer_count
+                    .is_some_and(|subresource_range_layer_count| subresource_range_layer_count != 1)
+                {
                     return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::Dim1d`, \
                             `ImageViewType::Dim2d` or `ImageViewType::Dim3d`, but \
@@ -951,7 +1005,7 @@ impl<'a> ImageViewCreateInfo<'a> {
                 }
             }
             ImageViewType::Cube => {
-                if subresource_range.layer_count != 6 {
+                if subresource_range.layer_count != Some(6) {
                     return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::Cube`, but \
                             `subresource_range.layer_count` is not 6"
@@ -973,7 +1027,12 @@ impl<'a> ImageViewCreateInfo<'a> {
                     }));
                 }
 
-                if subresource_range.layer_count % 6 != 0 {
+                if subresource_range
+                    .layer_count
+                    .is_none_or(|subresource_range_layer_count| {
+                        subresource_range_layer_count % 6 != 0
+                    })
+                {
                     return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::CubeArray`, but \
                             `subresource_range.layer_count` is not a multiple of 6"

@@ -483,44 +483,62 @@ impl<'a> ClearColorImageInfo<'a> {
                 }));
             }
 
-            if subresource_range
-                .base_mip_level
-                .checked_add(subresource_range.level_count)
-                .is_none_or(|end| end > image.mip_levels())
-            {
+            if subresource_range.base_mip_level >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater than \
-                        `image.mip_levels()`",
+                        "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &[
-                        "VUID-vkCmdClearColorImage-baseMipLevel-01470",
-                        "VUID-vkCmdClearColorImage-pRanges-01692",
-                    ],
+                    vuids: &["VUID-vkCmdClearColorImage-baseMipLevel-01470"],
                     ..Default::default()
                 }));
             }
 
-            if subresource_range
-                .base_array_layer
-                .checked_add(subresource_range.layer_count)
-                .is_none_or(|end| end > image.array_layers())
-            {
+            if let Some(subresource_range_level_count) = subresource_range.level_count {
+                if subresource_range_level_count
+                    > image.mip_levels() - subresource_range.base_mip_level
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater \
+                            than `image.mip_levels()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearColorImage-pRanges-01692"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if subresource_range.base_array_layer >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_array_level + regions[{0}].layer_count` is greater \
-                        than `image.array_layers()`",
+                        "`regions[{0}].base_array_level` is not less than `image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &[
-                        "VUID-vkCmdClearColorImage-baseArrayLayer-01472",
-                        "VUID-vkCmdClearColorImage-pRanges-01693",
-                    ],
+                    vuids: &["VUID-vkCmdClearColorImage-baseArrayLayer-01472"],
                     ..Default::default()
                 }));
+            }
+
+            if let Some(subresource_range_layer_count) = subresource_range.layer_count {
+                if subresource_range_layer_count
+                    > image.array_layers() - subresource_range.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].base_array_level + regions[{0}].layer_count` is \
+                            greater than `image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearColorImage-pRanges-01693"],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
@@ -734,44 +752,61 @@ impl<'a> ClearDepthStencilImageInfo<'a> {
                 }));
             }
 
-            if subresource_range
-                .base_mip_level
-                .checked_add(subresource_range.level_count)
-                .is_none_or(|end| end > image.mip_levels())
-            {
+            if subresource_range.base_mip_level >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater than \
-                        `image.mip_levels()`",
+                        "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &[
-                        "VUID-vkCmdClearDepthStencilImage-baseMipLevel-01474",
-                        "VUID-vkCmdClearDepthStencilImage-pRanges-01694",
-                    ],
+                    vuids: &["VUID-vkCmdClearDepthStencilImage-baseMipLevel-01474"],
                     ..Default::default()
                 }));
             }
 
-            if subresource_range
-                .base_array_layer
-                .checked_add(subresource_range.layer_count)
-                .is_none_or(|end| end > image.array_layers())
-            {
+            if let Some(subresource_range_level_count) = subresource_range.level_count {
+                if subresource_range_level_count
+                    > image.mip_levels() - subresource_range.base_mip_level
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearDepthStencilImage-pRanges-01694"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if subresource_range.base_array_layer > image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_array_layer + regions[{0}].layer_count` is greater \
-                        than `image.array_layers()`",
+                        "`regions[{0}].base_array_layer` is not less than `image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &[
-                        "VUID-vkCmdClearDepthStencilImage-baseArrayLayer-01476",
-                        "VUID-vkCmdClearDepthStencilImage-pRanges-01695",
-                    ],
+                    vuids: &["VUID-vkCmdClearDepthStencilImage-baseArrayLayer-01476"],
                     ..Default::default()
                 }));
+            }
+
+            if let Some(subresource_range_layer_count) = subresource_range.layer_count {
+                if subresource_range_layer_count
+                    > image.array_layers() - subresource_range.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].base_array_layer + regions[{0}].layer_count` is \
+                            greater than `image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearDepthStencilImage-pRanges-01695"],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
@@ -830,10 +865,12 @@ pub struct FillBufferInfo<'a> {
 
     /// The number of bytes to fill.
     ///
-    /// This must be a multiple of 4.
+    /// If set to `Some`, this must be a multiple of 4.
     ///
-    /// The default value is the size of `dst_buffer`, rounded down to the nearest multiple of 4.
-    pub size: DeviceSize,
+    /// If set to `None`, fills until the end of the buffer.
+    ///
+    /// The default value is `None`.
+    pub size: Option<DeviceSize>,
 
     /// The data to fill with.
     ///
@@ -845,13 +882,12 @@ pub struct FillBufferInfo<'a> {
 
 impl<'a> FillBufferInfo<'a> {
     /// Returns a default `FillBufferInfo` with the provided `dst_buffer`.
-    // TODO: make const
     #[inline]
-    pub fn new(dst_buffer: &'a Buffer) -> Self {
+    pub const fn new(dst_buffer: &'a Buffer) -> Self {
         Self {
             dst_buffer,
             dst_offset: 0,
-            size: dst_buffer.size() & !3,
+            size: None,
             data: 0,
             _ne: crate::NE,
         }
@@ -887,7 +923,7 @@ impl<'a> FillBufferInfo<'a> {
             }));
         }
 
-        if size == 0 {
+        if size == Some(0) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is zero".into(),
@@ -896,22 +932,24 @@ impl<'a> FillBufferInfo<'a> {
             }));
         }
 
-        if size > dst_buffer.size() - dst_offset {
-            return Err(Box::new(ValidationError {
-                context: "size".into(),
-                problem: "is greater than `dst_buffer.size() - dst_offset`".into(),
-                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00027"],
-                ..Default::default()
-            }));
-        }
+        if let Some(size) = size {
+            if size > dst_buffer.size() - dst_offset {
+                return Err(Box::new(ValidationError {
+                    context: "size".into(),
+                    problem: "is greater than `dst_buffer.size() - dst_offset`".into(),
+                    vuids: &["VUID-vkCmdFillBuffer-dstOffset-00027"],
+                    ..Default::default()
+                }));
+            }
 
-        if size % 4 != 0 {
-            return Err(Box::new(ValidationError {
-                context: "size".into(),
-                problem: "is not a multiple of 4".into(),
-                vuids: &["VUID-vkCmdFillBuffer-dstOffset-00028"],
-                ..Default::default()
-            }));
+            if size % 4 != 0 {
+                return Err(Box::new(ValidationError {
+                    context: "size".into(),
+                    problem: "is not a multiple of 4".into(),
+                    vuids: &["VUID-vkCmdFillBuffer-dstOffset-00028"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
@@ -938,7 +976,7 @@ impl<'a> FillBufferInfo<'a> {
         FillBufferInfoVk {
             dst_buffer: dst_buffer.handle(),
             dst_offset,
-            size,
+            size: size.unwrap_or(vk::WHOLE_SIZE),
             data,
         }
     }

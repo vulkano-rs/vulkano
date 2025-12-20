@@ -3,6 +3,7 @@ use crate::{
     resource::{AccessTypes, ImageLayoutType},
     Id,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::ffi::c_void;
 use vulkano::{
@@ -147,20 +148,24 @@ impl RecordingCommandBuffer<'_> {
         let &FillBufferInfo {
             dst_buffer,
             dst_offset,
-            mut size,
+            size,
             data,
             _ne: _,
         } = fill_info;
 
         let dst_buffer = unsafe { self.accesses.buffer_unchecked(dst_buffer) };
 
-        if size == 0 {
-            size = dst_buffer.size() & !3;
-        }
-
         let fns = self.device().fns();
         let cmd_fill_buffer = fns.v1_0.cmd_fill_buffer;
-        unsafe { cmd_fill_buffer(self.handle(), dst_buffer.handle(), dst_offset, size, data) };
+        unsafe {
+            cmd_fill_buffer(
+                self.handle(),
+                dst_buffer.handle(),
+                dst_offset,
+                size.unwrap_or(vk::WHOLE_SIZE),
+                data,
+            )
+        };
 
         self
     }
@@ -334,10 +339,12 @@ pub struct FillBufferInfo<'a> {
 
     /// The number of bytes to fill.
     ///
-    /// This must be a multiple of 4.
+    /// If set to `Some`, this must be a multiple of 4.
     ///
-    /// The default value is the size of `dst_buffer`, rounded down to the nearest multiple of 4.
-    pub size: DeviceSize,
+    /// If set to `None`, fills until the end of the buffer.
+    ///
+    /// The default value is `None`.
+    pub size: Option<DeviceSize>,
 
     /// The data to fill with.
     ///
@@ -361,7 +368,7 @@ impl FillBufferInfo<'_> {
         Self {
             dst_buffer: Id::INVALID,
             dst_offset: 0,
-            size: 0,
+            size: None,
             data: 0,
             _ne: crate::NE,
         }

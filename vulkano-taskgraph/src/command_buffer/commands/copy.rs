@@ -191,21 +191,15 @@ impl RecordingCommandBuffer<'_> {
                 let src_extent = src_image.extent();
                 let dst_extent = dst_image.extent();
                 let regions_vk = [vk::ImageCopy2::default()
-                    .src_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..src_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..src_image.subresource_layers().to_vk()
+                    })
                     .src_offset(convert_offset([0; 3]))
-                    .dst_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..dst_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..dst_image.subresource_layers().to_vk()
+                    })
                     .dst_offset(convert_offset([0; 3]))
                     .extent(convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
@@ -260,17 +254,15 @@ impl RecordingCommandBuffer<'_> {
                 let src_extent = src_image.extent();
                 let dst_extent = dst_image.extent();
                 let region_vk = vk::ImageCopy {
-                    src_subresource: ImageSubresourceLayers {
+                    src_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..src_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..src_image.subresource_layers().to_vk()
+                    },
                     src_offset: convert_offset([0; 3]),
-                    dst_subresource: ImageSubresourceLayers {
+                    dst_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..dst_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..dst_image.subresource_layers().to_vk()
+                    },
                     dst_offset: convert_offset([0; 3]),
                     extent: convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
@@ -687,21 +679,15 @@ impl RecordingCommandBuffer<'_> {
             if regions.is_empty() {
                 let min_array_layers = cmp::min(src_image.array_layers(), dst_image.array_layers());
                 let regions_vk = [vk::ImageBlit2::default()
-                    .src_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..src_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..src_image.subresource_layers().to_vk()
+                    })
                     .src_offsets([[0; 3], src_image.extent()].map(convert_offset))
-                    .dst_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..src_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..src_image.subresource_layers().to_vk()
+                    })
                     .dst_offsets([[0; 3], dst_image.extent()].map(convert_offset))];
 
                 let blit_image_info_vk = vk::BlitImageInfo2::default()
@@ -749,17 +735,15 @@ impl RecordingCommandBuffer<'_> {
             if regions.is_empty() {
                 let min_array_layers = cmp::min(src_image.array_layers(), dst_image.array_layers());
                 let region_vk = vk::ImageBlit {
-                    src_subresource: ImageSubresourceLayers {
+                    src_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..src_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..src_image.subresource_layers().to_vk()
+                    },
                     src_offsets: [[0; 3], src_image.extent()].map(convert_offset),
-                    dst_subresource: ImageSubresourceLayers {
+                    dst_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..dst_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..dst_image.subresource_layers().to_vk()
+                    },
                     dst_offsets: [[0; 3], dst_image.extent()].map(convert_offset),
                 };
 
@@ -856,21 +840,15 @@ impl RecordingCommandBuffer<'_> {
                 let src_extent = src_image.extent();
                 let dst_extent = dst_image.extent();
                 let regions_vk = [vk::ImageResolve2::default()
-                    .src_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..src_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..src_image.subresource_layers().to_vk()
+                    })
                     .src_offset(convert_offset([0; 3]))
-                    .dst_subresource(
-                        ImageSubresourceLayers {
-                            layer_count: min_array_layers,
-                            ..src_image.subresource_layers()
-                        }
-                        .to_vk(),
-                    )
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        layer_count: min_array_layers,
+                        ..src_image.subresource_layers().to_vk()
+                    })
                     .dst_offset(convert_offset([0; 3]))
                     .extent(convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
@@ -925,17 +903,15 @@ impl RecordingCommandBuffer<'_> {
                 let src_extent = src_image.extent();
                 let dst_extent = dst_image.extent();
                 let regions_vk = [vk::ImageResolve {
-                    src_subresource: ImageSubresourceLayers {
+                    src_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..src_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..src_image.subresource_layers().to_vk()
+                    },
                     src_offset: convert_offset([0; 3]),
-                    dst_subresource: ImageSubresourceLayers {
+                    dst_subresource: vk::ImageSubresourceLayers {
                         layer_count: min_array_layers,
-                        ..dst_image.subresource_layers()
-                    }
-                    .to_vk(),
+                        ..dst_image.subresource_layers().to_vk()
+                    },
                     dst_offset: convert_offset([0; 3]),
                     extent: convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
