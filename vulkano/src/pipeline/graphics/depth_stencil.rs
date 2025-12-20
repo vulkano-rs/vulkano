@@ -17,7 +17,6 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ash::vk;
-use std::ops::RangeInclusive;
 
 /// The state in a graphics pipeline describing how the depth, depth bounds and stencil tests
 /// should behave.
@@ -36,13 +35,13 @@ pub struct DepthStencilState<'a> {
     /// The default value is `None`.
     pub depth: Option<DepthState>,
 
-    /// The minimum and maximum depth values to use for the depth bounds test.
-    /// Fragments with values outside this range are discarded.
+    /// The minimum and maximum depth values to use for the depth bounds test. Fragments with
+    /// values outside this range are discarded.
     ///
     /// If set to `None`, the depth bounds test is disabled, all fragments will pass.
     ///
     /// The default value is `None`.
-    pub depth_bounds: Option<RangeInclusive<f32>>,
+    pub depth_bounds: Option<(f32, f32)>,
 
     /// The state of the stencil test.
     ///
@@ -131,7 +130,7 @@ impl DepthStencilState<'_> {
             }
 
             if !device.enabled_extensions().ext_depth_range_unrestricted {
-                if !(0.0..1.0).contains(depth_bounds.start()) {
+                if !(0.0..=1.0).contains(&depth_bounds.0) {
                     return Err(Box::new(ValidationError {
                         context: "depth_bounds.start".into(),
                         problem: "is not between 0.0 and 1.0 inclusive".into(),
@@ -142,7 +141,7 @@ impl DepthStencilState<'_> {
                     }));
                 }
 
-                if !(0.0..1.0).contains(depth_bounds.end()) {
+                if !(0.0..=1.0).contains(&depth_bounds.1) {
                     return Err(Box::new(ValidationError {
                         context: "depth_bounds.end".into(),
                         problem: "is not between 0.0 and 1.0 inclusive".into(),
@@ -187,7 +186,7 @@ impl DepthStencilState<'_> {
 
         let (depth_bounds_test_enable_vk, min_depth_bounds_vk, max_depth_bounds_vk) =
             if let Some(depth_bounds) = depth_bounds {
-                (true, *depth_bounds.start(), *depth_bounds.end())
+                (true, depth_bounds.0, depth_bounds.1)
             } else {
                 (false, 0.0, 1.0)
             };
@@ -217,7 +216,6 @@ impl DepthStencilState<'_> {
 
     pub(crate) fn to_owned(&self) -> DepthStencilState<'static> {
         DepthStencilState {
-            depth_bounds: self.depth_bounds.clone(),
             _ne: crate::NE,
             ..*self
         }
