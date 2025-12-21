@@ -1005,7 +1005,10 @@ impl<'a> ImageViewCreateInfo<'a> {
                 }
             }
             ImageViewType::Cube => {
-                if subresource_range.layer_count != Some(6) {
+                if subresource_range
+                    .layer_count
+                    .is_some_and(|subresource_range_layer_count| subresource_range_layer_count != 6)
+                {
                     return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::Cube`, but \
                             `subresource_range.layer_count` is not 6"
@@ -1029,7 +1032,7 @@ impl<'a> ImageViewCreateInfo<'a> {
 
                 if subresource_range
                     .layer_count
-                    .is_none_or(|subresource_range_layer_count| {
+                    .is_some_and(|subresource_range_layer_count| {
                         subresource_range_layer_count % 6 != 0
                     })
                 {

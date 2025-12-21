@@ -1635,7 +1635,7 @@ impl<'a> MemoryMapInfo<'a> {
                 if size.is_some_and(|size| size != memory.allocation_size()) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "is not `None` or `self.allocation_size()`".into(),
+                        problem: "is not `None` nor `self.allocation_size()`".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
                         ..Default::default()
                     }));

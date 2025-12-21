@@ -1171,7 +1171,7 @@ impl WriteDescriptorSet {
                         if range > buffer.size() - offset {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
-                                problem: "`offset + size` is greater than the size of the buffer"
+                                problem: "`offset + range` is greater than the size of the buffer"
                                     .into(),
                                 vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
                                 ..Default::default()
@@ -1253,7 +1253,7 @@ impl WriteDescriptorSet {
                         if range > buffer.size() - offset {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
-                                problem: "`offset + size` is greater than the size of the buffer"
+                                problem: "`offset + range` is greater than the size of the buffer"
                                     .into(),
                                 vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
                                 ..Default::default()

@@ -1857,7 +1857,7 @@ impl<'a> CopyImageInfo<'a> {
             if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
+                        "`regions[{}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
@@ -2256,7 +2256,7 @@ impl<'a> CopyImageInfo<'a> {
             if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
+                        "`regions[{}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
@@ -3464,7 +3464,7 @@ impl<'a> CopyBufferToImageInfo<'a> {
             if image_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].image_subresource.base_array_layer` is not less than \
+                        "`regions[{}].image_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
@@ -4174,7 +4174,7 @@ impl<'a> CopyImageToBufferInfo<'a> {
             if image_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].image_subresource.base_array_layer` is not less than \
+                        "`regions[{}].image_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
@@ -5235,7 +5235,7 @@ impl<'a> BlitImageInfo<'a> {
             if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
+                        "`regions[{}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
@@ -5245,8 +5245,10 @@ impl<'a> BlitImageInfo<'a> {
                 }));
             }
 
-            if let Some(layer_count) = src_subresource.layer_count {
-                if layer_count > src_image.array_layers() - src_subresource.base_array_layer {
+            if let Some(src_subresource_layer_count) = src_subresource.layer_count {
+                if src_subresource_layer_count
+                    > src_image.array_layers() - src_subresource.base_array_layer
+                {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`regions[{0}].src_subresource.base_array_layer + \
@@ -5446,7 +5448,7 @@ impl<'a> BlitImageInfo<'a> {
             if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
+                        "`regions[{}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
@@ -6250,7 +6252,7 @@ impl<'a> ResolveImageInfo<'a> {
             if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
+                        "`regions[{}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
@@ -6453,7 +6455,7 @@ impl<'a> ResolveImageInfo<'a> {
             if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
+                        "`regions[{}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )

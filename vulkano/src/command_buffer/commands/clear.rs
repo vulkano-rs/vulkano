@@ -486,7 +486,7 @@ impl<'a> ClearColorImageInfo<'a> {
             if subresource_range.base_mip_level >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
+                        "`regions[{}].base_mip_level` is not less than `image.mip_levels()`",
                         region_index,
                     )
                     .into(),
@@ -515,7 +515,7 @@ impl<'a> ClearColorImageInfo<'a> {
             if subresource_range.base_array_layer >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_array_level` is not less than `image.array_layers()`",
+                        "`regions[{}].base_array_level` is not less than `image.array_layers()`",
                         region_index,
                     )
                     .into(),
@@ -755,7 +755,7 @@ impl<'a> ClearDepthStencilImageInfo<'a> {
             if subresource_range.base_mip_level >= image.mip_levels() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
+                        "`regions[{}].base_mip_level` is not less than `image.mip_levels()`",
                         region_index,
                     )
                     .into(),
@@ -770,7 +770,8 @@ impl<'a> ClearDepthStencilImageInfo<'a> {
                 {
                     return Err(Box::new(ValidationError {
                         problem: format!(
-                            "`regions[{0}].base_mip_level` is not less than `image.mip_levels()`",
+                            "`regions[{0}].base_mip_level + regions[{0}].level_count` is greater \
+                            than `image.mip_levels()`",
                             region_index,
                         )
                         .into(),
@@ -780,10 +781,10 @@ impl<'a> ClearDepthStencilImageInfo<'a> {
                 }
             }
 
-            if subresource_range.base_array_layer > image.array_layers() {
+            if subresource_range.base_array_layer >= image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].base_array_layer` is not less than `image.array_layers()`",
+                        "`regions[{}].base_array_layer` is not less than `image.array_layers()`",
                         region_index,
                     )
                     .into(),
@@ -935,8 +936,7 @@ impl<'a> FillBufferInfo<'a> {
         if let Some(size) = size {
             if size > dst_buffer.size() - dst_offset {
                 return Err(Box::new(ValidationError {
-                    context: "size".into(),
-                    problem: "is greater than `dst_buffer.size() - dst_offset`".into(),
+                    problem: "`dst_offset + size` is greater than `dst_buffer.size()`".into(),
                     vuids: &["VUID-vkCmdFillBuffer-dstOffset-00027"],
                     ..Default::default()
                 }));
