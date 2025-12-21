@@ -383,8 +383,7 @@ impl RecordingCommandBuffer {
 
             if size > buffer.size() - offset {
                 return Err(Box::new(ValidationError {
-                    context: "size".into(),
-                    problem: "is greater than `buffer.size() - offset`".into(),
+                    problem: "`offset + size` is greater than `buffer.size()`".into(),
                     vuids: &["VUID-vkCmdBindIndexBuffer2-size-08768"],
                     ..Default::default()
                 }));

@@ -1849,7 +1849,7 @@ pub struct BufferMemoryBarrier<'a> {
 
     /// The byte size to apply the barrier to.
     ///
-    /// If set to `None`, applies until the end of the buffer.
+    /// If set to `None`, the barrier applies until the end of the buffer.
     pub size: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
