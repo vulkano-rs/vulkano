@@ -21,6 +21,7 @@ Global changes:
 - Where `Range` and `RangeInclusive` were previously used in parameters, two separate parameters for the offset/base and size/count are now used instead to match Vulkan.
 - All structs containing `ImageSubresourceLayers` and `ImageSubresourceRange` now use `Default::default()` as the default value for that field, instead of an empty value (all zeroes).
 - `DeviceFeatures`, `DeviceExtensions` and `InstanceExtensions` now implement `IntoIterator` by reference instead of by value and the `IntoIter` associated type is now an opaque type.
+- Where the Vulkan API accepts `VK_WHOLE_SIZE`, `VK_REMAINING_*` and `LOD_CLAMP_NONE`, vulkano now accepts an `Option` for the end of the range with `None` meaning that it is unbounded.
 
 Changes to Vulkan initialization:
 - `VulkanLibrary::new` is now marked unsafe. It has always been unsafe, but marked incorrectly.
@@ -33,6 +34,11 @@ Changes to devices and queues:
 
 Changes to images:
 - `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
+- `ImageSubresourceLayers::layer_count`, `ImageSubresourceRange::level_count` and `ImageSubresourceRange::layer_count` now default to `None`.
+
+Changes to samplers:
+- `SamplerCreateInfo::max_lod` now defaults to `None`.
+- `LOD_CLAMP_NONE` was removed.
 
 Changes to memory allocation:
 - `StandardMemoryAllocator::new_default` was removed in favor of `StandardMemoryAllocator::new(&device, &Default::default())` fulfilling the same function instead.
