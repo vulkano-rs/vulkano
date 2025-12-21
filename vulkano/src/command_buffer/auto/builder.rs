@@ -353,7 +353,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 .queue_family_ownership_transfer,
                             buffer: &buffer_memory_barrier.buffer,
                             offset: buffer_memory_barrier.offset,
-                            size: buffer_memory_barrier.size,
+                            size: Some(buffer_memory_barrier.size),
                             _ne: crate::NE,
                         })
                         .collect::<SmallVec<[_; 8]>>();
@@ -422,7 +422,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             .queue_family_ownership_transfer,
                         buffer: &buffer_memory_barrier.buffer,
                         offset: buffer_memory_barrier.offset,
-                        size: buffer_memory_barrier.size,
+                        size: Some(buffer_memory_barrier.size),
                         _ne: crate::NE,
                     })
                     .collect::<SmallVec<[_; 8]>>();
@@ -776,15 +776,15 @@ impl AutoSyncState {
                 } => {
                     debug_assert!(image.format().aspects().contains(subresource_range.aspects));
                     debug_assert!(subresource_range.base_mip_level <= image.mip_levels());
-                    debug_assert!(
-                        subresource_range.level_count
-                            <= image.mip_levels() - subresource_range.base_mip_level,
-                    );
+                    debug_assert!(subresource_range.level_count.is_none_or(
+                        |subresource_range_level_count| subresource_range_level_count
+                            <= image.mip_levels() - subresource_range.base_mip_level
+                    ));
                     debug_assert!(subresource_range.base_array_layer <= image.array_layers());
-                    debug_assert!(
-                        subresource_range.layer_count
-                            <= image.array_layers() - subresource_range.base_array_layer,
-                    );
+                    debug_assert!(subresource_range.layer_count.is_none_or(
+                        |subresource_range_layer_count| subresource_range_layer_count
+                            <= image.array_layers() - subresource_range.base_array_layer
+                    ));
 
                     debug_assert!(memory_access.contains_write() || start_layout == end_layout);
                     debug_assert!(end_layout != ImageLayout::Undefined);

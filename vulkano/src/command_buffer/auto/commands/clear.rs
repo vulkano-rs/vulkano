@@ -197,7 +197,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let fill_info_raw = raw::FillBufferInfo {
             dst_buffer: dst_buffer.buffer(),
             dst_offset: dst_buffer.offset(),
-            size: dst_buffer.size(),
+            size: Some(dst_buffer.size()),
             data,
             _ne: crate::NE,
         };
@@ -236,7 +236,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 let fill_info_raw = raw::FillBufferInfo {
                     dst_buffer: dst_buffer.buffer(),
                     dst_offset: dst_buffer.offset(),
-                    size: dst_buffer.size(),
+                    size: Some(dst_buffer.size()),
                     data,
                     _ne: crate::NE,
                 };

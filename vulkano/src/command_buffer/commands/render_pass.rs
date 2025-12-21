@@ -1276,16 +1276,16 @@ impl RenderingInfo<'_> {
                 .chain(depth_attachment.and_then(Option::as_ref))
                 .chain(stencil_attachment.and_then(Option::as_ref))
                 .flat_map(|attachment_info| {
-                    Some(&attachment_info.image_view).into_iter().chain(
+                    Some(attachment_info.image_view).into_iter().chain(
                         attachment_info
                             .resolve_info
                             .as_ref()
-                            .map(|resolve_info| &resolve_info.image_view),
+                            .map(|resolve_info| resolve_info.image_view),
                     )
                 })
             {
                 let image_view_extent = image_view.image().extent();
-                let image_view_array_layers = image_view.subresource_range().layer_count;
+                let image_view_array_layers = image_view.subresource_range_layer_count();
 
                 auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
                 auto_extent[1] = auto_extent[1].min(image_view_extent[1]);

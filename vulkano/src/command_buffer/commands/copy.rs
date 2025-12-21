@@ -1832,13 +1832,15 @@ impl<'a> CopyImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    if !(src_subresource.base_array_layer == 0
+                        && src_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].src_subresource.base_array_layer, \
-                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].src_subresource.base_array_layer` and \
+                                `regions[{0}].src_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -1852,22 +1854,35 @@ impl<'a> CopyImageInfo<'a> {
                 }
             }
 
-            if src_subresource
-                .base_array_layer
-                .checked_add(src_subresource.layer_count)
-                .is_none_or(|end| end > src_image.array_layers())
-            {
+            if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer + \
-                        regions[{0}].src_subresource.layer_count` is greater than \
+                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07968"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(src_subresource_layer_count) = src_subresource.layer_count {
+                if src_subresource_layer_count
+                    > src_image.array_layers() - src_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].src_subresource.base_array_layer + \
+                            regions[{0}].src_subresource.layer_count` is greater than \
+                            `src_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07968"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if src_offset[0]
@@ -2216,13 +2231,15 @@ impl<'a> CopyImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    if !(dst_subresource.base_array_layer == 0
+                        && dst_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].dst_subresource.base_array_layer, \
-                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].dst_subresource.base_array_layer` and \
+                                `regions[{0}].dst_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -2236,22 +2253,35 @@ impl<'a> CopyImageInfo<'a> {
                 }
             }
 
-            if dst_subresource
-                .base_array_layer
-                .checked_add(dst_subresource.layer_count)
-                .is_none_or(|end| end > dst_image.array_layers())
-            {
+            if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer + \
-                        regions[{0}].dst_subresource.layer_count` is greater than \
+                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07968"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(dst_subresource_layer_count) = dst_subresource.layer_count {
+                if dst_subresource_layer_count
+                    > dst_image.array_layers() - dst_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].dst_subresource.base_array_layer + \
+                            regions[{0}].dst_subresource.layer_count` is greater than \
+                            `dst_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07968"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if dst_offset[0]
@@ -2559,18 +2589,67 @@ impl<'a> CopyImageInfo<'a> {
             }
 
             if src_image.image_type() == dst_image.image_type() {
-                if src_subresource.layer_count != dst_subresource.layer_count {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`src_image.image_type()` equals `dst_image.image_type()`, but \
-                            `regions[{0}].src_subresource.layer_count` does not equal \
-                            `regions[{0}].dst_subresource.layer_count`",
-                            region_index,
-                        )
-                        .into(),
-                        vuids: &["VUID-VkCopyImageInfo2-srcImage-07744"],
-                        ..Default::default()
-                    }));
+                match (src_subresource.layer_count, dst_subresource.layer_count) {
+                    (Some(src_subresource_layer_count), Some(dst_subresource_layer_count)) => {
+                        if src_subresource_layer_count != dst_subresource_layer_count {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`src_image.image_type()` equals `dst_image.image_type()`, \
+                                    and `regions[{0}].src_subresource.layer_count` and \
+                                    `regions[{0}].dst_subresource.layer_count` are both `Some`, \
+                                    but `regions[{0}].src_subresource.layer_count` does not equal \
+                                    `regions[{0}].dst_subresource.layer_count`",
+                                    region_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-VkCopyImageInfo2-srcImage-08793"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    (Some(src_subresource_layer_count), None) => {
+                        if src_subresource_layer_count
+                            != src_image.array_layers() - src_subresource_layer_count
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`src_image.image_type()` equals `dst_image.image_type()`, \
+                                    and `regions[{0}].src_subresource.layer_count` and \
+                                    `regions[{0}].dst_subresource.layer_count` are `Some` and \
+                                    `None`, respectively, \
+                                    but `regions[{0}].src_subresource.layer_count` does not equal \
+                                    `src_image.array_layers() - \
+                                    regions[{0}].src_subresource.base_array_layer`",
+                                    region_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-VkCopyImageInfo2-srcImage-08794"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    (None, Some(dst_subresource_layer_count)) => {
+                        if dst_subresource_layer_count
+                            != dst_image.array_layers() - dst_subresource_layer_count
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`src_image.image_type()` equals `dst_image.image_type()`, \
+                                    and `regions[{0}].src_subresource.layer_count` and \
+                                    `regions[{0}].dst_subresource.layer_count` are `None` and \
+                                    `Some`, respectively, \
+                                    but `regions[{0}].dst_subresource.layer_count` does not equal \
+                                    `dst_image.array_layers() - \
+                                    regions[{0}].dst_subresource.base_array_layer`",
+                                    region_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-VkCopyImageInfo2-srcImage-08794"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    (None, None) => {}
                 }
             }
 
@@ -2593,7 +2672,7 @@ impl<'a> CopyImageInfo<'a> {
                     }
                 }
                 (ImageType::Dim2d, ImageType::Dim3d) => {
-                    if extent[2] != src_subresource.layer_count {
+                    if Some(extent[2]) != src_subresource.layer_count {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim2d` and \
@@ -2609,7 +2688,7 @@ impl<'a> CopyImageInfo<'a> {
                     }
                 }
                 (ImageType::Dim3d, ImageType::Dim2d) => {
-                    if extent[2] != dst_subresource.layer_count {
+                    if Some(extent[2]) != dst_subresource.layer_count {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d` and \
@@ -2633,7 +2712,12 @@ impl<'a> CopyImageInfo<'a> {
                 let src_subresource_axes = [
                     src_subresource.mip_level..src_subresource.mip_level + 1,
                     src_subresource.base_array_layer
-                        ..src_subresource.base_array_layer + src_subresource.layer_count,
+                        ..src_subresource.layer_count.map_or(
+                            src_image.array_layers(),
+                            |src_subresource_layer_count| {
+                                src_subresource.base_array_layer + src_subresource_layer_count
+                            },
+                        ),
                 ];
                 let src_extent_axes = [
                     src_offset[0]..src_offset[0] + extent[0],
@@ -2657,8 +2741,13 @@ impl<'a> CopyImageInfo<'a> {
 
                     let dst_subresource_axes = [
                         dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                        src_subresource.base_array_layer
-                            ..src_subresource.base_array_layer + src_subresource.layer_count,
+                        dst_subresource.base_array_layer
+                            ..dst_subresource.layer_count.map_or(
+                                dst_image.array_layers(),
+                                |dst_subresource_layer_count| {
+                                    dst_subresource.base_array_layer + dst_subresource_layer_count
+                                },
+                            ),
                     ];
 
                     if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -3354,13 +3443,14 @@ impl<'a> CopyBufferToImageInfo<'a> {
                 }
                 ImageType::Dim3d => {
                     if !(image_subresource.base_array_layer == 0
-                        && image_subresource.layer_count == 1)
+                        && image_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].image_subresource.base_array_layer, \
-                                regions[{0}].image_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].image_subresource.base_array_layer` and \
+                                `regions[{0}].image_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -3371,22 +3461,35 @@ impl<'a> CopyBufferToImageInfo<'a> {
                 }
             }
 
-            if image_subresource
-                .base_array_layer
-                .checked_add(image_subresource.layer_count)
-                .is_none_or(|end| end > dst_image.array_layers())
-            {
+            if image_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].image_subresource.base_array_layer + \
-                        regions[{0}].image_subresource.layer_count` is greater than \
+                        "`regions[{0}].image_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-07968"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(image_subresource_layer_count) = image_subresource.layer_count {
+                if image_subresource_layer_count
+                    > dst_image.array_layers() - image_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].image_subresource.base_array_layer + \
+                            regions[{0}].image_subresource.layer_count` is greater than \
+                            `dst_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-07968"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if image_offset[0]
@@ -3624,7 +3727,7 @@ impl<'a> CopyBufferToImageInfo<'a> {
             }
 
             if region
-                .buffer_copy_size(image_subresource_format)
+                .buffer_copy_size(image_subresource_format, dst_image.array_layers())
                 .and_then(|copy_size| buffer_offset.checked_add(copy_size))
                 .is_none_or(|end| end > src_buffer.size())
             {
@@ -4050,13 +4153,14 @@ impl<'a> CopyImageToBufferInfo<'a> {
                 }
                 ImageType::Dim3d => {
                     if !(image_subresource.base_array_layer == 0
-                        && image_subresource.layer_count == 1)
+                        && image_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
-                                "`src_image.image_type()` is  `ImageType::Dim3d`, but \
-                                `(regions[{0}].image_subresource.base_array_layer, \
-                                regions[{0}].image_subresource.layer_count)` is not `(0, 1)`",
+                                "`src_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{0}].image_subresource.base_array_layer` and \
+                                `regions[{0}].image_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -4067,22 +4171,35 @@ impl<'a> CopyImageToBufferInfo<'a> {
                 }
             }
 
-            if image_subresource
-                .base_array_layer
-                .checked_add(image_subresource.layer_count)
-                .is_none_or(|end| end > src_image.array_layers())
-            {
+            if image_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].image_subresource.base_array_layer + \
-                        regions[{0}].image_subresource.layer_count` is greater than \
+                        "`regions[{0}].image_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07968"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(image_subresource_layer_count) = image_subresource.layer_count {
+                if image_subresource_layer_count
+                    > src_image.array_layers() - image_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].image_subresource.base_array_layer + \
+                            regions[{0}].image_subresource.layer_count` is greater than \
+                            `src_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07968"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if image_offset[0]
@@ -4320,7 +4437,7 @@ impl<'a> CopyImageToBufferInfo<'a> {
             }
 
             if region
-                .buffer_copy_size(image_subresource_format)
+                .buffer_copy_size(image_subresource_format, src_image.array_layers())
                 .and_then(|copy_size| buffer_offset.checked_add(copy_size))
                 .is_none_or(|end| end > dst_buffer.size())
             {
@@ -4490,7 +4607,7 @@ impl BufferImageCopy<'_> {
 
     // Following
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
-    pub(crate) fn buffer_copy_size(&self, format: Format) -> Option<DeviceSize> {
+    pub(crate) fn buffer_copy_size(&self, format: Format, array_layers: u32) -> Option<DeviceSize> {
         let &Self {
             buffer_offset: _,
             mut buffer_row_length,
@@ -4519,7 +4636,12 @@ impl BufferImageCopy<'_> {
         }
 
         // Only one of these is greater than 1, take the greater number.
-        image_extent[2] = max(image_extent[2], image_subresource.layer_count);
+        image_extent[2] = max(
+            image_extent[2],
+            image_subresource
+                .layer_count
+                .unwrap_or(array_layers - image_subresource.base_array_layer),
+        );
 
         let blocks_to_last_slice = (image_extent[2] as DeviceSize - 1)
             .checked_mul(buffer_image_height as DeviceSize)?
@@ -5091,13 +5213,15 @@ impl<'a> BlitImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    if !(src_subresource.base_array_layer == 0
+                        && src_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].src_subresource.base_array_layer, \
-                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].src_subresource.base_array_layer` and \
+                                `regions[{0}].src_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -5108,22 +5232,33 @@ impl<'a> BlitImageInfo<'a> {
                 }
             }
 
-            if src_subresource
-                .base_array_layer
-                .checked_add(src_subresource.layer_count)
-                .is_none_or(|end| end > src_image.array_layers())
-            {
+            if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer + \
-                        regions[{0}].src_subresource.layer_count` is greater than \
+                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(layer_count) = src_subresource.layer_count {
+                if layer_count > src_image.array_layers() - src_subresource.base_array_layer {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].src_subresource.base_array_layer + \
+                            regions[{0}].src_subresource.layer_count` is greater than \
+                            `src_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             let src_offsets_max = [
@@ -5289,13 +5424,15 @@ impl<'a> BlitImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    if !(dst_subresource.base_array_layer == 0
+                        && dst_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].dst_subresource.base_array_layer, \
-                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].dst_subresource.base_array_layer` and \
+                                `regions[{0}].dst_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -5306,22 +5443,35 @@ impl<'a> BlitImageInfo<'a> {
                 }
             }
 
-            if !dst_subresource
-                .base_array_layer
-                .checked_add(dst_subresource.layer_count)
-                .is_some_and(|end| end <= dst_image.array_layers())
-            {
+            if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`(regions[{0}].dst_subresource.base_array_layer, \
-                        regions[{0}].dst_subresource.layer_count)` is greater than \
+                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(dst_subresource_layer_count) = dst_subresource.layer_count {
+                if dst_subresource_layer_count
+                    > dst_image.array_layers() - dst_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].dst_subresource.base_array_layer + \
+                            regions[{0}].dst_subresource.layer_count` is greater than \
+                            `dst_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             let dst_offsets_max = [
@@ -5378,7 +5528,12 @@ impl<'a> BlitImageInfo<'a> {
                 let src_subresource_axes = [
                     src_subresource.mip_level..src_subresource.mip_level + 1,
                     src_subresource.base_array_layer
-                        ..src_subresource.base_array_layer + src_subresource.layer_count,
+                        ..src_subresource.layer_count.map_or(
+                            src_image.array_layers(),
+                            |src_subresource_layer_count| {
+                                src_subresource.base_array_layer + src_subresource_layer_count
+                            },
+                        ),
                 ];
                 let src_extent_axes = [
                     min(src_offsets[0][0], src_offsets[1][0])
@@ -5398,8 +5553,13 @@ impl<'a> BlitImageInfo<'a> {
 
                     let dst_subresource_axes = [
                         dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                        src_subresource.base_array_layer
-                            ..src_subresource.base_array_layer + src_subresource.layer_count,
+                        dst_subresource.base_array_layer
+                            ..dst_subresource.layer_count.map_or(
+                                dst_image.array_layers(),
+                                |dst_subresource_layer_count| {
+                                    dst_subresource.base_array_layer + dst_subresource_layer_count
+                                },
+                            ),
                     ];
 
                     if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -6068,13 +6228,15 @@ impl<'a> ResolveImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(src_subresource.base_array_layer == 0 && src_subresource.layer_count == 1)
+                    if !(src_subresource.base_array_layer == 0
+                        && src_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`src_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].src_subresource.base_array_layer, \
-                                regions[{0}].src_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].src_subresource.base_array_layer` and \
+                                `regions[{0}].src_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -6085,22 +6247,35 @@ impl<'a> ResolveImageInfo<'a> {
                 }
             }
 
-            if src_subresource
-                .base_array_layer
-                .checked_add(src_subresource.layer_count)
-                .is_some_and(|end| end > src_image.array_layers())
-            {
+            if src_subresource.base_array_layer >= src_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].src_subresource.base_array_layer + \
-                        regions[{0}].src_subresource.layer_count` is greater than \
+                        "`regions[{0}].src_subresource.base_array_layer` is not less than \
                         `src_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01711"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(src_subresource_layer_count) = src_subresource.layer_count {
+                if src_subresource_layer_count
+                    > src_image.array_layers() - src_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].src_subresource.base_array_layer + \
+                            regions[{0}].src_subresource.layer_count` is greater than \
+                            `src_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01711"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if src_offset[0]
@@ -6256,13 +6431,15 @@ impl<'a> ResolveImageInfo<'a> {
                     }
                 }
                 ImageType::Dim3d => {
-                    if !(dst_subresource.base_array_layer == 0 && dst_subresource.layer_count == 1)
+                    if !(dst_subresource.base_array_layer == 0
+                        && dst_subresource.layer_count == Some(1))
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`dst_image.image_type()` is `ImageType::Dim3d`, but \
-                                `(regions[{0}].dst_subresource.base_array_layer, \
-                                regions[{0}].dst_subresource.layer_count)` is not `(0, 1)`",
+                                `regions[{0}].dst_subresource.base_array_layer` and \
+                                `regions[{0}].dst_subresource.layer_count` are not `0` and \
+                                `Some(1)`, respectively",
                                 region_index,
                             )
                             .into(),
@@ -6273,22 +6450,35 @@ impl<'a> ResolveImageInfo<'a> {
                 }
             }
 
-            if dst_subresource
-                .base_array_layer
-                .checked_add(dst_subresource.layer_count)
-                .is_some_and(|end| end > dst_image.array_layers())
-            {
+            if dst_subresource.base_array_layer >= dst_image.array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`regions[{0}].dst_subresource.base_array_layer + \
-                        regions[{0}].dst_subresource.layer_count` is greater than \
+                        "`regions[{0}].dst_subresource.base_array_layer` is not less than \
                         `dst_image.array_layers()`",
                         region_index,
                     )
                     .into(),
-                    vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01712"],
+                    // vuids?
                     ..Default::default()
                 }));
+            }
+
+            if let Some(dst_subresource_layer_count) = dst_subresource.layer_count {
+                if dst_subresource_layer_count
+                    > dst_image.array_layers() - dst_subresource.base_array_layer
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{0}].dst_subresource.base_array_layer + \
+                            regions[{0}].dst_subresource.layer_count` is greater than \
+                            `dst_image.array_layers()`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01712"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if dst_offset[0]

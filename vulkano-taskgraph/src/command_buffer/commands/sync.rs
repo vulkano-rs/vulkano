@@ -82,7 +82,7 @@ impl RecordingCommandBuffer<'_> {
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .buffer(buffer.handle())
                         .offset(offset)
-                        .size(size)
+                        .size(size.unwrap_or(vk::WHOLE_SIZE))
                 })
                 .collect();
 
@@ -181,7 +181,7 @@ impl RecordingCommandBuffer<'_> {
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .buffer(buffer.handle())
                         .offset(offset)
-                        .size(size)
+                        .size(size.unwrap_or(vk::WHOLE_SIZE))
                 })
                 .collect();
 
@@ -402,8 +402,10 @@ pub struct BufferMemoryBarrier<'a> {
 
     /// The byte size to apply the barrier to.
     ///
-    /// The default value is `0`, which must be overridden.
-    pub size: DeviceSize,
+    /// If set to `None`, the barrier applies until the end of the buffer.
+    ///
+    /// The default value is `None`.
+    pub size: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
 }
@@ -426,7 +428,7 @@ impl BufferMemoryBarrier<'_> {
             dst_access: AccessFlags::empty(),
             buffer: Id::INVALID,
             offset: 0,
-            size: 0,
+            size: None,
             _ne: crate::NE,
         }
     }

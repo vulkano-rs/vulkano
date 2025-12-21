@@ -1177,7 +1177,6 @@ impl RawImage {
                     aspects
                 }
             },
-            layer_count: self.array_layers,
             ..Default::default()
         }
     }
@@ -1189,8 +1188,6 @@ impl RawImage {
         ImageSubresourceRange {
             aspects: self.format.aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
-            level_count: self.mip_levels,
-            layer_count: self.array_layers,
             ..Default::default()
         }
     }
@@ -3331,8 +3328,8 @@ mod tests {
                     | ImageAspects::DEPTH
                     | ImageAspects::STENCIL
                     | ImageAspects::PLANE_0,
-                level_count: 6,
-                layer_count: 8,
+                level_count: Some(6),
+                layer_count: Some(8),
                 ..Default::default()
             },
             &image_aspect_list,
@@ -3349,8 +3346,8 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR | ImageAspects::DEPTH | ImageAspects::PLANE_0,
-                level_count: 6,
-                layer_count: 8,
+                level_count: Some(6),
+                layer_count: Some(8),
                 ..Default::default()
             },
             &image_aspect_list,
@@ -3369,8 +3366,8 @@ mod tests {
             ImageSubresourceRange {
                 aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
                 base_mip_level: 2,
-                level_count: 2,
-                layer_count: 8,
+                level_count: Some(2),
+                layer_count: Some(8),
                 ..Default::default()
             },
             &image_aspect_list,
@@ -3387,9 +3384,9 @@ mod tests {
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
                 aspects: ImageAspects::COLOR,
-                level_count: 1,
+                level_count: Some(1),
                 base_array_layer: 2,
-                layer_count: 2,
+                layer_count: Some(2),
                 ..Default::default()
             },
             &image_aspect_list,
@@ -3410,9 +3407,9 @@ mod tests {
             ImageSubresourceRange {
                 aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
                 base_mip_level: 2,
-                level_count: 2,
+                level_count: Some(2),
                 base_array_layer: 6,
-                layer_count: 2,
+                layer_count: Some(2),
             },
             &image_aspect_list,
             asp,

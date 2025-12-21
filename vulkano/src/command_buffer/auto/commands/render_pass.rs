@@ -822,7 +822,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
-                        layer_count = min(layer_count, image_view.subresource_range().layer_count);
+                        layer_count = min(layer_count, image_view.subresource_range_layer_count());
                     }
                 }
                 ClearAttachment::Depth(_)
@@ -880,7 +880,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
-                        layer_count = min(layer_count, image_view.subresource_range().layer_count);
+                        layer_count = min(layer_count, image_view.subresource_range_layer_count());
                     }
                 }
             }
@@ -1262,7 +1262,7 @@ impl RenderingInfo {
                 })
             {
                 let image_view_extent = image_view.image().extent();
-                let image_view_array_layers = image_view.subresource_range().layer_count;
+                let image_view_array_layers = image_view.subresource_range_layer_count();
 
                 auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
                 auto_extent[1] = auto_extent[1].min(image_view_extent[1]);

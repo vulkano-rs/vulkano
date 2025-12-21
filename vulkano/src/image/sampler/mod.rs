@@ -84,7 +84,7 @@ pub mod ycbcr;
 ///         min_filter: Filter::Linear,
 ///         address_mode: [SamplerAddressMode::Repeat; 3],
 ///         mip_lod_bias: 1.0,
-///         max_lod: 100.0,
+///         max_lod: None,
 ///         ..Default::default()
 ///     },
 /// )
@@ -101,7 +101,7 @@ pub struct Sampler {
     border_color: Option<BorderColor>,
     compare: Option<CompareOp>,
     min_lod: f32,
-    max_lod: f32,
+    max_lod: Option<f32>,
     mag_filter: Filter,
     min_filter: Filter,
     mip_lod_bias: f32,
@@ -425,7 +425,7 @@ impl Sampler {
             }
 
             // The image view must have a single layer and a single mip level.
-            if image_view.subresource_range().level_count != 1 {
+            if image_view.subresource_range_level_count() != 1 {
                 return Err(Box::new(ValidationError {
                     problem: "the sampler uses unnormalized coordinates, and \
                         the image view has more than one mip level"
@@ -470,7 +470,7 @@ impl Sampler {
 
     /// Returns the maximum LOD.
     #[inline]
-    pub fn max_lod(&self) -> f32 {
+    pub fn max_lod(&self) -> Option<f32> {
         self.max_lod
     }
 
@@ -629,10 +629,10 @@ pub struct SamplerCreateInfo<'a> {
 
     /// The maximum that LOD values must be clamped to.
     ///
-    /// If set to [`LOD_CLAMP_NONE`], it is unbounded.
+    /// If set to `None`, it is unbounded.
     ///
-    /// The default value is `0.0`.
-    pub max_lod: f32,
+    /// The default value is `None`.
+    pub max_lod: Option<f32>,
 
     /// The border color to use if `address_mode` is set to
     /// [`ClampToBorder`](SamplerAddressMode::ClampToBorder).
@@ -712,7 +712,7 @@ impl<'a> SamplerCreateInfo<'a> {
             anisotropy: None,
             compare: None,
             min_lod: 0.0,
-            max_lod: 0.0,
+            max_lod: None,
             border_color: BorderColor::FloatTransparentBlack,
             unnormalized_coordinates: false,
             reduction_mode: SamplerReductionMode::WeightedAverage,
@@ -730,7 +730,7 @@ impl<'a> SamplerCreateInfo<'a> {
             min_filter: Filter::Linear,
             mipmap_mode: SamplerMipmapMode::Linear,
             address_mode: [SamplerAddressMode::Repeat; 3],
-            max_lod: LOD_CLAMP_NONE,
+            max_lod: None,
             ..Default::default()
         }
     }
@@ -743,7 +743,7 @@ impl<'a> SamplerCreateInfo<'a> {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
             address_mode: [SamplerAddressMode::Repeat; 3],
-            max_lod: 1.0,
+            max_lod: Some(1.0),
             ..Default::default()
         }
     }
@@ -824,7 +824,7 @@ impl<'a> SamplerCreateInfo<'a> {
             }
         }
 
-        if min_lod > max_lod {
+        if max_lod.is_some_and(|max_lod| min_lod > max_lod) {
             return Err(Box::new(ValidationError {
                 problem: "`min_lod` is greater than `max_lod`".into(),
                 vuids: &["VUID-VkSamplerCreateInfo-maxLod-01973"],
@@ -937,7 +937,7 @@ impl<'a> SamplerCreateInfo<'a> {
                 }));
             }
 
-            if !(min_lod == 0.0 && max_lod == 0.0) {
+            if !(min_lod == 0.0 && max_lod == Some(0.0)) {
                 return Err(Box::new(ValidationError {
                     problem: "`unnormalized_coordinates` is `true`, but `min_lod` and `max_lod` \
                         are not `0.0`"
@@ -1123,7 +1123,7 @@ impl<'a> SamplerCreateInfo<'a> {
             .compare_enable(compare_enable_vk)
             .compare_op(compare_op_vk.into())
             .min_lod(min_lod)
-            .max_lod(max_lod)
+            .max_lod(max_lod.unwrap_or(vk::LOD_CLAMP_NONE))
             .border_color(border_color.into())
             .unnormalized_coordinates(unnormalized_coordinates);
 
@@ -1174,9 +1174,6 @@ pub(crate) struct SamplerCreateInfoExtensionsVk {
     pub(crate) reduction_mode_vk: Option<vk::SamplerReductionModeCreateInfo<'static>>,
     pub(crate) ycbcr_conversion_vk: Option<vk::SamplerYcbcrConversionInfo<'static>>,
 }
-
-/// A special value to indicate that the maximum LOD should not be clamped.
-pub const LOD_CLAMP_NONE: f32 = vk::LOD_CLAMP_NONE;
 
 /// A mapping between components of a source format and components read by a shader.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -1537,7 +1534,7 @@ mod tests {
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         )
@@ -1558,7 +1555,7 @@ mod tests {
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 compare: Some(CompareOp::Less),
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         )
@@ -1576,6 +1573,7 @@ mod tests {
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
+                max_lod: Some(0.0),
                 unnormalized_coordinates: true,
                 ..Default::default()
             },
@@ -1612,7 +1610,7 @@ mod tests {
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 min_lod: 5.0,
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         )
@@ -1631,7 +1629,7 @@ mod tests {
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 anisotropy: Some(0.5),
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         )
@@ -1650,7 +1648,7 @@ mod tests {
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 anisotropy: Some(2.0),
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         );
@@ -1670,7 +1668,7 @@ mod tests {
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 anisotropy: Some(100000000.0),
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         );
@@ -1689,7 +1687,7 @@ mod tests {
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 100000000.0,
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         );
@@ -1708,7 +1706,7 @@ mod tests {
                 min_filter: Filter::Linear,
                 address_mode: [SamplerAddressMode::MirrorClampToEdge; 3],
                 mip_lod_bias: 1.0,
-                max_lod: 2.0,
+                max_lod: Some(2.0),
                 ..Default::default()
             },
         );

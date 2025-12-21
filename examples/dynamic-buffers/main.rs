@@ -246,7 +246,7 @@ fn main() {
                 DescriptorBufferInfo {
                     buffer: input_buffer,
                     offset: 0,
-                    range: size_of::<cs::InData>() as DeviceSize,
+                    range: Some(size_of::<cs::InData>() as DeviceSize),
                 },
             ),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),

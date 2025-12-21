@@ -178,23 +178,27 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 range,
                             } = buffer_info;
 
-                            if !(dynamic_offset as DeviceSize)
-                                .checked_add(offset)
-                                .and_then(|x| x.checked_add(range))
-                                .is_some_and(|end| end <= buffer.size())
-                            {
-                                return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "the dynamic offset of `descriptor_sets[{}]` \
-                                        (for set number {}) for binding {} index {}, when \
-                                        added to `offset + range` of the descriptor write, is \
-                                        greater than the size of the bound buffer",
-                                        descriptor_sets_index, set_num, binding_num, index,
-                                    )
-                                    .into(),
-                                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979"],
-                                    ..Default::default()
-                                }));
+                            if let Some(range) = range {
+                                if (dynamic_offset as DeviceSize)
+                                    .checked_add(offset)
+                                    .and_then(|x| x.checked_add(range))
+                                    .is_none_or(|end| end > buffer.size())
+                                {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the dynamic offset of `descriptor_sets[{}]` \
+                                            (for set number {}) for binding {} index {}, when \
+                                            added to `offset + range` of the descriptor write, is \
+                                            greater than the size of the bound buffer",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
                             }
                         }
                     }
@@ -291,7 +295,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.inner.validate_bind_index_buffer(
             index_buffer_bytes.buffer(),
             index_buffer_bytes.offset(),
-            index_buffer_bytes.size(),
+            Some(index_buffer_bytes.size()),
             index_buffer.index_type(),
         )?;
 
@@ -314,7 +318,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     out.bind_index_buffer_unchecked(
                         index_buffer_bytes.buffer(),
                         index_buffer_bytes.offset(),
-                        index_buffer_bytes.size(),
+                        Some(index_buffer_bytes.size()),
                         index_buffer.index_type(),
                     )
                 };

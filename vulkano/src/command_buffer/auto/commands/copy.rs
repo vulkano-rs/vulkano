@@ -4,7 +4,6 @@ use crate::{
         auto::Resource, raw, sys::RecordingCommandBuffer, AutoCommandBufferBuilder,
         ResourceInCommand,
     },
-    format::Format,
     image::{sampler::Filter, Image, ImageLayout, ImageSubresourceLayers},
     sync::PipelineStageAccessFlags,
     DeviceSize, ValidationError,
@@ -378,7 +377,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             Resource::Buffer {
                                 buffer: src_buffer.clone(),
                                 range: buffer_offset
-                                    ..buffer_offset + region.buffer_copy_size(dst_image.format()),
+                                    ..buffer_offset + region.buffer_copy_size(dst_image),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                             },
                         ),
@@ -523,7 +522,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             Resource::Buffer {
                                 buffer: dst_buffer.clone(),
                                 range: buffer_offset
-                                    ..buffer_offset + region.buffer_copy_size(src_image.format()),
+                                    ..buffer_offset + region.buffer_copy_size(src_image),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                             },
                         ),
@@ -1060,11 +1059,11 @@ impl CopyImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageCopy {
             src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..src_image.subresource_layers()
             },
             dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..dst_image.subresource_layers()
             },
             extent: {
@@ -1330,7 +1329,7 @@ impl BufferImageCopy {
 
     // Following
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
-    pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
+    pub(crate) fn buffer_copy_size(&self, image: &Image) -> DeviceSize {
         let &Self {
             buffer_offset: _,
             mut buffer_row_length,
@@ -1350,7 +1349,7 @@ impl BufferImageCopy {
         }
 
         // Scale down from texels to texel blocks, rounding up if needed.
-        let block_extent = format.block_extent();
+        let block_extent = image.format().block_extent();
         buffer_row_length = buffer_row_length.div_ceil(block_extent[0]);
         buffer_image_height = buffer_image_height.div_ceil(block_extent[1]);
 
@@ -1359,7 +1358,12 @@ impl BufferImageCopy {
         }
 
         // Only one of these is greater than 1, take the greater number.
-        image_extent[2] = max(image_extent[2], image_subresource.layer_count);
+        image_extent[2] = max(
+            image_extent[2],
+            image_subresource
+                .layer_count
+                .unwrap_or(image.array_layers() - image_subresource.base_array_layer),
+        );
 
         let blocks_to_last_slice = (image_extent[2] as DeviceSize - 1)
             * buffer_image_height as DeviceSize
@@ -1368,7 +1372,7 @@ impl BufferImageCopy {
             (image_extent[1] as DeviceSize - 1) * buffer_row_length as DeviceSize;
         let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
 
-        num_blocks * format.block_size()
+        num_blocks * image.format().block_size()
     }
 }
 
@@ -1427,12 +1431,12 @@ impl BlitImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageBlit {
             src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..src_image.subresource_layers()
             },
             src_offsets: [[0; 3], src_image.extent()],
             dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..dst_image.subresource_layers()
             },
             dst_offsets: [[0; 3], dst_image.extent()],
@@ -1558,11 +1562,11 @@ impl ResolveImageInfo {
         let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageResolve {
             src_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..src_image.subresource_layers()
             },
             dst_subresource: ImageSubresourceLayers {
-                layer_count: min_array_layers,
+                layer_count: Some(min_array_layers),
                 ..dst_image.subresource_layers()
             },
             extent: {

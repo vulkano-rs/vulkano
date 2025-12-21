@@ -3638,8 +3638,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 let dynamic_offset = dynamic_offsets[index] as DeviceSize;
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
-                                let range =
-                                    dynamic_offset + offset..dynamic_offset + offset + range;
+                                let range = dynamic_offset + offset
+                                    ..dynamic_offset
+                                        + range.map_or(buffer.size(), |range| offset + range);
 
                                 used_resources.push((
                                     use_ref,
@@ -3666,7 +3667,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                                     use_ref,
                                     Resource::Buffer {
                                         buffer: buffer.clone(),
-                                        range: offset..offset + range,
+                                        range: offset
+                                            ..range.map_or(buffer.size(), |range| offset + range),
                                         memory_access,
                                     },
                                 ));

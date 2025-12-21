@@ -1848,7 +1848,9 @@ pub struct BufferMemoryBarrier<'a> {
     pub offset: DeviceSize,
 
     /// The byte size to apply the barrier to.
-    pub size: DeviceSize,
+    ///
+    /// If set to `None`, applies until the end of the buffer.
+    pub size: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
 }
@@ -1865,7 +1867,7 @@ impl<'a> BufferMemoryBarrier<'a> {
             queue_family_ownership_transfer: None,
             buffer,
             offset: 0,
-            size: 0,
+            size: None,
             _ne: crate::NE,
         }
     }
@@ -2337,7 +2339,7 @@ impl<'a> BufferMemoryBarrier<'a> {
             }));
         }
 
-        if size == 0 {
+        if size == Some(0) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is zero".into(),
@@ -2346,18 +2348,22 @@ impl<'a> BufferMemoryBarrier<'a> {
             }));
         }
 
-        if !offset
-            .checked_add(size)
-            .is_some_and(|end| end <= buffer.size())
-        {
+        if offset >= buffer.size() {
             return Err(Box::new(ValidationError {
-                problem: "`offset + size` is greater than `buffer.size()`".into(),
-                vuids: &[
-                    "VUID-VkBufferMemoryBarrier2-offset-01187",
-                    "VUID-VkBufferMemoryBarrier2-size-01189",
-                ],
+                problem: "`offset` is not less than `buffer.size()`".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-offset-01187"],
                 ..Default::default()
             }));
+        }
+
+        if let Some(size) = size {
+            if size > buffer.size() - offset {
+                return Err(Box::new(ValidationError {
+                    problem: "`offset + size` is greater than `buffer.size()`".into(),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-size-01189"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if let Some(queue_family_ownership_transfer) = queue_family_ownership_transfer {
@@ -2512,7 +2518,7 @@ impl<'a> BufferMemoryBarrier<'a> {
             .dst_queue_family_index(dst_queue_family_index)
             .buffer(buffer.handle())
             .offset(offset)
-            .size(size)
+            .size(size.unwrap_or(vk::WHOLE_SIZE))
     }
 
     pub(crate) fn to_vk(&self) -> vk::BufferMemoryBarrier<'static> {
@@ -2541,7 +2547,7 @@ impl<'a> BufferMemoryBarrier<'a> {
             .dst_queue_family_index(dst_queue_family_index)
             .buffer(buffer.handle())
             .offset(offset)
-            .size(size)
+            .size(size.unwrap_or(vk::WHOLE_SIZE))
     }
 }
 
@@ -3102,38 +3108,50 @@ impl<'a> ImageMemoryBarrier<'a> {
             .validate(device)
             .map_err(|err| err.add_context("subresource_range"))?;
 
-        if !subresource_range
-            .base_mip_level
-            .checked_add(subresource_range.level_count)
-            .is_some_and(|end| end <= image.mip_levels())
-        {
+        if subresource_range.base_mip_level >= image.mip_levels() {
             return Err(Box::new(ValidationError {
-                problem: "`subresource_range.base_mip_level + subresource_range.level_count` \
-                    is greater than `image.mip_levels()`"
+                problem: "`subresource_range.base_mip_level` is not less than `image.mip_levels()`"
                     .into(),
-                vuids: &[
-                    "VUID-VkImageMemoryBarrier2-subresourceRange-01486",
-                    "VUID-VkImageMemoryBarrier2-subresourceRange-01724",
-                ],
+                vuids: &["VUID-VkImageMemoryBarrier2-subresourceRange-01486"],
                 ..Default::default()
             }));
         }
 
-        if !subresource_range
-            .base_array_layer
-            .checked_add(subresource_range.layer_count)
-            .is_some_and(|end| end <= image.array_layers())
-        {
+        if let Some(subresource_range_level_count) = subresource_range.level_count {
+            if subresource_range_level_count > image.mip_levels() - subresource_range.base_mip_level
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.base_mip_level + subresource_range.level_count` \
+                        is greater than `image.mip_levels()`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-subresourceRange-01724"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if subresource_range.base_array_layer >= image.array_layers() {
             return Err(Box::new(ValidationError {
-                problem: "`subresource_range.base_array_layer + subresource_range.layer_count` \
-                    is greater than `image.array_layers()`"
+                problem: "`subresource_range.base_array_layer` is not less than \
+                    `image.array_layers()`"
                     .into(),
-                vuids: &[
-                    "VUID-VkImageMemoryBarrier2-subresourceRange-01488",
-                    "VUID-VkImageMemoryBarrier2-subresourceRange-01725",
-                ],
+                vuids: &["VUID-VkImageMemoryBarrier2-subresourceRange-01488"],
                 ..Default::default()
             }));
+        }
+
+        if let Some(subresource_range_layer_count) = subresource_range.layer_count {
+            if subresource_range_layer_count
+                > image.array_layers() - subresource_range.base_array_layer
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.base_array_layer + \
+                        subresource_range.layer_count` is greater than `image.array_layers()`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-subresourceRange-01725"],
+                    ..Default::default()
+                }));
+            }
         }
 
         let image_format_aspects = image.format().aspects();

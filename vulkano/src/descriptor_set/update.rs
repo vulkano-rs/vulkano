@@ -76,9 +76,9 @@ impl WriteDescriptorSet {
             binding,
             0,
             [buffer.map(|buffer| DescriptorBufferInfo {
-                range: buffer.size(),
                 buffer: buffer.into_bytes(),
                 offset: 0,
+                range: None,
             })],
         )
     }
@@ -101,9 +101,9 @@ impl WriteDescriptorSet {
                 let buffer = buffer?;
 
                 Some(DescriptorBufferInfo {
-                    range: buffer.size(),
                     buffer: buffer.into_bytes(),
                     offset: 0,
+                    range: None,
                 })
             }),
         )
@@ -1156,19 +1156,27 @@ impl WriteDescriptorSet {
                         }));
                     }
 
-                    assert_ne!(range, 0);
+                    assert_ne!(range, Some(0));
 
-                    if !offset
-                        .checked_add(range)
-                        .is_some_and(|end| end <= buffer.size())
-                    {
+                    if offset >= buffer.size() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "`offset + size` is greater than the size of the buffer"
-                                .into(),
-                            vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                            problem: "`offset` is not less than the size of the buffer".into(),
+                            vuids: &["VUID-VkDescriptorBufferInfo-offset-00340"],
                             ..Default::default()
                         }));
+                    }
+
+                    if let Some(range) = range {
+                        if range > buffer.size() - offset {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`offset + size` is greater than the size of the buffer"
+                                    .into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                                ..Default::default()
+                            }));
+                        }
                     }
                 }
             }
@@ -1230,19 +1238,27 @@ impl WriteDescriptorSet {
                         }));
                     }
 
-                    assert_ne!(range, 0);
+                    assert_ne!(range, Some(0));
 
-                    if !offset
-                        .checked_add(range)
-                        .is_some_and(|end| end <= buffer.size())
-                    {
+                    if offset >= buffer.size() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "`offset + size` is greater than the size of the buffer"
-                                .into(),
-                            vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                            problem: "`offset` is not less than the size of the buffer".into(),
+                            vuids: &["VUID-VkDescriptorBufferInfo-offset-00340"],
                             ..Default::default()
                         }));
+                    }
+
+                    if let Some(range) = range {
+                        if range > buffer.size() - offset {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`offset + size` is greater than the size of the buffer"
+                                    .into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                                ..Default::default()
+                            }));
+                        }
                     }
                 }
             }
@@ -1664,7 +1680,9 @@ pub struct DescriptorBufferInfo {
     pub offset: DeviceSize,
 
     /// The byte size that will be made available to the shader.
-    pub range: DeviceSize,
+    ///
+    /// If set to `None`, the size until the end of the buffer will be made available.
+    pub range: Option<DeviceSize>,
 }
 
 impl DescriptorBufferInfo {
@@ -1675,14 +1693,10 @@ impl DescriptorBufferInfo {
             range,
         } = self;
 
-        debug_assert_ne!(range, 0);
-        debug_assert!(offset < buffer.buffer().size());
-        debug_assert!(range <= buffer.buffer().size() - offset);
-
         vk::DescriptorBufferInfo {
             buffer: buffer.buffer().handle(),
             offset: buffer.offset() + offset,
-            range,
+            range: range.unwrap_or(vk::WHOLE_SIZE),
         }
     }
 }

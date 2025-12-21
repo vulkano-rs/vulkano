@@ -352,7 +352,7 @@ fn main() {
             regions: [BufferImageCopy {
                 image_subresource: ImageSubresourceLayers {
                     base_array_layer: 0,
-                    layer_count: 1,
+                    layer_count: Some(1),
                     ..image.subresource_layers()
                 },
                 image_extent: image.extent(),
@@ -366,7 +366,7 @@ fn main() {
             regions: [BufferImageCopy {
                 image_subresource: ImageSubresourceLayers {
                     base_array_layer: 1,
-                    layer_count: 1,
+                    layer_count: Some(1),
                     ..image.subresource_layers()
                 },
                 image_extent: image.extent(),

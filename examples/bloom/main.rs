@@ -12,7 +12,7 @@ use vulkano::{
     format::{Format, NumericFormat},
     image::{
         max_mip_levels,
-        sampler::{Filter, SamplerCreateInfo, SamplerMipmapMode, LOD_CLAMP_NONE},
+        sampler::{Filter, SamplerCreateInfo, SamplerMipmapMode},
         view::ImageViewCreateInfo,
         Image, ImageAspects, ImageCreateFlags, ImageCreateInfo, ImageLayout, ImageSubresourceRange,
         ImageType, ImageUsage,
@@ -243,7 +243,6 @@ impl ApplicationHandler for App {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
                 mipmap_mode: SamplerMipmapMode::Nearest,
-                max_lod: LOD_CLAMP_NONE,
                 ..Default::default()
             })
             .unwrap();

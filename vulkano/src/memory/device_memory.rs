@@ -404,6 +404,13 @@ impl DeviceMemory {
         map_info: &MemoryMapInfo<'_>,
         placed_address: Option<NonNull<c_void>>,
     ) -> Result<(), VulkanError> {
+        let size = map_info
+            .size
+            .unwrap_or(self.allocation_size() - map_info.offset);
+
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(size <= isize::MAX.try_into().unwrap());
+
         let device = self.device();
 
         let ptr = {
@@ -449,7 +456,7 @@ impl DeviceMemory {
         } = map_info;
 
         let ptr = NonNull::new(ptr).unwrap();
-        let range = offset..offset + size;
+        let range = offset..size.map_or(self.allocation_size, |size| offset + size);
         self.mapping_state = Some(MappingState { ptr, range });
 
         Ok(())
@@ -1446,6 +1453,9 @@ vulkan_bitflags! {
 /// Parameters of a memory map operation.
 #[derive(Debug)]
 pub struct MemoryMapInfo<'a> {
+    /// Additional properties of the memory mapping.
+    ///
+    /// The default value is empty.
     pub flags: MemoryMapFlags,
 
     /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
@@ -1462,16 +1472,18 @@ pub struct MemoryMapInfo<'a> {
 
     /// The size (in bytes) of the mapping.
     ///
-    /// Must be less than or equal to the [`allocation_size`] of the device memory minus `offset`.
-    /// If the the memory was not allocated from [host-coherent] memory, then this must be a
-    /// multiple of the [`non_coherent_atom_size`] device property, or be equal to the allocation
-    /// size minus `offset`.
+    /// If set to `Some`, must be less than or equal to the [`allocation_size`] of the device
+    /// memory minus `offset`. If the the memory was not allocated from [host-coherent] memory,
+    /// then this must additionally be a multiple of the [`non_coherent_atom_size`] device
+    /// property or be equal to the allocation size minus `offset`.
     ///
-    /// The default value is `0`, which must be overridden.
+    /// If set to `None`, the mapping extends until the end of the `DeviceMemory`.
+    ///
+    /// The default value is `None`.
     ///
     /// [`allocation_size`]: DeviceMemory::allocation_size
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
-    pub size: DeviceSize,
+    pub size: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
 }
@@ -1490,7 +1502,7 @@ impl<'a> MemoryMapInfo<'a> {
         Self {
             flags: MemoryMapFlags::empty(),
             offset: 0,
-            size: 0,
+            size: None,
             _ne: crate::NE,
         }
     }
@@ -1523,7 +1535,7 @@ impl<'a> MemoryMapInfo<'a> {
             }));
         }
 
-        if size == 0 {
+        if size == Some(0) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is zero".into(),
@@ -1532,14 +1544,14 @@ impl<'a> MemoryMapInfo<'a> {
             }));
         }
 
-        if !(size <= memory.allocation_size() - offset) {
-            return Err(Box::new(ValidationError {
-                context: "size".into(),
-                problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
-                    .into(),
-                vuids: &["VUID-vkMapMemory-size-00681"],
-                ..Default::default()
-            }));
+        if let Some(size) = size {
+            if size > memory.allocation_size() - offset {
+                return Err(Box::new(ValidationError {
+                    problem: "`offset + size` is greater than `self.allocation_size()`".into(),
+                    vuids: &["VUID-vkMapMemory-size-00681"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if flags.contains(MemoryMapFlags::PLACED) {
@@ -1600,7 +1612,7 @@ impl<'a> MemoryMapInfo<'a> {
                     }));
                 }
 
-                if !is_aligned(size, min_placed_memory_map_alignment) {
+                if size.is_some_and(|size| !is_aligned(size, min_placed_memory_map_alignment)) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
                         problem: "is not aligned to an integer multiple of the \
@@ -1620,10 +1632,10 @@ impl<'a> MemoryMapInfo<'a> {
                     }));
                 }
 
-                if size != memory.allocation_size() {
+                if size.is_some_and(|size| size != memory.allocation_size()) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "is not `self.allocation_size()`".into(),
+                        problem: "is not `None` or `self.allocation_size()`".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
                         ..Default::default()
                     }));
@@ -1669,18 +1681,29 @@ impl<'a> MemoryMapInfo<'a> {
         // NOTE(Marc): We also rely on this for soundness, because it is easier and more optimal to
         // not have to worry about whether a range of mapped memory is still in bounds of the
         // mapped memory after being aligned to the non-coherent atom size.
-        if !memory.is_coherent
-            && (!is_aligned(offset, atom_size)
-                || (!is_aligned(size, atom_size) && offset + size != memory.allocation_size()))
-        {
-            return Err(Box::new(ValidationError {
-                problem: "`self.memory_type_index()` refers to a memory type whose \
-                    `property_flags` does not contain `MemoryPropertyFlags::HOST_COHERENT`, and \
-                    `offset` and/or `size` are not aligned to the `non_coherent_atom_size` device \
-                    property"
-                    .into(),
-                ..Default::default()
-            }));
+        if !memory.is_coherent {
+            if !is_aligned(offset, atom_size) {
+                return Err(Box::new(ValidationError {
+                    problem: "`self.memory_type_index()` refers to a memory type whose \
+                        `property_flags` does not contain `MemoryPropertyFlags::HOST_COHERENT`, \
+                        but `offset` is not aligned to the `non_coherent_atom_size` device \
+                        property"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+
+            if !size.map_or(is_aligned(memory.allocation_size(), atom_size), |size| {
+                is_aligned(size, atom_size) && offset + size != memory.allocation_size()
+            }) {
+                return Err(Box::new(ValidationError {
+                    problem: "`self.memory_type_index()` refers to a memory type whose \
+                        `property_flags` does not contain `MemoryPropertyFlags::HOST_COHERENT`, \
+                        but `size` is not aligned to the `non_coherent_atom_size` device property"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
         }
 
         Ok(())
@@ -1698,14 +1721,11 @@ impl<'a> MemoryMapInfo<'a> {
             _ne: _,
         } = self;
 
-        // Sanity check: this would lead to UB when calculating pointer offsets.
-        assert!(size <= isize::MAX.try_into().unwrap());
-
         let mut val_vk = vk::MemoryMapInfoKHR::default()
             .flags(flags.into())
             .memory(memory_vk)
             .offset(offset)
-            .size(size);
+            .size(size.unwrap_or(vk::WHOLE_SIZE));
 
         let MemoryMapInfoExtensionsVk { placed_vk } = extensions_vk;
 
@@ -1875,13 +1895,15 @@ pub struct MappedMemoryRange<'a> {
 
     /// The size (in bytes) of the range.
     ///
-    /// Must be a multiple of the [`non_coherent_atom_size`] device property, or be equal to the
-    /// allocation size minus `offset`.
+    /// If set to `Some`, must be a multiple of the [`non_coherent_atom_size`] device property, or
+    /// be equal to the allocation size minus `offset`.
     ///
-    /// The default value is `0`.
+    /// If set to `None`, the range extends until the end of the allocation.
+    ///
+    /// The default value is `None`.
     ///
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
-    pub size: DeviceSize,
+    pub size: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
 }
@@ -1899,7 +1921,7 @@ impl MappedMemoryRange<'_> {
     pub const fn new() -> Self {
         Self {
             offset: 0,
-            size: 0,
+            size: None,
             _ne: crate::NE,
         }
     }
@@ -1912,7 +1934,9 @@ impl MappedMemoryRange<'_> {
         } = self;
 
         if let Some(state) = &memory.mapping_state {
-            if !(state.range.start <= offset && size <= state.range.end - offset) {
+            if !(state.range.start <= offset
+                && size.is_none_or(|size| size <= state.range.end - offset))
+            {
                 return Err(Box::new(ValidationError {
                     problem: "is not contained within the mapped range of this device memory"
                         .into(),
@@ -1937,7 +1961,9 @@ impl MappedMemoryRange<'_> {
             }));
         }
 
-        if !(is_aligned(size, memory.atom_size()) || size == memory.allocation_size() - offset) {
+        if size.is_some_and(|size| {
+            !(is_aligned(size, memory.atom_size()) || size == memory.allocation_size() - offset)
+        }) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is not aligned to the `non_coherent_atom_size` device property nor \
@@ -1961,7 +1987,7 @@ impl MappedMemoryRange<'_> {
         vk::MappedMemoryRange::default()
             .memory(memory_vk)
             .offset(offset)
-            .size(size)
+            .size(size.unwrap_or(vk::WHOLE_SIZE))
     }
 }
 
@@ -2225,12 +2251,12 @@ impl MappedDeviceMemory {
             return Ok(());
         }
 
-        let range_vk = MappedMemoryRange {
+        let range_vk = vk::MappedMemoryRange {
+            memory: self.memory.handle(),
             offset: range.start,
             size: range.end - range.start,
             ..Default::default()
-        }
-        .to_vk(self.memory.handle());
+        };
 
         let fns = self.memory.device().fns();
         unsafe {
@@ -2281,12 +2307,12 @@ impl MappedDeviceMemory {
             return Ok(());
         }
 
-        let range_vk = MappedMemoryRange {
+        let range_vk = vk::MappedMemoryRange {
+            memory: self.memory.handle(),
             offset: range.start,
             size: range.end - range.start,
             ..Default::default()
-        }
-        .to_vk(self.memory.handle());
+        };
 
         let fns = self.device().fns();
         unsafe {
@@ -2643,7 +2669,6 @@ mod tests {
             memory.map_placed(
                 &MemoryMapInfo {
                     flags: MemoryMapFlags::PLACED,
-                    size: memory.allocation_size,
                     ..Default::default()
                 },
                 NonNull::new(address).unwrap(),
