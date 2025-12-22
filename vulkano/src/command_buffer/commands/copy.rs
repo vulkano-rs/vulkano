@@ -2851,19 +2851,13 @@ impl<'a> CopyImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let src_extent = src_image.extent();
             let dst_extent = dst_image.extent();
             let region_vk = vk::ImageCopy2::default()
-                .src_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                })
+                .src_subresource(src_image.subresource_layers().to_vk(remaining_array_layers))
                 .src_offset(convert_offset([0; 3]))
-                .dst_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..dst_image.subresource_layers().to_vk()
-                })
+                .dst_subresource(dst_image.subresource_layers().to_vk(remaining_array_layers))
                 .dst_offset(convert_offset([0; 3]))
                 .extent(convert_extent([
                     min(src_extent[0], dst_extent[0]),
@@ -2873,7 +2867,10 @@ impl<'a> CopyImageInfo<'a> {
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageCopy::to_vk2).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk2(src_image, dst_image))
+                .collect()
         }
     }
 
@@ -2904,19 +2901,13 @@ impl<'a> CopyImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let src_extent = src_image.extent();
             let dst_extent = dst_image.extent();
             let region_vk = vk::ImageCopy {
-                src_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                },
+                src_subresource: src_image.subresource_layers().to_vk(remaining_array_layers),
                 src_offset: convert_offset([0; 3]),
-                dst_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..dst_image.subresource_layers().to_vk()
-                },
+                dst_subresource: dst_image.subresource_layers().to_vk(remaining_array_layers),
                 dst_offset: convert_offset([0; 3]),
                 extent: convert_extent([
                     min(src_extent[0], dst_extent[0]),
@@ -2927,7 +2918,10 @@ impl<'a> CopyImageInfo<'a> {
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageCopy::to_vk).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk(src_image, dst_image))
+                .collect()
         }
     }
 }
@@ -3064,7 +3058,7 @@ impl ImageCopy<'_> {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> vk::ImageCopy2<'static> {
+    pub(crate) fn to_vk2(&self, src_image: &Image, dst_image: &Image) -> vk::ImageCopy2<'static> {
         let &Self {
             src_subresource,
             src_offset,
@@ -3074,14 +3068,23 @@ impl ImageCopy<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageCopy2::default()
-            .src_subresource(src_subresource.to_vk())
+            .src_subresource(src_subresource.to_vk(remaining_array_layers))
             .src_offset(vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             })
-            .dst_subresource(dst_subresource.to_vk())
+            .dst_subresource(dst_subresource.to_vk(remaining_array_layers))
             .dst_offset(vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
@@ -3094,7 +3097,7 @@ impl ImageCopy<'_> {
             })
     }
 
-    pub(crate) fn to_vk(&self) -> vk::ImageCopy {
+    pub(crate) fn to_vk(&self, src_image: &Image, dst_image: &Image) -> vk::ImageCopy {
         let &Self {
             src_subresource,
             src_offset,
@@ -3104,14 +3107,23 @@ impl ImageCopy<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageCopy {
-            src_subresource: src_subresource.to_vk(),
+            src_subresource: src_subresource.to_vk(remaining_array_layers),
             src_offset: vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             },
-            dst_subresource: dst_subresource.to_vk(),
+            dst_subresource: dst_subresource.to_vk(remaining_array_layers),
             dst_offset: vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
@@ -3778,17 +3790,21 @@ impl<'a> CopyBufferToImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
+            let remaining_array_layers = dst_image.array_layers();
             let region_vk = vk::BufferImageCopy2::default()
                 .buffer_offset(0)
                 .buffer_row_length(0)
                 .buffer_image_height(0)
-                .image_subresource(dst_image.subresource_layers().to_vk())
+                .image_subresource(dst_image.subresource_layers().to_vk(remaining_array_layers))
                 .image_offset(convert_offset([0; 3]))
                 .image_extent(convert_extent(dst_image.extent()));
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(BufferImageCopy::to_vk2).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk2(dst_image))
+                .collect()
         }
     }
 
@@ -3814,18 +3830,22 @@ impl<'a> CopyBufferToImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
+            let remaining_array_layers = dst_image.array_layers();
             let region_vk = vk::BufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_subresource: dst_image.subresource_layers().to_vk(),
+                image_subresource: dst_image.subresource_layers().to_vk(remaining_array_layers),
                 image_offset: convert_offset([0; 3]),
                 image_extent: convert_extent(dst_image.extent()),
             };
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(BufferImageCopy::to_vk).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk(dst_image))
+                .collect()
         }
     }
 }
@@ -4485,17 +4505,21 @@ impl<'a> CopyImageToBufferInfo<'a> {
         } = self;
 
         if regions.is_empty() {
+            let remaining_array_layers = src_image.array_layers();
             let region_vk = vk::BufferImageCopy2::default()
                 .buffer_offset(0)
                 .buffer_row_length(0)
                 .buffer_image_height(0)
-                .image_subresource(src_image.subresource_layers().to_vk())
+                .image_subresource(src_image.subresource_layers().to_vk(remaining_array_layers))
                 .image_offset(convert_offset([0; 3]))
                 .image_extent(convert_extent(src_image.extent()));
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(BufferImageCopy::to_vk2).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk2(src_image))
+                .collect()
         }
     }
 
@@ -4521,18 +4545,22 @@ impl<'a> CopyImageToBufferInfo<'a> {
         } = self;
 
         if regions.is_empty() {
+            let remaining_array_layers = src_image.array_layers();
             let region_vk = vk::BufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_subresource: src_image.subresource_layers().to_vk(),
+                image_subresource: src_image.subresource_layers().to_vk(remaining_array_layers),
                 image_offset: convert_offset([0; 3]),
                 image_extent: convert_extent(src_image.extent()),
             };
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(BufferImageCopy::to_vk).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk(src_image))
+                .collect()
         }
     }
 }
@@ -4729,7 +4757,7 @@ impl BufferImageCopy<'_> {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> vk::BufferImageCopy2<'static> {
+    pub(crate) fn to_vk2(&self, image: &Image) -> vk::BufferImageCopy2<'static> {
         let &Self {
             buffer_offset,
             buffer_row_length,
@@ -4740,11 +4768,13 @@ impl BufferImageCopy<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = image.array_layers() - image_subresource.base_array_layer;
+
         vk::BufferImageCopy2::default()
             .buffer_offset(buffer_offset)
             .buffer_row_length(buffer_row_length)
             .buffer_image_height(buffer_image_height)
-            .image_subresource(image_subresource.to_vk())
+            .image_subresource(image_subresource.to_vk(remaining_array_layers))
             .image_offset(vk::Offset3D {
                 x: image_offset[0] as i32,
                 y: image_offset[1] as i32,
@@ -4757,7 +4787,7 @@ impl BufferImageCopy<'_> {
             })
     }
 
-    pub(crate) fn to_vk(&self) -> vk::BufferImageCopy {
+    pub(crate) fn to_vk(&self, image: &Image) -> vk::BufferImageCopy {
         let &Self {
             buffer_offset,
             buffer_row_length,
@@ -4768,11 +4798,13 @@ impl BufferImageCopy<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = image.array_layers() - image_subresource.base_array_layer;
+
         vk::BufferImageCopy {
             buffer_offset,
             buffer_row_length,
             buffer_image_height,
-            image_subresource: image_subresource.to_vk(),
+            image_subresource: image_subresource.to_vk(remaining_array_layers),
             image_offset: vk::Offset3D {
                 x: image_offset[0] as i32,
                 y: image_offset[1] as i32,
@@ -5670,22 +5702,19 @@ impl<'a> BlitImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let region_vk = vk::ImageBlit2::default()
-                .src_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                })
+                .src_subresource(src_image.subresource_layers().to_vk(remaining_array_layers))
                 .src_offsets([[0; 3], src_image.extent()].map(convert_offset))
-                .dst_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                })
+                .dst_subresource(dst_image.subresource_layers().to_vk(remaining_array_layers))
                 .dst_offsets([[0; 3], dst_image.extent()].map(convert_offset));
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageBlit::to_vk2).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk2(src_image, dst_image))
+                .collect()
         }
     }
 
@@ -5718,23 +5747,20 @@ impl<'a> BlitImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let region_vk = vk::ImageBlit {
-                src_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                },
+                src_subresource: src_image.subresource_layers().to_vk(remaining_array_layers),
                 src_offsets: [[0; 3], src_image.extent()].map(convert_offset),
-                dst_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..dst_image.subresource_layers().to_vk()
-                },
+                dst_subresource: dst_image.subresource_layers().to_vk(remaining_array_layers),
                 dst_offsets: [[0; 3], dst_image.extent()].map(convert_offset),
             };
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageBlit::to_vk).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk(src_image, dst_image))
+                .collect()
         }
     }
 }
@@ -5838,7 +5864,7 @@ impl ImageBlit<'_> {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> vk::ImageBlit2<'static> {
+    pub(crate) fn to_vk2(&self, src_image: &Image, dst_image: &Image) -> vk::ImageBlit2<'static> {
         let &Self {
             src_subresource,
             src_offsets,
@@ -5847,8 +5873,17 @@ impl ImageBlit<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageBlit2::default()
-            .src_subresource(src_subresource.to_vk())
+            .src_subresource(src_subresource.to_vk(remaining_array_layers))
             .src_offsets([
                 vk::Offset3D {
                     x: src_offsets[0][0] as i32,
@@ -5861,7 +5896,7 @@ impl ImageBlit<'_> {
                     z: src_offsets[1][2] as i32,
                 },
             ])
-            .dst_subresource(dst_subresource.to_vk())
+            .dst_subresource(dst_subresource.to_vk(remaining_array_layers))
             .dst_offsets([
                 vk::Offset3D {
                     x: dst_offsets[0][0] as i32,
@@ -5876,7 +5911,7 @@ impl ImageBlit<'_> {
             ])
     }
 
-    pub(crate) fn to_vk(&self) -> vk::ImageBlit {
+    pub(crate) fn to_vk(&self, src_image: &Image, dst_image: &Image) -> vk::ImageBlit {
         let &Self {
             src_subresource,
             src_offsets,
@@ -5885,8 +5920,17 @@ impl ImageBlit<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageBlit {
-            src_subresource: src_subresource.to_vk(),
+            src_subresource: src_subresource.to_vk(remaining_array_layers),
             src_offsets: [
                 vk::Offset3D {
                     x: src_offsets[0][0] as i32,
@@ -5899,7 +5943,7 @@ impl ImageBlit<'_> {
                     z: src_offsets[1][2] as i32,
                 },
             ],
-            dst_subresource: dst_subresource.to_vk(),
+            dst_subresource: dst_subresource.to_vk(remaining_array_layers),
             dst_offsets: [
                 vk::Offset3D {
                     x: dst_offsets[0][0] as i32,
@@ -6572,19 +6616,13 @@ impl<'a> ResolveImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let src_extent = src_image.extent();
             let dst_extent = dst_image.extent();
             let region_vk = vk::ImageResolve2::default()
-                .src_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                })
+                .src_subresource(src_image.subresource_layers().to_vk(remaining_array_layers))
                 .src_offset(convert_offset([0; 3]))
-                .dst_subresource(vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                })
+                .dst_subresource(dst_image.subresource_layers().to_vk(remaining_array_layers))
                 .dst_offset(convert_offset([0; 3]))
                 .extent(convert_extent([
                     min(src_extent[0], dst_extent[0]),
@@ -6594,7 +6632,10 @@ impl<'a> ResolveImageInfo<'a> {
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageResolve::to_vk2).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk2(src_image, dst_image))
+                .collect()
         }
     }
 
@@ -6625,19 +6666,13 @@ impl<'a> ResolveImageInfo<'a> {
         } = self;
 
         if regions.is_empty() {
-            let min_array_layers = min(src_image.array_layers(), dst_image.array_layers());
+            let remaining_array_layers = min(src_image.array_layers(), dst_image.array_layers());
             let src_extent = src_image.extent();
             let dst_extent = dst_image.extent();
             let region_vk = vk::ImageResolve {
-                src_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..src_image.subresource_layers().to_vk()
-                },
+                src_subresource: src_image.subresource_layers().to_vk(remaining_array_layers),
                 src_offset: convert_offset([0; 3]),
-                dst_subresource: vk::ImageSubresourceLayers {
-                    layer_count: min_array_layers,
-                    ..dst_image.subresource_layers().to_vk()
-                },
+                dst_subresource: dst_image.subresource_layers().to_vk(remaining_array_layers),
                 dst_offset: convert_offset([0; 3]),
                 extent: convert_extent([
                     min(src_extent[0], dst_extent[0]),
@@ -6648,7 +6683,10 @@ impl<'a> ResolveImageInfo<'a> {
 
             smallvec![region_vk]
         } else {
-            regions.iter().map(ImageResolve::to_vk).collect()
+            regions
+                .iter()
+                .map(|region| region.to_vk(src_image, dst_image))
+                .collect()
         }
     }
 }
@@ -6759,7 +6797,11 @@ impl ImageResolve<'_> {
         Ok(())
     }
 
-    pub(crate) fn to_vk2(&self) -> vk::ImageResolve2<'static> {
+    pub(crate) fn to_vk2(
+        &self,
+        src_image: &Image,
+        dst_image: &Image,
+    ) -> vk::ImageResolve2<'static> {
         let &Self {
             src_subresource,
             src_offset,
@@ -6769,14 +6811,23 @@ impl ImageResolve<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageResolve2::default()
-            .src_subresource(src_subresource.to_vk())
+            .src_subresource(src_subresource.to_vk(remaining_array_layers))
             .src_offset(vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             })
-            .dst_subresource(dst_subresource.to_vk())
+            .dst_subresource(dst_subresource.to_vk(remaining_array_layers))
             .dst_offset(vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
@@ -6789,7 +6840,7 @@ impl ImageResolve<'_> {
             })
     }
 
-    pub(crate) fn to_vk(&self) -> vk::ImageResolve {
+    pub(crate) fn to_vk(&self, src_image: &Image, dst_image: &Image) -> vk::ImageResolve {
         let &Self {
             src_subresource,
             src_offset,
@@ -6799,14 +6850,23 @@ impl ImageResolve<'_> {
             _ne: _,
         } = self;
 
+        let remaining_array_layers = min(
+            src_subresource
+                .layer_count
+                .unwrap_or(src_image.array_layers() - src_subresource.base_array_layer),
+            dst_subresource
+                .layer_count
+                .unwrap_or(dst_image.array_layers() - dst_subresource.base_array_layer),
+        );
+
         vk::ImageResolve {
-            src_subresource: src_subresource.to_vk(),
+            src_subresource: src_subresource.to_vk(remaining_array_layers),
             src_offset: vk::Offset3D {
                 x: src_offset[0] as i32,
                 y: src_offset[1] as i32,
                 z: src_offset[2] as i32,
             },
-            dst_subresource: dst_subresource.to_vk(),
+            dst_subresource: dst_subresource.to_vk(remaining_array_layers),
             dst_offset: vk::Offset3D {
                 x: dst_offset[0] as i32,
                 y: dst_offset[1] as i32,
