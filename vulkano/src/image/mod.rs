@@ -1525,11 +1525,14 @@ impl ImageSubresourceLayers {
             }));
         }
 
+        // VUID-VkImageSubresourceLayers-layerCount-09243
+        // Guaranteed because we don't use `VK_REMAINING_ARRAY_LAYERS` even if `None` is used.
+
         Ok(())
     }
 
     #[doc(hidden)]
-    pub fn to_vk(&self) -> vk::ImageSubresourceLayers {
+    pub fn to_vk(&self, remaining_array_layers: u32) -> vk::ImageSubresourceLayers {
         let &Self {
             aspects,
             mip_level,
@@ -1541,7 +1544,7 @@ impl ImageSubresourceLayers {
             aspect_mask: aspects.into(),
             mip_level,
             base_array_layer,
-            layer_count: layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            layer_count: layer_count.unwrap_or(remaining_array_layers),
         }
     }
 }
