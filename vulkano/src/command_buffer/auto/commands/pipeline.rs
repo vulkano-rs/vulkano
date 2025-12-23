@@ -11,7 +11,7 @@ use crate::{
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
-        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo,
     },
     device::DeviceOwned,
     format::{FormatFeatures, NumericType},
@@ -1805,7 +1805,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 |_set_num: u32,
                  _binding_num: u32,
                  _index: u32,
-                 _buffer_info: &Option<DescriptorBufferInfo>| Ok(());
+                 _buffer_info: &OwnedDescriptorBufferInfo| Ok(());
 
             let check_buffer_view =
                 |set_num: u32,
@@ -2181,7 +2181,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             else {
                                 continue;
                             };
-                            let Some(Some(DescriptorImageInfo {
+                            let Some(Some(OwnedDescriptorImageInfo {
                                 sampler: _,
                                 image_view: Some(image_view),
                                 image_layout: _,
@@ -2213,7 +2213,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                 };
 
             let check_image =
-                |set_num: u32, binding_num: u32, index: u32, image_info: &DescriptorImageInfo| {
+                |set_num: u32,
+                 binding_num: u32,
+                 index: u32,
+                 image_info: &OwnedDescriptorImageInfo| {
                     if let Some(sampler) = &image_info.sampler {
                         check_sampler(set_num, binding_num, index, sampler)?;
                     } else if let Some(&sampler) =
@@ -3593,7 +3596,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             match descriptor_set_state.resources().binding(binding).unwrap() {
                 DescriptorBindingResources::Image(elements) => {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(DescriptorImageInfo {
+                        if let Some(OwnedDescriptorImageInfo {
                             sampler: _,
                             image_view: Some(image_view),
                             image_layout,
@@ -3628,13 +3631,12 @@ impl<L> AutoCommandBufferBuilder<L> {
                         let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(Some(buffer_info)) = element {
-                                let &DescriptorBufferInfo {
-                                    ref buffer,
-                                    offset,
-                                    range,
-                                } = buffer_info;
-
+                            if let Some(OwnedDescriptorBufferInfo {
+                                buffer: Some(buffer),
+                                offset,
+                                range,
+                            }) = element
+                            {
                                 let dynamic_offset = dynamic_offsets[index] as DeviceSize;
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
@@ -3645,7 +3647,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 used_resources.push((
                                     use_ref,
                                     Resource::Buffer {
-                                        buffer: buffer.clone(),
+                                        buffer: buffer.clone().into(),
                                         range,
                                         memory_access,
                                     },
@@ -3654,19 +3656,18 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }
                     } else {
                         for (index, element) in elements.iter().enumerate() {
-                            if let Some(Some(buffer_info)) = element {
-                                let &DescriptorBufferInfo {
-                                    ref buffer,
-                                    offset,
-                                    range,
-                                } = buffer_info;
-
+                            if let &Some(OwnedDescriptorBufferInfo {
+                                buffer: Some(ref buffer),
+                                offset,
+                                range,
+                            }) = element
+                            {
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
                                 used_resources.push((
                                     use_ref,
                                     Resource::Buffer {
-                                        buffer: buffer.clone(),
+                                        buffer: buffer.clone().into(),
                                         range: offset
                                             ..range.map_or(buffer.size(), |range| offset + range),
                                         memory_access,

@@ -16,7 +16,8 @@ use vulkano::{
         PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorSet, WriteDescriptorSet,
     },
     device::{Device, Queue},
     format::Format,
@@ -182,13 +183,19 @@ impl Scene {
         .unwrap();
 
         let descriptor_set = DescriptorSet::new(
-            descriptor_set_allocator.clone(),
-            pipeline_layout.set_layouts()[0].clone(),
-            [
-                WriteDescriptorSet::acceleration_structure(0, tlas.clone()),
-                WriteDescriptorSet::buffer(1, uniform_buffer.clone()),
+            descriptor_set_allocator,
+            &pipeline_layout.set_layouts()[0],
+            &[
+                WriteDescriptorSet::acceleration_structure(0, &Some(&tlas)),
+                WriteDescriptorSet::buffer(
+                    1,
+                    &DescriptorBufferInfo {
+                        buffer: Some(uniform_buffer.buffer()),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 
@@ -285,10 +292,16 @@ fn window_size_dependent_setup(
         .map(|image| {
             let image_view = ImageView::new_default(image).unwrap();
             let descriptor_set = DescriptorSet::new(
-                descriptor_set_allocator.clone(),
-                pipeline_layout.set_layouts()[1].clone(),
-                [WriteDescriptorSet::image_view(0, image_view.clone())],
-                [],
+                descriptor_set_allocator,
+                &pipeline_layout.set_layouts()[1],
+                &[WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        image_view: Some(&image_view),
+                        ..Default::default()
+                    },
+                )],
+                &[],
             )
             .unwrap();
 

@@ -8,7 +8,8 @@ use vulkano::{
         PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     image::view::ImageView,
@@ -129,13 +130,25 @@ impl FractalComputePipeline {
         let image_extent = image_view.image().extent();
         let layout = &self.pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [
-                WriteDescriptorSet::image_view(0, image_view),
-                WriteDescriptorSet::buffer(1, self.palette.clone()),
+            &self.descriptor_set_allocator,
+            layout,
+            &[
+                WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        image_view: Some(&image_view),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::buffer(
+                    1,
+                    &DescriptorBufferInfo {
+                        buffer: Some(self.palette.buffer()),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(

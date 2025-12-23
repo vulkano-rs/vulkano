@@ -11,7 +11,8 @@ use vulkano::{
         CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -249,14 +250,20 @@ impl App {
 
         // Create a new descriptor set for binding vertices as a storage buffer.
         let descriptor_set = DescriptorSet::new(
-            descriptor_set_allocator.clone(),
+            &descriptor_set_allocator,
             // 0 is the index of the descriptor set.
-            compute_pipeline.layout().set_layouts()[0].clone(),
-            [
+            &compute_pipeline.layout().set_layouts()[0],
+            &[
                 // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
-                WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
+                WriteDescriptorSet::buffer(
+                    0,
+                    &DescriptorBufferInfo {
+                        buffer: Some(vertex_buffer.buffer()),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 

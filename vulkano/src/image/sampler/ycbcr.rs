@@ -20,7 +20,7 @@
 //!             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
 //!             DescriptorType,
 //!         },
-//!         DescriptorSet, WriteDescriptorSet,
+//!         DescriptorImageInfo, DescriptorSet, WriteDescriptorSet,
 //!     },
 //!     format::Format,
 //!     image::{
@@ -98,10 +98,16 @@
 //! .unwrap();
 //!
 //! let descriptor_set = DescriptorSet::new(
-//!     descriptor_set_allocator.clone(),
-//!     descriptor_set_layout.clone(),
-//!     [WriteDescriptorSet::image_view(0, image_view)],
-//!     [],
+//!     &descriptor_set_allocator,
+//!     &descriptor_set_layout,
+//!     &[WriteDescriptorSet::image(
+//!         0,
+//!         &DescriptorImageInfo {
+//!             image_view: Some(&image_view),
+//!             ..Default::default()
+//!         },
+//!     )],
+//!     &[],
 //! )
 //! .unwrap();
 //! ```

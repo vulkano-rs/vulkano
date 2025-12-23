@@ -234,24 +234,30 @@ fn main() {
 
     let layout = &pipeline.layout().set_layouts()[0];
     let set = DescriptorSet::new(
-        descriptor_set_allocator,
-        layout.clone(),
-        [
+        &descriptor_set_allocator,
+        layout,
+        &[
             // When writing to the dynamic buffer binding, the range of the buffer that the shader
             // will access must also be provided. We specify the size of the `InData` struct here.
-            // When dynamic offsets are provided later, they get added to the start and end of
-            // this range.
-            WriteDescriptorSet::buffer_with_range(
+            // When dynamic offsets are provided later, they get added to the start and end of this
+            // range.
+            WriteDescriptorSet::buffer(
                 0,
-                DescriptorBufferInfo {
-                    buffer: input_buffer,
-                    offset: 0,
+                &DescriptorBufferInfo {
+                    buffer: Some(input_buffer.buffer()),
                     range: Some(size_of::<cs::InData>() as DeviceSize),
+                    ..Default::default()
                 },
             ),
-            WriteDescriptorSet::buffer(1, output_buffer.clone()),
+            WriteDescriptorSet::buffer(
+                1,
+                &DescriptorBufferInfo {
+                    buffer: Some(output_buffer.buffer()),
+                    ..Default::default()
+                },
+            ),
         ],
-        [],
+        &[],
     )
     .unwrap();
 

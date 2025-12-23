@@ -11,7 +11,7 @@ use vulkano::{
             DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding,
             DescriptorSetLayoutCreateInfo, DescriptorType,
         },
-        DescriptorSet, WriteDescriptorSet,
+        DescriptorImageInfo, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
@@ -515,21 +515,33 @@ impl ApplicationHandler for App {
 
         let layout = &pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new_variable(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
+            &self.descriptor_set_allocator,
+            layout,
             2,
-            [
-                WriteDescriptorSet::sampler(0, self.sampler.clone()),
-                WriteDescriptorSet::image_view_array(
+            &[
+                WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        sampler: Some(&self.sampler),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::image_array(
                     1,
                     0,
-                    [
-                        Some(self.mascot_texture.clone()),
-                        Some(self.vulkano_texture.clone()),
+                    &[
+                        DescriptorImageInfo {
+                            image_view: Some(&self.mascot_texture),
+                            ..Default::default()
+                        },
+                        DescriptorImageInfo {
+                            image_view: Some(&self.vulkano_texture),
+                            ..Default::default()
+                        },
                     ],
                 ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 

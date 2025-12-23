@@ -10,7 +10,7 @@ use vulkano::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags,
             DescriptorSetLayoutCreateInfo, DescriptorType,
         },
-        WriteDescriptorSet,
+        DescriptorImageInfo, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -492,14 +492,18 @@ impl ApplicationHandler for App {
                         PipelineBindPoint::Graphics,
                         rcx.pipeline.layout().clone(),
                         0,
-                        [
+                        &[
                             // If the binding is an immutable sampler, using push descriptors
                             // you must write a dummy value to the binding.
-                            WriteDescriptorSet::sampler(0, None),
-                            WriteDescriptorSet::image_view(1, self.texture.clone()),
-                        ]
-                        .into_iter()
-                        .collect(),
+                            WriteDescriptorSet::image(0, &DescriptorImageInfo::default()),
+                            WriteDescriptorSet::image(
+                                1,
+                                &DescriptorImageInfo {
+                                    image_view: Some(&self.texture),
+                                    ..Default::default()
+                                },
+                            ),
+                        ],
                     )
                     .unwrap()
                     .bind_vertex_buffers(0, self.vertex_buffer.clone())

@@ -9,7 +9,8 @@ use vulkano::{
         PrimaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     format::Format,
@@ -166,14 +167,32 @@ impl GameOfLifeComputePipeline {
         let image_extent = self.image.image().extent();
         let layout = &self.compute_life_pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [
-                WriteDescriptorSet::image_view(0, self.image.clone()),
-                WriteDescriptorSet::buffer(1, self.life_in.clone()),
-                WriteDescriptorSet::buffer(2, self.life_out.clone()),
+            &self.descriptor_set_allocator,
+            layout,
+            &[
+                WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        image_view: Some(&self.image),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::buffer(
+                    1,
+                    &DescriptorBufferInfo {
+                        buffer: Some(self.life_in.buffer()),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::buffer(
+                    2,
+                    &DescriptorBufferInfo {
+                        buffer: Some(self.life_out.buffer()),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 

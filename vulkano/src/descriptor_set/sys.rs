@@ -93,8 +93,8 @@ impl RawDescriptorSet {
     #[inline]
     pub unsafe fn update(
         &self,
-        descriptor_writes: &[WriteDescriptorSet],
-        descriptor_copies: &[CopyDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return Ok(());
@@ -108,8 +108,8 @@ impl RawDescriptorSet {
 
     pub(super) fn validate_update(
         &self,
-        descriptor_writes: &[WriteDescriptorSet],
-        descriptor_copies: &[CopyDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
         for (index, write) in descriptor_writes.iter().enumerate() {
             write
@@ -128,8 +128,8 @@ impl RawDescriptorSet {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_unchecked(
         &self,
-        descriptor_writes: &[WriteDescriptorSet],
-        descriptor_copies: &[CopyDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) {
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return;
@@ -140,7 +140,7 @@ impl RawDescriptorSet {
             .iter()
             .map(|write| {
                 let default_image_layout = set_layout
-                    .binding(write.binding())
+                    .binding(write.dst_binding())
                     .unwrap()
                     .descriptor_type
                     .default_image_layout();
@@ -159,7 +159,10 @@ impl RawDescriptorSet {
             .map(|((write, write_info_vk), write_extension_vk)| {
                 write.to_vk(
                     self.handle(),
-                    set_layout.binding(write.binding()).unwrap().descriptor_type,
+                    set_layout
+                        .binding(write.dst_binding())
+                        .unwrap()
+                        .descriptor_type,
                     write_info_vk,
                     write_extension_vk,
                 )

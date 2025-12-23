@@ -21,7 +21,8 @@ use vulkano::{
         RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
@@ -355,13 +356,25 @@ impl ApplicationHandler for App {
         };
 
         let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            pipeline.layout().set_layouts()[0].clone(),
-            [
-                WriteDescriptorSet::buffer(0, self.vertex_buffer.clone()),
-                WriteDescriptorSet::buffer(1, self.instance_buffer.clone()),
+            &self.descriptor_set_allocator,
+            &pipeline.layout().set_layouts()[0],
+            &[
+                WriteDescriptorSet::buffer(
+                    0,
+                    &DescriptorBufferInfo {
+                        buffer: Some(self.vertex_buffer.buffer()),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::buffer(
+                    1,
+                    &DescriptorBufferInfo {
+                        buffer: Some(self.instance_buffer.buffer()),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 

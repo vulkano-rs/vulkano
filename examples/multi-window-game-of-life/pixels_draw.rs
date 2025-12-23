@@ -6,7 +6,8 @@ use vulkano::{
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorImageInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::Queue,
     image::{
@@ -102,13 +103,25 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [
-                WriteDescriptorSet::sampler(0, sampler),
-                WriteDescriptorSet::image_view(1, image),
+            &self.descriptor_set_allocator,
+            layout,
+            &[
+                WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        sampler: Some(&sampler),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::image(
+                    1,
+                    &DescriptorImageInfo {
+                        image_view: Some(&image),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap()
     }

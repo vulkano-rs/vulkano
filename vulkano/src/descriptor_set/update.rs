@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     acceleration_structure::{AccelerationStructure, AccelerationStructureType},
-    buffer::{view::BufferView, BufferUsage, Subbuffer},
+    buffer::{view::BufferView, Buffer, BufferUsage},
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
         pool::DescriptorPoolCreateFlags,
@@ -20,7 +20,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -32,257 +32,173 @@ use std::sync::Arc;
 /// - The `_array` variant writes several elements and allows specifying the target array index. At
 ///   least one element must be provided; a panic results if the provided iterator is empty.
 #[derive(Clone, Debug)]
-pub struct WriteDescriptorSet {
-    binding: u32,
-    first_array_element: u32,
-    elements: WriteDescriptorSetElements,
+pub struct WriteDescriptorSet<'a> {
+    pub(crate) dst_binding: u32,
+    pub(crate) dst_array_element: u32,
+    pub(crate) elements: WriteDescriptorSetElements<'a>,
 }
 
-impl WriteDescriptorSet {
+impl<'a> WriteDescriptorSet<'a> {
     /// Write a single image to array element 0.
+    ///
+    /// If the descriptor type is `Sampler` and immutable samplers are used, you must not write any
+    /// descriptors. Meaning, you should leave out the `WriteDescriptorSet` for the binding. That
+    /// is unless this is for a push descriptor set.
     #[inline]
-    pub fn image(binding: u32, image_info: DescriptorImageInfo) -> Self {
-        Self::image_array(binding, 0, [image_info])
+    pub fn image(dst_binding: u32, image_info: &'a DescriptorImageInfo<'a>) -> Self {
+        Self::image_array(dst_binding, 0, slice::from_ref(image_info))
     }
 
     /// Write a number of consecutive image elements.
+    ///
+    /// If the descriptor type is `Sampler` and immutable samplers are used, you must not write any
+    /// descriptors. Meaning, you should leave out the `WriteDescriptorSet` for the binding. That
+    /// is unless this is for a push descriptor set.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `image_infos` is empty.
     #[inline]
     pub fn image_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = DescriptorImageInfo>,
+        dst_binding: u32,
+        dst_array_element: u32,
+        image_infos: &'a [DescriptorImageInfo<'a>],
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
+        assert!(!image_infos.is_empty());
 
         Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::Image(elements),
+            dst_binding,
+            dst_array_element,
+            elements: WriteDescriptorSetElements::Image(image_infos),
         }
     }
 
-    /// Write a single buffer to array element 0, with the bound range covering the whole buffer.
-    ///
-    /// For dynamic buffer bindings, this will bind the whole buffer, and only a dynamic offset
-    /// of zero will be valid, which is probably not what you want.
-    /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
-    ///
-    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
+    /// Write a single buffer to array element 0.
     #[inline]
-    pub fn buffer<T: ?Sized>(binding: u32, buffer: impl Into<Option<Subbuffer<T>>>) -> Self {
-        let buffer = buffer.into();
-        Self::buffer_with_range_array(
-            binding,
-            0,
-            [buffer.map(|buffer| DescriptorBufferInfo {
-                buffer: buffer.into_bytes(),
-                offset: 0,
-                range: None,
-            })],
-        )
+    pub fn buffer(dst_binding: u32, buffer_info: &'a DescriptorBufferInfo<'a>) -> Self {
+        Self::buffer_array(dst_binding, 0, slice::from_ref(buffer_info))
     }
 
     /// Write a number of consecutive buffer elements.
     ///
-    /// See [`buffer`](Self::buffer) for more information.
+    /// # Panics
     ///
-    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
+    /// - Panics if `buffer_infos` is empty.
     #[inline]
     pub fn buffer_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<Subbuffer<impl ?Sized>>>,
+        dst_binding: u32,
+        dst_array_element: u32,
+        buffer_infos: &'a [DescriptorBufferInfo<'a>],
     ) -> Self {
-        Self::buffer_with_range_array(
-            binding,
-            first_array_element,
-            elements.into_iter().map(|buffer| {
-                let buffer = buffer?;
-
-                Some(DescriptorBufferInfo {
-                    buffer: buffer.into_bytes(),
-                    offset: 0,
-                    range: None,
-                })
-            }),
-        )
-    }
-
-    /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
-    ///
-    /// The buffer may be `None` if the `null_descriptor` feature is enabled.
-    #[inline]
-    pub fn buffer_with_range(
-        binding: u32,
-        buffer_info: impl Into<Option<DescriptorBufferInfo>>,
-    ) -> Self {
-        let buffer_info = buffer_info.into();
-        Self::buffer_with_range_array(binding, 0, [buffer_info])
-    }
-
-    /// Write a number of consecutive buffer elements, specifying the ranges of the buffers to be
-    /// bound.
-    ///
-    /// See [`buffer_with_range`](Self::buffer_with_range) for more information.
-    ///
-    /// The buffers may be `None` if the `null_descriptor` feature is enabled.
-    pub fn buffer_with_range_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<DescriptorBufferInfo>>,
-    ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
+        assert!(!buffer_infos.is_empty());
 
         Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::Buffer(elements),
+            dst_binding,
+            dst_array_element,
+            elements: WriteDescriptorSetElements::Buffer(buffer_infos),
         }
     }
 
     /// Write a single buffer view to array element 0.
     ///
-    /// The buffer view may be `None` if the `null_descriptor` feature is enabled.
+    /// If the buffer view is `None`, the [`null_descriptor`] feature must be enabled on the
+    /// device.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
     #[inline]
-    pub fn buffer_view(binding: u32, buffer_view: impl Into<Option<Arc<BufferView>>>) -> Self {
-        let buffer_view = buffer_view.into();
-        Self::buffer_view_array(binding, 0, [buffer_view])
+    pub fn buffer_view(dst_binding: u32, buffer_view: &'a Option<&'a Arc<BufferView>>) -> Self {
+        Self::buffer_view_array(dst_binding, 0, slice::from_ref(buffer_view))
     }
 
     /// Write a number of consecutive buffer view elements.
     ///
-    /// The buffer views may be `None` if the `null_descriptor` feature is enabled.
+    /// If a buffer view is `None`, the [`null_descriptor`] feature must be enabled on the device.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `buffer_views` is empty.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
+    #[inline]
     pub fn buffer_view_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<Arc<BufferView>>>,
+        dst_binding: u32,
+        dst_array_element: u32,
+        buffer_views: &'a [Option<&'a Arc<BufferView>>],
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
+        assert!(!buffer_views.is_empty());
 
         Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::BufferView(elements),
+            dst_binding,
+            dst_array_element,
+            elements: WriteDescriptorSetElements::BufferView(buffer_views),
         }
-    }
-
-    /// Write a single image view to array element 0, using the `Undefined` image layout,
-    /// which will be automatically replaced with an appropriate default layout.
-    ///
-    /// The image view may be `None` if the `null_descriptor` feature is enabled.
-    #[inline]
-    pub fn image_view(binding: u32, image_view: impl Into<Option<Arc<ImageView>>>) -> Self {
-        let image_view = image_view.into();
-        Self::image_view_array(binding, 0, [image_view])
-    }
-
-    /// Write a number of consecutive image view elements, using the `Undefined` image layout,
-    /// which will be automatically replaced with an appropriate default layout.
-    ///
-    /// The image views may be `None` if the `null_descriptor` feature is enabled.
-    #[inline]
-    pub fn image_view_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<Arc<ImageView>>>,
-    ) -> Self {
-        Self::image_array(
-            binding,
-            first_array_element,
-            elements.into_iter().map(|image_view| DescriptorImageInfo {
-                image_view,
-                ..Default::default()
-            }),
-        )
-    }
-
-    /// Write a single sampler to array element 0.
-    ///
-    /// A sampler must always be provided if immutable samplers are not used.
-    #[inline]
-    pub fn sampler(binding: u32, sampler: impl Into<Option<Arc<Sampler>>>) -> Self {
-        let sampler = sampler.into();
-        Self::sampler_array(binding, 0, [sampler])
-    }
-
-    /// Write a number of consecutive sampler elements.
-    ///
-    /// Samplers must always be provided if immutable samplers are not used.
-    pub fn sampler_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<Arc<Sampler>>>,
-    ) -> Self {
-        Self::image_array(
-            binding,
-            first_array_element,
-            elements.into_iter().map(|sampler| DescriptorImageInfo {
-                sampler,
-                ..Default::default()
-            }),
-        )
     }
 
     /// Write data to an inline uniform block.
     ///
     /// `offset` and the length of `data` must be a multiple of 4.
-    pub fn inline_uniform_block(binding: u32, offset: u32, data: Vec<u8>) -> Self {
+    pub fn inline_uniform_block(dst_binding: u32, dst_offset: u32, data: &'a [u8]) -> Self {
         Self {
-            binding,
-            first_array_element: offset,
+            dst_binding,
+            dst_array_element: dst_offset,
             elements: WriteDescriptorSetElements::InlineUniformBlock(data),
         }
     }
 
     /// Write a single acceleration structure to array element 0.
     ///
-    /// The acceleration structure may be `None` if the `null_descriptor` feature is enabled.
+    /// If the acceleration structure is `None`, the [`null_descriptor`] feature must be enabled on
+    /// the device.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
     #[inline]
     pub fn acceleration_structure(
-        binding: u32,
-        acceleration_structure: impl Into<Option<Arc<AccelerationStructure>>>,
+        dst_binding: u32,
+        acceleration_structure: &'a Option<&'a Arc<AccelerationStructure>>,
     ) -> Self {
-        let acceleration_structure = acceleration_structure.into();
-        Self::acceleration_structure_array(binding, 0, [acceleration_structure])
+        Self::acceleration_structure_array(dst_binding, 0, slice::from_ref(acceleration_structure))
     }
 
     /// Write a number of consecutive acceleration structure elements.
     ///
-    /// The acceleration structures may be `None` if the `null_descriptor` feature is enabled.
+    /// If an acceleration structure is `None`, the [`null_descriptor`] feature must be enabled on
+    /// the device.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `acceleration_structures` is empty.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
     pub fn acceleration_structure_array(
-        binding: u32,
-        first_array_element: u32,
-        elements: impl IntoIterator<Item = Option<Arc<AccelerationStructure>>>,
+        dst_binding: u32,
+        dst_array_element: u32,
+        acceleration_structures: &'a [Option<&'a Arc<AccelerationStructure>>],
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
-        assert!(!elements.is_empty());
+        assert!(!acceleration_structures.is_empty());
 
         Self {
-            binding,
-            first_array_element,
-            elements: WriteDescriptorSetElements::AccelerationStructure(elements),
+            dst_binding,
+            dst_array_element,
+            elements: WriteDescriptorSetElements::AccelerationStructure(acceleration_structures),
         }
     }
 
     /// Returns the binding number that is updated by this descriptor write.
     #[inline]
-    pub fn binding(&self) -> u32 {
-        self.binding
+    pub fn dst_binding(&self) -> u32 {
+        self.dst_binding
     }
 
     /// Returns the first array element in the binding that is updated by this descriptor write.
     #[inline]
-    pub fn first_array_element(&self) -> u32 {
-        self.first_array_element
+    pub fn dst_array_element(&self) -> u32 {
+        self.dst_array_element
     }
 
-    /// Returns a reference to the elements held by this descriptor write.
+    /// Returns the elements held by this descriptor write.
     #[inline]
-    pub fn elements(&self) -> &WriteDescriptorSetElements {
-        &self.elements
+    pub fn elements(&self) -> WriteDescriptorSetElements<'a> {
+        self.elements
     }
 
     pub(crate) fn validate(
@@ -290,7 +206,7 @@ impl WriteDescriptorSet {
         layout: &DescriptorSetLayout,
         variable_descriptor_count: u32,
     ) -> Result<(), Box<ValidationError>> {
-        fn provided_element_type(elements: &WriteDescriptorSetElements) -> &'static str {
+        fn provided_element_type(elements: WriteDescriptorSetElements<'_>) -> &'static str {
             match elements {
                 WriteDescriptorSetElements::Buffer(_) => "buffer",
                 WriteDescriptorSetElements::BufferView(_) => "buffer_view",
@@ -301,16 +217,16 @@ impl WriteDescriptorSet {
         }
 
         let &Self {
-            binding,
-            first_array_element,
-            ref elements,
+            dst_binding,
+            dst_array_element,
+            elements,
         } = self;
 
         let device = layout.device();
 
-        let Some(layout_binding) = layout.binding(binding) else {
+        let Some(layout_binding) = layout.binding(dst_binding) else {
             return Err(Box::new(ValidationError {
-                context: "binding".into(),
+                context: "dst_binding".into(),
                 problem: "does not exist in the descriptor set layout".into(),
                 vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
                 ..Default::default()
@@ -442,9 +358,9 @@ impl WriteDescriptorSet {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but descriptor set binding {} \
-                                requires `sampler` elements",
+                            requires `sampler` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -454,10 +370,10 @@ impl WriteDescriptorSet {
 
                 if layout_binding.immutable_samplers.is_empty() {
                     for (index, image_info) in elements.iter().enumerate() {
-                        let Some(ref sampler) = image_info.sampler else {
-                            // For Sampler descriptor type without immutable samplers,
-                            // samplers must always be provided (can't be None even with null
-                            // descriptor)
+                        let Some(sampler) = image_info.sampler else {
+                            // For the `Sampler` descriptor type without immutable samplers,
+                            // samplers must always be provided (can't be `None` even with the null
+                            // descriptor feature).
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
                                 problem: "is `None`, but samplers must be provided for \
@@ -505,35 +421,32 @@ impl WriteDescriptorSet {
                     .flags()
                     .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
                 {
-                    if elements
-                        .iter()
-                        .any(|image_info| image_info.sampler.is_some())
-                    {
-                        return Err(Box::new(ValidationError {
-                            context: "elements".into(),
-                            problem: format!(
-                                "contains Some(sampler), but descriptor set binding {} \
-                                requires `None` for push descriptors",
-                                binding,
-                            )
-                            .into(),
-                            // vuids?
-                            ..Default::default()
-                        }));
+                    for (index, image_info) in elements.iter().enumerate() {
+                        if image_info.sampler.is_some() {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}].sampler", index).into(),
+                                problem: format!(
+                                    "is `Some`, but descriptor set binding {} requires `None` for \
+                                    push descriptors",
+                                    dst_binding,
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
                     }
                 } else {
                     // For regular descriptors with immutable samplers, no element must be written.
                     return Err(Box::new(ValidationError {
-                        context: "binding".into(),
-                        problem: "no descriptors must be written to this \
-                            descriptor set binding"
+                        context: "dst_binding".into(),
+                        problem: "no descriptors must be written to this descriptor set binding"
                             .into(),
                         vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02752"],
                         ..Default::default()
                     }));
                 }
             }
-
             DescriptorType::CombinedImageSampler => {
                 if layout_binding.immutable_samplers.is_empty() {
                     let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
@@ -545,7 +458,7 @@ impl WriteDescriptorSet {
                                 "contains `{}` elements, but descriptor set binding {} \
                                 requires `image` elements",
                                 provided_element_type(elements),
-                                binding,
+                                dst_binding,
                             )
                             .into(),
                             // vuids?
@@ -555,13 +468,14 @@ impl WriteDescriptorSet {
 
                     for (index, image_info) in elements.iter().enumerate() {
                         let &DescriptorImageInfo {
-                            ref image_view,
-                            ref sampler,
+                            sampler,
+                            image_view,
                             mut image_layout,
                         } = image_info;
 
-                        // For CombinedImageSampler without immutable samplers, sampler must always
-                        // be provided
+                        // For the `CombinedImageSampler` descriptor type without immutable
+                        // samplers, the sampler must always be provided (can't be `None` even with
+                        // the null descriptor feature).
                         let Some(sampler) = sampler else {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
@@ -574,7 +488,6 @@ impl WriteDescriptorSet {
                             }));
                         };
 
-                        // Image view can be None only if null descriptor is enabled
                         let Some(image_view) = image_view else {
                             if !device.enabled_features().null_descriptor {
                                 return Err(Box::new(ValidationError {
@@ -586,6 +499,7 @@ impl WriteDescriptorSet {
                                     ..Default::default()
                                 }));
                             }
+
                             continue;
                         };
 
@@ -684,7 +598,7 @@ impl WriteDescriptorSet {
                                 "contains `{}` elements, but descriptor set binding {} \
                                 requires `image` elements",
                                 provided_element_type(elements),
-                                binding,
+                                dst_binding,
                             )
                             .into(),
                             ..Default::default()
@@ -692,31 +606,30 @@ impl WriteDescriptorSet {
                     };
 
                     let immutable_samplers = &layout_binding.immutable_samplers
-                        [first_array_element as usize..][..array_element_count as usize];
+                        [dst_array_element as usize..][..array_element_count as usize];
 
                     for (index, (image_info, sampler)) in
                         elements.iter().zip(immutable_samplers).enumerate()
                     {
                         let &DescriptorImageInfo {
-                            ref image_view,
+                            sampler: image_info_sampler,
+                            image_view,
                             mut image_layout,
-                            sampler: ref image_info_sampler,
                         } = image_info;
 
-                        // For immutable samplers, the sampler field in DescriptorImageInfo should
-                        // be None
+                        // For the `CombinedImageSampler` descriptor type with immutable samplers,
+                        // the `sampler` field should be `None`.
                         if image_info_sampler.is_some() {
                             return Err(Box::new(ValidationError {
                                 context: format!("elements[{}].sampler", index).into(),
-                                problem: "must be `None` when the descriptor set layout was \
-                                    created with immutable samplers"
+                                problem: "is `Some`, but the descriptor set layout was created \
+                                    with immutable samplers"
                                     .into(),
-                                // vuids?
+                                // No VUIDs because Vulkan ignores the field in this case.
                                 ..Default::default()
                             }));
                         }
 
-                        // Image view can be None only if null descriptor is enabled
                         let Some(image_view) = image_view else {
                             if !device.enabled_features().null_descriptor {
                                 return Err(Box::new(ValidationError {
@@ -728,6 +641,7 @@ impl WriteDescriptorSet {
                                     ..Default::default()
                                 }));
                             }
+
                             continue;
                         };
 
@@ -779,7 +693,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::SampledImage => {
                 let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
@@ -790,7 +703,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `image` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -800,22 +713,23 @@ impl WriteDescriptorSet {
 
                 for (index, image_info) in elements.iter().enumerate() {
                     let &DescriptorImageInfo {
-                        ref image_view,
+                        sampler,
+                        image_view,
                         mut image_layout,
-                        ref sampler,
                     } = image_info;
 
-                    // For SampledImage, sampler field should be None
+                    // For the `SampledImage` descriptor type, the `sampler` field should be `None`.
                     if sampler.is_some() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].sampler", index).into(),
-                            problem: "must be `None` for `DescriptorType::SampledImage`".into(),
-                            // vuids?
+                            problem: "is `Some`, but the descriptor type is \
+                                `DescriptorType::SampledImage`"
+                                .into(),
+                            // No VUIDs because Vulkan ignores the field in this case.
                             ..Default::default()
                         }));
                     }
 
-                    // Image view can be None only if null descriptor is enabled
                     let Some(image_view) = image_view else {
                         if !device.enabled_features().null_descriptor {
                             return Err(Box::new(ValidationError {
@@ -827,6 +741,7 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
                         continue;
                     };
 
@@ -884,7 +799,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::StorageImage => {
                 let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
@@ -895,7 +809,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `image` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -905,22 +819,23 @@ impl WriteDescriptorSet {
 
                 for (index, image_info) in elements.iter().enumerate() {
                     let &DescriptorImageInfo {
-                        ref image_view,
+                        sampler,
+                        image_view,
                         mut image_layout,
-                        ref sampler,
                     } = image_info;
 
-                    // For StorageImage, sampler field should be None
+                    // For the `StorageImage` descriptor type, the `sampler` field should be `None`.
                     if sampler.is_some() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].sampler", index).into(),
-                            problem: "must be `None` for `DescriptorType::StorageImage`".into(),
-                            // vuids?
+                            problem: "is `Some`, but the descriptor type is \
+                                `DescriptorType::StorageImage`"
+                                .into(),
+                            // No VUIDs because Vulkan ignores the field in this case.
                             ..Default::default()
                         }));
                     }
 
-                    // Image view can be None only if null descriptor is enabled
                     let Some(image_view) = image_view else {
                         if !device.enabled_features().null_descriptor {
                             return Err(Box::new(ValidationError {
@@ -932,6 +847,7 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
                         continue;
                     };
 
@@ -989,7 +905,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::UniformTexelBuffer => {
                 let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
                     elements
@@ -1000,7 +915,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `buffer_view` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -1020,6 +935,7 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
                         continue;
                     };
 
@@ -1043,7 +959,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::StorageTexelBuffer => {
                 let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
                     elements
@@ -1054,7 +969,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `buffer_view` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -1074,6 +989,7 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
                         continue;
                     };
 
@@ -1098,7 +1014,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
                 let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
                     elements
@@ -1109,7 +1024,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `buffer` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -1118,10 +1033,16 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
-                    let Some(buffer_info) = buffer_info else {
+                    let &DescriptorBufferInfo {
+                        buffer,
+                        offset,
+                        range,
+                    } = buffer_info;
+
+                    let Some(buffer) = buffer else {
                         if !device.enabled_features().null_descriptor {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].buffer", index).into(),
                                 problem: "is `None`, but the `null_descriptor` feature is not \
                                     enabled on the device"
                                     .into(),
@@ -1129,22 +1050,31 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
+                        if offset != 0 {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`buffer` is `None`, but `offset` is not zero".into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02999"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if range.is_some() {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`buffer` is `None`, but `range` is not `None`".into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02999"],
+                                ..Default::default()
+                            }));
+                        }
+
                         continue;
                     };
 
-                    let &DescriptorBufferInfo {
-                        ref buffer,
-                        offset,
-                        range,
-                    } = buffer_info;
-
                     assert_eq!(device, buffer.device());
 
-                    if !buffer
-                        .buffer()
-                        .usage()
-                        .intersects(BufferUsage::UNIFORM_BUFFER)
-                    {
+                    if !buffer.usage().intersects(BufferUsage::UNIFORM_BUFFER) {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::UniformBuffer` or \
@@ -1180,7 +1110,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
                 let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
                     elements
@@ -1191,7 +1120,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `buffer` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -1200,10 +1129,16 @@ impl WriteDescriptorSet {
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
-                    let Some(buffer_info) = buffer_info else {
+                    let &DescriptorBufferInfo {
+                        buffer,
+                        offset,
+                        range,
+                    } = buffer_info;
+
+                    let Some(buffer) = buffer else {
                         if !device.enabled_features().null_descriptor {
                             return Err(Box::new(ValidationError {
-                                context: format!("elements[{}]", index).into(),
+                                context: format!("elements[{}].buffer", index).into(),
                                 problem: "is `None`, but the `null_descriptor` feature is not \
                                     enabled on the device"
                                     .into(),
@@ -1211,22 +1146,31 @@ impl WriteDescriptorSet {
                                 ..Default::default()
                             }));
                         }
+
+                        if offset != 0 {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`buffer` is `None`, but `offset` is not zero".into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02999"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if range.is_some() {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "`buffer` is `None`, but `range` is not `None`".into(),
+                                vuids: &["VUID-VkDescriptorBufferInfo-buffer-02999"],
+                                ..Default::default()
+                            }));
+                        }
+
                         continue;
                     };
 
-                    let &DescriptorBufferInfo {
-                        ref buffer,
-                        offset,
-                        range,
-                    } = buffer_info;
-
                     assert_eq!(device, buffer.device());
 
-                    if !buffer
-                        .buffer()
-                        .usage()
-                        .intersects(BufferUsage::STORAGE_BUFFER)
-                    {
+                    if !buffer.usage().intersects(BufferUsage::STORAGE_BUFFER) {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageBuffer` or \
@@ -1262,7 +1206,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::InputAttachment => {
                 let elements = if let WriteDescriptorSetElements::Image(elements) = elements {
                     elements
@@ -1273,7 +1216,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `image` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         // vuids?
@@ -1283,12 +1226,26 @@ impl WriteDescriptorSet {
 
                 for (index, image_info) in elements.iter().enumerate() {
                     let &DescriptorImageInfo {
-                        ref image_view,
+                        sampler,
+                        image_view,
                         mut image_layout,
-                        sampler: _,
                     } = image_info;
 
-                    // Input attachments must never be None (even with null descriptor feature)
+                    // For the `InputAttachment` descriptor type, the `sampler` field should be
+                    // `None`.
+                    if sampler.is_some() {
+                        return Err(Box::new(ValidationError {
+                            context: format!("elements[{}].sampler", index).into(),
+                            problem: "is `Some`, but the descriptor type is \
+                                `DescriptorType::InputAttachment`"
+                                .into(),
+                            // No VUIDs because Vulkan ignores the field in this case.
+                            ..Default::default()
+                        }));
+                    }
+
+                    // Input attachments must never be `None` (even with the null descriptor
+                    // feature).
                     let Some(image_view) = image_view else {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].image_view", index).into(),
@@ -1365,7 +1322,6 @@ impl WriteDescriptorSet {
                     }
                 }
             }
-
             DescriptorType::InlineUniformBlock => {
                 let data = if let WriteDescriptorSetElements::InlineUniformBlock(data) = elements {
                     data
@@ -1376,7 +1332,7 @@ impl WriteDescriptorSet {
                             "contains `{}` elements, but descriptor set binding {} \
                             requires `inline_uniform_block` elements",
                             provided_element_type(elements),
-                            binding,
+                            dst_binding,
                         )
                         .into(),
                         ..Default::default()
@@ -1407,7 +1363,7 @@ impl WriteDescriptorSet {
                     }));
                 }
 
-                if first_array_element % 4 != 0 {
+                if dst_array_element % 4 != 0 {
                     return Err(Box::new(ValidationError {
                         context: "offset".into(),
                         problem: "is not a multiple of 4".into(),
@@ -1416,7 +1372,6 @@ impl WriteDescriptorSet {
                     }));
                 }
             }
-
             DescriptorType::AccelerationStructure => {
                 let elements =
                     if let WriteDescriptorSetElements::AccelerationStructure(elements) = elements {
@@ -1428,7 +1383,7 @@ impl WriteDescriptorSet {
                                 "contains `{}` elements, but descriptor set binding {} \
                                 requires `acceleration_structure` elements",
                                 provided_element_type(elements),
-                                binding,
+                                dst_binding,
                             )
                             .into(),
                             ..Default::default()
@@ -1443,12 +1398,15 @@ impl WriteDescriptorSet {
                                 problem: "is `None`, but the `null_descriptor` feature is not \
                                     enabled for the device"
                                     .into(),
-                                vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03580"],
+                                vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-\
+                                    pAccelerationStructures-03580"],
                                 ..Default::default()
                             }));
                         }
+
                         continue;
                     };
+
                     assert_eq!(device, acceleration_structure.device());
 
                     if !matches!(
@@ -1461,7 +1419,8 @@ impl WriteDescriptorSet {
                                 `AccelerationStructureType::TopLevel` or \
                                 `AccelerationStructureType::Generic`"
                                 .into(),
-                            vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03579"],
+                            vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-\
+                                pAccelerationStructures-03579"],
                             ..Default::default()
                         }));
                     }
@@ -1469,10 +1428,9 @@ impl WriteDescriptorSet {
             }
         }
 
-        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
-        if first_array_element + array_element_count > max_descriptor_count {
+        if dst_array_element + array_element_count > max_descriptor_count {
             return Err(Box::new(ValidationError {
-                problem: "`first_array_element` + the number of provided elements is greater than \
+                problem: "`dst_array_element` + the number of provided elements is greater than \
                     the number of descriptors in the descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
@@ -1483,16 +1441,16 @@ impl WriteDescriptorSet {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         dst_set: vk::DescriptorSet,
         descriptor_type: DescriptorType,
-        fields1_vk: &'a WriteDescriptorSetFields1,
+        fields1_vk: &'a WriteDescriptorSetFields1<'a>,
         extensions_vk: &'a mut WriteDescriptorSetExtensionsVk<'_>,
     ) -> vk::WriteDescriptorSet<'a> {
         let &Self {
-            binding,
-            first_array_element,
+            dst_binding,
+            dst_array_element,
             elements: _,
         } = self;
         let WriteDescriptorSetFields1 {
@@ -1501,8 +1459,8 @@ impl WriteDescriptorSet {
 
         let mut val_vk = vk::WriteDescriptorSet::default()
             .dst_set(dst_set)
-            .dst_binding(binding)
-            .dst_array_element(first_array_element)
+            .dst_binding(dst_binding)
+            .dst_array_element(dst_array_element)
             .descriptor_type(descriptor_type.into());
 
         match descriptor_infos_vk {
@@ -1533,9 +1491,9 @@ impl WriteDescriptorSet {
         val_vk
     }
 
-    pub(crate) fn to_vk_extensions<'a>(
+    pub(crate) fn to_vk_extensions(
         &self,
-        fields1_vk: &'a WriteDescriptorSetFields1,
+        fields1_vk: &'a WriteDescriptorSetFields1<'a>,
     ) -> WriteDescriptorSetExtensionsVk<'a> {
         let WriteDescriptorSetFields1 {
             descriptor_infos_vk,
@@ -1566,8 +1524,8 @@ impl WriteDescriptorSet {
     pub(crate) fn to_vk_fields1(
         &self,
         default_image_layout: ImageLayout,
-    ) -> WriteDescriptorSetFields1 {
-        let descriptor_infos_vk = match &self.elements {
+    ) -> WriteDescriptorSetFields1<'a> {
+        let descriptor_infos_vk = match self.elements {
             WriteDescriptorSetElements::Image(elements) => DescriptorInfosVk::Image(
                 elements
                     .iter()
@@ -1575,15 +1533,7 @@ impl WriteDescriptorSet {
                     .collect(),
             ),
             WriteDescriptorSetElements::Buffer(elements) => DescriptorInfosVk::Buffer(
-                elements
-                    .iter()
-                    .map(|element| {
-                        element.as_ref().map_or(
-                            vk::DescriptorBufferInfo::default(),
-                            DescriptorBufferInfo::to_vk,
-                        )
-                    })
-                    .collect(),
+                elements.iter().map(DescriptorBufferInfo::to_vk).collect(),
             ),
             WriteDescriptorSetElements::BufferView(elements) => DescriptorInfosVk::BufferView(
                 elements
@@ -1596,7 +1546,7 @@ impl WriteDescriptorSet {
                     .collect(),
             ),
             WriteDescriptorSetElements::InlineUniformBlock(data) => {
-                DescriptorInfosVk::InlineUniformBlock(data.clone())
+                DescriptorInfosVk::InlineUniformBlock(data)
             }
             WriteDescriptorSetElements::AccelerationStructure(elements) => {
                 DescriptorInfosVk::AccelerationStructure(
@@ -1616,6 +1566,14 @@ impl WriteDescriptorSet {
             descriptor_infos_vk,
         }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedWriteDescriptorSet {
+        OwnedWriteDescriptorSet {
+            dst_binding: self.dst_binding,
+            dst_array_element: self.dst_array_element,
+            elements: self.elements.to_owned(),
+        }
+    }
 }
 
 pub(crate) struct WriteDescriptorSetExtensionsVk<'a> {
@@ -1627,32 +1585,39 @@ pub(crate) enum DescriptorTypeExtensionVk<'a> {
     InlineUniformBlock(vk::WriteDescriptorSetInlineUniformBlock<'a>),
 }
 
-pub(crate) struct WriteDescriptorSetFields1 {
-    pub(crate) descriptor_infos_vk: DescriptorInfosVk,
+pub(crate) struct WriteDescriptorSetFields1<'a> {
+    pub(crate) descriptor_infos_vk: DescriptorInfosVk<'a>,
 }
 
-pub(crate) enum DescriptorInfosVk {
+pub(crate) enum DescriptorInfosVk<'a> {
     Image(SmallVec<[vk::DescriptorImageInfo; 1]>),
     Buffer(SmallVec<[vk::DescriptorBufferInfo; 1]>),
     BufferView(SmallVec<[vk::BufferView; 1]>),
-    InlineUniformBlock(Vec<u8>),
+    InlineUniformBlock(&'a [u8]),
     AccelerationStructure(SmallVec<[vk::AccelerationStructureKHR; 1]>),
 }
 
-/// The elements held by a `WriteDescriptorSet`.
-#[derive(Clone, Debug)]
-pub enum WriteDescriptorSetElements {
-    Image(SmallVec<[DescriptorImageInfo; 1]>),
-    Buffer(SmallVec<[Option<DescriptorBufferInfo>; 1]>),
-    BufferView(SmallVec<[Option<Arc<BufferView>>; 1]>),
-    InlineUniformBlock(Vec<u8>),
-    AccelerationStructure(SmallVec<[Option<Arc<AccelerationStructure>>; 1]>),
+pub(crate) struct OwnedWriteDescriptorSet {
+    pub(crate) dst_binding: u32,
+    pub(crate) dst_array_element: u32,
+    pub(crate) elements: OwnedWriteDescriptorSetElements,
 }
 
-impl WriteDescriptorSetElements {
+/// The elements held by a `WriteDescriptorSet`.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum WriteDescriptorSetElements<'a> {
+    Image(&'a [DescriptorImageInfo<'a>]),
+    Buffer(&'a [DescriptorBufferInfo<'a>]),
+    BufferView(&'a [Option<&'a Arc<BufferView>>]),
+    InlineUniformBlock(&'a [u8]),
+    AccelerationStructure(&'a [Option<&'a Arc<AccelerationStructure>>]),
+}
+
+impl WriteDescriptorSetElements<'_> {
     /// Returns the number of elements.
     #[inline]
-    pub fn len(&self) -> u32 {
+    pub const fn len(&self) -> u32 {
         match self {
             Self::Image(elements) => elements.len() as u32,
             Self::Buffer(elements) => elements.len() as u32,
@@ -1661,54 +1626,161 @@ impl WriteDescriptorSetElements {
             Self::AccelerationStructure(elements) => elements.len() as u32,
         }
     }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_owned(&self) -> OwnedWriteDescriptorSetElements {
+        match *self {
+            WriteDescriptorSetElements::Image(elements) => OwnedWriteDescriptorSetElements::Image(
+                elements.iter().map(DescriptorImageInfo::to_owned).collect(),
+            ),
+            WriteDescriptorSetElements::Buffer(elements) => {
+                OwnedWriteDescriptorSetElements::Buffer(
+                    elements
+                        .iter()
+                        .map(DescriptorBufferInfo::to_owned)
+                        .collect(),
+                )
+            }
+            WriteDescriptorSetElements::BufferView(elements) => {
+                OwnedWriteDescriptorSetElements::BufferView(
+                    elements.iter().map(|element| element.cloned()).collect(),
+                )
+            }
+            WriteDescriptorSetElements::InlineUniformBlock(data) => {
+                OwnedWriteDescriptorSetElements::InlineUniformBlock(data.into())
+            }
+            WriteDescriptorSetElements::AccelerationStructure(elements) => {
+                OwnedWriteDescriptorSetElements::AccelerationStructure(
+                    elements.iter().map(|element| element.cloned()).collect(),
+                )
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum OwnedWriteDescriptorSetElements {
+    Image(SmallVec<[OwnedDescriptorImageInfo; 1]>),
+    Buffer(SmallVec<[OwnedDescriptorBufferInfo; 1]>),
+    BufferView(SmallVec<[Option<Arc<BufferView>>; 1]>),
+    InlineUniformBlock(Vec<u8>),
+    AccelerationStructure(SmallVec<[Option<Arc<AccelerationStructure>>; 1]>),
 }
 
 /// Parameters to write a buffer reference to a descriptor.
 #[derive(Clone, Debug)]
-pub struct DescriptorBufferInfo {
+pub struct DescriptorBufferInfo<'a> {
     /// The buffer to write to the descriptor.
-    pub buffer: Subbuffer<[u8]>,
+    ///
+    /// If set to `None`, the [`null_descriptor`] feature must be enabled on the device, `offset`
+    /// must be `0`, and `range` must be `None`.
+    ///
+    /// The default value is `None`.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
+    pub buffer: Option<&'a Arc<Buffer>>,
 
     /// The byte offset from `buffer` that will be made available to the shader. Must not be
-    /// outside the range `buffer`.
+    /// outside of the range of `buffer`.
     ///
     /// For dynamic buffer bindings, `offset` specifies the offset that is to be bound if the
     /// dynamic offset were zero. When binding the descriptor set, the effective value of `offset`
     /// shifts forward by the offset that was provided. For example, if `offset` is specified as
     /// `8` when writing the descriptor set, and then when binding the descriptor set the offset
     /// `16` is used, then the offset from `buffer` that will actually be bound is `24`.
+    ///
+    /// The default value is `0`.
     pub offset: DeviceSize,
 
     /// The byte size that will be made available to the shader.
     ///
     /// If set to `None`, the size until the end of the buffer will be made available.
+    ///
+    /// The default value is `None`.
     pub range: Option<DeviceSize>,
 }
 
-impl DescriptorBufferInfo {
+impl Default for DescriptorBufferInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DescriptorBufferInfo<'_> {
+    /// Returns a default `DescriptorBufferInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            buffer: None,
+            offset: 0,
+            range: None,
+        }
+    }
+
     pub(crate) fn to_vk(&self) -> vk::DescriptorBufferInfo {
         let &Self {
-            ref buffer,
+            buffer,
             offset,
             range,
         } = self;
 
         vk::DescriptorBufferInfo {
-            buffer: buffer.buffer().handle(),
-            offset: buffer.offset() + offset,
+            buffer: buffer.map_or(vk::Buffer::null(), VulkanObject::handle),
+            offset,
             range: range.unwrap_or(vk::WHOLE_SIZE),
+        }
+    }
+
+    pub(crate) fn to_owned(&self) -> OwnedDescriptorBufferInfo {
+        OwnedDescriptorBufferInfo {
+            buffer: self.buffer.cloned(),
+            offset: self.offset,
+            range: self.range,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct OwnedDescriptorBufferInfo {
+    pub(crate) buffer: Option<Arc<Buffer>>,
+    pub(crate) offset: DeviceSize,
+    pub(crate) range: Option<DeviceSize>,
+}
+
+impl OwnedDescriptorBufferInfo {
+    pub(crate) fn as_ref(&self) -> DescriptorBufferInfo<'_> {
+        DescriptorBufferInfo {
+            buffer: self.buffer.as_ref(),
+            offset: self.offset,
+            range: self.range,
         }
     }
 }
 
 /// Parameters to write an image reference to a descriptor.
-#[derive(Clone, Debug, Default)]
-pub struct DescriptorImageInfo {
+#[derive(Clone, Debug)]
+pub struct DescriptorImageInfo<'a> {
     /// The sampler to write to the descriptor.
-    pub sampler: Option<Arc<Sampler>>,
+    ///
+    /// If the descriptor type is `Sampler` or `CombinedImageSampler` and immutable samplers aren't
+    /// used, this must be `Some`. It must be `None` if immutable samplers are used or if the
+    /// descriptor type is `SampledImage` or `InputAttachment`.
+    ///
+    /// The default value is `None`.
+    pub sampler: Option<&'a Arc<Sampler>>,
 
     /// The image view to write to the descriptor.
-    pub image_view: Option<Arc<ImageView>>,
+    ///
+    /// If the descriptor type is `Sampler`, this must be `None`. It must be `Some` if the
+    /// descriptor type is `CombinedImageSampler`, `SampledImage` or `StorageImage`, otherwise the
+    /// [`null_descriptor`] feature must be enabled on the device. It must be `Some` if the
+    /// descriptor type is `InputAttachment` even if the `null_descriptor` feature is enabled.
+    ///
+    /// The default value is `None`.
+    ///
+    /// [`null_descriptor`]: crate::device::DeviceFeatures::null_descriptor
+    pub image_view: Option<&'a Arc<ImageView>>,
 
     /// The layout that the image is expected to be in when it's accessed in the shader.
     ///
@@ -1727,24 +1799,39 @@ pub struct DescriptorImageInfo {
     /// If the `Undefined` layout is provided, then it will be automatically replaced with
     /// `General` for `StorageImage` descriptors, and with `ShaderReadOnlyOptimal` for any other
     /// descriptor type.
+    ///
+    /// The default value is `ImageLayout::Undefined`.
     pub image_layout: ImageLayout,
 }
 
-impl DescriptorImageInfo {
+impl Default for DescriptorImageInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DescriptorImageInfo<'_> {
+    /// Returns a default `DescriptorImageInfo`.
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            sampler: None,
+            image_view: None,
+            image_layout: ImageLayout::Undefined,
+        }
+    }
+
     pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> vk::DescriptorImageInfo {
         let &Self {
-            ref image_view,
-            ref sampler,
+            image_view,
+            sampler,
             image_layout,
         } = self;
 
         vk::DescriptorImageInfo {
-            sampler: sampler
-                .as_ref()
-                .map_or(vk::Sampler::null(), VulkanObject::handle),
-            image_view: image_view
-                .as_ref()
-                .map_or(vk::ImageView::null(), VulkanObject::handle),
+            sampler: sampler.map_or(vk::Sampler::null(), VulkanObject::handle),
+            image_view: image_view.map_or(vk::ImageView::null(), VulkanObject::handle),
             image_layout: if image_layout == ImageLayout::Undefined {
                 default_image_layout.into()
             } else {
@@ -1752,15 +1839,40 @@ impl DescriptorImageInfo {
             },
         }
     }
+
+    pub(crate) fn to_owned(&self) -> OwnedDescriptorImageInfo {
+        OwnedDescriptorImageInfo {
+            sampler: self.sampler.cloned(),
+            image_view: self.image_view.cloned(),
+            image_layout: self.image_layout,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct OwnedDescriptorImageInfo {
+    pub(crate) sampler: Option<Arc<Sampler>>,
+    pub(crate) image_view: Option<Arc<ImageView>>,
+    pub(crate) image_layout: ImageLayout,
+}
+
+impl OwnedDescriptorImageInfo {
+    pub(crate) fn as_ref(&self) -> DescriptorImageInfo<'_> {
+        DescriptorImageInfo {
+            sampler: self.sampler.as_ref(),
+            image_view: self.image_view.as_ref(),
+            image_layout: self.image_layout,
+        }
+    }
 }
 
 /// Represents a single copy operation to the binding of a descriptor set.
 #[derive(Clone)]
-pub struct CopyDescriptorSet {
+pub struct CopyDescriptorSet<'a> {
     /// The source descriptor set to copy from.
     ///
     /// There is no default value.
-    pub src_set: Arc<DescriptorSet>,
+    pub src_set: &'a Arc<DescriptorSet>,
 
     /// The binding number in the source descriptor set to copy from.
     ///
@@ -1770,7 +1882,7 @@ pub struct CopyDescriptorSet {
     /// The first array element in the source descriptor set to copy from.
     ///
     /// The default value is 0.
-    pub src_first_array_element: u32,
+    pub src_array_element: u32,
 
     /// The binding number in the destination descriptor set to copy into.
     ///
@@ -1780,26 +1892,26 @@ pub struct CopyDescriptorSet {
     /// The first array element in the destination descriptor set to copy into.
     ///
     /// The default value is 0.
-    pub dst_first_array_element: u32,
+    pub dst_array_element: u32,
 
     /// The number of descriptors (array elements) to copy.
     ///
     /// The default value is 1.
     pub descriptor_count: u32,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyDescriptorSet {
+impl<'a> CopyDescriptorSet<'a> {
     /// Returns a default `CopyDescriptorSet` with the provided `src_set`.
     #[inline]
-    pub const fn new(src_set: Arc<DescriptorSet>) -> Self {
+    pub const fn new(src_set: &'a Arc<DescriptorSet>) -> Self {
         Self {
             src_set,
             src_binding: 0,
-            src_first_array_element: 0,
+            src_array_element: 0,
             dst_binding: 0,
-            dst_first_array_element: 0,
+            dst_array_element: 0,
             descriptor_count: 1,
             _ne: crate::NE,
         }
@@ -1807,11 +1919,11 @@ impl CopyDescriptorSet {
 
     pub(crate) fn validate(&self, dst_set: &RawDescriptorSet) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src_set,
+            src_set,
             src_binding,
-            src_first_array_element,
+            src_array_element: src_first_array_element,
             dst_binding,
-            dst_first_array_element,
+            dst_array_element: dst_first_array_element,
             descriptor_count,
             _ne,
         } = self;
@@ -2007,11 +2119,11 @@ impl CopyDescriptorSet {
 
     pub(crate) fn to_vk(&self, dst_set: vk::DescriptorSet) -> vk::CopyDescriptorSet<'static> {
         let &Self {
-            ref src_set,
+            src_set,
             src_binding,
-            src_first_array_element,
+            src_array_element: src_first_array_element,
             dst_binding,
-            dst_first_array_element,
+            dst_array_element: dst_first_array_element,
             descriptor_count,
             _ne: _,
         } = self;

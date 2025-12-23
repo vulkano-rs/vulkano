@@ -11,7 +11,8 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -179,10 +180,16 @@ fn main() {
     // descriptor sets that each contain the buffer you want to run the shader on.
     let layout = &pipeline.layout().set_layouts()[0];
     let set = DescriptorSet::new(
-        descriptor_set_allocator,
-        layout.clone(),
-        [WriteDescriptorSet::buffer(0, data_buffer.clone())],
-        [],
+        &descriptor_set_allocator,
+        layout,
+        &[WriteDescriptorSet::buffer(
+            0,
+            &DescriptorBufferInfo {
+                buffer: Some(data_buffer.buffer()),
+                ..Default::default()
+            },
+        )],
+        &[],
     )
     .unwrap();
 

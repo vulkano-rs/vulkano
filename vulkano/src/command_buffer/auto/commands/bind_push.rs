@@ -1,10 +1,13 @@
 use crate::{
-    buffer::{BufferContents, IndexBuffer, Subbuffer},
+    acceleration_structure::AccelerationStructure,
+    buffer::{view::BufferView, BufferContents, IndexBuffer, Subbuffer},
     command_buffer::{auto::SetOrPush, sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
-        DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
-        DescriptorSetWithOffsets, DescriptorSetsCollection, WriteDescriptorSet,
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageInfo,
+        DescriptorSetResources, DescriptorSetWithOffsets, DescriptorSetsCollection,
+        OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo, OwnedWriteDescriptorSetElements,
+        WriteDescriptorSet, WriteDescriptorSetElements,
     },
     device::DeviceOwned,
     memory::is_aligned,
@@ -171,14 +174,14 @@ impl<L> AutoCommandBufferBuilder<L> {
                             }
                         }
 
-                        if let Some(Some(buffer_info)) = element {
-                            let &DescriptorBufferInfo {
+                        if let Some(buffer_info) = element {
+                            let &OwnedDescriptorBufferInfo {
                                 ref buffer,
                                 offset,
                                 range,
                             } = buffer_info;
 
-                            if let Some(range) = range {
+                            if let (Some(buffer), Some(range)) = (buffer, range) {
                                 if (dynamic_offset as DeviceSize)
                                     .checked_add(offset)
                                     .and_then(|x| x.checked_add(range))
@@ -591,13 +594,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_push_descriptor_set(
             pipeline_bind_point,
             &pipeline_layout,
             set_num,
-            &descriptor_writes,
+            descriptor_writes,
         )?;
 
         Ok(unsafe {
@@ -615,7 +618,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         set_num: u32,
-        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_push_descriptor_set(
             pipeline_bind_point,
@@ -633,7 +636,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> &mut Self {
         let state = self.builder_state.invalidate_descriptor_sets(
             pipeline_bind_point,
@@ -655,14 +658,81 @@ impl<L> AutoCommandBufferBuilder<L> {
             _ => unreachable!(),
         };
 
-        for write in &descriptor_writes {
+        for write in descriptor_writes {
             set_resources.write(write, layout);
         }
+
+        let descriptor_writes = descriptor_writes
+            .iter()
+            .map(WriteDescriptorSet::to_owned)
+            .collect::<Vec<_>>();
 
         self.add_command(
             "push_descriptor_set",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
+                enum Elements<'a> {
+                    Image(SmallVec<[DescriptorImageInfo<'a>; 1]>),
+                    Buffer(SmallVec<[DescriptorBufferInfo<'a>; 1]>),
+                    BufferView(SmallVec<[Option<&'a Arc<BufferView>>; 1]>),
+                    InlineUniformBlock(&'a [u8]),
+                    AccelerationStructure(SmallVec<[Option<&'a Arc<AccelerationStructure>>; 1]>),
+                }
+
+                let elements = descriptor_writes
+                    .iter()
+                    .map(|descriptor_write| match &descriptor_write.elements {
+                        OwnedWriteDescriptorSetElements::Image(elements) => Elements::Image(
+                            elements
+                                .iter()
+                                .map(OwnedDescriptorImageInfo::as_ref)
+                                .collect(),
+                        ),
+                        OwnedWriteDescriptorSetElements::Buffer(elements) => Elements::Buffer(
+                            elements
+                                .iter()
+                                .map(OwnedDescriptorBufferInfo::as_ref)
+                                .collect(),
+                        ),
+                        OwnedWriteDescriptorSetElements::BufferView(elements) => {
+                            Elements::BufferView(elements.iter().map(Option::as_ref).collect())
+                        }
+                        OwnedWriteDescriptorSetElements::InlineUniformBlock(data) => {
+                            Elements::InlineUniformBlock(data)
+                        }
+                        OwnedWriteDescriptorSetElements::AccelerationStructure(elements) => {
+                            Elements::AccelerationStructure(
+                                elements.iter().map(Option::as_ref).collect(),
+                            )
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let descriptor_writes = descriptor_writes
+                    .iter()
+                    .zip(&elements)
+                    .map(|(descriptor_write, elements)| WriteDescriptorSet {
+                        dst_binding: descriptor_write.dst_binding,
+                        dst_array_element: descriptor_write.dst_array_element,
+                        elements: match elements {
+                            Elements::Image(elements) => {
+                                WriteDescriptorSetElements::Image(elements)
+                            }
+                            Elements::Buffer(elements) => {
+                                WriteDescriptorSetElements::Buffer(elements)
+                            }
+                            Elements::BufferView(elements) => {
+                                WriteDescriptorSetElements::BufferView(elements)
+                            }
+                            Elements::InlineUniformBlock(data) => {
+                                WriteDescriptorSetElements::InlineUniformBlock(data)
+                            }
+                            Elements::AccelerationStructure(elements) => {
+                                WriteDescriptorSetElements::AccelerationStructure(elements)
+                            }
+                        },
+                    })
+                    .collect::<Vec<_>>();
+
                 unsafe {
                     out.push_descriptor_set_unchecked(
                         pipeline_bind_point,
