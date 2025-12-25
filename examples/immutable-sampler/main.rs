@@ -20,7 +20,7 @@ use vulkano::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
             DescriptorType,
         },
-        DescriptorSet, WriteDescriptorSet,
+        DescriptorImageInfo, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -408,10 +408,16 @@ impl ApplicationHandler for App {
         // Use `image_view` instead of `image`, since the sampler is already in the
         // layout.
         let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [WriteDescriptorSet::image_view(1, self.texture.clone())],
-            [],
+            &self.descriptor_set_allocator,
+            layout,
+            &[WriteDescriptorSet::image(
+                1,
+                &DescriptorImageInfo {
+                    image_view: Some(&self.texture),
+                    ..Default::default()
+                },
+            )],
+            &[],
         )
         .unwrap();
 

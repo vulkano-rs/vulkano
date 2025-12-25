@@ -25,7 +25,8 @@ use vulkano::{
         DrawIndirectCommand, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -509,13 +510,25 @@ impl ApplicationHandler for App {
                 // Pass the two buffers to the compute shader.
                 let layout = &self.compute_pipeline.layout().set_layouts()[0];
                 let cs_descriptor_set = DescriptorSet::new(
-                    self.descriptor_set_allocator.clone(),
-                    layout.clone(),
-                    [
-                        WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
-                        WriteDescriptorSet::buffer(1, indirect_buffer.clone()),
+                    &self.descriptor_set_allocator,
+                    layout,
+                    &[
+                        WriteDescriptorSet::buffer(
+                            0,
+                            &DescriptorBufferInfo {
+                                buffer: Some(vertex_buffer.buffer()),
+                                ..Default::default()
+                            },
+                        ),
+                        WriteDescriptorSet::buffer(
+                            1,
+                            &DescriptorBufferInfo {
+                                buffer: Some(indirect_buffer.buffer()),
+                                ..Default::default()
+                            },
+                        ),
                     ],
-                    [],
+                    &[],
                 )
                 .unwrap();
 

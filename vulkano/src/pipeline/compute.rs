@@ -440,7 +440,8 @@ mod tests {
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         },
         descriptor_set::{
-            allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+            allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+            WriteDescriptorSet,
         },
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{
@@ -532,10 +533,16 @@ mod tests {
             &Default::default(),
         ));
         let set = DescriptorSet::new(
-            ds_allocator,
-            pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
-            [],
+            &ds_allocator,
+            &pipeline.layout().set_layouts()[0],
+            &[WriteDescriptorSet::buffer(
+                0,
+                &DescriptorBufferInfo {
+                    buffer: Some(data_buffer.buffer()),
+                    ..Default::default()
+                },
+            )],
+            &[],
         )
         .unwrap();
 
@@ -676,10 +683,16 @@ mod tests {
             &Default::default(),
         ));
         let set = DescriptorSet::new(
-            ds_allocator,
-            pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
-            [],
+            &ds_allocator,
+            &pipeline.layout().set_layouts()[0],
+            &[WriteDescriptorSet::buffer(
+                0,
+                &DescriptorBufferInfo {
+                    buffer: Some(data_buffer.buffer()),
+                    ..Default::default()
+                },
+            )],
+            &[],
         )
         .unwrap();
 

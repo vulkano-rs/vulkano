@@ -30,7 +30,6 @@ use vulkano::{
     },
     swapchain::Swapchain,
     sync::GpuFuture,
-    DeviceSize,
 };
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer,
@@ -209,11 +208,7 @@ impl SceneTask {
 
         let camera_storage_buffer_id = bcx
             .global_set()
-            .create_storage_buffer(
-                camera_buffer_id,
-                0,
-                size_of::<raygen::Camera>() as DeviceSize,
-            )
+            .create_storage_buffer(camera_buffer_id, 0, None)
             .unwrap();
 
         let shader_binding_table = ShaderBindingTable::new(memory_allocator, &pipeline).unwrap();

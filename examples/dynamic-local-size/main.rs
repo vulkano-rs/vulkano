@@ -12,7 +12,8 @@ use vulkano::{
         CopyImageToBufferInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorImageInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -217,10 +218,16 @@ fn main() {
 
     let layout = &pipeline.layout().set_layouts()[0];
     let set = DescriptorSet::new(
-        descriptor_set_allocator,
-        layout.clone(),
-        [WriteDescriptorSet::image_view(0, view)],
-        [],
+        &descriptor_set_allocator,
+        layout,
+        &[WriteDescriptorSet::image(
+            0,
+            &DescriptorImageInfo {
+                image_view: Some(&view),
+                ..Default::default()
+            },
+        )],
+        &[],
     )
     .unwrap();
 

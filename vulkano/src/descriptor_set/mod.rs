@@ -65,6 +65,9 @@
 //!
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
+pub(crate) use self::update::{
+    OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo, OwnedWriteDescriptorSetElements,
+};
 use self::{
     allocator::DescriptorSetAllocator,
     layout::DescriptorSetLayout,
@@ -116,26 +119,26 @@ pub struct DescriptorSet {
 impl DescriptorSet {
     /// Creates and returns a new descriptor set with a variable descriptor count of 0.
     pub fn new(
-        allocator: Arc<dyn DescriptorSetAllocator>,
-        layout: Arc<DescriptorSetLayout>,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        allocator: &Arc<impl DescriptorSetAllocator>,
+        layout: &Arc<DescriptorSetLayout>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
         Self::new_variable(allocator, layout, 0, descriptor_writes, descriptor_copies)
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count.
     pub fn new_variable(
-        allocator: Arc<dyn DescriptorSetAllocator>,
-        layout: Arc<DescriptorSetLayout>,
+        allocator: &Arc<impl DescriptorSetAllocator>,
+        layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
         let mut set = DescriptorSet {
-            inner: RawDescriptorSet::new(&allocator, &layout, variable_descriptor_count)?,
+            inner: RawDescriptorSet::new(allocator, layout, variable_descriptor_count)?,
             resources: RwLock::new(DescriptorSetResources::new(
-                &layout,
+                layout,
                 variable_descriptor_count,
             )),
         };
@@ -185,31 +188,29 @@ impl DescriptorSet {
 
     /// Returns the resources bound to this descriptor set.
     #[inline]
-    pub fn resources(&self) -> RwLockReadGuard<'_, DescriptorSetResources> {
+    pub(crate) fn resources(&self) -> RwLockReadGuard<'_, DescriptorSetResources> {
         self.resources.read()
     }
 
     /// Updates the descriptor set with new values.
     pub fn update(
         &mut self,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
-        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return Ok(());
         }
 
         self.inner
-            .validate_update(&descriptor_writes, &descriptor_copies)?;
+            .validate_update(descriptor_writes, descriptor_copies)?;
 
         unsafe {
             Self::update_inner(
                 &self.inner,
                 self.resources.get_mut(),
-                &descriptor_writes,
-                &descriptor_copies,
+                descriptor_writes,
+                descriptor_copies,
             )
         };
 
@@ -219,11 +220,9 @@ impl DescriptorSet {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_unchecked(
         &mut self,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) {
-        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return;
         }
@@ -232,8 +231,8 @@ impl DescriptorSet {
             Self::update_inner(
                 &self.inner,
                 self.resources.get_mut(),
-                &descriptor_writes,
-                &descriptor_copies,
+                descriptor_writes,
+                descriptor_copies,
             )
         };
     }
@@ -245,24 +244,22 @@ impl DescriptorSet {
     /// - Host access to the descriptor set must be externally synchronized.
     pub unsafe fn update_by_ref(
         &self,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
-        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return Ok(());
         }
 
         self.inner
-            .validate_update(&descriptor_writes, &descriptor_copies)?;
+            .validate_update(descriptor_writes, descriptor_copies)?;
 
         unsafe {
             Self::update_inner(
                 &self.inner,
                 &mut self.resources.write(),
-                &descriptor_writes,
-                &descriptor_copies,
+                descriptor_writes,
+                descriptor_copies,
             )
         };
 
@@ -272,11 +269,9 @@ impl DescriptorSet {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_by_ref_unchecked(
         &self,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) {
-        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
         if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
             return;
         }
@@ -285,8 +280,8 @@ impl DescriptorSet {
             Self::update_inner(
                 &self.inner,
                 &mut self.resources.write(),
-                &descriptor_writes,
-                &descriptor_copies,
+                descriptor_writes,
+                descriptor_copies,
             )
         };
     }
@@ -294,8 +289,8 @@ impl DescriptorSet {
     unsafe fn update_inner(
         inner: &RawDescriptorSet,
         resources: &mut DescriptorSetResources,
-        descriptor_writes: &[WriteDescriptorSet],
-        descriptor_copies: &[CopyDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
     ) {
         unsafe { inner.update_unchecked(descriptor_writes, descriptor_copies) };
 
@@ -379,7 +374,7 @@ impl Hash for DescriptorSet {
 
 /// The resources that are bound to a descriptor set.
 #[derive(Clone, Debug)]
-pub struct DescriptorSetResources {
+pub(crate) struct DescriptorSetResources {
     binding_resources: HashMap<u32, DescriptorBindingResources>,
 }
 
@@ -387,7 +382,7 @@ impl DescriptorSetResources {
     /// Creates a new `DescriptorSetResources` matching the provided descriptor set layout, and
     /// all descriptors set to `None`.
     #[inline]
-    pub fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
+    pub(crate) fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
         assert!(variable_descriptor_count <= layout.variable_descriptor_count());
 
         let binding_resources = layout
@@ -431,7 +426,7 @@ impl DescriptorSetResources {
                             // considered valid from the start but only if the descriptor set
                             // doesn't use push descriptors.
                             DescriptorBindingResources::Image(
-                                smallvec![Some(DescriptorImageInfo::default()); count],
+                                smallvec![Some(OwnedDescriptorImageInfo::default()); count],
                             )
                         }
                     }
@@ -453,24 +448,24 @@ impl DescriptorSetResources {
     /// Returns a reference to the bound resources for `binding`. Returns `None` if the binding
     /// doesn't exist.
     #[inline]
-    pub fn binding(&self, binding: u32) -> Option<&DescriptorBindingResources> {
+    pub(crate) fn binding(&self, binding: u32) -> Option<&DescriptorBindingResources> {
         self.binding_resources.get(&binding)
     }
 
     #[inline]
-    pub(crate) fn write(&mut self, write: &WriteDescriptorSet, layout: &DescriptorSetLayout) {
+    pub(crate) fn write(&mut self, write: &WriteDescriptorSet<'_>, layout: &DescriptorSetLayout) {
         let descriptor_type = layout
-            .binding(write.binding())
+            .binding(write.dst_binding())
             .expect("descriptor write has invalid binding number")
             .descriptor_type;
         self.binding_resources
-            .get_mut(&write.binding())
+            .get_mut(&write.dst_binding())
             .expect("descriptor write has invalid binding number")
             .write(write, descriptor_type)
     }
 
     #[inline]
-    pub(crate) fn copy(&mut self, copy: &CopyDescriptorSet) {
+    pub(crate) fn copy(&mut self, copy: &CopyDescriptorSet<'_>) {
         let resources = copy.src_set.resources();
         let src = resources
             .binding_resources
@@ -481,8 +476,8 @@ impl DescriptorSetResources {
             .expect("descriptor copy has invalid dst_binding number")
             .copy(
                 src,
-                copy.src_first_array_element,
-                copy.dst_first_array_element,
+                copy.src_array_element,
+                copy.dst_array_element,
                 copy.descriptor_count,
             );
     }
@@ -498,9 +493,9 @@ impl DescriptorSetResources {
 
 /// The resources that are bound to a single descriptor set binding.
 #[derive(Clone, Debug)]
-pub enum DescriptorBindingResources {
-    Image(Elements<DescriptorImageInfo>),
-    Buffer(Elements<Option<DescriptorBufferInfo>>),
+pub(crate) enum DescriptorBindingResources {
+    Image(Elements<OwnedDescriptorImageInfo>),
+    Buffer(Elements<OwnedDescriptorBufferInfo>),
     BufferView(Elements<Option<Arc<BufferView>>>),
     InlineUniformBlock,
     AccelerationStructure(Elements<Option<Arc<AccelerationStructure>>>),
@@ -509,12 +504,16 @@ pub enum DescriptorBindingResources {
 type Elements<T> = SmallVec<[Option<T>; 1]>;
 
 impl DescriptorBindingResources {
-    pub(crate) fn write(&mut self, write: &WriteDescriptorSet, descriptor_type: DescriptorType) {
-        fn write_resources<T: Clone>(
+    pub(crate) fn write(
+        &mut self,
+        write: &WriteDescriptorSet<'_>,
+        descriptor_type: DescriptorType,
+    ) {
+        fn write_resources<T, U>(
             first: usize,
-            resources: &mut [Option<T>],
+            resources: &mut [Option<U>],
             elements: &[T],
-            element_func: impl Fn(&T) -> T,
+            element_func: impl Fn(&T) -> U,
         ) {
             resources
                 .get_mut(first..first + elements.len())
@@ -527,58 +526,61 @@ impl DescriptorBindingResources {
         }
 
         let default_image_layout = descriptor_type.default_image_layout();
-        let first = write.first_array_element() as usize;
+        let first = write.dst_array_element() as usize;
 
         match write.elements() {
             WriteDescriptorSetElements::Image(elements) => match self {
                 DescriptorBindingResources::Image(resources) => {
                     write_resources(first, resources, elements, |element| {
-                        let mut element = element.clone();
-                        if element.image_view.is_some()
-                            && element.image_layout == ImageLayout::Undefined
-                        {
-                            element.image_layout = default_image_layout;
+                        OwnedDescriptorImageInfo {
+                            image_layout: if element.image_view.is_some()
+                                && element.image_layout == ImageLayout::Undefined
+                            {
+                                default_image_layout
+                            } else {
+                                element.image_layout
+                            },
+                            ..element.to_owned()
                         }
-                        element
                     })
                 }
                 _ => panic!(
                     "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
+                    write.dst_binding(),
                 ),
             },
             WriteDescriptorSetElements::Buffer(elements) => match self {
                 DescriptorBindingResources::Buffer(resources) => {
-                    write_resources(first, resources, elements, Clone::clone)
+                    write_resources(first, resources, elements, DescriptorBufferInfo::to_owned)
                 }
                 _ => panic!(
                     "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
+                    write.dst_binding(),
                 ),
             },
             WriteDescriptorSetElements::BufferView(elements) => match self {
                 DescriptorBindingResources::BufferView(resources) => {
-                    write_resources(first, resources, elements, Clone::clone)
+                    write_resources(first, resources, elements, |element| element.cloned())
                 }
                 _ => panic!(
                     "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
+                    write.dst_binding(),
                 ),
             },
             WriteDescriptorSetElements::InlineUniformBlock(_) => match self {
                 DescriptorBindingResources::InlineUniformBlock => (),
                 _ => panic!(
                     "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
+                    write.dst_binding(),
                 ),
             },
             WriteDescriptorSetElements::AccelerationStructure(elements) => match self {
                 DescriptorBindingResources::AccelerationStructure(resources) => {
-                    write_resources(first, resources, elements, Clone::clone)
+                    write_resources(first, resources, elements, |element| element.cloned())
                 }
                 _ => panic!(
                     "descriptor write for binding {} has wrong resource type",
-                    write.binding(),
+                    write.dst_binding(),
                 ),
             },
         }

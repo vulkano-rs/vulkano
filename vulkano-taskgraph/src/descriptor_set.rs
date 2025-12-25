@@ -6,10 +6,10 @@ use ash::vk;
 use bytemuck::{Pod, Zeroable};
 use concurrent_slotmap::{hyaline, SlotMap};
 use smallvec::{smallvec, SmallVec};
-use std::{iter, mem, slice, sync::Arc};
+use std::{mem, slice, sync::Arc};
 use vulkano::{
     acceleration_structure::AccelerationStructure,
-    buffer::{Buffer, Subbuffer},
+    buffer::Buffer,
     descriptor_set::{
         allocator::{AllocationHandle, DescriptorSetAlloc, DescriptorSetAllocator},
         layout::{
@@ -21,7 +21,7 @@ use vulkano::{
             DescriptorSetAllocateInfo,
         },
         sys::RawDescriptorSet,
-        DescriptorImageInfo, WriteDescriptorSet,
+        DescriptorBufferInfo, DescriptorImageInfo, WriteDescriptorSet,
     },
     device::{Device, DeviceExtensions, DeviceFeatures, DeviceOwned},
     image::{
@@ -430,7 +430,7 @@ impl GlobalDescriptorSet {
         &self,
         buffer_id: Id<Buffer>,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
     ) -> Result<StorageBufferId, Validated<VulkanError>> {
         let buffer_state = self.resources.buffer(buffer_id).unwrap();
         let buffer = buffer_state.buffer().clone();
@@ -439,17 +439,21 @@ impl GlobalDescriptorSet {
     }
 
     pub fn add_sampler(&self, sampler: Arc<Sampler>) -> SamplerId {
-        let descriptor = SamplerDescriptor {
-            sampler: sampler.clone(),
-        };
-        let id = self.samplers.insert(descriptor, &self.resources.pin());
+        self.samplers.insert_with(&self.resources.pin(), |id| {
+            let image_info = DescriptorImageInfo {
+                sampler: Some(&sampler),
+                image_view: None,
+                image_layout: ImageLayout::Undefined,
+            };
+            let write = WriteDescriptorSet::image_array(
+                SAMPLER_BINDING,
+                id.index,
+                slice::from_ref(&image_info),
+            );
+            unsafe { self.inner.update_unchecked(slice::from_ref(&write), &[]) };
 
-        let write =
-            WriteDescriptorSet::sampler_array(SAMPLER_BINDING, id.index, iter::once(Some(sampler)));
-
-        unsafe { self.inner.update_unchecked(&[write], &[]) };
-
-        id
+            SamplerDescriptor { sampler }
+        })
     }
 
     pub fn add_sampled_image(
@@ -466,27 +470,25 @@ impl GlobalDescriptorSet {
                 | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
         ));
 
-        let descriptor = SampledImageDescriptor {
-            image_view: image_view.clone(),
-            image_layout,
-        };
-        let id = self
-            .sampled_images
-            .insert(Some(descriptor), &self.resources.pin());
+        self.sampled_images
+            .insert_with(&self.resources.pin(), |id| {
+                let image_info = DescriptorImageInfo {
+                    sampler: None,
+                    image_view: Some(&image_view),
+                    image_layout,
+                };
+                let write = WriteDescriptorSet::image_array(
+                    SAMPLED_IMAGE_BINDING,
+                    id.index,
+                    slice::from_ref(&image_info),
+                );
+                unsafe { self.inner.update_unchecked(slice::from_ref(&write), &[]) };
 
-        let write = WriteDescriptorSet::image_array(
-            SAMPLED_IMAGE_BINDING,
-            id.index,
-            iter::once(DescriptorImageInfo {
-                sampler: None,
-                image_view: Some(image_view),
-                image_layout,
-            }),
-        );
-
-        unsafe { self.inner.update_unchecked(&[write], &[]) };
-
-        id
+                Some(SampledImageDescriptor {
+                    image_view,
+                    image_layout,
+                })
+            })
     }
 
     pub fn add_storage_image(
@@ -496,77 +498,75 @@ impl GlobalDescriptorSet {
     ) -> StorageImageId {
         assert_eq!(image_layout, ImageLayout::General);
 
-        let descriptor = StorageImageDescriptor {
-            image_view: image_view.clone(),
-            image_layout,
-        };
-        let id = self
-            .storage_images
-            .insert(Some(descriptor), &self.resources.pin());
+        self.storage_images
+            .insert_with(&self.resources.pin(), |id| {
+                let image_info = DescriptorImageInfo {
+                    sampler: None,
+                    image_view: Some(&image_view),
+                    image_layout,
+                };
+                let write = WriteDescriptorSet::image_array(
+                    STORAGE_IMAGE_BINDING,
+                    id.index,
+                    slice::from_ref(&image_info),
+                );
+                unsafe { self.inner.update_unchecked(slice::from_ref(&write), &[]) };
 
-        let write = WriteDescriptorSet::image_array(
-            STORAGE_IMAGE_BINDING,
-            id.index,
-            iter::once(DescriptorImageInfo {
-                sampler: None,
-                image_view: Some(image_view),
-                image_layout,
-            }),
-        );
-
-        unsafe { self.inner.update_unchecked(&[write], &[]) };
-
-        id
+                Some(StorageImageDescriptor {
+                    image_view,
+                    image_layout,
+                })
+            })
     }
 
     pub fn add_storage_buffer(
         &self,
         buffer: Arc<Buffer>,
         offset: DeviceSize,
-        size: DeviceSize,
+        size: Option<DeviceSize>,
     ) -> StorageBufferId {
-        let subbuffer = Subbuffer::from(buffer.clone()).slice(offset..offset + size);
+        let size = size.unwrap_or(buffer.size() - offset);
 
-        let descriptor = StorageBufferDescriptor {
-            buffer,
-            offset,
-            size,
-        };
-        let id = self
-            .storage_buffers
-            .insert(Some(descriptor), &self.resources.pin());
+        self.storage_buffers
+            .insert_with(&self.resources.pin(), |id| {
+                let buffer_info = DescriptorBufferInfo {
+                    buffer: Some(&buffer),
+                    offset,
+                    range: Some(size),
+                };
+                let write = WriteDescriptorSet::buffer_array(
+                    STORAGE_BUFFER_BINDING,
+                    id.index,
+                    slice::from_ref(&buffer_info),
+                );
+                unsafe { self.inner.update_unchecked(slice::from_ref(&write), &[]) };
 
-        let write = WriteDescriptorSet::buffer_array(
-            STORAGE_BUFFER_BINDING,
-            id.index,
-            iter::once(Some(subbuffer)),
-        );
-
-        unsafe { self.inner.update_unchecked(&[write], &[]) };
-
-        id
+                Some(StorageBufferDescriptor {
+                    buffer,
+                    offset,
+                    size,
+                })
+            })
     }
 
     pub fn add_acceleration_structure(
         &self,
         acceleration_structure: Arc<AccelerationStructure>,
     ) -> AccelerationStructureId {
-        let descriptor = AccelerationStructureDescriptor {
-            acceleration_structure: acceleration_structure.clone(),
-        };
-        let id = self
-            .acceleration_structures
-            .insert(Some(descriptor), &self.resources.pin());
+        self.acceleration_structures
+            .insert_with(&self.resources.pin(), |id| {
+                let acceleration = Some(&acceleration_structure);
+                let write = WriteDescriptorSet::acceleration_structure_array(
+                    ACCELERATION_STRUCTURE_BINDING,
+                    id.index,
+                    slice::from_ref(&acceleration),
+                );
+                unsafe { self.inner.update_unchecked(slice::from_ref(&write), &[]) };
 
-        let write = WriteDescriptorSet::acceleration_structure_array(
-            ACCELERATION_STRUCTURE_BINDING,
-            id.index,
-            iter::once(Some(acceleration_structure)),
-        );
-
-        unsafe { self.inner.update_unchecked(&[write], &[]) };
-
-        id
+                Some(AccelerationStructureDescriptor {
+                    acceleration_structure,
+                })
+            })
     }
 
     pub(crate) fn invalidate_sampler<'a>(
@@ -1041,27 +1041,23 @@ impl LocalDescriptorSet {
 
         let render_pass = framebuffer.render_pass();
         let subpass_description = &render_pass.subpasses()[subpass_index];
-        let input_attachments = &subpass_description.input_attachments;
-        let mut writes = Vec::new();
+        let mut image_infos = Vec::new();
 
-        for (input_attachment_index, attachment_reference) in input_attachments.iter().enumerate() {
+        for attachment_reference in subpass_description.input_attachments {
             let Some(attachment_reference) = attachment_reference else {
                 continue;
             };
             let attachment = &framebuffer.attachments()[attachment_reference.attachment as usize];
 
-            writes.push(WriteDescriptorSet::image_array(
-                INPUT_ATTACHMENT_BINDING,
-                input_attachment_index as u32,
-                iter::once(DescriptorImageInfo {
-                    sampler: None,
-                    image_view: Some(attachment.clone()),
-                    image_layout: attachment_reference.layout,
-                }),
-            ));
+            image_infos.push(DescriptorImageInfo {
+                sampler: None,
+                image_view: Some(attachment),
+                image_layout: attachment_reference.layout,
+            });
         }
 
-        unsafe { inner.update_unchecked(&writes, &[]) };
+        let write = WriteDescriptorSet::image_array(INPUT_ATTACHMENT_BINDING, 0, &image_infos);
+        unsafe { inner.update_unchecked(slice::from_ref(&write), &[]) };
 
         Ok(Arc::new(LocalDescriptorSet { inner }))
     }

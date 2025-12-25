@@ -7,7 +7,8 @@ use vulkano::{
         CopyImageInfo, ImageBlit, ImageCopy, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorImageInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -429,13 +430,25 @@ impl ApplicationHandler for App {
 
         let layout = &pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [
-                WriteDescriptorSet::sampler(0, self.sampler.clone()),
-                WriteDescriptorSet::image_view(1, self.texture.clone()),
+            &self.descriptor_set_allocator,
+            layout,
+            &[
+                WriteDescriptorSet::image(
+                    0,
+                    &DescriptorImageInfo {
+                        sampler: Some(&self.sampler),
+                        ..Default::default()
+                    },
+                ),
+                WriteDescriptorSet::image(
+                    1,
+                    &DescriptorImageInfo {
+                        image_view: Some(&self.texture),
+                        ..Default::default()
+                    },
+                ),
             ],
-            [],
+            &[],
         )
         .unwrap();
 

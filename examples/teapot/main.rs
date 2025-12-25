@@ -11,7 +11,8 @@ use vulkano::{
         RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
@@ -431,10 +432,16 @@ impl ApplicationHandler for App {
 
                 let layout = &rcx.pipeline.layout().set_layouts()[0];
                 let descriptor_set = DescriptorSet::new(
-                    self.descriptor_set_allocator.clone(),
-                    layout.clone(),
-                    [WriteDescriptorSet::buffer(0, uniform_buffer)],
-                    [],
+                    &self.descriptor_set_allocator,
+                    layout,
+                    &[WriteDescriptorSet::buffer(
+                        0,
+                        &DescriptorBufferInfo {
+                            buffer: Some(uniform_buffer.buffer()),
+                            ..Default::default()
+                        },
+                    )],
+                    &[],
                 )
                 .unwrap();
 

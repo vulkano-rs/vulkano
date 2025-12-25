@@ -960,7 +960,7 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         pipeline: &PipelineLayout,
         set: u32,
-        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_push_descriptor_set(pipeline_bind_point, pipeline, set, descriptor_writes)?;
 
@@ -979,7 +979,7 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         layout: &PipelineLayout,
         set: u32,
-        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_extensions().khr_push_descriptor {
             return Err(Box::new(ValidationError {
@@ -1101,7 +1101,7 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         layout: &PipelineLayout,
         set: u32,
-        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_writes: &[WriteDescriptorSet<'_>],
     ) -> &mut Self {
         if descriptor_writes.is_empty() {
             return self;
@@ -1112,7 +1112,7 @@ impl RecordingCommandBuffer {
             .iter()
             .map(|write| {
                 let default_image_layout = set_layout
-                    .binding(write.binding())
+                    .binding(write.dst_binding())
                     .unwrap()
                     .descriptor_type
                     .default_image_layout();
@@ -1131,7 +1131,10 @@ impl RecordingCommandBuffer {
             .map(|((write, write_info_vk), write_extension_vk)| {
                 write.to_vk(
                     vk::DescriptorSet::null(),
-                    set_layout.binding(write.binding()).unwrap().descriptor_type,
+                    set_layout
+                        .binding(write.dst_binding())
+                        .unwrap()
+                        .descriptor_type,
                     write_info_vk,
                     write_extension_vk,
                 )
