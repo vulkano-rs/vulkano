@@ -56,6 +56,16 @@ Changes to render passes:
 Changes to external memory and external sync:
 - Where `File`s were previously taken as arguments for importing and returned for exporting, the raw descriptor is now used instead.
 
+Changes to descriptor sets:
+- `WriteDescriptorSet` constructors that previously took buffers, image views and samplers were replaced with constructors that take `DescriptorBufferInfo` and `DescriptorImageInfo`:
+  - `WriteDescriptorSet::{none,image_view,image_view_with_layout,image_view_sampler,image_view_with_layout_sampler,sampler}` were replaced with `WriteDescriptorSet::image`.
+  - `WriteDescriptorSet::{none_array,image_view_array,image_view_with_layout_array,image_view_sampler_array,image_view_with_layout_sampler_array,sampler_array}` were replaced with `WriteDescriptorSet::image_array`.
+  - `WriteDescriptorSet::{buffer,buffer_with_range}` were replaced with `WriteDescriptorSet::buffer`.
+  - `WriteDescriptorSet::{buffer_array,buffer_with_range_array}` were replaced with `WriteDescriptorSet::buffer_array`.
+  - `DescriptorImageViewInfo` was replaced with `DescriptorImageInfo`.
+- `WriteDescriptorSetElements` is now marked `#[non_exhaustive]`.
+- `DescriptorSetResources` and `DescriptorBindingResources` were removed.
+
 ### Additions
 
 - `ash` is now re-exported.
