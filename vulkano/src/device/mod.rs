@@ -1299,11 +1299,40 @@ impl Device {
 
     /// Assigns a human-readable name to `object` for debugging purposes.
     ///
+    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) extension
+    /// must be enabled on the instance.
+    ///
     /// If `object_name` is `None`, a previously set object name is removed.
     ///
     /// # Panics
     /// - If `object` is not owned by this device.
-    pub fn set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
+    #[inline]
+    pub unsafe fn set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
+        &self,
+        object: &T,
+        object_name: Option<&str>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_set_debug_utils_object_name()?;
+
+        unsafe { self.set_debug_utils_object_name_unchecked(object, object_name)? }
+        Ok(())
+    }
+
+    fn validate_set_debug_utils_object_name(&self) -> Result<(), Box<ValidationError>> {
+        if !self.instance().enabled_extensions().ext_debug_utils {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_debug_utils_object_name_unchecked<T: VulkanObject + DeviceOwned>(
         &self,
         object: &T,
         object_name: Option<&str>,
@@ -2133,18 +2162,44 @@ where
 
 /// Implemented on objects that implement both `DeviceOwned` and `VulkanObject`.
 pub unsafe trait DeviceOwnedVulkanObject {
-    /// Assigns a human-readable name to the object for debugging purposes.
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) extension
+    /// must be enabled on the instance.
     ///
     /// If `object_name` is `None`, a previously set object name is removed.
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError>;
+    unsafe fn set_debug_utils_object_name(
+        &self,
+        object_name: Option<&str>,
+    ) -> Result<(), Validated<VulkanError>>;
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    unsafe fn set_debug_utils_object_name_unchecked(
+        &self,
+        object_name: Option<&str>,
+    ) -> Result<(), VulkanError>;
 }
 
 unsafe impl<T> DeviceOwnedVulkanObject for T
 where
     T: DeviceOwned + VulkanObject,
 {
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError> {
-        self.device().set_debug_utils_object_name(self, object_name)
+    unsafe fn set_debug_utils_object_name(
+        &self,
+        object_name: Option<&str>,
+    ) -> Result<(), Validated<VulkanError>> {
+        unsafe { self.device().set_debug_utils_object_name(self, object_name) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    unsafe fn set_debug_utils_object_name_unchecked(
+        &self,
+        object_name: Option<&str>,
+    ) -> Result<(), VulkanError> {
+        unsafe {
+            self.device()
+                .set_debug_utils_object_name_unchecked(self, object_name)
+        }
     }
 }
 
