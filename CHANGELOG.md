@@ -31,6 +31,7 @@ Changes to Vulkan initialization:
 
 Changes to devices and queues:
 - `Device::from_handle[_borrowed]` no longer retrieves queues, as this was impossible to use soundly. You should instead use `Queue::from_handle` to create queues when working with an external API.
+- `Device::set_debug_utils_object_name` and `DeviceOwnedVulkanObject::set_debug_utils_object_name` are now marked unsafe. They have always been unsafe, but marked incorrectly.
 
 Changes to images:
 - `FormatProperties` no longer has a `_ne` field and is now marked `#[non_exhaustive]` instead.
@@ -89,6 +90,7 @@ Changes to descriptor sets:
 - [#2477](https://github.com/vulkano-rs/vulkano/issues/2477) Incorrect validation for `win32_monitor` in surfaces.
 - The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
 - [#1632](https://github.com/vulkano-rs/vulkano/issues/1632) Unneeded validation of `DescriptorPoolCreateInfo::pool_sizes` being non-empty. This would manifest itself as a panic when attempting to allocate a descriptor set with no descriptors.
+- `Device::set_debug_utils_object_name` and `DeviceOwnedVulkanObject::set_debug_utils_object_name` not validating that the `ext_debug_utils` extension is enabled on the instance.
 
 # Version 0.33.1, 0.34.2 and 0.35.2 (2025-08-16)
 
