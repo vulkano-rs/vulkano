@@ -91,6 +91,7 @@ Changes to descriptor sets:
 - The `copy_src_layouts` and `copy_dst_layouts` device properties are now correctly retrieved.
 - [#1632](https://github.com/vulkano-rs/vulkano/issues/1632) Unneeded validation of `DescriptorPoolCreateInfo::pool_sizes` being non-empty. This would manifest itself as a panic when attempting to allocate a descriptor set with no descriptors.
 - `Device::set_debug_utils_object_name` and `DeviceOwnedVulkanObject::set_debug_utils_object_name` not validating that the `ext_debug_utils` extension is enabled on the instance.
+- Image creation when `drm_format_modifiers` is provided, but `drm_format_modifier_plane_layouts` isn't.
 
 # Version 0.33.1, 0.34.2 and 0.35.2 (2025-08-16)
 
