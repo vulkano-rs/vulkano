@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - name: windows-latest
-            runs-on: [self-hosted, Windows, 25.05]
+            runs-on: [self-hosted, Windows]
             self-hosted: true
             shell: wsl -e wsl-bash {0}
             target: x86_64-pc-windows-msvc
