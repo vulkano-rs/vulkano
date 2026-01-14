@@ -604,6 +604,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             return Ok(());
         };
 
+        if self.swapchains.is_empty() {
+            return Ok(());
+        }
+
         let swapchain_count = self.swapchains.len();
         let mut semaphores = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
         let mut swapchains = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
