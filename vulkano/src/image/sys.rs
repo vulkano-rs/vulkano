@@ -1409,7 +1409,8 @@ impl RawImage {
         // VUID-vkGetImageSubresourceLayout-format-04464
         // VUID-vkGetImageSubresourceLayout-format-01581
         // VUID-vkGetImageSubresourceLayout-format-01582
-        if !format_aspects.contains(aspect.into()) {
+        if self.tiling != ImageTiling::DrmFormatModifier && !format_aspects.contains(aspect.into())
+        {
             return Err(Box::new(ValidationError {
                 context: "array_layer".into(),
                 problem: "is greater than the number of array layers in the image".into(),
