@@ -161,8 +161,8 @@ impl VulkanoWindows {
     /// Get a mutable reference to the primary window's renderer.
     #[inline]
     pub fn get_primary_renderer_mut(&mut self) -> Option<&mut VulkanoWindowRenderer> {
-        if self.primary.is_some() {
-            self.get_renderer_mut(self.primary.unwrap())
+        if let Some(primary) = self.primary {
+            self.get_renderer_mut(primary)
         } else {
             None
         }
@@ -171,8 +171,8 @@ impl VulkanoWindows {
     /// Get a reference to the primary window's renderer.
     #[inline]
     pub fn get_primary_renderer(&self) -> Option<&VulkanoWindowRenderer> {
-        if self.primary.is_some() {
-            self.get_renderer(self.primary.unwrap())
+        if let Some(primary) = self.primary {
+            self.get_renderer(primary)
         } else {
             None
         }
@@ -181,8 +181,8 @@ impl VulkanoWindows {
     /// Get a reference to the primary winit window.
     #[inline]
     pub fn get_primary_window(&self) -> Option<&winit::window::Window> {
-        if self.primary.is_some() {
-            self.get_window(self.primary.unwrap())
+        if let Some(primary) = self.primary {
+            self.get_window(primary)
         } else {
             None
         }

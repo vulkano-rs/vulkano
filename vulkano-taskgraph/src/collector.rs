@@ -689,6 +689,7 @@ impl fmt::Debug for LocalQueue {
     }
 }
 
+#[allow(clippy::identity_op)]
 const NIL: u32 = u32::MAX & !DELETED_BIT;
 const DELETED_BIT: u32 = 1 << 31;
 
