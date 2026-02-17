@@ -777,6 +777,8 @@ impl<T> Id<T> {
     }
 
     fn object_type(self) -> ObjectType {
+        assert_ne!(self, Self::INVALID, "cannot determine type for invalid ID");
+
         match self.slot.tag() & Id::OBJECT_TYPE_MASK {
             Buffer::TAG => ObjectType::Buffer,
             Image::TAG => ObjectType::Image,

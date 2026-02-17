@@ -2492,6 +2492,10 @@ impl<'a> ResourceMap<'a> {
     ///
     /// - Panics if the physical resource doesn't match the virtual resource.
     /// - Panics if the physical resource already has a mapping from another virtual resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either `virtual_id` or `physical_id` is invalid.
     #[inline]
     pub fn insert_buffer(
         &mut self,
@@ -2571,15 +2575,19 @@ impl<'a> ResourceMap<'a> {
     /// - Panics if the physical resource doesn't match the virtual resource.
     /// - Panics if the physical resource already has a mapping from another virtual resource.
     /// - Panics if `virtual_id` refers to a swapchain image.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either `virtual_id` or `physical_id` is invalid.
     #[inline]
     pub fn insert_image(
         &mut self,
         virtual_id: Id<Image>,
         physical_id: Id<Image>,
     ) -> Result<(), InvalidSlotError> {
-        assert_ne!(virtual_id.object_type(), ObjectType::Swapchain);
-
         self.virtual_resources.get(virtual_id.erase())?;
+
+        assert_ne!(virtual_id.object_type(), ObjectType::Swapchain);
 
         let state = self
             .physical_resources
@@ -2647,6 +2655,10 @@ impl<'a> ResourceMap<'a> {
     ///
     /// - Panics if the physical resource doesn't match the virtual resource.
     /// - Panics if the physical resource already has a mapping from another virtual resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either `virtual_id` or `physical_id` is invalid.
     #[inline]
     pub fn insert_swapchain(
         &mut self,
