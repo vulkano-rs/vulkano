@@ -132,7 +132,21 @@ pub(super) fn write_structs(
             #[derive(::vulkano::buffer::BufferContents #(, #custom_derives )* )]
             #[repr(C)]
             #struct_ser
-        })
+        });
+
+        // Emit type aliases for runtime array element types
+        for member in &struct_ty.members {
+            if let Type::Array(ty) = &member.ty {
+                let alias_ident = format_ident!("{}Element", struct_ty.ident);
+                let element_type = array_element_type(&ty, input);
+
+                if let None = ty.length.map(NonZeroUsize::get) {
+                    structs.extend(quote! {
+                        pub type #alias_ident = #element_type;
+                    });
+                }
+            }
+        }
     }
 
     Ok(structs)
@@ -995,13 +1009,7 @@ impl ToTokens for Serializer<'_, TypeMatrix> {
 
 impl ToTokens for Serializer<'_, TypeArray> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let element_type = &*self.0.element_type;
-        // This can't panic because array elements must be sized.
-        let element_size = element_type.size().unwrap();
-        // This can't overflow because the stride must be at least the element size.
-        let padding = self.0.stride - element_size;
-
-        let element_type = Padded(Serializer(element_type, self.1), padding);
+        let element_type = array_element_type(&self.0, self.1);
 
         if let Some(length) = self.0.length.map(NonZero::get) {
             tokens.extend(quote! { [#element_type; #length] });
@@ -1009,6 +1017,15 @@ impl ToTokens for Serializer<'_, TypeArray> {
             tokens.extend(quote! { [#element_type] });
         }
     }
+}
+fn array_element_type<'a>(ty: &'a TypeArray, macro_input: &'a MacroInput) -> Padded<Serializer<'a, Type>> {
+    let element_type = &*ty.element_type;
+    // This can't panic because array elements must be sized.
+    let element_size = element_type.size().unwrap();
+    // This can't overflow because the stride must be at least the element size.
+    let padding = ty.stride - element_size;
+
+    Padded(Serializer(element_type, macro_input), padding)
 }
 
 impl ToTokens for Serializer<'_, TypeStruct> {
