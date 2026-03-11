@@ -168,6 +168,7 @@ mod self_referential;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;
+pub mod device_generated_commands;
 mod version;
 
 /// Represents memory size and offset values on a Vulkan device.
