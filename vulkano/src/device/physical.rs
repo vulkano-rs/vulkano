@@ -26,6 +26,7 @@ use crate::{
 use ash::vk;
 use bytemuck::cast_slice;
 use parking_lot::RwLock;
+#[cfg(feature = "raw_window_handle")]
 use raw_window_handle::{HandleError, HasDisplayHandle, RawDisplayHandle};
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
@@ -2361,6 +2362,7 @@ impl PhysicalDevice {
     /// [`xcb_presentation_support`]: Self::xcb_presentation_support
     /// [`xlib_presentation_support`]: Self::xlib_presentation_support
     /// [`surface_support`]: Self::surface_support
+    #[cfg(feature = "raw_window_handle")]
     pub fn presentation_support(
         &self,
         queue_family_index: u32,

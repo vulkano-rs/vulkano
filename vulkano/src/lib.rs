@@ -21,7 +21,7 @@
 //!    example, if you use a `winit` version that uses a different version from the one vulkano
 //!    uses, you can add one of the [features](https://docs.rs/crate/winit/latest/features) that
 //!    starts with `rwh` to `winit`. Currently, vulkano is compatible with `rwh_06`.
-//!    
+//!
 //! 4. [Enumerate the physical devices] that are available on the `Instance`, and choose one that
 //!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
 //!    is available on the system, such as a graphics card, a software implementation, etc.
@@ -96,6 +96,7 @@
 //! | `x11`                | Support for X11 platforms. Enabled by default.                 |
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
+//! | `raw_window_handle`  | Include the raw-window-handle dependency and its dependents.   |
 //!
 //! [`Instance`]: instance::Instance
 //! [`Surface`]: swapchain::Surface

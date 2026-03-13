@@ -22,7 +22,7 @@ foldhash = { workspace = true }
 half = { workspace = true, features = ["bytemuck"] }
 libloading = { workspace = true }
 parking_lot = { workspace = true, features = ["send_guard"] }
-raw-window-handle = { workspace = true, features = ["std"] }
+raw-window-handle = { workspace = true, optional = true, features = ["std"] }
 serde = { workspace = true, optional = true }
 slabbin = { workspace = true }
 smallvec = { workspace = true }
@@ -40,10 +40,11 @@ x11rb = { workspace = true, features = ["allow-unsafe-code"], optional = true }
 libc = "0.2.153"
 
 [features]
-default = ["macros", "x11"]
+default = ["macros", "x11", "raw_window_handle"]
 document_unchecked = []
 macros = ["dep:vulkano-macros"]
 x11 = ["dep:x11-dl", "dep:x11rb"]
+raw_window_handle = ["dep:raw-window-handle"]
 
 [lints]
 workspace = true

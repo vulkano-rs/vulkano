@@ -5,26 +5,30 @@ use crate::{
     display::{DisplayMode, DisplayPlaneAlpha},
     format::Format,
     image::ImageUsage,
-    instance::{Instance, InstanceExtensions, InstanceOwned},
+    instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
 use ash::vk;
-use raw_window_handle::{
-    HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
 use smallvec::SmallVec;
 use std::{
     any::Any,
-    error::Error,
     ffi::c_void,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::{Debug, Error as FmtError, Formatter},
     marker::PhantomData,
     mem::MaybeUninit,
     num::NonZero,
     ptr,
     sync::Arc,
+};
+#[cfg(feature = "raw_window_handle")]
+use {
+    crate::instance::InstanceExtensions,
+    raw_window_handle::{
+        HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+    },
+    std::{error::Error, fmt::Display},
 };
 
 /// Represents a surface on the screen.
@@ -49,6 +53,7 @@ pub struct Surface {
 impl Surface {
     /// Returns the instance extensions required to create a surface from a window of the given
     /// event loop.
+    #[cfg(feature = "raw_window_handle")]
     pub fn required_extensions(
         event_loop: &impl HasDisplayHandle,
     ) -> Result<InstanceExtensions, HandleError> {
@@ -71,6 +76,7 @@ impl Surface {
     }
 
     /// Creates a new `Surface` from the given `window`.
+    #[cfg(feature = "raw_window_handle")]
     pub fn from_window(
         instance: &Arc<Instance>,
         window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
@@ -87,6 +93,7 @@ impl Surface {
     /// # Safety
     ///
     /// - The given `window` must outlive the created surface.
+    #[cfg(feature = "raw_window_handle")]
     pub unsafe fn from_window_ref(
         instance: &Arc<Instance>,
         window: &(impl HasWindowHandle + HasDisplayHandle),
@@ -1649,6 +1656,7 @@ pub enum SurfaceApi {
     Xlib,
 }
 
+#[cfg(feature = "raw_window_handle")]
 impl TryFrom<RawWindowHandle> for SurfaceApi {
     type Error = ();
 
@@ -2530,6 +2538,7 @@ fn filter_max(extent: vk::Extent2D) -> Option<[u32; 2]> {
 }
 
 /// Error that can happen when creating a [`Surface`] from a window.
+#[cfg(feature = "raw_window_handle")]
 #[derive(Clone, Debug)]
 pub enum FromWindowError {
     /// Retrieving the window or display handle failed.
@@ -2538,6 +2547,7 @@ pub enum FromWindowError {
     CreateSurface(Validated<VulkanError>),
 }
 
+#[cfg(feature = "raw_window_handle")]
 impl Error for FromWindowError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
@@ -2547,6 +2557,7 @@ impl Error for FromWindowError {
     }
 }
 
+#[cfg(feature = "raw_window_handle")]
 impl Display for FromWindowError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
