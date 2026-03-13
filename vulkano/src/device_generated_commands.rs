@@ -1,10 +1,11 @@
 ﻿use crate::buffer::IndexType;
 use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
-use crate::memory::{MemoryRequirements, MemoryRequirements2ExtensionsVk};
-use crate::pipeline::{Pipeline, PipelineBindPoint, PipelineLayout};
+use crate::memory::{MemoryRequirements};
+use crate::pipeline::compute::ComputePipelineCreateInfo;
+use crate::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::shader::ShaderStages;
-use crate::VulkanError;
+use crate::{NonNullDeviceAddress, VulkanError};
 use crate::{Validated, ValidationError, VulkanObject};
 use ash::vk;
 use std::collections::BTreeMap;
@@ -104,6 +105,38 @@ impl IndirectCommandsLayout {
                     .get_generated_commands_memory_requirements_nv)(
                     self.device.handle(),
                     &memory_requirements_info_vk,
+                    output.as_mut_ptr(),
+                )
+            };
+            unsafe { output.assume_init() }
+        };
+
+        let memory_requirements_extension_vk2 =
+            MemoryRequirements::to_mut_vk2_extensions(self.device());
+
+        MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
+    }
+
+    pub fn pipeline_indirect_memory_requirements(
+        &self,
+        pipeline_create_info: &ComputePipelineCreateInfo,
+    ) -> MemoryRequirements {
+        // TODO: Validate extensions
+
+        let create_info_fields2_vk = pipeline_create_info.to_vk_fields2();
+        let create_info_fields1_vk = pipeline_create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = pipeline_create_info.to_vk_extensions();
+        let create_info_vk =
+            pipeline_create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
+
+        let memory_requirements_vk2 = {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.nv_device_generated_commands_compute
+                    .get_pipeline_indirect_memory_requirements_nv)(
+                    self.device.handle(),
+                    &create_info_vk,
                     output.as_mut_ptr(),
                 )
             };
@@ -316,4 +349,28 @@ vulkan_bitflags! {
     IndirectStateFlags = IndirectStateFlagsNV(u32);
 
     FLAG_FRONTFACE = FLAG_FRONTFACE,
+}
+
+impl ComputePipeline {
+    pub fn indirect_device_address(&self) -> NonNullDeviceAddress {
+        // TODO: validate
+
+        let address_info_vk = vk::PipelineIndirectDeviceAddressInfoNV::default()
+            .pipeline_bind_point(self.bind_point().into())
+            .pipeline(self.handle());
+
+        let device_address_vk = {
+            let fns = self.device().fns();
+            unsafe {
+                (fns.nv_device_generated_commands_compute
+                    .get_pipeline_indirect_device_address_nv)(
+                    self.device().handle(),
+                    &address_info_vk,
+                )
+            }
+        };
+
+        // TODO: use checks
+        NonNullDeviceAddress::new(device_address_vk).unwrap()
+    }
 }
