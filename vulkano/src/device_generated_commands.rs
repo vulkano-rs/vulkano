@@ -1,7 +1,8 @@
 ﻿use crate::buffer::IndexType;
 use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
-use crate::pipeline::{PipelineBindPoint, PipelineLayout};
+use crate::memory::{MemoryRequirements, MemoryRequirements2ExtensionsVk};
+use crate::pipeline::{Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::shader::ShaderStages;
 use crate::VulkanError;
 use crate::{Validated, ValidationError, VulkanObject};
@@ -83,10 +84,41 @@ impl IndirectCommandsLayout {
             push_constant_pipeline_layouts,
         })
     }
+
+    pub fn memory_requirements(
+        &self,
+        pipeline: &Arc<impl Pipeline + VulkanObject<Handle = vk::Pipeline>>,
+        max_sequence_count: u32,
+    ) -> MemoryRequirements {
+        let memory_requirements_info_vk = vk::GeneratedCommandsMemoryRequirementsInfoNV::default()
+            .pipeline_bind_point(pipeline.bind_point().into())
+            .pipeline(pipeline.handle())
+            .indirect_commands_layout(self.handle)
+            .max_sequences_count(max_sequence_count);
+
+        let memory_requirements_vk2 = {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.nv_device_generated_commands
+                    .get_generated_commands_memory_requirements_nv)(
+                    self.device.handle(),
+                    &memory_requirements_info_vk,
+                    output.as_mut_ptr(),
+                )
+            };
+            unsafe { output.assume_init() }
+        };
+
+        let memory_requirements_extension_vk2 =
+            MemoryRequirements::to_mut_vk2_extensions(self.device());
+
+        MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
+    }
 }
 
 unsafe impl VulkanObject for IndirectCommandsLayout {
-    type Handle = ash::vk::IndirectCommandsLayoutNV;
+    type Handle = vk::IndirectCommandsLayoutNV;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
