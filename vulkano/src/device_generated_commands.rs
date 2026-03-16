@@ -224,7 +224,18 @@ impl IndirectCommandsLayoutCreateInfo {
             }))
         }
 
-        // TODO: Physical Device properties token count
+        {
+            let token_count = self.tokens.len() as u32;
+
+            if token_count == 0 || token_count > device.physical_device().properties().max_indirect_commands_token_count.unwrap_or(0) {
+                return Err(Box::new(ValidationError {
+                    problem: "token count is outside of bounds".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-tokenCount-02931"],
+                    ..Default::default()
+                }));
+            }
+
+        }
 
         self.tokens.iter().map(|token| token.validate(device)).fold(Ok(()), Result::or)?;
 
@@ -290,6 +301,27 @@ impl IndirectCommandsLayoutCreateInfo {
             }
         }).unwrap()?; // Guaranteed to be Some
 
+        {
+            let stream_count = self.stream_strides.len() as u32;
+
+            if stream_count == 0 || stream_count > device.physical_device().properties().max_indirect_commands_stream_count.unwrap_or(0) {
+                return Err(Box::new(ValidationError {
+                    problem: "stream count is outside of bounds".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-streamCount-02936"],
+                    ..Default::default()
+                }))
+            }
+
+            if self.stream_strides.iter().copied().any(|stream_stride| stream_stride == 0 || stream_stride > device.physical_device().properties().max_indirect_commands_stream_stride.unwrap_or(0)) {
+                return Err(Box::new(ValidationError {
+                    problem: "a stream stride value is outside of bounds".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pStreamStrides-02937"],
+                    ..Default::default()
+                }))
+            }
+
+            // TODO: Validate alignment
+        }
         // TODO: Physical Device properties stream count
 
         // TODO: Physical Device properties stream strides
