@@ -1,7 +1,7 @@
 ﻿use crate::buffer::IndexType;
 use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
-use crate::memory::{MemoryRequirements};
+use crate::memory::MemoryRequirements;
 use crate::pipeline::compute::ComputePipelineCreateInfo;
 use crate::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::shader::ShaderStages;
@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
+use vulkano::{Requires, RequiresAllOf, RequiresOneOf};
 
 #[derive(Debug)]
 pub struct IndirectCommandsLayout {
@@ -35,8 +36,22 @@ impl IndirectCommandsLayout {
         device: &Device,
         create_info: &IndirectCommandsLayoutCreateInfo,
     ) -> Result<(), Box<ValidationError>> {
-        todo!()
-        //Ok(())
+        if !device.enabled_extensions().nv_device_generated_commands {
+            return Err(Box::new(ValidationError {
+                problem: "using device generated commands".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "nv_device_generated_commands",
+                )])]),
+                vuids: &["VUID-vkCreateIndirectCommandsLayoutNV-deviceGeneratedCommands-02929"],
+                ..Default::default()
+            }));
+        }
+
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -191,6 +206,99 @@ pub struct IndirectCommandsLayoutCreateInfo {
 }
 
 impl IndirectCommandsLayoutCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        self.flags
+            .validate_device(device)
+            .map_err(|err| err.add_context("flags"))?;
+
+        self.pipeline_bind_point.validate_device(device)
+            .map_err(|err| {
+                err.add_context("pipeline_bind_point")
+            })?;
+
+        if self.pipeline_bind_point != PipelineBindPoint::Compute || self.pipeline_bind_point != PipelineBindPoint::Graphics {
+            return Err(Box::new(ValidationError {
+                problem: "pipeline_bind_point must be either Compute or Graphics".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-02930"],
+                ..Default::default()
+            }))
+        }
+
+        // TODO: Physical Device properties token count
+
+        self.tokens.iter().map(|token| token.validate(device)).fold(Ok(()), Result::or)?;
+
+        if self.tokens.iter().skip(1).any(|token| {
+            token.token_type == IndirectCommandsTokenType::ShaderGroup
+        }) {
+            return Err(Box::new(ValidationError {
+                problem: "ShaderGroup token must be the first token".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02932"],
+                ..Default::default()
+            }))
+        }
+
+        // TODO:
+        /*if self.tokens.iter().skip(1).any(|token| {
+            token.token_type == IndirectCommandsTokenType::Pipeline
+        }) {
+            return Err(Box::new(ValidationError {
+                problem: "ShaderGroup token must be the first token".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02932"],
+                ..Default::default()
+            }))
+        }*/
+
+        if self.tokens.iter().filter(|token| token.token_type == IndirectCommandsTokenType::StateFlags).count() > 1 {
+            return Err(Box::new(ValidationError {
+                problem: "tokens must include at most one token of type StateFlags".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02933"],
+                ..Default::default()
+            }))
+        }
+
+        if self.tokens.iter().take(self.tokens.len() - 1).filter(|token| {
+            token.token_type == IndirectCommandsTokenType::Draw
+                || token.token_type == IndirectCommandsTokenType::DrawIndexed
+            || token.token_type == IndirectCommandsTokenType::DrawTasks
+            /* TODO: || token.token_type == IndirectCommandsTokenType::DrawMeshTasks
+            || token.token_type == IndirectCommandsTokenType::Dispatch*/
+        }).count() > 0 {
+            return Err(Box::new(ValidationError {
+                problem: "action tokens may only be the last token".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02934"],
+                ..Default::default()
+            }))
+        }
+
+        self.tokens.last().map(|token| {
+            match token.token_type {
+                IndirectCommandsTokenType::DrawIndexed | IndirectCommandsTokenType::Draw |
+                IndirectCommandsTokenType::DrawTasks => if self.pipeline_bind_point == PipelineBindPoint::Graphics {
+                    Ok(())
+                } else { Err(Box::new(ValidationError {
+                    problem: "draw command tokens require the pipeline bind point Graphics".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
+                    ..Default::default()
+                })) },
+                // TODO: compute
+                _ => Err(Box::new(ValidationError {
+                    problem: "the last token must be an action command".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
+                    ..Default::default()
+                }))
+            }
+        }).unwrap()?; // Guaranteed to be Some
+
+        // TODO: Physical Device properties stream count
+
+        // TODO: Physical Device properties stream strides
+
+        // TODO: Compute
+
+        Ok(())
+    }
+
     pub(crate) fn to_vk<'a>(
         &'a self,
         fields1_vk: &'a IndirectCommandsLayoutCreateInfoFields1Vk<'_>,
@@ -258,8 +366,15 @@ pub struct IndirectCommandsLayoutToken {
 }
 
 impl IndirectCommandsLayoutToken {
-    pub(crate) fn validate(&self) -> Result<(), Box<ValidationError>> {
-        todo!()
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        self.token_type.validate_device(device)
+            .map_err(|err| {
+                err.add_context("token_type")
+            })?;
+
+        // TODO
+
+        Ok(())
     }
     pub(crate) fn to_vk<'a>(
         &self,
