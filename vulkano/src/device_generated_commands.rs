@@ -1,9 +1,9 @@
-﻿use crate::buffer::IndexType;
+﻿use crate::buffer::{IndexType, Subbuffer};
 use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
 use crate::memory::MemoryRequirements;
 use crate::pipeline::compute::ComputePipelineCreateInfo;
-use crate::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout};
+use crate::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::shader::ShaderStages;
 use crate::{NonNullDeviceAddress, VulkanError};
 use crate::{Validated, ValidationError, VulkanObject};
@@ -487,5 +487,98 @@ impl ComputePipeline {
 
         // TODO: use checks
         NonNullDeviceAddress::new(device_address_vk).unwrap()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GeneratedCommandsInfo {
+    pub pipeline: GeneratedCommandsPipeline,
+    pub indirect_commands_layout: Arc<IndirectCommandsLayout>,
+    pub streams: Vec<IndirectCommandsStream>,
+    pub sequence_count: u32,
+    pub preprocess_buffer: Subbuffer<[u8]>,
+    pub sequence_count_buffer: Option<Subbuffer<u32>>,
+    pub sequence_index_buffer: Option<Subbuffer<u32>>,
+    pub(crate) _ne: crate::NonExhaustive,
+}
+
+impl GeneratedCommandsInfo {
+    pub(crate) fn validate(&self) -> Result<(), Box<ValidationError>> {
+        todo!()
+    }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a GeneratedCommandsInfoFieldsVk1,
+    ) -> vk::GeneratedCommandsInfoNV<'a> {
+        let result = vk::GeneratedCommandsInfoNV::default()
+            .pipeline_bind_point(self.pipeline.bind_point().map(|bind_point| bind_point.into()).unwrap_or(vk::PipelineBindPoint::default()))
+            .pipeline(self.pipeline.handle())
+            .indirect_commands_layout(self.indirect_commands_layout.handle())
+            .streams(fields1_vk.streams.as_slice())
+            .sequences_count(self.sequence_count)
+            .preprocess_buffer(self.preprocess_buffer.buffer().handle())
+            .preprocess_offset(self.preprocess_buffer.offset())
+            .preprocess_size(self.preprocess_buffer.size());
+        let result = match self.sequence_count_buffer.as_ref() {
+            None => result,
+            Some(buffer) => result
+                .sequences_count_buffer(buffer.buffer().handle())
+                .sequences_count_offset(buffer.offset()),
+        };
+        let result = match self.sequence_index_buffer.as_ref() {
+            None => result,
+            Some(buffer) => result
+                .sequences_index_buffer(buffer.buffer().handle())
+                .sequences_index_offset(buffer.offset()),
+        };
+        result
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> GeneratedCommandsInfoFieldsVk1 {
+        let streams = self.streams.iter().map(|stream| stream.to_vk()).collect();
+        GeneratedCommandsInfoFieldsVk1 { streams }
+    }
+}
+
+pub(crate) struct GeneratedCommandsInfoFieldsVk1 {
+    streams: Vec<vk::IndirectCommandsStreamNV>,
+}
+
+#[derive(Clone, Debug)]
+pub enum GeneratedCommandsPipeline {
+    Dynamic(),
+    Graphics(Arc<GraphicsPipeline>),
+    Compute(Arc<ComputePipeline>),
+}
+
+impl GeneratedCommandsPipeline {
+    pub fn bind_point(&self) -> Option<PipelineBindPoint> {
+        match self {
+            GeneratedCommandsPipeline::Dynamic() => None,
+            GeneratedCommandsPipeline::Graphics(pipeline) => Some(pipeline.bind_point()),
+            GeneratedCommandsPipeline::Compute(pipeline) => Some(pipeline.bind_point()),
+        }
+    }
+
+    pub fn handle(&self) -> vk::Pipeline {
+        match self {
+            GeneratedCommandsPipeline::Dynamic() => vk::Pipeline::null(),
+            GeneratedCommandsPipeline::Graphics(pipeline) => pipeline.handle(),
+            GeneratedCommandsPipeline::Compute(pipeline) => pipeline.handle()
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IndirectCommandsStream {
+    buffer: Subbuffer<[u8]>,
+}
+
+impl IndirectCommandsStream {
+    pub(crate) fn to_vk(&self) -> vk::IndirectCommandsStreamNV {
+        vk::IndirectCommandsStreamNV::default()
+            .buffer(self.buffer.buffer().handle())
+            .offset(self.buffer.offset())
     }
 }
