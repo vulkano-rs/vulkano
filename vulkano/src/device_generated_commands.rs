@@ -572,7 +572,7 @@ impl GeneratedCommandsPipeline {
 
 #[derive(Clone, Debug)]
 pub struct IndirectCommandsStream {
-    buffer: Subbuffer<[u8]>,
+    pub buffer: Subbuffer<[u8]>,
 }
 
 impl IndirectCommandsStream {

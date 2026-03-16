@@ -31,6 +31,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use std::{mem::size_of, sync::Arc};
+use crate::device_generated_commands::GeneratedCommandsInfo;
 
 macro_rules! vuids {
     ($vuid_type:ident, $($id:literal),+ $(,)?) => {
@@ -1647,6 +1648,30 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self
     }
+
+    pub unsafe fn execute_generated_commands(&mut self, is_preprocessed: bool, generated_commands_info: GeneratedCommandsInfo)
+    -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: Validate, validate inner
+
+        Ok(unsafe {self.execute_generated_commands_unchecked(is_preprocessed, generated_commands_info)})
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn execute_generated_commands_unchecked(&mut self, is_preprocessed: bool, generated_commands_info: GeneratedCommandsInfo)
+    -> &mut Self {
+        let mut used_resources = Vec::new();
+        for stream in generated_commands_info.streams.iter() {
+            self.add_indirect_buffer_resources(&mut used_resources, &stream.buffer)
+        }
+        // TODO: Resources
+
+        self.add_command("execute_generated_commands", used_resources, move |out| {
+            unsafe {out.execute_generated_commands_unchecked(is_preprocessed, &generated_commands_info)};
+        });
+
+        self
+    }
+
 
     fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
         &self,
@@ -5168,6 +5193,32 @@ impl RecordingCommandBuffer {
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],
+            )
+        };
+
+        self
+    }
+
+    pub unsafe fn execute_generated_commands(&mut self, is_preprocessed: bool, generated_commands_info: &GeneratedCommandsInfo)
+                                             -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: Validate
+
+        Ok(unsafe {self.execute_generated_commands_unchecked(is_preprocessed, generated_commands_info)})
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn execute_generated_commands_unchecked(&mut self, is_preprocessed: bool, generated_commands_info: &GeneratedCommandsInfo)
+                                                       -> &mut Self {
+        let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
+        let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
+
+        let fns = self.device().fns();
+
+        unsafe {
+            (fns.nv_device_generated_commands.cmd_execute_generated_commands_nv)(
+                self.handle(),
+                is_preprocessed.into(),
+                &commands_info_vk
             )
         };
 
