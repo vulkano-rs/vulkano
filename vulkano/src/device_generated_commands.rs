@@ -1,4 +1,4 @@
-﻿use crate::buffer::{IndexType, Subbuffer};
+﻿use crate::buffer::{BufferUsage, IndexType, Subbuffer};
 use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
 use crate::memory::MemoryRequirements;
@@ -134,8 +134,9 @@ impl IndirectCommandsLayout {
         MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
     }
 
+    // TODO: Move this function somewhere else
     pub fn pipeline_indirect_memory_requirements(
-        &self,
+        device: &Device,
         pipeline_create_info: &ComputePipelineCreateInfo,
     ) -> MemoryRequirements {
         // TODO: Validate extensions
@@ -147,12 +148,12 @@ impl IndirectCommandsLayout {
             pipeline_create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let memory_requirements_vk2 = {
-            let fns = self.device.fns();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             unsafe {
                 (fns.nv_device_generated_commands_compute
                     .get_pipeline_indirect_memory_requirements_nv)(
-                    self.device.handle(),
+                    device.handle(),
                     &create_info_vk,
                     output.as_mut_ptr(),
                 )
@@ -161,7 +162,7 @@ impl IndirectCommandsLayout {
         };
 
         let memory_requirements_extension_vk2 =
-            MemoryRequirements::to_mut_vk2_extensions(self.device());
+            MemoryRequirements::to_mut_vk2_extensions(device);
 
         MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
     }
@@ -825,5 +826,61 @@ impl IndirectCommandsStream {
         vk::IndirectCommandsStreamNV::default()
             .buffer(self.buffer.buffer().handle())
             .offset(self.buffer.offset())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ComputePipelineIndirectBufferInfo {
+    pub subbuffer: Subbuffer<[u8]>,
+    // TODO: capture replay
+    pub _ne: crate::NonExhaustive,
+}
+
+impl ComputePipelineIndirectBufferInfo {
+    pub(crate) fn validate(&self, device: &Device, pipeline_create_info: &ComputePipelineCreateInfo) -> Result<(), Box<ValidationError>> {
+        if !device.enabled_features().device_generated_compute_pipelines {
+            return Err(Box::new(ValidationError {
+                problem: "compute pipeline indirect buffer info".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature("device_generated_compute_pipelines")])]),
+                vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-deviceGeneratedComputePipelines-09009"],
+                ..Default::default()
+            }));
+        }
+
+        let memory_requirements = IndirectCommandsLayout::pipeline_indirect_memory_requirements(device, pipeline_create_info);
+
+        if !self.subbuffer.offset().is_multiple_of(memory_requirements.layout.alignment().as_devicesize()) {
+            return Err(Box::new(ValidationError {
+                problem: "offset of the subbuffer is not aligned correctly".into(),
+                vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-deviceAddress-09011"],
+                ..Default::default()
+            }));
+        }
+
+        if self.subbuffer.size() < memory_requirements.layout.size() {
+            return Err(Box::new(ValidationError {
+                problem: "size of the subbuffer is smaller than the required minimum size".into(),
+                vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-size-09013"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.subbuffer.buffer().usage().contains(BufferUsage::TRANSFER_DST | BufferUsage::INDIRECT_BUFFER) {
+            return Err(Box::new(ValidationError {
+                problem: "pipeline indirect buffer must have usage set for TRANSFER_DST and INDIRECT_BUFFER".into(),
+                vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-deviceAddress-09012"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO: capture replay
+
+        Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::ComputePipelineIndirectBufferInfoNV<'_> {
+        vk::ComputePipelineIndirectBufferInfoNV::default()
+            .device_address(self.subbuffer.device_address().unwrap().get())
+            .size(self.subbuffer.size())
     }
 }

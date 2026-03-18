@@ -27,6 +27,8 @@ use crate::{
 };
 use foldhash::HashMap;
 use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use ash::vk;
+use crate::device_generated_commands::ComputePipelineIndirectBufferInfo;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -127,6 +129,7 @@ impl ComputePipeline {
             stage,
             layout,
             base_pipeline: _,
+            indirect_buffer_info: _,
             _ne: _,
         } = create_info;
 
@@ -247,6 +250,8 @@ pub struct ComputePipelineCreateInfo {
     /// The default value is `None`.
     pub base_pipeline: Option<Arc<ComputePipeline>>,
 
+    pub indirect_buffer_info: Option<ComputePipelineIndirectBufferInfo>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -259,6 +264,7 @@ impl ComputePipelineCreateInfo {
             stage,
             layout,
             base_pipeline: None,
+            indirect_buffer_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -269,6 +275,7 @@ impl ComputePipelineCreateInfo {
             ref stage,
             ref layout,
             ref base_pipeline,
+            ref indirect_buffer_info,
             _ne: _,
         } = self;
 
@@ -308,6 +315,24 @@ impl ComputePipelineCreateInfo {
                 problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
                     `base_pipeline` is `Some`"
                     .into(),
+                ..Default::default()
+            }));
+        }
+
+        if let Some(indirect_buffer_info) = indirect_buffer_info {
+            if !flags.intersects(PipelineCreateFlags::INDIRECT_BINDABLE) {
+                return Err(Box::new(ValidationError {
+                    problem: "'flags' does not contain PipelineCreateFlags::INDIRECT_BINDABLE, but 'indirect_buffer_info' is Some".into(),
+                    vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-flags-09010"],
+                    ..Default::default()
+                }))
+            }
+            indirect_buffer_info.validate(device, self)?;
+
+        } else if flags.intersects(PipelineCreateFlags::INDIRECT_BINDABLE) {
+            return Err(Box::new(ValidationError {
+                problem: "indirect_buffer_info is None but flags contains INDIRECT_BINDABLE".into(),
+                vuids: &["VUID-VkComputePipelineCreateInfo-flags-09008"],
                 ..Default::default()
             }));
         }
@@ -369,16 +394,18 @@ impl ComputePipelineCreateInfo {
             ref stage,
             ref layout,
             ref base_pipeline,
+            indirect_buffer_info: _,
             _ne: _,
         } = self;
         let ComputePipelineCreateInfoFields1Vk { stage_fields1_vk } = fields1_vk;
         let ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
+            indirect_buffer_info_extension_vk
         } = extensions_vk;
 
         let stage_vk = stage.to_vk(stage_fields1_vk, stage_extensions_vk);
 
-        ash::vk::ComputePipelineCreateInfo::default()
+        let as_vk = ash::vk::ComputePipelineCreateInfo::default()
             .flags(flags.into())
             .stage(stage_vk)
             .layout(layout.handle())
@@ -387,14 +414,23 @@ impl ComputePipelineCreateInfo {
                     .as_ref()
                     .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
             )
-            .base_pipeline_index(-1)
+            .base_pipeline_index(-1);
+
+        if let Some(indirect_buffer_info) = indirect_buffer_info_extension_vk {
+            as_vk.push_next(indirect_buffer_info)
+        }
+        else {
+            as_vk
+        }
     }
 
-    pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk {
+    pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk<'_> {
         let stage_extensions_vk = self.stage.to_vk_extensions();
+        let indirect_buffer_info_extension_vk = self.indirect_buffer_info.as_ref().map(ComputePipelineIndirectBufferInfo::to_vk);
 
         ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
+            indirect_buffer_info_extension_vk
         }
     }
 
@@ -416,8 +452,9 @@ impl ComputePipelineCreateInfo {
     }
 }
 
-pub(crate) struct ComputePipelineCreateInfoExtensionsVk {
+pub(crate) struct ComputePipelineCreateInfoExtensionsVk<'a> {
     pub(crate) stage_extensions_vk: PipelineShaderStageCreateInfoExtensionsVk,
+    pub(crate) indirect_buffer_info_extension_vk: Option<vk::ComputePipelineIndirectBufferInfoNV<'a>>,
 }
 
 pub(crate) struct ComputePipelineCreateInfoFields1Vk<'a> {
