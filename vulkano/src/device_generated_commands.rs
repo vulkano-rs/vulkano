@@ -3,7 +3,9 @@ use crate::device::{Device, DeviceOwned};
 use crate::macros::{vulkan_bitflags, vulkan_enum};
 use crate::memory::MemoryRequirements;
 use crate::pipeline::compute::ComputePipelineCreateInfo;
-use crate::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout};
+use crate::pipeline::{
+    ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+};
 use crate::shader::ShaderStages;
 use crate::{NonNullDeviceAddress, VulkanError};
 use crate::{Validated, ValidationError, VulkanObject};
@@ -36,7 +38,7 @@ impl IndirectCommandsLayout {
         device: &Device,
         create_info: &IndirectCommandsLayoutCreateInfo,
     ) -> Result<(), Box<ValidationError>> {
-        if !device.enabled_extensions().nv_device_generated_commands {
+        if !device.enabled_features().device_generated_commands {
             return Err(Box::new(ValidationError {
                 problem: "using device generated commands".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
@@ -211,122 +213,227 @@ impl IndirectCommandsLayoutCreateInfo {
             .validate_device(device)
             .map_err(|err| err.add_context("flags"))?;
 
-        self.pipeline_bind_point.validate_device(device)
-            .map_err(|err| {
-                err.add_context("pipeline_bind_point")
-            })?;
+        self.pipeline_bind_point
+            .validate_device(device)
+            .map_err(|err| err.add_context("pipeline_bind_point"))?;
 
-        if self.pipeline_bind_point != PipelineBindPoint::Compute || self.pipeline_bind_point != PipelineBindPoint::Graphics {
+        if self.pipeline_bind_point != PipelineBindPoint::Compute
+            || self.pipeline_bind_point != PipelineBindPoint::Graphics
+        {
             return Err(Box::new(ValidationError {
                 problem: "pipeline_bind_point must be either Compute or Graphics".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-02930"],
                 ..Default::default()
-            }))
+            }));
         }
 
         {
             let token_count = self.tokens.len() as u32;
 
-            if token_count == 0 || token_count > device.physical_device().properties().max_indirect_commands_token_count.unwrap_or(0) {
+            if token_count == 0
+                || token_count
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_indirect_commands_token_count
+                        .unwrap_or(0)
+            {
                 return Err(Box::new(ValidationError {
                     problem: "token count is outside of bounds".into(),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-tokenCount-02931"],
                     ..Default::default()
                 }));
             }
-
         }
 
-        self.tokens.iter().map(|token| token.validate(device)).fold(Ok(()), Result::or)?;
+        self.tokens
+            .iter()
+            .map(|token| token.validate(device, self.stream_strides.len() as u32))
+            .fold(Ok(()), Result::or)?;
 
-        if self.tokens.iter().skip(1).any(|token| {
-            token.token_type == IndirectCommandsTokenType::ShaderGroup
-        }) {
+        if self
+            .tokens
+            .iter()
+            .skip(1)
+            .any(|token| token.token_type == IndirectCommandsTokenType::ShaderGroup)
+        {
             return Err(Box::new(ValidationError {
                 problem: "ShaderGroup token must be the first token".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02932"],
                 ..Default::default()
-            }))
+            }));
         }
 
-        // TODO:
-        /*if self.tokens.iter().skip(1).any(|token| {
-            token.token_type == IndirectCommandsTokenType::Pipeline
-        }) {
+        if self
+            .tokens
+            .iter()
+            .skip(1)
+            .any(|token| token.token_type == IndirectCommandsTokenType::Pipeline)
+        {
             return Err(Box::new(ValidationError {
-                problem: "ShaderGroup token must be the first token".into(),
-                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02932"],
+                problem: "Pipeline token must be the first token".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-09585"],
                 ..Default::default()
-            }))
-        }*/
+            }));
+        }
 
-        if self.tokens.iter().filter(|token| token.token_type == IndirectCommandsTokenType::StateFlags).count() > 1 {
+        if self
+            .tokens
+            .iter()
+            .filter(|token| token.token_type == IndirectCommandsTokenType::StateFlags)
+            .count()
+            > 1
+        {
             return Err(Box::new(ValidationError {
                 problem: "tokens must include at most one token of type StateFlags".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02933"],
                 ..Default::default()
-            }))
+            }));
         }
 
-        if self.tokens.iter().take(self.tokens.len() - 1).filter(|token| {
-            token.token_type == IndirectCommandsTokenType::Draw
-                || token.token_type == IndirectCommandsTokenType::DrawIndexed
-            || token.token_type == IndirectCommandsTokenType::DrawTasks
-            /* TODO: || token.token_type == IndirectCommandsTokenType::DrawMeshTasks
-            || token.token_type == IndirectCommandsTokenType::Dispatch*/
-        }).count() > 0 {
+        if self
+            .tokens
+            .iter()
+            .take(self.tokens.len() - 1)
+            .filter(|token| {
+                token.token_type == IndirectCommandsTokenType::Draw
+                    || token.token_type == IndirectCommandsTokenType::DrawIndexed
+                    || token.token_type == IndirectCommandsTokenType::DrawTasks
+                    || token.token_type == IndirectCommandsTokenType::DrawMeshTasks
+                    || token.token_type == IndirectCommandsTokenType::Dispatch
+            })
+            .count()
+            > 0
+        {
             return Err(Box::new(ValidationError {
                 problem: "action tokens may only be the last token".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02934"],
                 ..Default::default()
-            }))
+            }));
         }
 
-        self.tokens.last().map(|token| {
-            match token.token_type {
-                IndirectCommandsTokenType::DrawIndexed | IndirectCommandsTokenType::Draw |
-                IndirectCommandsTokenType::DrawTasks => if self.pipeline_bind_point == PipelineBindPoint::Graphics {
-                    Ok(())
-                } else { Err(Box::new(ValidationError {
-                    problem: "draw command tokens require the pipeline bind point Graphics".into(),
-                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
-                    ..Default::default()
-                })) },
-                // TODO: compute
+        self.tokens
+            .last()
+            .map(|token| match token.token_type {
+                IndirectCommandsTokenType::DrawIndexed
+                | IndirectCommandsTokenType::Draw
+                | IndirectCommandsTokenType::DrawTasks
+                | IndirectCommandsTokenType::DrawMeshTasks => {
+                    if self.pipeline_bind_point == PipelineBindPoint::Graphics {
+                        Ok(())
+                    } else {
+                        Err(Box::new(ValidationError {
+                            problem: "draw command tokens require the pipeline bind point Graphics"
+                                .into(),
+                            vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
+                            ..Default::default()
+                        }))
+                    }
+                }
+                IndirectCommandsTokenType::Dispatch => {
+                    if self.pipeline_bind_point == PipelineBindPoint::Compute {
+                        Ok(())
+                    } else {
+                        Err(Box::new(ValidationError {
+                            problem:
+                                "dispatch command tokens require the pipeline bind point Compute"
+                                    .into(),
+                            vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
+                            ..Default::default()
+                        }))
+                    }
+                }
                 _ => Err(Box::new(ValidationError {
                     problem: "the last token must be an action command".into(),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935"],
                     ..Default::default()
-                }))
-            }
-        }).unwrap()?; // Guaranteed to be Some
+                })),
+            })
+            .unwrap()?; // Guaranteed to be Some
 
         {
             let stream_count = self.stream_strides.len() as u32;
 
-            if stream_count == 0 || stream_count > device.physical_device().properties().max_indirect_commands_stream_count.unwrap_or(0) {
+            if stream_count == 0
+                || stream_count
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_indirect_commands_stream_count
+                        .unwrap_or(0)
+            {
                 return Err(Box::new(ValidationError {
                     problem: "stream count is outside of bounds".into(),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-streamCount-02936"],
                     ..Default::default()
-                }))
+                }));
             }
 
-            if self.stream_strides.iter().copied().any(|stream_stride| stream_stride == 0 || stream_stride > device.physical_device().properties().max_indirect_commands_stream_stride.unwrap_or(0)) {
+            if self.stream_strides.iter().copied().any(|stream_stride| {
+                stream_stride == 0
+                    || stream_stride
+                        > device
+                            .physical_device()
+                            .properties()
+                            .max_indirect_commands_stream_stride
+                            .unwrap_or(0)
+            }) {
                 return Err(Box::new(ValidationError {
                     problem: "a stream stride value is outside of bounds".into(),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pStreamStrides-02937"],
                     ..Default::default()
-                }))
+                }));
             }
 
             // TODO: Validate alignment
         }
-        // TODO: Physical Device properties stream count
 
-        // TODO: Physical Device properties stream strides
+        if self.pipeline_bind_point == PipelineBindPoint::Compute {
+            if !device.enabled_features().device_generated_compute {
+                return Err(Box::new(ValidationError {
+                    problem: "pipeline bind point compute".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "device_generated_compute",
+                    )])]),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09088"],
+                    ..Default::default()
+                }));
+            }
 
-        // TODO: Compute
+            if self
+                .tokens
+                .iter()
+                .filter(|token| match token.token_type {
+                    IndirectCommandsTokenType::PushConstant
+                    | IndirectCommandsTokenType::Pipeline
+                    | IndirectCommandsTokenType::Dispatch => false,
+                    _ => true,
+                })
+                .count()
+                > 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "pipeline bind point compute can only have pipeline and push constant state tokens".into(),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09089"],
+                    ..Default::default()
+
+                }));
+            }
+
+            // Pipeline token can only be the first one and we have at least one token
+            if self.tokens[0].token_type == IndirectCommandsTokenType::Pipeline
+                && !device.enabled_features().device_generated_compute_pipelines
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "token type Pipeline".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "device_generated_compute_pipelines",
+                    )])]),
+                    vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09090"],
+                    ..Default::default()
+                }));
+            }
+        }
 
         Ok(())
     }
@@ -398,13 +505,53 @@ pub struct IndirectCommandsLayoutToken {
 }
 
 impl IndirectCommandsLayoutToken {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        self.token_type.validate_device(device)
-            .map_err(|err| {
-                err.add_context("token_type")
-            })?;
+    pub(crate) fn validate(&self, device: &Device, stream_count: u32) -> Result<(), Box<ValidationError>> {
+        self.token_type
+            .validate_device(device)
+            .map_err(|err| err.add_context("token_type"))?;
 
-        // TODO
+        if self.stream >= stream_count {
+            return Err(Box::new(ValidationError {
+                problem: "stream index is outside of bounds".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-stream-02951"],
+                ..Default::default()
+            }));
+        }
+
+        if self.offset > device.physical_device().properties().max_indirect_commands_token_offset.unwrap() {
+            return Err(Box::new(ValidationError {
+                problem: "token offset is too big".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-offset-02952"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO: Alignment of offset VUID-VkIndirectCommandsLayoutTokenNV-offset-06888
+
+        if self.token_type == IndirectCommandsTokenType::VertexBuffer {
+            // TODO: vertex binding unit VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02976
+        }
+
+        if (self.token_type == IndirectCommandsTokenType::PushConstant) != self.pushconstant_data.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "push constant data should be set if and only if token type is PushConstant".into(),
+                ..Default::default()
+            }));
+        }
+
+        if let Some(pushconstant_data) = &self.pushconstant_data {
+            pushconstant_data.validate(device)?;
+        }
+
+        if self.token_type == IndirectCommandsTokenType::StateFlags && self.indirect_state_flags == IndirectStateFlags::empty() {
+            return Err(Box::new(ValidationError {
+                problem: "token type is StateFlags but indirect state flags is empty".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02984"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO: push data VUID-VkIndirectCommandsLayoutTokenNV-tokenType-11334
 
         Ok(())
     }
@@ -472,6 +619,9 @@ vulkan_enum! {
     ///
     PushConstant = PUSH_CONSTANT,
 
+    // TODO: enable
+    //PushData = PUSH_DATA,
+
     ///
     DrawIndexed = DRAW_INDEXED,
 
@@ -480,6 +630,21 @@ vulkan_enum! {
 
     ///
     DrawTasks = DRAW_TASKS,
+
+    Pipeline = PIPELINE
+    RequiresOneOf([
+        RequiresAllOf([
+            DeviceFeature(device_generated_compute_pipelines),
+            DeviceExtension(nv_device_generated_commands_compute),
+        ]),
+    ]),
+
+    Dispatch = DISPATCH
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_device_generated_commands_compute)]),
+    ]),
+
+    DrawMeshTasks = DRAW_MESH_TASKS,
 }
 
 #[derive(Clone, Debug)]
@@ -488,6 +653,49 @@ pub struct IndirectCommandsLayoutTokenPushConstant {
     pub shader_stage_flags: ShaderStages,
     pub offset: u32,
     pub size: u32,
+}
+
+impl IndirectCommandsLayoutTokenPushConstant {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        self.shader_stage_flags.validate_device(device)
+            .map_err(|err| err.add_context("shader_stage_flags"))?;
+
+        if !self.offset.is_multiple_of(4) {
+            return Err(Box::new(ValidationError {
+                problem: "offset is not a multiple of 4".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02978"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.size.is_multiple_of(4) {
+            return Err(Box::new(ValidationError {
+                problem: "size is not a multiple of 4".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02979"],
+                ..Default::default()
+            }));
+        }
+
+        if self.offset >= device.physical_device().properties().max_push_constants_size {
+            return Err(Box::new(ValidationError {
+                problem: "offset is too large for physical device limit".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02980"],
+                ..Default::default()
+            }));
+        }
+
+        if self.size > device.physical_device().properties().max_push_constants_size - self.offset {
+            return Err(Box::new(ValidationError {
+                problem: "size is too large for physical device limit".into(),
+                vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02981"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO: Validate push constant ranges in pipeline_layout
+
+        Ok(())
+    }
 }
 
 vulkan_bitflags! {
@@ -544,7 +752,12 @@ impl GeneratedCommandsInfo {
         fields1_vk: &'a GeneratedCommandsInfoFieldsVk1,
     ) -> vk::GeneratedCommandsInfoNV<'a> {
         let result = vk::GeneratedCommandsInfoNV::default()
-            .pipeline_bind_point(self.pipeline.bind_point().map(|bind_point| bind_point.into()).unwrap_or(vk::PipelineBindPoint::default()))
+            .pipeline_bind_point(
+                self.pipeline
+                    .bind_point()
+                    .map(|bind_point| bind_point.into())
+                    .unwrap_or(vk::PipelineBindPoint::default()),
+            )
             .pipeline(self.pipeline.handle())
             .indirect_commands_layout(self.indirect_commands_layout.handle())
             .streams(fields1_vk.streams.as_slice())
@@ -597,7 +810,7 @@ impl GeneratedCommandsPipeline {
         match self {
             GeneratedCommandsPipeline::Dynamic() => vk::Pipeline::null(),
             GeneratedCommandsPipeline::Graphics(pipeline) => pipeline.handle(),
-            GeneratedCommandsPipeline::Compute(pipeline) => pipeline.handle()
+            GeneratedCommandsPipeline::Compute(pipeline) => pipeline.handle(),
         }
     }
 }
