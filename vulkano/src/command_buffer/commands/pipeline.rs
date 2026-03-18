@@ -1649,6 +1649,27 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
+    pub unsafe fn preprocess_generated_commands(&mut self, generated_commands_info: GeneratedCommandsInfo)
+    -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: Validate, validate inner
+
+        Ok(unsafe {self.preprocess_generated_commands_unchecked(generated_commands_info)})
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn preprocess_generated_commands_unchecked(&mut self, generated_commands_info: GeneratedCommandsInfo)
+    -> &mut Self {
+        let mut used_resources = Vec::new();
+        self.add_indirect_buffer_resources(&mut used_resources, &generated_commands_info.preprocess_buffer);
+        // TODO: more resource tracking?
+
+        self.add_command("preprocess_generated_commands", used_resources, move |out| {
+            unsafe {out.preprocess_generated_commands_unchecked(&generated_commands_info)};
+        });
+
+        self
+    }
+
     pub unsafe fn execute_generated_commands(&mut self, is_preprocessed: bool, generated_commands_info: GeneratedCommandsInfo)
     -> Result<&mut Self, Box<ValidationError>> {
         // TODO: Validate, validate inner
@@ -1663,7 +1684,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         for stream in generated_commands_info.streams.iter() {
             self.add_indirect_buffer_resources(&mut used_resources, &stream.buffer)
         }
-        // TODO: Resources
+        self.add_indirect_buffer_resources(&mut used_resources, &generated_commands_info.preprocess_buffer);
+        // TODO: Resources?
 
         self.add_command("execute_generated_commands", used_resources, move |out| {
             unsafe {out.execute_generated_commands_unchecked(is_preprocessed, &generated_commands_info)};
@@ -5193,6 +5215,31 @@ impl RecordingCommandBuffer {
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],
+            )
+        };
+
+        self
+    }
+
+
+    pub unsafe fn preprocess_generated_commands(&mut self, generated_commands_info: &GeneratedCommandsInfo)
+    -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: Validate
+
+        Ok(unsafe {self.preprocess_generated_commands_unchecked(generated_commands_info)})
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn preprocess_generated_commands_unchecked(&mut self, generated_commands_info: &GeneratedCommandsInfo) -> &mut Self {
+        let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
+        let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
+
+        let fns = self.device().fns();
+
+        unsafe {
+            (fns.nv_device_generated_commands.cmd_preprocess_generated_commands_nv)(
+                self.handle(),
+                &commands_info_vk
             )
         };
 
