@@ -1660,8 +1660,22 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub unsafe fn preprocess_generated_commands_unchecked(&mut self, generated_commands_info: GeneratedCommandsInfo)
     -> &mut Self {
         let mut used_resources = Vec::new();
-        self.add_indirect_buffer_resources(&mut used_resources, &generated_commands_info.preprocess_buffer);
-        // TODO: more resource tracking?
+        used_resources.push((
+            ResourceInCommand::Destination.into(),
+            Resource::Buffer {
+                buffer: generated_commands_info.preprocess_buffer.clone(),
+                range: 0..generated_commands_info.preprocess_buffer.size(),
+                memory_access: PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessWrite,
+            }));
+        for stream in generated_commands_info.streams.iter() {
+            used_resources.push((
+                ResourceInCommand::IndirectBuffer.into(),
+                Resource::Buffer {
+                    buffer: stream.buffer.clone(),
+                    range: 0..stream.buffer.size(),
+                    memory_access: PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessRead
+                }));
+        }
 
         self.add_command("preprocess_generated_commands", used_resources, move |out| {
             unsafe {out.preprocess_generated_commands_unchecked(&generated_commands_info)};
