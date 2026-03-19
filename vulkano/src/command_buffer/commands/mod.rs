@@ -9,3 +9,4 @@ pub(super) mod query;
 pub(super) mod render_pass;
 pub(super) mod secondary;
 pub(super) mod sync;
+pub(super) mod device_generated_commands;

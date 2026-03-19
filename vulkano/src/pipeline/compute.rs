@@ -28,6 +28,7 @@ use crate::{
 use foldhash::HashMap;
 use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 use ash::vk;
+use crate::buffer::Subbuffer;
 use crate::device_generated_commands::ComputePipelineIndirectBufferInfo;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
@@ -49,6 +50,8 @@ pub struct ComputePipeline {
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
+    
+    indirect_pipeline_buffer: Option<Subbuffer<[u8]>>
 }
 
 impl ComputePipeline {
@@ -146,6 +149,10 @@ impl ComputePipeline {
             .max()
             .map(|x| x + 1)
             .unwrap_or(0);
+        
+        let indirect_pipeline_buffer = create_info
+            .indirect_buffer_info
+            .map(|buffer_info| buffer_info.subbuffer.clone());
 
         Arc::new(ComputePipeline {
             handle,
@@ -157,6 +164,7 @@ impl ComputePipeline {
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
+            indirect_pipeline_buffer,
         })
     }
 
@@ -170,6 +178,11 @@ impl ComputePipeline {
     #[inline]
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
+    }
+    
+    #[inline]
+    pub fn indirect_pipeline_buffer(&self) -> Option<&Subbuffer<[u8]>> {
+        self.indirect_pipeline_buffer.as_ref()
     }
 }
 

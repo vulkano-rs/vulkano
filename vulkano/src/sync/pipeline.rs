@@ -1373,6 +1373,7 @@ pipeline_stage_access! {
     FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead, FRAGMENT_SHADING_RATE_ATTACHMENT, FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
     CommandPreprocess_CommandPreprocessRead, COMMAND_PREPROCESS, COMMAND_PREPROCESS_READ;
     CommandPreprocess_CommandPreprocessWrite, COMMAND_PREPROCESS, COMMAND_PREPROCESS_WRITE;
+    UpdatePipelineIndirectBuffer_UpdatePipelineIndirectBufferWrite, COPY, MEMORY_WRITE;
     TaskShader_UniformRead, TASK_SHADER, UNIFORM_READ;
     TaskShader_ShaderSampledRead, TASK_SHADER, SHADER_SAMPLED_READ;
     TaskShader_ShaderStorageRead, TASK_SHADER, SHADER_STORAGE_READ;
