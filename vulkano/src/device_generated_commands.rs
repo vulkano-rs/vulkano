@@ -105,11 +105,11 @@ impl IndirectCommandsLayout {
 
     pub fn memory_requirements(
         &self,
-        pipeline: &Arc<impl Pipeline + VulkanObject<Handle = vk::Pipeline>>,
+        pipeline: &GeneratedCommandsPipeline,
         max_sequence_count: u32,
     ) -> MemoryRequirements {
         let memory_requirements_info_vk = vk::GeneratedCommandsMemoryRequirementsInfoNV::default()
-            .pipeline_bind_point(pipeline.bind_point().into())
+            .pipeline_bind_point(pipeline.bind_point().unwrap_or(PipelineBindPoint::Compute).into())
             .pipeline(pipeline.handle())
             .indirect_commands_layout(self.handle)
             .max_sequences_count(max_sequence_count);
