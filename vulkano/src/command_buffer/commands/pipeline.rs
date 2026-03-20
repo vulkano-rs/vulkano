@@ -1676,6 +1676,24 @@ impl<L> AutoCommandBufferBuilder<L> {
                     memory_access: PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessRead
                 }));
         }
+        if let Some(sequence_count_buffer) = generated_commands_info.sequence_count_buffer.as_ref() {
+            used_resources.push((
+                ResourceInCommand::IndirectBuffer.into(),
+                Resource::Buffer {
+                    buffer: sequence_count_buffer.clone().reinterpret(),
+                    range: 0..sequence_count_buffer.size(),
+                    memory_access: PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessRead
+                }));
+        }
+        if let Some(sequence_index_buffer) = generated_commands_info.sequence_index_buffer.as_ref() {
+            used_resources.push((
+                ResourceInCommand::IndirectBuffer.into(),
+                Resource::Buffer {
+                    buffer: sequence_index_buffer.clone().reinterpret(),
+                    range: 0..sequence_index_buffer.size(),
+                    memory_access: PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessRead
+                }));
+        }
 
         self.add_command("preprocess_generated_commands", used_resources, move |out| {
             unsafe {out.preprocess_generated_commands_unchecked(&generated_commands_info)};
@@ -1699,7 +1717,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             self.add_indirect_buffer_resources(&mut used_resources, &stream.buffer)
         }
         self.add_indirect_buffer_resources(&mut used_resources, &generated_commands_info.preprocess_buffer);
-        // TODO: Resources?
+        if let Some(sequence_count_buffer) = generated_commands_info.sequence_count_buffer.as_ref() {
+            self.add_indirect_buffer_resources(&mut used_resources, sequence_count_buffer.reinterpret_ref());
+        }
+        if let Some(sequence_index_buffer) = generated_commands_info.sequence_index_buffer.as_ref() {
+            self.add_indirect_buffer_resources(&mut used_resources, sequence_index_buffer.reinterpret_ref());
+        }
 
         self.add_command("execute_generated_commands", used_resources, move |out| {
             unsafe {out.execute_generated_commands_unchecked(is_preprocessed, &generated_commands_info)};

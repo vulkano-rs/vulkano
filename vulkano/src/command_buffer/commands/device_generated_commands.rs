@@ -2,7 +2,7 @@ use crate::command_buffer::auto::Resource;
 use crate::command_buffer::{AutoCommandBufferBuilder, RecordingCommandBuffer, ResourceInCommand};
 use crate::device::DeviceOwned;
 use crate::pipeline::{ComputePipeline, Pipeline};
-use crate::sync::{AccessFlags, PipelineStageAccess, PipelineStageAccessFlags};
+use crate::sync::PipelineStageAccessFlags;
 use crate::{ValidationError, VulkanObject};
 use std::sync::Arc;
 
