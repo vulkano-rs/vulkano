@@ -906,6 +906,13 @@ pub struct ComputePipelineIndirectBufferInfo {
 }
 
 impl ComputePipelineIndirectBufferInfo {
+    pub fn buffer(buffer: Subbuffer<[u8]>) -> Self {
+        Self {
+            subbuffer: buffer,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self, device: &Device, pipeline_create_info: &ComputePipelineCreateInfo) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().device_generated_compute_pipelines {
             return Err(Box::new(ValidationError {
