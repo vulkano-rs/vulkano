@@ -116,16 +116,16 @@ impl IndirectCommandsLayout {
 
         let memory_requirements_vk2 = {
             let fns = self.device.fns();
-            let mut output = MaybeUninit::uninit();
+            let mut output = vk::MemoryRequirements2::default();
             unsafe {
                 (fns.nv_device_generated_commands
                     .get_generated_commands_memory_requirements_nv)(
                     self.device.handle(),
                     &memory_requirements_info_vk,
-                    output.as_mut_ptr(),
+                    &mut output,
                 )
             };
-            unsafe { output.assume_init() }
+            output
         };
 
         let memory_requirements_extension_vk2 =
@@ -149,16 +149,16 @@ impl IndirectCommandsLayout {
 
         let memory_requirements_vk2 = {
             let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
+            let mut output = vk::MemoryRequirements2::default();
             unsafe {
                 (fns.nv_device_generated_commands_compute
                     .get_pipeline_indirect_memory_requirements_nv)(
                     device.handle(),
                     &create_info_vk,
-                    output.as_mut_ptr(),
+                    &mut output,
                 )
             };
-            unsafe { output.assume_init() }
+            output
         };
 
         let memory_requirements_extension_vk2 =
