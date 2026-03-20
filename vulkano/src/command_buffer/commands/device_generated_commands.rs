@@ -7,7 +7,7 @@ use crate::{ValidationError, VulkanObject};
 use std::sync::Arc;
 
 impl<L> AutoCommandBufferBuilder<L> {
-    pub unsafe fn update_pipeline_indirect_buffer(
+    pub fn update_pipeline_indirect_buffer(
         &mut self,
         pipeline: Arc<ComputePipeline>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -58,7 +58,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn update_pipeline_indirect_buffer(
+    pub fn update_pipeline_indirect_buffer(
         &mut self,
         pipeline: &Arc<ComputePipeline>,
     ) -> Result<&mut Self, Box<ValidationError>> {
