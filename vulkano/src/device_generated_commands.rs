@@ -219,7 +219,7 @@ impl IndirectCommandsLayoutCreateInfo {
             .map_err(|err| err.add_context("pipeline_bind_point"))?;
 
         if self.pipeline_bind_point != PipelineBindPoint::Compute
-            || self.pipeline_bind_point != PipelineBindPoint::Graphics
+            && self.pipeline_bind_point != PipelineBindPoint::Graphics
         {
             return Err(Box::new(ValidationError {
                 problem: "pipeline_bind_point must be either Compute or Graphics".into(),
