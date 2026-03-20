@@ -769,7 +769,7 @@ pub struct GeneratedCommandsInfo {
     pub preprocess_buffer: Subbuffer<[u8]>,
     pub sequence_count_buffer: Option<Subbuffer<u32>>,
     pub sequence_index_buffer: Option<Subbuffer<u32>>,
-    pub(crate) _ne: crate::NonExhaustive,
+    pub _ne: crate::NonExhaustive,
 }
 
 impl GeneratedCommandsInfo {
