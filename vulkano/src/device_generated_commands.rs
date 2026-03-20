@@ -473,6 +473,18 @@ impl IndirectCommandsLayoutCreateInfo {
     }
 }
 
+impl Default for IndirectCommandsLayoutCreateInfo {
+    fn default() -> IndirectCommandsLayoutCreateInfo {
+        IndirectCommandsLayoutCreateInfo {
+            flags: Default::default(),
+            pipeline_bind_point: PipelineBindPoint::Graphics,
+            tokens: vec![],
+            stream_strides: vec![],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 pub(crate) struct IndirectCommandsLayoutCreateInfoFields1Vk<'a> {
     pub(crate) tokens: Vec<vk::IndirectCommandsLayoutTokenNV<'a>>,
 }
@@ -503,6 +515,7 @@ pub struct IndirectCommandsLayoutToken {
     pub pushconstant_data: Option<IndirectCommandsLayoutTokenPushConstant>,
     pub indirect_state_flags: IndirectStateFlags,
     pub index_types: BTreeMap<u32, IndexType>,
+    pub _ne: crate::NonExhaustive,
 }
 
 impl IndirectCommandsLayoutToken {
@@ -591,6 +604,22 @@ impl IndirectCommandsLayoutToken {
         IndirectCommandsLayoutTokenFieldVk1 {
             index_types,
             index_type_values,
+        }
+    }
+}
+
+impl Default for IndirectCommandsLayoutToken {
+    fn default() -> IndirectCommandsLayoutToken {
+        IndirectCommandsLayoutToken {
+            token_type: IndirectCommandsTokenType::ShaderGroup,
+            stream: 0,
+            offset: 0,
+            vertex_binding_unit: 0,
+            vertex_dynamic_stride: false,
+            pushconstant_data: None,
+            indirect_state_flags: Default::default(),
+            index_types: Default::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -744,6 +773,46 @@ pub struct GeneratedCommandsInfo {
 }
 
 impl GeneratedCommandsInfo {
+
+    pub fn graphics_pipeline(pipeline: Arc<GraphicsPipeline>, indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+        Self {
+            pipeline: GeneratedCommandsPipeline::Graphics(pipeline),
+            indirect_commands_layout,
+            streams: vec![],
+            sequence_count: 0,
+            preprocess_buffer,
+            sequence_count_buffer: None,
+            sequence_index_buffer: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub fn compute_pipeline(pipeline: Arc<ComputePipeline>, indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+        Self {
+            pipeline: GeneratedCommandsPipeline::Compute(pipeline),
+            indirect_commands_layout,
+            streams: vec![],
+            sequence_count: 0,
+            preprocess_buffer,
+            sequence_count_buffer: None,
+            sequence_index_buffer: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub fn dynamic_pipeline(indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+        Self {
+            pipeline: GeneratedCommandsPipeline::Dynamic(),
+            indirect_commands_layout,
+            streams: vec![],
+            sequence_count: 0,
+            preprocess_buffer,
+            sequence_count_buffer: None,
+            sequence_index_buffer: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), Box<ValidationError>> {
         todo!()
     }
