@@ -109,7 +109,7 @@ impl IndirectCommandsLayout {
         max_sequence_count: u32,
     ) -> MemoryRequirements {
         let memory_requirements_info_vk = vk::GeneratedCommandsMemoryRequirementsInfoNV::default()
-            .pipeline_bind_point(pipeline.bind_point().unwrap_or(PipelineBindPoint::Compute).into())
+            .pipeline_bind_point(pipeline.bind_point().into())
             .pipeline(pipeline.handle())
             .indirect_commands_layout(self.handle)
             .max_sequences_count(max_sequence_count);
@@ -823,10 +823,7 @@ impl GeneratedCommandsInfo {
     ) -> vk::GeneratedCommandsInfoNV<'a> {
         let result = vk::GeneratedCommandsInfoNV::default()
             .pipeline_bind_point(
-                self.pipeline
-                    .bind_point()
-                    .map(|bind_point| bind_point.into())
-                    .unwrap_or(vk::PipelineBindPoint::default()),
+                self.pipeline.bind_point().into(),
             )
             .pipeline(self.pipeline.handle())
             .indirect_commands_layout(self.indirect_commands_layout.handle())
@@ -868,11 +865,11 @@ pub enum GeneratedCommandsPipeline {
 }
 
 impl GeneratedCommandsPipeline {
-    pub fn bind_point(&self) -> Option<PipelineBindPoint> {
+    pub fn bind_point(&self) -> PipelineBindPoint {
         match self {
-            GeneratedCommandsPipeline::Dynamic() => None,
-            GeneratedCommandsPipeline::Graphics(pipeline) => Some(pipeline.bind_point()),
-            GeneratedCommandsPipeline::Compute(pipeline) => Some(pipeline.bind_point()),
+            GeneratedCommandsPipeline::Dynamic() => PipelineBindPoint::Compute,
+            GeneratedCommandsPipeline::Graphics(pipeline) => pipeline.bind_point(),
+            GeneratedCommandsPipeline::Compute(pipeline) => pipeline.bind_point(),
         }
     }
 
