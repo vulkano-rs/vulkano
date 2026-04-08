@@ -422,12 +422,11 @@ vulkan_bitflags! {
     /// Command buffers allocated from this pool can be reset individually.
     RESET_COMMAND_BUFFER = RESET_COMMAND_BUFFER,
 
-    /* TODO: enable
-    // TODO: document
+    /// Specifies that command buffers allocated from the pool are protected command buffers.
     PROTECTED = PROTECTED
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)])
-    ]), */
+    ]),
 }
 
 vulkan_bitflags! {
@@ -529,10 +528,10 @@ impl_id_counter!(CommandPoolAlloc);
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandPool, CommandPoolCreateInfo};
+    use super::{CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo};
     use crate::{
         command_buffer::{pool::CommandBufferAllocateInfo, CommandBufferLevel},
-        Validated,
+        Validated, Version,
     };
 
     #[test]
@@ -546,6 +545,29 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn create_with_flags() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let desired_flags = {
+            let mut flags = CommandPoolCreateFlags::TRANSIENT;
+
+            if device.api_version() >= Version::V1_1 {
+                flags |= CommandPoolCreateFlags::PROTECTED;
+            }
+            flags
+        };
+        let pool = CommandPool::new(
+            &device,
+            &CommandPoolCreateInfo {
+                flags: desired_flags,
+                queue_family_index: queue.queue_family_index(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(desired_flags, pool.flags());
     }
 
     #[test]

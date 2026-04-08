@@ -3132,7 +3132,7 @@ mod tests {
             ImageAspect, ImageAspects, ImageCreateFlags, ImageSubresourceRange, ImageType,
             SampleCount, SubresourceRangeIterator,
         },
-        DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
+        DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     };
     use smallvec::SmallVec;
 
@@ -3168,6 +3168,27 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn create_protected() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        if device.api_version() >= Version::V1_1 {
+            let image = RawImage::new(
+                &device,
+                &ImageCreateInfo {
+                    flags: ImageCreateFlags::PROTECTED,
+                    image_type: ImageType::Dim2d,
+                    format: Format::R8G8B8A8_UNORM,
+                    extent: [32, 32, 1],
+                    usage: ImageUsage::SAMPLED,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(image.flags(), ImageCreateFlags::PROTECTED);
+        }
     }
 
     #[test]
