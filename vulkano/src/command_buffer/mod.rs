@@ -1108,9 +1108,14 @@ impl SubmitInfo<'_> {
 
         let SubmitInfoExtensionsVk {
             timeline_semaphore_vk,
+            protected_vk,
         } = extensions_vk;
 
         if let Some(next) = timeline_semaphore_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = protected_vk {
             val_vk = val_vk.push_next(next);
         }
 
@@ -1123,7 +1128,7 @@ impl SubmitInfo<'_> {
     ) -> SubmitInfoExtensionsVk<'a> {
         let &Self {
             wait_semaphores,
-            command_buffers: _,
+            command_buffers,
             signal_semaphores,
             _ne: _,
         } = self;
@@ -1147,8 +1152,15 @@ impl SubmitInfo<'_> {
                     .signal_semaphore_values(signal_semaphore_values_vk)
             });
 
+        let protected_vk = (command_buffers.iter())
+            .any(|command_buffer_submit_info| {
+                command_buffer_submit_info.command_buffer.is_protected()
+            })
+            .then(|| vk::ProtectedSubmitInfo::default().protected_submit(true));
+
         SubmitInfoExtensionsVk {
             timeline_semaphore_vk,
+            protected_vk,
         }
     }
 
@@ -1216,6 +1228,7 @@ pub(crate) struct SubmitInfo2Fields1Vk {
 
 pub(crate) struct SubmitInfoExtensionsVk<'a> {
     pub(crate) timeline_semaphore_vk: Option<vk::TimelineSemaphoreSubmitInfo<'a>>,
+    pub(crate) protected_vk: Option<vk::ProtectedSubmitInfo<'a>>,
 }
 
 pub(crate) struct SubmitInfoFields1Vk {
