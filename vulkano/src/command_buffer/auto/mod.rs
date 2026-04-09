@@ -136,6 +136,11 @@ unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
         self.inner.usage()
     }
 
+    #[inline]
+    fn is_protected(&self) -> bool {
+        self.inner.is_protected()
+    }
+
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
@@ -324,9 +329,10 @@ impl Debug for CommandInfo {
 #[cfg(test)]
 mod tests {
     use crate::{
-        buffer::{Buffer, BufferCreateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateFlags, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
+            pool::CommandPoolCreateFlags,
             AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
             PrimaryCommandBufferAbstract,
         },
@@ -338,9 +344,15 @@ mod tests {
             },
             DescriptorImageInfo, DescriptorSet, WriteDescriptorSet,
         },
-        device::{Device, DeviceCreateInfo, QueueCreateInfo},
+        device::{
+            physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceFeatures,
+            QueueCreateFlags, QueueCreateInfo,
+        },
         image::sampler::{Sampler, SamplerCreateInfo},
-        memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+        memory::{
+            allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+            MemoryPropertyFlags,
+        },
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
         shader::ShaderStages,
         sync::GpuFuture,
@@ -577,6 +589,107 @@ mod tests {
         let result = source.read().unwrap();
 
         assert_eq!(*result, [0_u32, 1, 0, 1]);
+    }
+
+    #[test]
+    fn build_protected() {
+        let instance = instance!();
+
+        let protected_memory_feature = DeviceFeatures {
+            protected_memory: true,
+            ..DeviceFeatures::empty()
+        };
+        let select = match instance.enumerate_physical_devices() {
+            Ok(x) => x,
+            Err(_) => return,
+        }
+        .filter(|p| p.supported_features().contains(&protected_memory_feature))
+        .filter_map(|p| {
+            p.queue_family_properties()
+                .iter()
+                .position(|q| {
+                    q.queue_flags
+                        .intersects(crate::device::QueueFlags::GRAPHICS)
+                })
+                .map(|i| (p, i as u32))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        });
+
+        let (physical_device, queue_family_index) = match select {
+            Some(x) => x,
+            None => return, // skips the test if no device supported protected_memory
+        };
+
+        let (device, mut queues) = Device::new(
+            &physical_device,
+            &DeviceCreateInfo {
+                enabled_features: &DeviceFeatures {
+                    protected_memory: true,
+                    ..DeviceFeatures::empty()
+                },
+                queue_create_infos: &[QueueCreateInfo {
+                    flags: QueueCreateFlags::PROTECTED,
+                    queue_family_index,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let queue = queues.next().unwrap();
+
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
+        let my_buffer = Buffer::new_slice::<u32>(
+            &memory_allocator,
+            &BufferCreateInfo {
+                flags: BufferCreateFlags::PROTECTED,
+                usage: BufferUsage::TRANSFER_DST | BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            &AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter {
+                    required_flags: MemoryPropertyFlags::PROTECTED,
+                    preferred_flags: MemoryPropertyFlags::empty(),
+                    not_preferred_flags: MemoryPropertyFlags::empty(),
+                },
+                ..Default::default()
+            },
+            1024,
+        )
+        .expect("Failed to create protected buffer");
+
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
+                command_pool_create_flags: CommandPoolCreateFlags::PROTECTED,
+                ..Default::default()
+            },
+        ));
+        let mut builder = AutoCommandBufferBuilder::primary(
+            cb_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        builder.fill_buffer(my_buffer.clone(), 0u32).unwrap();
+
+        let cb = builder.build().unwrap();
+        assert!(cb.is_protected());
+
+        let future = cb
+            .execute(queue)
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap();
+        future.wait(None).unwrap();
     }
 
     #[test]

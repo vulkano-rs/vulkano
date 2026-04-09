@@ -38,6 +38,9 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     /// Returns the usage of this command buffer.
     fn usage(&self) -> CommandBufferUsage;
 
+    /// Returns true if this command buffer was created in a protected pool.
+    fn is_protected(&self) -> bool;
+
     /// Executes this command buffer on a queue.
     ///
     /// This function returns an object that implements the [`GpuFuture`] trait. See the
@@ -150,6 +153,10 @@ where
 
     fn usage(&self) -> CommandBufferUsage {
         (**self).usage()
+    }
+
+    fn is_protected(&self) -> bool {
+        (**self).is_protected()
     }
 
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {

@@ -1,5 +1,6 @@
 use super::{
     allocator::{CommandBufferAlloc, CommandBufferAllocator},
+    pool::CommandPoolCreateFlags,
     CommandBufferInheritanceInfo, CommandBufferInheritanceInfoExtensionsVk,
     CommandBufferInheritanceInfoFields1Vk, CommandBufferLevel, CommandBufferUsage,
 };
@@ -382,6 +383,16 @@ impl CommandBuffer {
     #[inline]
     pub fn usage(&self) -> CommandBufferUsage {
         self.inner.usage
+    }
+
+    /// Returns true if the command buffer was created from a protected pool.
+    #[inline]
+    pub(crate) fn is_protected(&self) -> bool {
+        self.inner
+            .allocation
+            .pool
+            .flags()
+            .contains(CommandPoolCreateFlags::PROTECTED)
     }
 
     /// Returns the inheritance info of the command buffer, if it is a secondary command buffer.
