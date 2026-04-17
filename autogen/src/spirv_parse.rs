@@ -138,7 +138,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
          }| {
             if operands.is_empty() {
                 quote! {
-                    #opcode => Self::#name,
+                    #opcode => Ok(Self::#name),
                 }
             } else {
                 let operands_items =
@@ -149,9 +149,9 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                     });
 
                 quote! {
-                    #opcode => Self::#name {
+                    #opcode => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                         #(#operands_items)*
-                    },
+                    }))(reader),
                 }
             }
         },
@@ -471,10 +471,10 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
             fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
                 let opcode = (reader.next_word()? & 0xffff) as u16;
 
-                Ok(match opcode {
+                match opcode {
                     #(#parse_items)*
-                    opcode => return Err(reader.map_err(ParseErrors::#opcode_error(opcode))),
-                })
+                    opcode => Err(reader.map_err(ParseErrors::#opcode_error(opcode))),
+                }
             }
 
             #result_fns
@@ -812,7 +812,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
              }| {
                 if parameters.is_empty() {
                     quote! {
-                        #value => Self::#name,
+                        #value => Ok(Self::#name),
                     }
                 } else {
                     let params_items =
@@ -823,9 +823,9 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                         });
 
                     quote! {
-                        #value => Self::#name {
+                        #value => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                             #(#params_items)*
-                        },
+                        }))(reader),
                     }
                 }
             },
@@ -848,10 +848,10 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
             impl #name {
                 #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
-                    Ok(match reader.next_word()? {
+                    match reader.next_word()? {
                         #(#parse_items)*
-                        value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
-                    })
+                        value => Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
+                    }
                 }
             }
 

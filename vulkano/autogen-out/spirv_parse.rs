@@ -3286,6363 +3286,6356 @@ impl Instruction {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
         let opcode = (reader.next_word()? & 0xffff) as u16;
-        Ok(
-            match opcode {
-                0u16 => Self::Nop,
-                1u16 => {
-                    Self::Undef {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                2u16 => {
-                    Self::SourceContinued {
-                        continued_source: reader.next_string()?,
-                    }
-                }
-                3u16 => {
-                    Self::Source {
-                        source_language: SourceLanguage::parse(reader)?,
-                        version: reader.next_word()?,
-                        file: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                        source: if !reader.is_empty() {
-                            Some(reader.next_string()?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4u16 => {
-                    Self::SourceExtension {
-                        extension: reader.next_string()?,
-                    }
-                }
-                5u16 => {
-                    Self::Name {
-                        target: Id(reader.next_word()?),
-                        name: reader.next_string()?,
-                    }
-                }
-                6u16 => {
-                    Self::MemberName {
-                        ty: Id(reader.next_word()?),
-                        member: reader.next_word()?,
-                        name: reader.next_string()?,
-                    }
-                }
-                7u16 => {
-                    Self::String {
-                        result_id: Id(reader.next_word()?),
-                        string: reader.next_string()?,
-                    }
-                }
-                8u16 => {
-                    Self::Line {
-                        file: Id(reader.next_word()?),
-                        line: reader.next_word()?,
-                        column: reader.next_word()?,
-                    }
-                }
-                10u16 => {
-                    Self::Extension {
-                        name: reader.next_string()?,
-                    }
-                }
-                11u16 => {
-                    Self::ExtInstImport {
-                        result_id: Id(reader.next_word()?),
-                        name: reader.next_string()?,
-                    }
-                }
-                12u16 => {
-                    Self::ExtInst {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        set: Id(reader.next_word()?),
-                        instruction: reader.next_word()?,
-                        operands: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                14u16 => {
-                    Self::MemoryModel {
-                        addressing_model: AddressingModel::parse(reader)?,
-                        memory_model: MemoryModel::parse(reader)?,
-                    }
-                }
-                15u16 => {
-                    Self::EntryPoint {
-                        execution_model: ExecutionModel::parse(reader)?,
-                        entry_point: Id(reader.next_word()?),
-                        name: reader.next_string()?,
-                        interface: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                16u16 => {
-                    Self::ExecutionMode {
-                        entry_point: Id(reader.next_word()?),
-                        mode: ExecutionMode::parse(reader)?,
-                    }
-                }
-                17u16 => {
-                    Self::Capability {
-                        capability: Capability::parse(reader)?,
-                    }
-                }
-                19u16 => {
-                    Self::TypeVoid {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                20u16 => {
-                    Self::TypeBool {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                21u16 => {
-                    Self::TypeInt {
-                        result_id: Id(reader.next_word()?),
-                        width: reader.next_word()?,
-                        signedness: reader.next_word()?,
-                    }
-                }
-                22u16 => {
-                    Self::TypeFloat {
-                        result_id: Id(reader.next_word()?),
-                        width: reader.next_word()?,
-                    }
-                }
-                23u16 => {
-                    Self::TypeVector {
-                        result_id: Id(reader.next_word()?),
-                        component_type: Id(reader.next_word()?),
-                        component_count: reader.next_word()?,
-                    }
-                }
-                24u16 => {
-                    Self::TypeMatrix {
-                        result_id: Id(reader.next_word()?),
-                        column_type: Id(reader.next_word()?),
-                        column_count: reader.next_word()?,
-                    }
-                }
-                25u16 => {
-                    Self::TypeImage {
-                        result_id: Id(reader.next_word()?),
-                        sampled_type: Id(reader.next_word()?),
-                        dim: Dim::parse(reader)?,
-                        depth: reader.next_word()?,
-                        arrayed: reader.next_word()?,
-                        ms: reader.next_word()?,
-                        sampled: reader.next_word()?,
-                        image_format: ImageFormat::parse(reader)?,
-                        access_qualifier: if !reader.is_empty() {
-                            Some(AccessQualifier::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                26u16 => {
-                    Self::TypeSampler {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                27u16 => {
-                    Self::TypeSampledImage {
-                        result_id: Id(reader.next_word()?),
-                        image_type: Id(reader.next_word()?),
-                    }
-                }
-                28u16 => {
-                    Self::TypeArray {
-                        result_id: Id(reader.next_word()?),
-                        element_type: Id(reader.next_word()?),
-                        length: Id(reader.next_word()?),
-                    }
-                }
-                29u16 => {
-                    Self::TypeRuntimeArray {
-                        result_id: Id(reader.next_word()?),
-                        element_type: Id(reader.next_word()?),
-                    }
-                }
-                30u16 => {
-                    Self::TypeStruct {
-                        result_id: Id(reader.next_word()?),
-                        member_types: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                31u16 => {
-                    Self::TypeOpaque {
-                        result_id: Id(reader.next_word()?),
-                        name: reader.next_string()?,
-                    }
-                }
-                32u16 => {
-                    Self::TypePointer {
-                        result_id: Id(reader.next_word()?),
-                        storage_class: StorageClass::parse(reader)?,
-                        ty: Id(reader.next_word()?),
-                    }
-                }
-                33u16 => {
-                    Self::TypeFunction {
-                        result_id: Id(reader.next_word()?),
-                        return_type: Id(reader.next_word()?),
-                        parameter_types: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                34u16 => {
-                    Self::TypeEvent {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                35u16 => {
-                    Self::TypeDeviceEvent {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                36u16 => {
-                    Self::TypeReserveId {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                37u16 => {
-                    Self::TypeQueue {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                38u16 => {
-                    Self::TypePipe {
-                        result_id: Id(reader.next_word()?),
-                        qualifier: AccessQualifier::parse(reader)?,
-                    }
-                }
-                39u16 => {
-                    Self::TypeForwardPointer {
-                        pointer_type: Id(reader.next_word()?),
-                        storage_class: StorageClass::parse(reader)?,
-                    }
-                }
-                41u16 => {
-                    Self::ConstantTrue {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                42u16 => {
-                    Self::ConstantFalse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                43u16 => {
-                    Self::Constant {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: reader.remainder(),
-                    }
-                }
-                44u16 => {
-                    Self::ConstantComposite {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                45u16 => {
-                    Self::ConstantSampler {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampler_addressing_mode: SamplerAddressingMode::parse(reader)?,
-                        param: reader.next_word()?,
-                        sampler_filter_mode: SamplerFilterMode::parse(reader)?,
-                    }
-                }
-                46u16 => {
-                    Self::ConstantNull {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                48u16 => {
-                    Self::SpecConstantTrue {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                49u16 => {
-                    Self::SpecConstantFalse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                50u16 => {
-                    Self::SpecConstant {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: reader.remainder(),
-                    }
-                }
-                51u16 => {
-                    Self::SpecConstantComposite {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                52u16 => {
-                    Self::SpecConstantOp {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        opcode: SpecConstantInstruction::parse(reader)?,
-                    }
-                }
-                54u16 => {
-                    Self::Function {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        function_control: FunctionControl::parse(reader)?,
-                        function_type: Id(reader.next_word()?),
-                    }
-                }
-                55u16 => {
-                    Self::FunctionParameter {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                56u16 => Self::FunctionEnd,
-                57u16 => {
-                    Self::FunctionCall {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        function: Id(reader.next_word()?),
-                        arguments: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                59u16 => {
-                    Self::Variable {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        storage_class: StorageClass::parse(reader)?,
-                        initializer: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                60u16 => {
-                    Self::ImageTexelPointer {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        sample: Id(reader.next_word()?),
-                    }
-                }
-                61u16 => {
-                    Self::Load {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory_access: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                62u16 => {
-                    Self::Store {
-                        pointer: Id(reader.next_word()?),
-                        object: Id(reader.next_word()?),
-                        memory_access: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                63u16 => {
-                    Self::CopyMemory {
-                        target: Id(reader.next_word()?),
-                        source: Id(reader.next_word()?),
-                        memory_access1: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                        memory_access2: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                64u16 => {
-                    Self::CopyMemorySized {
-                        target: Id(reader.next_word()?),
-                        source: Id(reader.next_word()?),
-                        size: Id(reader.next_word()?),
-                        memory_access1: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                        memory_access2: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                65u16 => {
-                    Self::AccessChain {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                66u16 => {
-                    Self::InBoundsAccessChain {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                67u16 => {
-                    Self::PtrAccessChain {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        element: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                68u16 => {
-                    Self::ArrayLength {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        structure: Id(reader.next_word()?),
-                        array_member: reader.next_word()?,
-                    }
-                }
-                69u16 => {
-                    Self::GenericPtrMemSemantics {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                70u16 => {
-                    Self::InBoundsPtrAccessChain {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        element: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                71u16 => {
-                    Self::Decorate {
-                        target: Id(reader.next_word()?),
-                        decoration: Decoration::parse(reader)?,
-                    }
-                }
-                72u16 => {
-                    Self::MemberDecorate {
-                        structure_type: Id(reader.next_word()?),
-                        member: reader.next_word()?,
-                        decoration: Decoration::parse(reader)?,
-                    }
-                }
-                73u16 => {
-                    Self::DecorationGroup {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                74u16 => {
-                    Self::GroupDecorate {
-                        decoration_group: Id(reader.next_word()?),
-                        targets: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                75u16 => {
-                    Self::GroupMemberDecorate {
-                        decoration_group: Id(reader.next_word()?),
-                        targets: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push((Id(reader.next_word()?), reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                77u16 => {
-                    Self::VectorExtractDynamic {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                    }
-                }
-                78u16 => {
-                    Self::VectorInsertDynamic {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                        component: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                    }
-                }
-                79u16 => {
-                    Self::VectorShuffle {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        components: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                80u16 => {
-                    Self::CompositeConstruct {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                81u16 => {
-                    Self::CompositeExtract {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        composite: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                82u16 => {
-                    Self::CompositeInsert {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        object: Id(reader.next_word()?),
-                        composite: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                83u16 => {
-                    Self::CopyObject {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                84u16 => {
-                    Self::Transpose {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        matrix: Id(reader.next_word()?),
-                    }
-                }
-                86u16 => {
-                    Self::SampledImage {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        sampler: Id(reader.next_word()?),
-                    }
-                }
-                87u16 => {
-                    Self::ImageSampleImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                88u16 => {
-                    Self::ImageSampleExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                89u16 => {
-                    Self::ImageSampleDrefImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                90u16 => {
-                    Self::ImageSampleDrefExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                91u16 => {
-                    Self::ImageSampleProjImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                92u16 => {
-                    Self::ImageSampleProjExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                93u16 => {
-                    Self::ImageSampleProjDrefImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                94u16 => {
-                    Self::ImageSampleProjDrefExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                95u16 => {
-                    Self::ImageFetch {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                96u16 => {
-                    Self::ImageGather {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        component: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                97u16 => {
-                    Self::ImageDrefGather {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                98u16 => {
-                    Self::ImageRead {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                99u16 => {
-                    Self::ImageWrite {
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        texel: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                100u16 => {
-                    Self::Image {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                    }
-                }
-                101u16 => {
-                    Self::ImageQueryFormat {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                    }
-                }
-                102u16 => {
-                    Self::ImageQueryOrder {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                    }
-                }
-                103u16 => {
-                    Self::ImageQuerySizeLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        level_of_detail: Id(reader.next_word()?),
-                    }
-                }
-                104u16 => {
-                    Self::ImageQuerySize {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                    }
-                }
-                105u16 => {
-                    Self::ImageQueryLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                    }
-                }
-                106u16 => {
-                    Self::ImageQueryLevels {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                    }
-                }
-                107u16 => {
-                    Self::ImageQuerySamples {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                    }
-                }
-                109u16 => {
-                    Self::ConvertFToU {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        float_value: Id(reader.next_word()?),
-                    }
-                }
-                110u16 => {
-                    Self::ConvertFToS {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        float_value: Id(reader.next_word()?),
-                    }
-                }
-                111u16 => {
-                    Self::ConvertSToF {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        signed_value: Id(reader.next_word()?),
-                    }
-                }
-                112u16 => {
-                    Self::ConvertUToF {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        unsigned_value: Id(reader.next_word()?),
-                    }
-                }
-                113u16 => {
-                    Self::UConvert {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        unsigned_value: Id(reader.next_word()?),
-                    }
-                }
-                114u16 => {
-                    Self::SConvert {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        signed_value: Id(reader.next_word()?),
-                    }
-                }
-                115u16 => {
-                    Self::FConvert {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        float_value: Id(reader.next_word()?),
-                    }
-                }
-                116u16 => {
-                    Self::QuantizeToF16 {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                117u16 => {
-                    Self::ConvertPtrToU {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                118u16 => {
-                    Self::SatConvertSToU {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        signed_value: Id(reader.next_word()?),
-                    }
-                }
-                119u16 => {
-                    Self::SatConvertUToS {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        unsigned_value: Id(reader.next_word()?),
-                    }
-                }
-                120u16 => {
-                    Self::ConvertUToPtr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        integer_value: Id(reader.next_word()?),
-                    }
-                }
-                121u16 => {
-                    Self::PtrCastToGeneric {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                122u16 => {
-                    Self::GenericCastToPtr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                123u16 => {
-                    Self::GenericCastToPtrExplicit {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        storage: StorageClass::parse(reader)?,
-                    }
-                }
-                124u16 => {
-                    Self::Bitcast {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                126u16 => {
-                    Self::SNegate {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                127u16 => {
-                    Self::FNegate {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                128u16 => {
-                    Self::IAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                129u16 => {
-                    Self::FAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                130u16 => {
-                    Self::ISub {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                131u16 => {
-                    Self::FSub {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                132u16 => {
-                    Self::IMul {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                133u16 => {
-                    Self::FMul {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                134u16 => {
-                    Self::UDiv {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                135u16 => {
-                    Self::SDiv {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                136u16 => {
-                    Self::FDiv {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                137u16 => {
-                    Self::UMod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                138u16 => {
-                    Self::SRem {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                139u16 => {
-                    Self::SMod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                140u16 => {
-                    Self::FRem {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                141u16 => {
-                    Self::FMod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                142u16 => {
-                    Self::VectorTimesScalar {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                        scalar: Id(reader.next_word()?),
-                    }
-                }
-                143u16 => {
-                    Self::MatrixTimesScalar {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        matrix: Id(reader.next_word()?),
-                        scalar: Id(reader.next_word()?),
-                    }
-                }
-                144u16 => {
-                    Self::VectorTimesMatrix {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                        matrix: Id(reader.next_word()?),
-                    }
-                }
-                145u16 => {
-                    Self::MatrixTimesVector {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        matrix: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                    }
-                }
-                146u16 => {
-                    Self::MatrixTimesMatrix {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        left_matrix: Id(reader.next_word()?),
-                        right_matrix: Id(reader.next_word()?),
-                    }
-                }
-                147u16 => {
-                    Self::OuterProduct {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                    }
-                }
-                148u16 => {
-                    Self::Dot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                    }
-                }
-                149u16 => {
-                    Self::IAddCarry {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                150u16 => {
-                    Self::ISubBorrow {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                151u16 => {
-                    Self::UMulExtended {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                152u16 => {
-                    Self::SMulExtended {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                154u16 => {
-                    Self::Any {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                    }
-                }
-                155u16 => {
-                    Self::All {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector: Id(reader.next_word()?),
-                    }
-                }
-                156u16 => {
-                    Self::IsNan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                157u16 => {
-                    Self::IsInf {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                158u16 => {
-                    Self::IsFinite {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                159u16 => {
-                    Self::IsNormal {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                160u16 => {
-                    Self::SignBitSet {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                161u16 => {
-                    Self::LessOrGreater {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                        y: Id(reader.next_word()?),
-                    }
-                }
-                162u16 => {
-                    Self::Ordered {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                        y: Id(reader.next_word()?),
-                    }
-                }
-                163u16 => {
-                    Self::Unordered {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        x: Id(reader.next_word()?),
-                        y: Id(reader.next_word()?),
-                    }
-                }
-                164u16 => {
-                    Self::LogicalEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                165u16 => {
-                    Self::LogicalNotEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                166u16 => {
-                    Self::LogicalOr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                167u16 => {
-                    Self::LogicalAnd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                168u16 => {
-                    Self::LogicalNot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                169u16 => {
-                    Self::Select {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        condition: Id(reader.next_word()?),
-                        object_1: Id(reader.next_word()?),
-                        object_2: Id(reader.next_word()?),
-                    }
-                }
-                170u16 => {
-                    Self::IEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                171u16 => {
-                    Self::INotEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                172u16 => {
-                    Self::UGreaterThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                173u16 => {
-                    Self::SGreaterThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                174u16 => {
-                    Self::UGreaterThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                175u16 => {
-                    Self::SGreaterThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                176u16 => {
-                    Self::ULessThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                177u16 => {
-                    Self::SLessThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                178u16 => {
-                    Self::ULessThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                179u16 => {
-                    Self::SLessThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                180u16 => {
-                    Self::FOrdEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                181u16 => {
-                    Self::FUnordEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                182u16 => {
-                    Self::FOrdNotEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                183u16 => {
-                    Self::FUnordNotEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                184u16 => {
-                    Self::FOrdLessThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                185u16 => {
-                    Self::FUnordLessThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                186u16 => {
-                    Self::FOrdGreaterThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                187u16 => {
-                    Self::FUnordGreaterThan {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                188u16 => {
-                    Self::FOrdLessThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                189u16 => {
-                    Self::FUnordLessThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                190u16 => {
-                    Self::FOrdGreaterThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                191u16 => {
-                    Self::FUnordGreaterThanEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                194u16 => {
-                    Self::ShiftRightLogical {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                195u16 => {
-                    Self::ShiftRightArithmetic {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                196u16 => {
-                    Self::ShiftLeftLogical {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                197u16 => {
-                    Self::BitwiseOr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                198u16 => {
-                    Self::BitwiseXor {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                199u16 => {
-                    Self::BitwiseAnd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                200u16 => {
-                    Self::Not {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                201u16 => {
-                    Self::BitFieldInsert {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        insert: Id(reader.next_word()?),
-                        offset: Id(reader.next_word()?),
-                        count: Id(reader.next_word()?),
-                    }
-                }
-                202u16 => {
-                    Self::BitFieldSExtract {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        offset: Id(reader.next_word()?),
-                        count: Id(reader.next_word()?),
-                    }
-                }
-                203u16 => {
-                    Self::BitFieldUExtract {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        offset: Id(reader.next_word()?),
-                        count: Id(reader.next_word()?),
-                    }
-                }
-                204u16 => {
-                    Self::BitReverse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                    }
-                }
-                205u16 => {
-                    Self::BitCount {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                    }
-                }
-                207u16 => {
-                    Self::DPdx {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                208u16 => {
-                    Self::DPdy {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                209u16 => {
-                    Self::Fwidth {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                210u16 => {
-                    Self::DPdxFine {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                211u16 => {
-                    Self::DPdyFine {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                212u16 => {
-                    Self::FwidthFine {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                213u16 => {
-                    Self::DPdxCoarse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                214u16 => {
-                    Self::DPdyCoarse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                215u16 => {
-                    Self::FwidthCoarse {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        p: Id(reader.next_word()?),
-                    }
-                }
-                218u16 => Self::EmitVertex,
-                219u16 => Self::EndPrimitive,
-                220u16 => {
-                    Self::EmitStreamVertex {
-                        stream: Id(reader.next_word()?),
-                    }
-                }
-                221u16 => {
-                    Self::EndStreamPrimitive {
-                        stream: Id(reader.next_word()?),
-                    }
-                }
-                224u16 => {
-                    Self::ControlBarrier {
-                        execution: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                225u16 => {
-                    Self::MemoryBarrier {
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                227u16 => {
-                    Self::AtomicLoad {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                228u16 => {
-                    Self::AtomicStore {
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                229u16 => {
-                    Self::AtomicExchange {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                230u16 => {
-                    Self::AtomicCompareExchange {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        equal: Id(reader.next_word()?),
-                        unequal: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        comparator: Id(reader.next_word()?),
-                    }
-                }
-                231u16 => {
-                    Self::AtomicCompareExchangeWeak {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        equal: Id(reader.next_word()?),
-                        unequal: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        comparator: Id(reader.next_word()?),
-                    }
-                }
-                232u16 => {
-                    Self::AtomicIIncrement {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                233u16 => {
-                    Self::AtomicIDecrement {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                234u16 => {
-                    Self::AtomicIAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                235u16 => {
-                    Self::AtomicISub {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                236u16 => {
-                    Self::AtomicSMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                237u16 => {
-                    Self::AtomicUMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                238u16 => {
-                    Self::AtomicSMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                239u16 => {
-                    Self::AtomicUMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                240u16 => {
-                    Self::AtomicAnd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                241u16 => {
-                    Self::AtomicOr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                242u16 => {
-                    Self::AtomicXor {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                245u16 => {
-                    Self::Phi {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        variable_parent: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push((
-                                    Id(reader.next_word()?),
-                                    Id(reader.next_word()?),
-                                ));
-                            }
-                            vec
-                        },
-                    }
-                }
-                246u16 => {
-                    Self::LoopMerge {
-                        merge_block: Id(reader.next_word()?),
-                        continue_target: Id(reader.next_word()?),
-                        loop_control: LoopControl::parse(reader)?,
-                    }
-                }
-                247u16 => {
-                    Self::SelectionMerge {
-                        merge_block: Id(reader.next_word()?),
-                        selection_control: SelectionControl::parse(reader)?,
-                    }
-                }
-                248u16 => {
-                    Self::Label {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                249u16 => {
-                    Self::Branch {
-                        target_label: Id(reader.next_word()?),
-                    }
-                }
-                250u16 => {
-                    Self::BranchConditional {
-                        condition: Id(reader.next_word()?),
-                        true_label: Id(reader.next_word()?),
-                        false_label: Id(reader.next_word()?),
-                        branch_weights: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                251u16 => {
-                    Self::Switch {
-                        selector: Id(reader.next_word()?),
-                        default: Id(reader.next_word()?),
-                        target: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push((reader.next_word()?, Id(reader.next_word()?)));
-                            }
-                            vec
-                        },
-                    }
-                }
-                252u16 => Self::Kill,
-                253u16 => Self::Return,
-                254u16 => {
-                    Self::ReturnValue {
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                255u16 => Self::Unreachable,
-                256u16 => {
-                    Self::LifetimeStart {
-                        pointer: Id(reader.next_word()?),
-                        size: reader.next_word()?,
-                    }
-                }
-                257u16 => {
-                    Self::LifetimeStop {
-                        pointer: Id(reader.next_word()?),
-                        size: reader.next_word()?,
-                    }
-                }
-                259u16 => {
-                    Self::GroupAsyncCopy {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        destination: Id(reader.next_word()?),
-                        source: Id(reader.next_word()?),
-                        num_elements: Id(reader.next_word()?),
-                        stride: Id(reader.next_word()?),
-                        event: Id(reader.next_word()?),
-                    }
-                }
-                260u16 => {
-                    Self::GroupWaitEvents {
-                        execution: Id(reader.next_word()?),
-                        num_events: Id(reader.next_word()?),
-                        events_list: Id(reader.next_word()?),
-                    }
-                }
-                261u16 => {
-                    Self::GroupAll {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                262u16 => {
-                    Self::GroupAny {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                263u16 => {
-                    Self::GroupBroadcast {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        local_id: Id(reader.next_word()?),
-                    }
-                }
-                264u16 => {
-                    Self::GroupIAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                265u16 => {
-                    Self::GroupFAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                266u16 => {
-                    Self::GroupFMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                267u16 => {
-                    Self::GroupUMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                268u16 => {
-                    Self::GroupSMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                269u16 => {
-                    Self::GroupFMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                270u16 => {
-                    Self::GroupUMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                271u16 => {
-                    Self::GroupSMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                274u16 => {
-                    Self::ReadPipe {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                275u16 => {
-                    Self::WritePipe {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                276u16 => {
-                    Self::ReservedReadPipe {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                277u16 => {
-                    Self::ReservedWritePipe {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                278u16 => {
-                    Self::ReserveReadPipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        num_packets: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                279u16 => {
-                    Self::ReserveWritePipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        num_packets: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                280u16 => {
-                    Self::CommitReadPipe {
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                281u16 => {
-                    Self::CommitWritePipe {
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                282u16 => {
-                    Self::IsValidReserveId {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                    }
-                }
-                283u16 => {
-                    Self::GetNumPipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                284u16 => {
-                    Self::GetMaxPipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                285u16 => {
-                    Self::GroupReserveReadPipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        num_packets: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                286u16 => {
-                    Self::GroupReserveWritePipePackets {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        num_packets: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                287u16 => {
-                    Self::GroupCommitReadPipe {
-                        execution: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                288u16 => {
-                    Self::GroupCommitWritePipe {
-                        execution: Id(reader.next_word()?),
-                        pipe: Id(reader.next_word()?),
-                        reserve_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                291u16 => {
-                    Self::EnqueueMarker {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        queue: Id(reader.next_word()?),
-                        num_events: Id(reader.next_word()?),
-                        wait_events: Id(reader.next_word()?),
-                        ret_event: Id(reader.next_word()?),
-                    }
-                }
-                292u16 => {
-                    Self::EnqueueKernel {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        queue: Id(reader.next_word()?),
-                        flags: Id(reader.next_word()?),
-                        nd_range: Id(reader.next_word()?),
-                        num_events: Id(reader.next_word()?),
-                        wait_events: Id(reader.next_word()?),
-                        ret_event: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                        local_size: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                293u16 => {
-                    Self::GetKernelNDrangeSubGroupCount {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        nd_range: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                294u16 => {
-                    Self::GetKernelNDrangeMaxSubGroupSize {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        nd_range: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                295u16 => {
-                    Self::GetKernelWorkGroupSize {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                296u16 => {
-                    Self::GetKernelPreferredWorkGroupSizeMultiple {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                297u16 => {
-                    Self::RetainEvent {
-                        event: Id(reader.next_word()?),
-                    }
-                }
-                298u16 => {
-                    Self::ReleaseEvent {
-                        event: Id(reader.next_word()?),
-                    }
-                }
-                299u16 => {
-                    Self::CreateUserEvent {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                300u16 => {
-                    Self::IsValidEvent {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        event: Id(reader.next_word()?),
-                    }
-                }
-                301u16 => {
-                    Self::SetUserEventStatus {
-                        event: Id(reader.next_word()?),
-                        status: Id(reader.next_word()?),
-                    }
-                }
-                302u16 => {
-                    Self::CaptureEventProfilingInfo {
-                        event: Id(reader.next_word()?),
-                        profiling_info: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                303u16 => {
-                    Self::GetDefaultQueue {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                304u16 => {
-                    Self::BuildNDRange {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        global_work_size: Id(reader.next_word()?),
-                        local_work_size: Id(reader.next_word()?),
-                        global_work_offset: Id(reader.next_word()?),
-                    }
-                }
-                305u16 => {
-                    Self::ImageSparseSampleImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                306u16 => {
-                    Self::ImageSparseSampleExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                307u16 => {
-                    Self::ImageSparseSampleDrefImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                308u16 => {
-                    Self::ImageSparseSampleDrefExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                309u16 => {
-                    Self::ImageSparseSampleProjImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                310u16 => {
-                    Self::ImageSparseSampleProjExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                311u16 => {
-                    Self::ImageSparseSampleProjDrefImplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                312u16 => {
-                    Self::ImageSparseSampleProjDrefExplicitLod {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: ImageOperands::parse(reader)?,
-                    }
-                }
-                313u16 => {
-                    Self::ImageSparseFetch {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                314u16 => {
-                    Self::ImageSparseGather {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        component: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                315u16 => {
-                    Self::ImageSparseDrefGather {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        dref: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                316u16 => {
-                    Self::ImageSparseTexelsResident {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        resident_code: Id(reader.next_word()?),
-                    }
-                }
-                317u16 => Self::NoLine,
-                318u16 => {
-                    Self::AtomicFlagTestAndSet {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                319u16 => {
-                    Self::AtomicFlagClear {
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                320u16 => {
-                    Self::ImageSparseRead {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                321u16 => {
-                    Self::SizeOf {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                322u16 => {
-                    Self::TypePipeStorage {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                323u16 => {
-                    Self::ConstantPipeStorage {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packet_size: reader.next_word()?,
-                        packet_alignment: reader.next_word()?,
-                        capacity: reader.next_word()?,
-                    }
-                }
-                324u16 => {
-                    Self::CreatePipeFromPipeStorage {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pipe_storage: Id(reader.next_word()?),
-                    }
-                }
-                325u16 => {
-                    Self::GetKernelLocalSizeForSubgroupCount {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        subgroup_count: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                326u16 => {
-                    Self::GetKernelMaxNumSubgroups {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        invoke: Id(reader.next_word()?),
-                        param: Id(reader.next_word()?),
-                        param_size: Id(reader.next_word()?),
-                        param_align: Id(reader.next_word()?),
-                    }
-                }
-                327u16 => {
-                    Self::TypeNamedBarrier {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                328u16 => {
-                    Self::NamedBarrierInitialize {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        subgroup_count: Id(reader.next_word()?),
-                    }
-                }
-                329u16 => {
-                    Self::MemoryNamedBarrier {
-                        named_barrier: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                330u16 => {
-                    Self::ModuleProcessed {
-                        process: reader.next_string()?,
-                    }
-                }
-                331u16 => {
-                    Self::ExecutionModeId {
-                        entry_point: Id(reader.next_word()?),
-                        mode: ExecutionMode::parse(reader)?,
-                    }
-                }
-                332u16 => {
-                    Self::DecorateId {
-                        target: Id(reader.next_word()?),
-                        decoration: Decoration::parse(reader)?,
-                    }
-                }
-                333u16 => {
-                    Self::GroupNonUniformElect {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                    }
-                }
-                334u16 => {
-                    Self::GroupNonUniformAll {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                335u16 => {
-                    Self::GroupNonUniformAny {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                336u16 => {
-                    Self::GroupNonUniformAllEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                337u16 => {
-                    Self::GroupNonUniformBroadcast {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        id: Id(reader.next_word()?),
-                    }
-                }
-                338u16 => {
-                    Self::GroupNonUniformBroadcastFirst {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                339u16 => {
-                    Self::GroupNonUniformBallot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                340u16 => {
-                    Self::GroupNonUniformInverseBallot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                341u16 => {
-                    Self::GroupNonUniformBallotBitExtract {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                    }
-                }
-                342u16 => {
-                    Self::GroupNonUniformBallotBitCount {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                343u16 => {
-                    Self::GroupNonUniformBallotFindLSB {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                344u16 => {
-                    Self::GroupNonUniformBallotFindMSB {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                345u16 => {
-                    Self::GroupNonUniformShuffle {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        id: Id(reader.next_word()?),
-                    }
-                }
-                346u16 => {
-                    Self::GroupNonUniformShuffleXor {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        mask: Id(reader.next_word()?),
-                    }
-                }
-                347u16 => {
-                    Self::GroupNonUniformShuffleUp {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        delta: Id(reader.next_word()?),
-                    }
-                }
-                348u16 => {
-                    Self::GroupNonUniformShuffleDown {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        delta: Id(reader.next_word()?),
-                    }
-                }
-                349u16 => {
-                    Self::GroupNonUniformIAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                350u16 => {
-                    Self::GroupNonUniformFAdd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                351u16 => {
-                    Self::GroupNonUniformIMul {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                352u16 => {
-                    Self::GroupNonUniformFMul {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                353u16 => {
-                    Self::GroupNonUniformSMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                354u16 => {
-                    Self::GroupNonUniformUMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                355u16 => {
-                    Self::GroupNonUniformFMin {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                356u16 => {
-                    Self::GroupNonUniformSMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                357u16 => {
-                    Self::GroupNonUniformUMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                358u16 => {
-                    Self::GroupNonUniformFMax {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                359u16 => {
-                    Self::GroupNonUniformBitwiseAnd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                360u16 => {
-                    Self::GroupNonUniformBitwiseOr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                361u16 => {
-                    Self::GroupNonUniformBitwiseXor {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                362u16 => {
-                    Self::GroupNonUniformLogicalAnd {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                363u16 => {
-                    Self::GroupNonUniformLogicalOr {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                364u16 => {
-                    Self::GroupNonUniformLogicalXor {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        value: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                365u16 => {
-                    Self::GroupNonUniformQuadBroadcast {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                    }
-                }
-                366u16 => {
-                    Self::GroupNonUniformQuadSwap {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                    }
-                }
-                400u16 => {
-                    Self::CopyLogical {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                401u16 => {
-                    Self::PtrEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                402u16 => {
-                    Self::PtrNotEqual {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                403u16 => {
-                    Self::PtrDiff {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                4160u16 => {
-                    Self::ColorAttachmentReadEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        attachment: Id(reader.next_word()?),
-                        sample: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4161u16 => {
-                    Self::DepthAttachmentReadEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sample: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4162u16 => {
-                    Self::StencilAttachmentReadEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sample: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4416u16 => Self::TerminateInvocation,
-                4421u16 => {
-                    Self::SubgroupBallotKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                4422u16 => {
-                    Self::SubgroupFirstInvocationKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                4428u16 => {
-                    Self::SubgroupAllKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                4429u16 => {
-                    Self::SubgroupAnyKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                4430u16 => {
-                    Self::SubgroupAllEqualKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                4431u16 => {
-                    Self::GroupNonUniformRotateKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        delta: Id(reader.next_word()?),
-                        cluster_size: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4432u16 => {
-                    Self::SubgroupReadInvocationKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        index: Id(reader.next_word()?),
-                    }
-                }
-                4445u16 => {
-                    Self::TraceRayKHR {
-                        accel: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cull_mask: Id(reader.next_word()?),
-                        sbt_offset: Id(reader.next_word()?),
-                        sbt_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        ray_origin: Id(reader.next_word()?),
-                        ray_tmin: Id(reader.next_word()?),
-                        ray_direction: Id(reader.next_word()?),
-                        ray_tmax: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                4446u16 => {
-                    Self::ExecuteCallableKHR {
-                        sbt_index: Id(reader.next_word()?),
-                        callable_data: Id(reader.next_word()?),
-                    }
-                }
-                4447u16 => {
-                    Self::ConvertUToAccelerationStructureKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        accel: Id(reader.next_word()?),
-                    }
-                }
-                4448u16 => Self::IgnoreIntersectionKHR,
-                4449u16 => Self::TerminateRayKHR,
-                4450u16 => {
-                    Self::SDot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4451u16 => {
-                    Self::UDot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4452u16 => {
-                    Self::SUDot {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4453u16 => {
-                    Self::SDotAccSat {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        accumulator: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4454u16 => {
-                    Self::UDotAccSat {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        accumulator: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4455u16 => {
-                    Self::SUDotAccSat {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        accumulator: Id(reader.next_word()?),
-                        packed_vector_format: if !reader.is_empty() {
-                            Some(PackedVectorFormat::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4456u16 => {
-                    Self::TypeCooperativeMatrixKHR {
-                        result_id: Id(reader.next_word()?),
-                        component_type: Id(reader.next_word()?),
-                        scope: Id(reader.next_word()?),
-                        rows: Id(reader.next_word()?),
-                        columns: Id(reader.next_word()?),
-                        usage: Id(reader.next_word()?),
-                    }
-                }
-                4457u16 => {
-                    Self::CooperativeMatrixLoadKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory_layout: Id(reader.next_word()?),
-                        stride: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                        memory_operand: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4458u16 => {
-                    Self::CooperativeMatrixStoreKHR {
-                        pointer: Id(reader.next_word()?),
-                        object: Id(reader.next_word()?),
-                        memory_layout: Id(reader.next_word()?),
-                        stride: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                        memory_operand: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4459u16 => {
-                    Self::CooperativeMatrixMulAddKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        b: Id(reader.next_word()?),
-                        c: Id(reader.next_word()?),
-                        cooperative_matrix_operands: if !reader.is_empty() {
-                            Some(CooperativeMatrixOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                4460u16 => {
-                    Self::CooperativeMatrixLengthKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ty: Id(reader.next_word()?),
-                    }
-                }
-                4472u16 => {
-                    Self::TypeRayQueryKHR {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                4473u16 => {
-                    Self::RayQueryInitializeKHR {
-                        ray_query: Id(reader.next_word()?),
-                        accel: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cull_mask: Id(reader.next_word()?),
-                        ray_origin: Id(reader.next_word()?),
-                        ray_t_min: Id(reader.next_word()?),
-                        ray_direction: Id(reader.next_word()?),
-                        ray_t_max: Id(reader.next_word()?),
-                    }
-                }
-                4474u16 => {
-                    Self::RayQueryTerminateKHR {
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                4475u16 => {
-                    Self::RayQueryGenerateIntersectionKHR {
-                        ray_query: Id(reader.next_word()?),
-                        hit_t: Id(reader.next_word()?),
-                    }
-                }
-                4476u16 => {
-                    Self::RayQueryConfirmIntersectionKHR {
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                4477u16 => {
-                    Self::RayQueryProceedKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                4479u16 => {
-                    Self::RayQueryGetIntersectionTypeKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                4480u16 => {
-                    Self::ImageSampleWeightedQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        texture: Id(reader.next_word()?),
-                        coordinates: Id(reader.next_word()?),
-                        weights: Id(reader.next_word()?),
-                    }
-                }
-                4481u16 => {
-                    Self::ImageBoxFilterQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        texture: Id(reader.next_word()?),
-                        coordinates: Id(reader.next_word()?),
-                        box_size: Id(reader.next_word()?),
-                    }
-                }
-                4482u16 => {
-                    Self::ImageBlockMatchSSDQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                4483u16 => {
-                    Self::ImageBlockMatchSADQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                4500u16 => {
-                    Self::ImageBlockMatchWindowSSDQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target_sampled_image: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference_sampled_image: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                4501u16 => {
-                    Self::ImageBlockMatchWindowSADQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target_sampled_image: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference_sampled_image: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                4502u16 => {
-                    Self::ImageBlockMatchGatherSSDQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target_sampled_image: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference_sampled_image: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                4503u16 => {
-                    Self::ImageBlockMatchGatherSADQCOM {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        target_sampled_image: Id(reader.next_word()?),
-                        target_coordinates: Id(reader.next_word()?),
-                        reference_sampled_image: Id(reader.next_word()?),
-                        reference_coordinates: Id(reader.next_word()?),
-                        block_size: Id(reader.next_word()?),
-                    }
-                }
-                5000u16 => {
-                    Self::GroupIAddNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5001u16 => {
-                    Self::GroupFAddNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5002u16 => {
-                    Self::GroupFMinNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5003u16 => {
-                    Self::GroupUMinNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5004u16 => {
-                    Self::GroupSMinNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5005u16 => {
-                    Self::GroupFMaxNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5006u16 => {
-                    Self::GroupUMaxNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5007u16 => {
-                    Self::GroupSMaxNonUniformAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                5011u16 => {
-                    Self::FragmentMaskFetchAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                    }
-                }
-                5012u16 => {
-                    Self::FragmentFetchAMD {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        fragment_index: Id(reader.next_word()?),
-                    }
-                }
-                5056u16 => {
-                    Self::ReadClockKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        scope: Id(reader.next_word()?),
-                    }
-                }
-                5075u16 => {
-                    Self::FinalizeNodePayloadsAMDX {
-                        payload_array: Id(reader.next_word()?),
-                    }
-                }
-                5078u16 => {
-                    Self::FinishWritingNodePayloadAMDX {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5090u16 => {
-                    Self::InitializeNodePayloadsAMDX {
-                        payload_array: Id(reader.next_word()?),
-                        visibility: Id(reader.next_word()?),
-                        payload_count: Id(reader.next_word()?),
-                        node_index: Id(reader.next_word()?),
-                    }
-                }
-                5110u16 => {
-                    Self::GroupNonUniformQuadAllKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                5111u16 => {
-                    Self::GroupNonUniformQuadAnyKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        predicate: Id(reader.next_word()?),
-                    }
-                }
-                5249u16 => {
-                    Self::HitObjectRecordHitMotionNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        primitive_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        hit_kind: Id(reader.next_word()?),
-                        sbt_record_offset: Id(reader.next_word()?),
-                        sbt_record_stride: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        current_time: Id(reader.next_word()?),
-                        hit_object_attributes: Id(reader.next_word()?),
-                    }
-                }
-                5250u16 => {
-                    Self::HitObjectRecordHitWithIndexMotionNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        primitive_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        hit_kind: Id(reader.next_word()?),
-                        sbt_record_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        current_time: Id(reader.next_word()?),
-                        hit_object_attributes: Id(reader.next_word()?),
-                    }
-                }
-                5251u16 => {
-                    Self::HitObjectRecordMissMotionNV {
-                        hit_object: Id(reader.next_word()?),
-                        sbt_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        current_time: Id(reader.next_word()?),
-                    }
-                }
-                5252u16 => {
-                    Self::HitObjectGetWorldToObjectNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5253u16 => {
-                    Self::HitObjectGetObjectToWorldNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5254u16 => {
-                    Self::HitObjectGetObjectRayDirectionNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5255u16 => {
-                    Self::HitObjectGetObjectRayOriginNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5256u16 => {
-                    Self::HitObjectTraceRayMotionNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cullmask: Id(reader.next_word()?),
-                        sbt_record_offset: Id(reader.next_word()?),
-                        sbt_record_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        time: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5257u16 => {
-                    Self::HitObjectGetShaderRecordBufferHandleNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5258u16 => {
-                    Self::HitObjectGetShaderBindingTableRecordIndexNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5259u16 => {
-                    Self::HitObjectRecordEmptyNV {
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5260u16 => {
-                    Self::HitObjectTraceRayNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cullmask: Id(reader.next_word()?),
-                        sbt_record_offset: Id(reader.next_word()?),
-                        sbt_record_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5261u16 => {
-                    Self::HitObjectRecordHitNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        primitive_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        hit_kind: Id(reader.next_word()?),
-                        sbt_record_offset: Id(reader.next_word()?),
-                        sbt_record_stride: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        hit_object_attributes: Id(reader.next_word()?),
-                    }
-                }
-                5262u16 => {
-                    Self::HitObjectRecordHitWithIndexNV {
-                        hit_object: Id(reader.next_word()?),
-                        acceleration_structure: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        primitive_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        hit_kind: Id(reader.next_word()?),
-                        sbt_record_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                        hit_object_attributes: Id(reader.next_word()?),
-                    }
-                }
-                5263u16 => {
-                    Self::HitObjectRecordMissNV {
-                        hit_object: Id(reader.next_word()?),
-                        sbt_index: Id(reader.next_word()?),
-                        origin: Id(reader.next_word()?),
-                        t_min: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        t_max: Id(reader.next_word()?),
-                    }
-                }
-                5264u16 => {
-                    Self::HitObjectExecuteShaderNV {
-                        hit_object: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5265u16 => {
-                    Self::HitObjectGetCurrentTimeNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5266u16 => {
-                    Self::HitObjectGetAttributesNV {
-                        hit_object: Id(reader.next_word()?),
-                        hit_object_attribute: Id(reader.next_word()?),
-                    }
-                }
-                5267u16 => {
-                    Self::HitObjectGetHitKindNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5268u16 => {
-                    Self::HitObjectGetPrimitiveIndexNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5269u16 => {
-                    Self::HitObjectGetGeometryIndexNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5270u16 => {
-                    Self::HitObjectGetInstanceIdNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5271u16 => {
-                    Self::HitObjectGetInstanceCustomIndexNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5272u16 => {
-                    Self::HitObjectGetWorldRayDirectionNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5273u16 => {
-                    Self::HitObjectGetWorldRayOriginNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5274u16 => {
-                    Self::HitObjectGetRayTMaxNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5275u16 => {
-                    Self::HitObjectGetRayTMinNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5276u16 => {
-                    Self::HitObjectIsEmptyNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5277u16 => {
-                    Self::HitObjectIsHitNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5278u16 => {
-                    Self::HitObjectIsMissNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit_object: Id(reader.next_word()?),
-                    }
-                }
-                5279u16 => {
-                    Self::ReorderThreadWithHitObjectNV {
-                        hit_object: Id(reader.next_word()?),
-                        hint: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                        bits: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5280u16 => {
-                    Self::ReorderThreadWithHintNV {
-                        hint: Id(reader.next_word()?),
-                        bits: Id(reader.next_word()?),
-                    }
-                }
-                5281u16 => {
-                    Self::TypeHitObjectNV {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5283u16 => {
-                    Self::ImageSampleFootprintNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        sampled_image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        granularity: Id(reader.next_word()?),
-                        coarse: Id(reader.next_word()?),
-                        image_operands: if !reader.is_empty() {
-                            Some(ImageOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5294u16 => {
-                    Self::EmitMeshTasksEXT {
-                        group_count_x: Id(reader.next_word()?),
-                        group_count_y: Id(reader.next_word()?),
-                        group_count_z: Id(reader.next_word()?),
-                        payload: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5295u16 => {
-                    Self::SetMeshOutputsEXT {
-                        vertex_count: Id(reader.next_word()?),
-                        primitive_count: Id(reader.next_word()?),
-                    }
-                }
-                5296u16 => {
-                    Self::GroupNonUniformPartitionNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                5299u16 => {
-                    Self::WritePackedPrimitiveIndices4x8NV {
-                        index_offset: Id(reader.next_word()?),
-                        packed_indices: Id(reader.next_word()?),
-                    }
-                }
-                5300u16 => {
-                    Self::FetchMicroTriangleVertexPositionNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        accel: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        primitive_index: Id(reader.next_word()?),
-                        barycentric: Id(reader.next_word()?),
-                    }
-                }
-                5301u16 => {
-                    Self::FetchMicroTriangleVertexBarycentricNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        accel: Id(reader.next_word()?),
-                        instance_id: Id(reader.next_word()?),
-                        geometry_index: Id(reader.next_word()?),
-                        primitive_index: Id(reader.next_word()?),
-                        barycentric: Id(reader.next_word()?),
-                    }
-                }
-                5334u16 => {
-                    Self::ReportIntersectionKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        hit: Id(reader.next_word()?),
-                        hit_kind: Id(reader.next_word()?),
-                    }
-                }
-                5335u16 => Self::IgnoreIntersectionNV,
-                5336u16 => Self::TerminateRayNV,
-                5337u16 => {
-                    Self::TraceNV {
-                        accel: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cull_mask: Id(reader.next_word()?),
-                        sbt_offset: Id(reader.next_word()?),
-                        sbt_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        ray_origin: Id(reader.next_word()?),
-                        ray_tmin: Id(reader.next_word()?),
-                        ray_direction: Id(reader.next_word()?),
-                        ray_tmax: Id(reader.next_word()?),
-                        payload_id: Id(reader.next_word()?),
-                    }
-                }
-                5338u16 => {
-                    Self::TraceMotionNV {
-                        accel: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cull_mask: Id(reader.next_word()?),
-                        sbt_offset: Id(reader.next_word()?),
-                        sbt_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        ray_origin: Id(reader.next_word()?),
-                        ray_tmin: Id(reader.next_word()?),
-                        ray_direction: Id(reader.next_word()?),
-                        ray_tmax: Id(reader.next_word()?),
-                        time: Id(reader.next_word()?),
-                        payload_id: Id(reader.next_word()?),
-                    }
-                }
-                5339u16 => {
-                    Self::TraceRayMotionNV {
-                        accel: Id(reader.next_word()?),
-                        ray_flags: Id(reader.next_word()?),
-                        cull_mask: Id(reader.next_word()?),
-                        sbt_offset: Id(reader.next_word()?),
-                        sbt_stride: Id(reader.next_word()?),
-                        miss_index: Id(reader.next_word()?),
-                        ray_origin: Id(reader.next_word()?),
-                        ray_tmin: Id(reader.next_word()?),
-                        ray_direction: Id(reader.next_word()?),
-                        ray_tmax: Id(reader.next_word()?),
-                        time: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5340u16 => {
-                    Self::RayQueryGetIntersectionTriangleVertexPositionsKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                5341u16 => {
-                    Self::TypeAccelerationStructureKHR {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5344u16 => {
-                    Self::ExecuteCallableNV {
-                        sbt_index: Id(reader.next_word()?),
-                        callable_data_id: Id(reader.next_word()?),
-                    }
-                }
-                5358u16 => {
-                    Self::TypeCooperativeMatrixNV {
-                        result_id: Id(reader.next_word()?),
-                        component_type: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        rows: Id(reader.next_word()?),
-                        columns: Id(reader.next_word()?),
-                    }
-                }
-                5359u16 => {
-                    Self::CooperativeMatrixLoadNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        stride: Id(reader.next_word()?),
-                        column_major: Id(reader.next_word()?),
-                        memory_access: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5360u16 => {
-                    Self::CooperativeMatrixStoreNV {
-                        pointer: Id(reader.next_word()?),
-                        object: Id(reader.next_word()?),
-                        stride: Id(reader.next_word()?),
-                        column_major: Id(reader.next_word()?),
-                        memory_access: if !reader.is_empty() {
-                            Some(MemoryAccess::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5361u16 => {
-                    Self::CooperativeMatrixMulAddNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        b: Id(reader.next_word()?),
-                        c: Id(reader.next_word()?),
-                    }
-                }
-                5362u16 => {
-                    Self::CooperativeMatrixLengthNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ty: Id(reader.next_word()?),
-                    }
-                }
-                5364u16 => Self::BeginInvocationInterlockEXT,
-                5365u16 => Self::EndInvocationInterlockEXT,
-                5380u16 => Self::DemoteToHelperInvocation,
-                5381u16 => {
-                    Self::IsHelperInvocationEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5391u16 => {
-                    Self::ConvertUToImageNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5392u16 => {
-                    Self::ConvertUToSamplerNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5393u16 => {
-                    Self::ConvertImageToUNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5394u16 => {
-                    Self::ConvertSamplerToUNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5395u16 => {
-                    Self::ConvertUToSampledImageNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5396u16 => {
-                    Self::ConvertSampledImageToUNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5397u16 => {
-                    Self::SamplerImageAddressingModeNV {
-                        bit_width: reader.next_word()?,
-                    }
-                }
-                5398u16 => {
-                    Self::RawAccessChainNV {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        base: Id(reader.next_word()?),
-                        byte_stride: Id(reader.next_word()?),
-                        element_index: Id(reader.next_word()?),
-                        byte_offset: Id(reader.next_word()?),
-                        raw_access_chain_operands: if !reader.is_empty() {
-                            Some(RawAccessChainOperands::parse(reader)?)
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5571u16 => {
-                    Self::SubgroupShuffleINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        data: Id(reader.next_word()?),
-                        invocation_id: Id(reader.next_word()?),
-                    }
-                }
-                5572u16 => {
-                    Self::SubgroupShuffleDownINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        current: Id(reader.next_word()?),
-                        next: Id(reader.next_word()?),
-                        delta: Id(reader.next_word()?),
-                    }
-                }
-                5573u16 => {
-                    Self::SubgroupShuffleUpINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        previous: Id(reader.next_word()?),
-                        current: Id(reader.next_word()?),
-                        delta: Id(reader.next_word()?),
-                    }
-                }
-                5574u16 => {
-                    Self::SubgroupShuffleXorINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        data: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                5575u16 => {
-                    Self::SubgroupBlockReadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ptr: Id(reader.next_word()?),
-                    }
-                }
-                5576u16 => {
-                    Self::SubgroupBlockWriteINTEL {
-                        ptr: Id(reader.next_word()?),
-                        data: Id(reader.next_word()?),
-                    }
-                }
-                5577u16 => {
-                    Self::SubgroupImageBlockReadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                    }
-                }
-                5578u16 => {
-                    Self::SubgroupImageBlockWriteINTEL {
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        data: Id(reader.next_word()?),
-                    }
-                }
-                5580u16 => {
-                    Self::SubgroupImageMediaBlockReadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        width: Id(reader.next_word()?),
-                        height: Id(reader.next_word()?),
-                    }
-                }
-                5581u16 => {
-                    Self::SubgroupImageMediaBlockWriteINTEL {
-                        image: Id(reader.next_word()?),
-                        coordinate: Id(reader.next_word()?),
-                        width: Id(reader.next_word()?),
-                        height: Id(reader.next_word()?),
-                        data: Id(reader.next_word()?),
-                    }
-                }
-                5585u16 => {
-                    Self::UCountLeadingZerosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5586u16 => {
-                    Self::UCountTrailingZerosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                5587u16 => {
-                    Self::AbsISubINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5588u16 => {
-                    Self::AbsUSubINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5589u16 => {
-                    Self::IAddSatINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5590u16 => {
-                    Self::UAddSatINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5591u16 => {
-                    Self::IAverageINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5592u16 => {
-                    Self::UAverageINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5593u16 => {
-                    Self::IAverageRoundedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5594u16 => {
-                    Self::UAverageRoundedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5595u16 => {
-                    Self::ISubSatINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5596u16 => {
-                    Self::USubSatINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5597u16 => {
-                    Self::IMul32x16INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5598u16 => {
-                    Self::UMul32x16INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                5600u16 => {
-                    Self::ConstantFunctionPointerINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        function: Id(reader.next_word()?),
-                    }
-                }
-                5601u16 => {
-                    Self::FunctionPointerCallINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        operand1: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                5609u16 => {
-                    Self::AsmTargetINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        asm_target: reader.next_string()?,
-                    }
-                }
-                5610u16 => {
-                    Self::AsmINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        asm_type: Id(reader.next_word()?),
-                        target: Id(reader.next_word()?),
-                        asm_instructions: reader.next_string()?,
-                        constraints: reader.next_string()?,
-                    }
-                }
-                5611u16 => {
-                    Self::AsmCallINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        asm: Id(reader.next_word()?),
-                        argument_0: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                5614u16 => {
-                    Self::AtomicFMinEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                5615u16 => {
-                    Self::AtomicFMaxEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                5630u16 => {
-                    Self::AssumeTrueKHR {
-                        condition: Id(reader.next_word()?),
-                    }
-                }
-                5631u16 => {
-                    Self::ExpectKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                        expected_value: Id(reader.next_word()?),
-                    }
-                }
-                5632u16 => {
-                    Self::DecorateString {
-                        target: Id(reader.next_word()?),
-                        decoration: Decoration::parse(reader)?,
-                    }
-                }
-                5633u16 => {
-                    Self::MemberDecorateString {
-                        struct_type: Id(reader.next_word()?),
-                        member: reader.next_word()?,
-                        decoration: Decoration::parse(reader)?,
-                    }
-                }
-                5699u16 => {
-                    Self::VmeImageINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image_type: Id(reader.next_word()?),
-                        sampler: Id(reader.next_word()?),
-                    }
-                }
-                5700u16 => {
-                    Self::TypeVmeImageINTEL {
-                        result_id: Id(reader.next_word()?),
-                        image_type: Id(reader.next_word()?),
-                    }
-                }
-                5701u16 => {
-                    Self::TypeAvcImePayloadINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5702u16 => {
-                    Self::TypeAvcRefPayloadINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5703u16 => {
-                    Self::TypeAvcSicPayloadINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5704u16 => {
-                    Self::TypeAvcMcePayloadINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5705u16 => {
-                    Self::TypeAvcMceResultINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5706u16 => {
-                    Self::TypeAvcImeResultINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5707u16 => {
-                    Self::TypeAvcImeResultSingleReferenceStreamoutINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5708u16 => {
-                    Self::TypeAvcImeResultDualReferenceStreamoutINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5709u16 => {
-                    Self::TypeAvcImeSingleReferenceStreaminINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5710u16 => {
-                    Self::TypeAvcImeDualReferenceStreaminINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5711u16 => {
-                    Self::TypeAvcRefResultINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5712u16 => {
-                    Self::TypeAvcSicResultINTEL {
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5713u16 => {
-                    Self::SubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5714u16 => {
-                    Self::SubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        reference_base_penalty: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5715u16 => {
-                    Self::SubgroupAvcMceGetDefaultInterShapePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5716u16 => {
-                    Self::SubgroupAvcMceSetInterShapePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_shape_penalty: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5717u16 => {
-                    Self::SubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5718u16 => {
-                    Self::SubgroupAvcMceSetInterDirectionPenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        direction_cost: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5719u16 => {
-                    Self::SubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5720u16 => {
-                    Self::SubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5721u16 => {
-                    Self::SubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5722u16 => {
-                    Self::SubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5723u16 => {
-                    Self::SubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5724u16 => {
-                    Self::SubgroupAvcMceSetMotionVectorCostFunctionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_cost_center_delta: Id(reader.next_word()?),
-                        packed_cost_table: Id(reader.next_word()?),
-                        cost_precision: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5725u16 => {
-                    Self::SubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        slice_type: Id(reader.next_word()?),
-                        qp: Id(reader.next_word()?),
-                    }
-                }
-                5726u16 => {
-                    Self::SubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5727u16 => {
-                    Self::SubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5728u16 => {
-                    Self::SubgroupAvcMceSetAcOnlyHaarINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5729u16 => {
-                    Self::SubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        source_field_polarity: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5730u16 => {
-                    Self::SubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        reference_field_polarity: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5731u16 => {
-                    Self::SubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        forward_reference_field_polarity: Id(reader.next_word()?),
-                        backward_reference_field_polarity: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5732u16 => {
-                    Self::SubgroupAvcMceConvertToImePayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5733u16 => {
-                    Self::SubgroupAvcMceConvertToImeResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5734u16 => {
-                    Self::SubgroupAvcMceConvertToRefPayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5735u16 => {
-                    Self::SubgroupAvcMceConvertToRefResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5736u16 => {
-                    Self::SubgroupAvcMceConvertToSicPayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5737u16 => {
-                    Self::SubgroupAvcMceConvertToSicResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5738u16 => {
-                    Self::SubgroupAvcMceGetMotionVectorsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5739u16 => {
-                    Self::SubgroupAvcMceGetInterDistortionsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5740u16 => {
-                    Self::SubgroupAvcMceGetBestInterDistortionsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5741u16 => {
-                    Self::SubgroupAvcMceGetInterMajorShapeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5742u16 => {
-                    Self::SubgroupAvcMceGetInterMinorShapeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5743u16 => {
-                    Self::SubgroupAvcMceGetInterDirectionsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5744u16 => {
-                    Self::SubgroupAvcMceGetInterMotionVectorCountINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5745u16 => {
-                    Self::SubgroupAvcMceGetInterReferenceIdsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5746u16 => {
-                    Self::SubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_reference_ids: Id(reader.next_word()?),
-                        packed_reference_parameter_field_polarities: Id(
-                            reader.next_word()?,
-                        ),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5747u16 => {
-                    Self::SubgroupAvcImeInitializeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_coord: Id(reader.next_word()?),
-                        partition_mask: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                    }
-                }
-                5748u16 => {
-                    Self::SubgroupAvcImeSetSingleReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ref_offset: Id(reader.next_word()?),
-                        search_window_config: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5749u16 => {
-                    Self::SubgroupAvcImeSetDualReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        fwd_ref_offset: Id(reader.next_word()?),
-                        bwd_ref_offset: Id(reader.next_word()?),
-                        id_search_window_config: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5750u16 => {
-                    Self::SubgroupAvcImeRefWindowSizeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        search_window_config: Id(reader.next_word()?),
-                        dual_ref: Id(reader.next_word()?),
-                    }
-                }
-                5751u16 => {
-                    Self::SubgroupAvcImeAdjustRefOffsetINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ref_offset: Id(reader.next_word()?),
-                        src_coord: Id(reader.next_word()?),
-                        ref_window_size: Id(reader.next_word()?),
-                        image_size: Id(reader.next_word()?),
-                    }
-                }
-                5752u16 => {
-                    Self::SubgroupAvcImeConvertToMcePayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5753u16 => {
-                    Self::SubgroupAvcImeSetMaxMotionVectorCountINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        max_motion_vector_count: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5754u16 => {
-                    Self::SubgroupAvcImeSetUnidirectionalMixDisableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5755u16 => {
-                    Self::SubgroupAvcImeSetEarlySearchTerminationThresholdINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        threshold: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5756u16 => {
-                    Self::SubgroupAvcImeSetWeightedSadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_sad_weights: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5757u16 => {
-                    Self::SubgroupAvcImeEvaluateWithSingleReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5758u16 => {
-                    Self::SubgroupAvcImeEvaluateWithDualReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5759u16 => {
-                    Self::SubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        streamin_components: Id(reader.next_word()?),
-                    }
-                }
-                5760u16 => {
-                    Self::SubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        streamin_components: Id(reader.next_word()?),
-                    }
-                }
-                5761u16 => {
-                    Self::SubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5762u16 => {
-                    Self::SubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5763u16 => {
-                    Self::SubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        streamin_components: Id(reader.next_word()?),
-                    }
-                }
-                5764u16 => {
-                    Self::SubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        streamin_components: Id(reader.next_word()?),
-                    }
-                }
-                5765u16 => {
-                    Self::SubgroupAvcImeConvertToMceResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5766u16 => {
-                    Self::SubgroupAvcImeGetSingleReferenceStreaminINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5767u16 => {
-                    Self::SubgroupAvcImeGetDualReferenceStreaminINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5768u16 => {
-                    Self::SubgroupAvcImeStripSingleReferenceStreamoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5769u16 => {
-                    Self::SubgroupAvcImeStripDualReferenceStreamoutINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5770u16 => {
-                    Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                    }
-                }
-                5771u16 => {
-                    Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                    }
-                }
-                5772u16 => {
-                    Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                    }
-                }
-                5773u16 => {
-                    Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                    }
-                }
-                5774u16 => {
-                    Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                    }
-                }
-                5775u16 => {
-                    Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                        major_shape: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                    }
-                }
-                5776u16 => {
-                    Self::SubgroupAvcImeGetBorderReachedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        image_select: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5777u16 => {
-                    Self::SubgroupAvcImeGetTruncatedSearchIndicationINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5778u16 => {
-                    Self::SubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5779u16 => {
-                    Self::SubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5780u16 => {
-                    Self::SubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5781u16 => {
-                    Self::SubgroupAvcFmeInitializeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_coord: Id(reader.next_word()?),
-                        motion_vectors: Id(reader.next_word()?),
-                        major_shapes: Id(reader.next_word()?),
-                        minor_shapes: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        pixel_resolution: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                    }
-                }
-                5782u16 => {
-                    Self::SubgroupAvcBmeInitializeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_coord: Id(reader.next_word()?),
-                        motion_vectors: Id(reader.next_word()?),
-                        major_shapes: Id(reader.next_word()?),
-                        minor_shapes: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                        pixel_resolution: Id(reader.next_word()?),
-                        bidirectional_weight: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                    }
-                }
-                5783u16 => {
-                    Self::SubgroupAvcRefConvertToMcePayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5784u16 => {
-                    Self::SubgroupAvcRefSetBidirectionalMixDisableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5785u16 => {
-                    Self::SubgroupAvcRefSetBilinearFilterEnableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5786u16 => {
-                    Self::SubgroupAvcRefEvaluateWithSingleReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5787u16 => {
-                    Self::SubgroupAvcRefEvaluateWithDualReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5788u16 => {
-                    Self::SubgroupAvcRefEvaluateWithMultiReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        packed_reference_ids: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5789u16 => {
-                    Self::SubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        packed_reference_ids: Id(reader.next_word()?),
-                        packed_reference_field_polarities: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5790u16 => {
-                    Self::SubgroupAvcRefConvertToMceResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5791u16 => {
-                    Self::SubgroupAvcSicInitializeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_coord: Id(reader.next_word()?),
-                    }
-                }
-                5792u16 => {
-                    Self::SubgroupAvcSicConfigureSkcINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        skip_block_partition_type: Id(reader.next_word()?),
-                        skip_motion_vector_mask: Id(reader.next_word()?),
-                        motion_vectors: Id(reader.next_word()?),
-                        bidirectional_weight: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5793u16 => {
-                    Self::SubgroupAvcSicConfigureIpeLumaINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        luma_intra_partition_mask: Id(reader.next_word()?),
-                        intra_neighbour_availabilty: Id(reader.next_word()?),
-                        left_edge_luma_pixels: Id(reader.next_word()?),
-                        upper_left_corner_luma_pixel: Id(reader.next_word()?),
-                        upper_edge_luma_pixels: Id(reader.next_word()?),
-                        upper_right_edge_luma_pixels: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5794u16 => {
-                    Self::SubgroupAvcSicConfigureIpeLumaChromaINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        luma_intra_partition_mask: Id(reader.next_word()?),
-                        intra_neighbour_availabilty: Id(reader.next_word()?),
-                        left_edge_luma_pixels: Id(reader.next_word()?),
-                        upper_left_corner_luma_pixel: Id(reader.next_word()?),
-                        upper_edge_luma_pixels: Id(reader.next_word()?),
-                        upper_right_edge_luma_pixels: Id(reader.next_word()?),
-                        left_edge_chroma_pixels: Id(reader.next_word()?),
-                        upper_left_corner_chroma_pixel: Id(reader.next_word()?),
-                        upper_edge_chroma_pixels: Id(reader.next_word()?),
-                        sad_adjustment: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5795u16 => {
-                    Self::SubgroupAvcSicGetMotionVectorMaskINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        skip_block_partition_type: Id(reader.next_word()?),
-                        direction: Id(reader.next_word()?),
-                    }
-                }
-                5796u16 => {
-                    Self::SubgroupAvcSicConvertToMcePayloadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5797u16 => {
-                    Self::SubgroupAvcSicSetIntraLumaShapePenaltyINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_shape_penalty: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5798u16 => {
-                    Self::SubgroupAvcSicSetIntraLumaModeCostFunctionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        luma_mode_penalty: Id(reader.next_word()?),
-                        luma_packed_neighbor_modes: Id(reader.next_word()?),
-                        luma_packed_non_dc_penalty: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5799u16 => {
-                    Self::SubgroupAvcSicSetIntraChromaModeCostFunctionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        chroma_mode_base_penalty: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5800u16 => {
-                    Self::SubgroupAvcSicSetBilinearFilterEnableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5801u16 => {
-                    Self::SubgroupAvcSicSetSkcForwardTransformEnableINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packed_sad_coefficients: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5802u16 => {
-                    Self::SubgroupAvcSicSetBlockBasedRawSkipSadINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        block_based_skip_type: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5803u16 => {
-                    Self::SubgroupAvcSicEvaluateIpeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5804u16 => {
-                    Self::SubgroupAvcSicEvaluateWithSingleReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5805u16 => {
-                    Self::SubgroupAvcSicEvaluateWithDualReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        fwd_ref_image: Id(reader.next_word()?),
-                        bwd_ref_image: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5806u16 => {
-                    Self::SubgroupAvcSicEvaluateWithMultiReferenceINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        packed_reference_ids: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5807u16 => {
-                    Self::SubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        src_image: Id(reader.next_word()?),
-                        packed_reference_ids: Id(reader.next_word()?),
-                        packed_reference_field_polarities: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5808u16 => {
-                    Self::SubgroupAvcSicConvertToMceResultINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5809u16 => {
-                    Self::SubgroupAvcSicGetIpeLumaShapeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5810u16 => {
-                    Self::SubgroupAvcSicGetBestIpeLumaDistortionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5811u16 => {
-                    Self::SubgroupAvcSicGetBestIpeChromaDistortionINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5812u16 => {
-                    Self::SubgroupAvcSicGetPackedIpeLumaModesINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5813u16 => {
-                    Self::SubgroupAvcSicGetIpeChromaModeINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5814u16 => {
-                    Self::SubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5815u16 => {
-                    Self::SubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5816u16 => {
-                    Self::SubgroupAvcSicGetInterRawSadsINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        payload: Id(reader.next_word()?),
-                    }
-                }
-                5818u16 => {
-                    Self::VariableLengthArrayINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        lenght: Id(reader.next_word()?),
-                    }
-                }
-                5819u16 => {
-                    Self::SaveMemoryINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                    }
-                }
-                5820u16 => {
-                    Self::RestoreMemoryINTEL {
-                        ptr: Id(reader.next_word()?),
-                    }
-                }
-                5840u16 => {
-                    Self::ArbitraryFloatSinCosPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        from_sign: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5841u16 => {
-                    Self::ArbitraryFloatCastINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5842u16 => {
-                    Self::ArbitraryFloatCastFromIntINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        mout: reader.next_word()?,
-                        from_sign: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5843u16 => {
-                    Self::ArbitraryFloatCastToIntINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5846u16 => {
-                    Self::ArbitraryFloatAddINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5847u16 => {
-                    Self::ArbitraryFloatSubINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5848u16 => {
-                    Self::ArbitraryFloatMulINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5849u16 => {
-                    Self::ArbitraryFloatDivINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5850u16 => {
-                    Self::ArbitraryFloatGTINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                    }
-                }
-                5851u16 => {
-                    Self::ArbitraryFloatGEINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                    }
-                }
-                5852u16 => {
-                    Self::ArbitraryFloatLTINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                    }
-                }
-                5853u16 => {
-                    Self::ArbitraryFloatLEINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                    }
-                }
-                5854u16 => {
-                    Self::ArbitraryFloatEQINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                    }
-                }
-                5855u16 => {
-                    Self::ArbitraryFloatRecipINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5856u16 => {
-                    Self::ArbitraryFloatRSqrtINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5857u16 => {
-                    Self::ArbitraryFloatCbrtINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5858u16 => {
-                    Self::ArbitraryFloatHypotINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5859u16 => {
-                    Self::ArbitraryFloatSqrtINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5860u16 => {
-                    Self::ArbitraryFloatLogINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5861u16 => {
-                    Self::ArbitraryFloatLog2INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5862u16 => {
-                    Self::ArbitraryFloatLog10INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5863u16 => {
-                    Self::ArbitraryFloatLog1pINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5864u16 => {
-                    Self::ArbitraryFloatExpINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5865u16 => {
-                    Self::ArbitraryFloatExp2INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5866u16 => {
-                    Self::ArbitraryFloatExp10INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5867u16 => {
-                    Self::ArbitraryFloatExpm1INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5868u16 => {
-                    Self::ArbitraryFloatSinINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5869u16 => {
-                    Self::ArbitraryFloatCosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5870u16 => {
-                    Self::ArbitraryFloatSinCosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5871u16 => {
-                    Self::ArbitraryFloatSinPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5872u16 => {
-                    Self::ArbitraryFloatCosPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5873u16 => {
-                    Self::ArbitraryFloatASinINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5874u16 => {
-                    Self::ArbitraryFloatASinPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5875u16 => {
-                    Self::ArbitraryFloatACosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5876u16 => {
-                    Self::ArbitraryFloatACosPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5877u16 => {
-                    Self::ArbitraryFloatATanINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5878u16 => {
-                    Self::ArbitraryFloatATanPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5879u16 => {
-                    Self::ArbitraryFloatATan2INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5880u16 => {
-                    Self::ArbitraryFloatPowINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5881u16 => {
-                    Self::ArbitraryFloatPowRINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        m2: reader.next_word()?,
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5882u16 => {
-                    Self::ArbitraryFloatPowNINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        a: Id(reader.next_word()?),
-                        m1: reader.next_word()?,
-                        b: Id(reader.next_word()?),
-                        mout: reader.next_word()?,
-                        enable_subnormals: reader.next_word()?,
-                        rounding_mode: reader.next_word()?,
-                        rounding_accuracy: reader.next_word()?,
-                    }
-                }
-                5887u16 => {
-                    Self::LoopControlINTEL {
-                        loop_control_parameters: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                5911u16 => {
-                    Self::AliasDomainDeclINTEL {
-                        result_id: Id(reader.next_word()?),
-                        name: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5912u16 => {
-                    Self::AliasScopeDeclINTEL {
-                        result_id: Id(reader.next_word()?),
-                        alias_domain: Id(reader.next_word()?),
-                        name: if !reader.is_empty() {
-                            Some(Id(reader.next_word()?))
-                        } else {
-                            None
-                        },
-                    }
-                }
-                5913u16 => {
-                    Self::AliasScopeListDeclINTEL {
-                        result_id: Id(reader.next_word()?),
-                        alias_scope1_alias_scope2: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                5923u16 => {
-                    Self::FixedSqrtINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5924u16 => {
-                    Self::FixedRecipINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5925u16 => {
-                    Self::FixedRsqrtINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5926u16 => {
-                    Self::FixedSinINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5927u16 => {
-                    Self::FixedCosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5928u16 => {
-                    Self::FixedSinCosINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5929u16 => {
-                    Self::FixedSinPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5930u16 => {
-                    Self::FixedCosPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5931u16 => {
-                    Self::FixedSinCosPiINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5932u16 => {
-                    Self::FixedLogINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5933u16 => {
-                    Self::FixedExpINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        input_type: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                        s: reader.next_word()?,
-                        i: reader.next_word()?,
-                        r_i: reader.next_word()?,
-                        q: reader.next_word()?,
-                        o: reader.next_word()?,
-                    }
-                }
-                5934u16 => {
-                    Self::PtrCastToCrossWorkgroupINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                5938u16 => {
-                    Self::CrossWorkgroupCastToPtrINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                    }
-                }
-                5946u16 => {
-                    Self::ReadPipeBlockingINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                5947u16 => {
-                    Self::WritePipeBlockingINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        packet_size: Id(reader.next_word()?),
-                        packet_alignment: Id(reader.next_word()?),
-                    }
-                }
-                5949u16 => {
-                    Self::FPGARegINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        result: Id(reader.next_word()?),
-                        input: Id(reader.next_word()?),
-                    }
-                }
-                6016u16 => {
-                    Self::RayQueryGetRayTMinKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                6017u16 => {
-                    Self::RayQueryGetRayFlagsKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                6018u16 => {
-                    Self::RayQueryGetIntersectionTKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6019u16 => {
-                    Self::RayQueryGetIntersectionInstanceCustomIndexKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6020u16 => {
-                    Self::RayQueryGetIntersectionInstanceIdKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6021u16 => {
-                    Self::RayQueryGetIntersectionInstanceShaderBindingTableRecordOffsetKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6022u16 => {
-                    Self::RayQueryGetIntersectionGeometryIndexKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6023u16 => {
-                    Self::RayQueryGetIntersectionPrimitiveIndexKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6024u16 => {
-                    Self::RayQueryGetIntersectionBarycentricsKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6025u16 => {
-                    Self::RayQueryGetIntersectionFrontFaceKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6026u16 => {
-                    Self::RayQueryGetIntersectionCandidateAABBOpaqueKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                6027u16 => {
-                    Self::RayQueryGetIntersectionObjectRayDirectionKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6028u16 => {
-                    Self::RayQueryGetIntersectionObjectRayOriginKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6029u16 => {
-                    Self::RayQueryGetWorldRayDirectionKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                6030u16 => {
-                    Self::RayQueryGetWorldRayOriginKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                    }
-                }
-                6031u16 => {
-                    Self::RayQueryGetIntersectionObjectToWorldKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6032u16 => {
-                    Self::RayQueryGetIntersectionWorldToObjectKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ray_query: Id(reader.next_word()?),
-                        intersection: Id(reader.next_word()?),
-                    }
-                }
-                6035u16 => {
-                    Self::AtomicFAddEXT {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        pointer: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                6086u16 => {
-                    Self::TypeBufferSurfaceINTEL {
-                        result_id: Id(reader.next_word()?),
-                        access_qualifier: AccessQualifier::parse(reader)?,
-                    }
-                }
-                6090u16 => {
-                    Self::TypeStructContinuedINTEL {
-                        member_types: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                6091u16 => {
-                    Self::ConstantCompositeContinuedINTEL {
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                6092u16 => {
-                    Self::SpecConstantCompositeContinuedINTEL {
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                6096u16 => {
-                    Self::CompositeConstructContinuedINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        constituents: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(Id(reader.next_word()?));
-                            }
-                            vec
-                        },
-                    }
-                }
-                6116u16 => {
-                    Self::ConvertFToBF16INTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        float_value: Id(reader.next_word()?),
-                    }
-                }
-                6117u16 => {
-                    Self::ConvertBF16ToFINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        b_float16_value: Id(reader.next_word()?),
-                    }
-                }
-                6142u16 => {
-                    Self::ControlBarrierArriveINTEL {
-                        execution: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                6143u16 => {
-                    Self::ControlBarrierWaitINTEL {
-                        execution: Id(reader.next_word()?),
-                        memory: Id(reader.next_word()?),
-                        semantics: Id(reader.next_word()?),
-                    }
-                }
-                6401u16 => {
-                    Self::GroupIMulKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6402u16 => {
-                    Self::GroupFMulKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6403u16 => {
-                    Self::GroupBitwiseAndKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6404u16 => {
-                    Self::GroupBitwiseOrKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6405u16 => {
-                    Self::GroupBitwiseXorKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6406u16 => {
-                    Self::GroupLogicalAndKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6407u16 => {
-                    Self::GroupLogicalOrKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6408u16 => {
-                    Self::GroupLogicalXorKHR {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        execution: Id(reader.next_word()?),
-                        operation: GroupOperation::parse(reader)?,
-                        x: Id(reader.next_word()?),
-                    }
-                }
-                6428u16 => {
-                    Self::MaskedGatherINTEL {
-                        result_type_id: Id(reader.next_word()?),
-                        result_id: Id(reader.next_word()?),
-                        ptr_vector: Id(reader.next_word()?),
-                        alignment: reader.next_word()?,
-                        mask: Id(reader.next_word()?),
-                        fill_empty: Id(reader.next_word()?),
-                    }
-                }
-                6429u16 => {
-                    Self::MaskedScatterINTEL {
-                        input_vector: Id(reader.next_word()?),
-                        ptr_vector: Id(reader.next_word()?),
-                        alignment: reader.next_word()?,
-                        mask: Id(reader.next_word()?),
-                    }
-                }
-                opcode => return Err(reader.map_err(ParseErrors::UnknownOpcode(opcode))),
-            },
-        )
+        match opcode {
+            0u16 => Ok(Self::Nop),
+            1u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Undef {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            2u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SourceContinued {
+                    continued_source: reader.next_string()?,
+                }))(reader)
+            }
+            3u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Source {
+                    source_language: SourceLanguage::parse(reader)?,
+                    version: reader.next_word()?,
+                    file: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                    source: if !reader.is_empty() {
+                        Some(reader.next_string()?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SourceExtension {
+                    extension: reader.next_string()?,
+                }))(reader)
+            }
+            5u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Name {
+                    target: Id(reader.next_word()?),
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            6u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemberName {
+                    ty: Id(reader.next_word()?),
+                    member: reader.next_word()?,
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            7u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::String {
+                    result_id: Id(reader.next_word()?),
+                    string: reader.next_string()?,
+                }))(reader)
+            }
+            8u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Line {
+                    file: Id(reader.next_word()?),
+                    line: reader.next_word()?,
+                    column: reader.next_word()?,
+                }))(reader)
+            }
+            10u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Extension {
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            11u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExtInstImport {
+                    result_id: Id(reader.next_word()?),
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            12u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExtInst {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    set: Id(reader.next_word()?),
+                    instruction: reader.next_word()?,
+                    operands: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            14u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemoryModel {
+                    addressing_model: AddressingModel::parse(reader)?,
+                    memory_model: MemoryModel::parse(reader)?,
+                }))(reader)
+            }
+            15u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EntryPoint {
+                    execution_model: ExecutionModel::parse(reader)?,
+                    entry_point: Id(reader.next_word()?),
+                    name: reader.next_string()?,
+                    interface: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            16u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExecutionMode {
+                    entry_point: Id(reader.next_word()?),
+                    mode: ExecutionMode::parse(reader)?,
+                }))(reader)
+            }
+            17u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Capability {
+                    capability: Capability::parse(reader)?,
+                }))(reader)
+            }
+            19u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeVoid {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            20u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeBool {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            21u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeInt {
+                    result_id: Id(reader.next_word()?),
+                    width: reader.next_word()?,
+                    signedness: reader.next_word()?,
+                }))(reader)
+            }
+            22u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeFloat {
+                    result_id: Id(reader.next_word()?),
+                    width: reader.next_word()?,
+                }))(reader)
+            }
+            23u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeVector {
+                    result_id: Id(reader.next_word()?),
+                    component_type: Id(reader.next_word()?),
+                    component_count: reader.next_word()?,
+                }))(reader)
+            }
+            24u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeMatrix {
+                    result_id: Id(reader.next_word()?),
+                    column_type: Id(reader.next_word()?),
+                    column_count: reader.next_word()?,
+                }))(reader)
+            }
+            25u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeImage {
+                    result_id: Id(reader.next_word()?),
+                    sampled_type: Id(reader.next_word()?),
+                    dim: Dim::parse(reader)?,
+                    depth: reader.next_word()?,
+                    arrayed: reader.next_word()?,
+                    ms: reader.next_word()?,
+                    sampled: reader.next_word()?,
+                    image_format: ImageFormat::parse(reader)?,
+                    access_qualifier: if !reader.is_empty() {
+                        Some(AccessQualifier::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            26u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeSampler {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            27u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeSampledImage {
+                    result_id: Id(reader.next_word()?),
+                    image_type: Id(reader.next_word()?),
+                }))(reader)
+            }
+            28u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeArray {
+                    result_id: Id(reader.next_word()?),
+                    element_type: Id(reader.next_word()?),
+                    length: Id(reader.next_word()?),
+                }))(reader)
+            }
+            29u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeRuntimeArray {
+                    result_id: Id(reader.next_word()?),
+                    element_type: Id(reader.next_word()?),
+                }))(reader)
+            }
+            30u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeStruct {
+                    result_id: Id(reader.next_word()?),
+                    member_types: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            31u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeOpaque {
+                    result_id: Id(reader.next_word()?),
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            32u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypePointer {
+                    result_id: Id(reader.next_word()?),
+                    storage_class: StorageClass::parse(reader)?,
+                    ty: Id(reader.next_word()?),
+                }))(reader)
+            }
+            33u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeFunction {
+                    result_id: Id(reader.next_word()?),
+                    return_type: Id(reader.next_word()?),
+                    parameter_types: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            34u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeEvent {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            35u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeDeviceEvent {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            36u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeReserveId {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            37u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeQueue {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            38u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypePipe {
+                    result_id: Id(reader.next_word()?),
+                    qualifier: AccessQualifier::parse(reader)?,
+                }))(reader)
+            }
+            39u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeForwardPointer {
+                    pointer_type: Id(reader.next_word()?),
+                    storage_class: StorageClass::parse(reader)?,
+                }))(reader)
+            }
+            41u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantTrue {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            42u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantFalse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            43u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Constant {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: reader.remainder(),
+                }))(reader)
+            }
+            44u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantComposite {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            45u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantSampler {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampler_addressing_mode: SamplerAddressingMode::parse(reader)?,
+                    param: reader.next_word()?,
+                    sampler_filter_mode: SamplerFilterMode::parse(reader)?,
+                }))(reader)
+            }
+            46u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantNull {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            48u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstantTrue {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            49u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstantFalse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            50u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstant {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: reader.remainder(),
+                }))(reader)
+            }
+            51u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstantComposite {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            52u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstantOp {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    opcode: SpecConstantInstruction::parse(reader)?,
+                }))(reader)
+            }
+            54u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Function {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    function_control: FunctionControl::parse(reader)?,
+                    function_type: Id(reader.next_word()?),
+                }))(reader)
+            }
+            55u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionParameter {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            56u16 => Ok(Self::FunctionEnd),
+            57u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionCall {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    function: Id(reader.next_word()?),
+                    arguments: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            59u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Variable {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    storage_class: StorageClass::parse(reader)?,
+                    initializer: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            60u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageTexelPointer {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    sample: Id(reader.next_word()?),
+                }))(reader)
+            }
+            61u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Load {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory_access: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            62u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Store {
+                    pointer: Id(reader.next_word()?),
+                    object: Id(reader.next_word()?),
+                    memory_access: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            63u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CopyMemory {
+                    target: Id(reader.next_word()?),
+                    source: Id(reader.next_word()?),
+                    memory_access1: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                    memory_access2: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            64u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CopyMemorySized {
+                    target: Id(reader.next_word()?),
+                    source: Id(reader.next_word()?),
+                    size: Id(reader.next_word()?),
+                    memory_access1: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                    memory_access2: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            65u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AccessChain {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            66u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InBoundsAccessChain {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            67u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrAccessChain {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    element: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            68u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArrayLength {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    structure: Id(reader.next_word()?),
+                    array_member: reader.next_word()?,
+                }))(reader)
+            }
+            69u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GenericPtrMemSemantics {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            70u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InBoundsPtrAccessChain {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    element: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            71u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Decorate {
+                    target: Id(reader.next_word()?),
+                    decoration: Decoration::parse(reader)?,
+                }))(reader)
+            }
+            72u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemberDecorate {
+                    structure_type: Id(reader.next_word()?),
+                    member: reader.next_word()?,
+                    decoration: Decoration::parse(reader)?,
+                }))(reader)
+            }
+            73u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DecorationGroup {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            74u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupDecorate {
+                    decoration_group: Id(reader.next_word()?),
+                    targets: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            75u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupMemberDecorate {
+                    decoration_group: Id(reader.next_word()?),
+                    targets: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push((Id(reader.next_word()?), reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            77u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorExtractDynamic {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            78u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorInsertDynamic {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                    component: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            79u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorShuffle {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    components: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            80u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeConstruct {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            81u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeExtract {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    composite: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            82u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeInsert {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    object: Id(reader.next_word()?),
+                    composite: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            83u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CopyObject {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            84u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Transpose {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    matrix: Id(reader.next_word()?),
+                }))(reader)
+            }
+            86u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SampledImage {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    sampler: Id(reader.next_word()?),
+                }))(reader)
+            }
+            87u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            88u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            89u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleDrefImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            90u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleDrefExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            91u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleProjImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            92u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleProjExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            93u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleProjDrefImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            94u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleProjDrefExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            95u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageFetch {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            96u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageGather {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    component: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            97u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageDrefGather {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            98u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageRead {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            99u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageWrite {
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    texel: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            100u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Image {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            101u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQueryFormat {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            102u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQueryOrder {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            103u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQuerySizeLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    level_of_detail: Id(reader.next_word()?),
+                }))(reader)
+            }
+            104u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQuerySize {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            105u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQueryLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            106u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQueryLevels {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            107u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageQuerySamples {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                }))(reader)
+            }
+            109u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertFToU {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    float_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            110u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertFToS {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    float_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            111u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertSToF {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    signed_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            112u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToF {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    unsigned_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            113u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UConvert {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    unsigned_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            114u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SConvert {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    signed_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            115u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FConvert {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    float_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            116u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::QuantizeToF16 {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            117u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertPtrToU {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            118u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SatConvertSToU {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    signed_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            119u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SatConvertUToS {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    unsigned_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            120u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToPtr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    integer_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            121u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrCastToGeneric {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            122u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GenericCastToPtr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            123u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GenericCastToPtrExplicit {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    storage: StorageClass::parse(reader)?,
+                }))(reader)
+            }
+            124u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Bitcast {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            126u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SNegate {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            127u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FNegate {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            128u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            129u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            130u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ISub {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            131u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FSub {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            132u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IMul {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            133u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FMul {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            134u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UDiv {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            135u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SDiv {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            136u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FDiv {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            137u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UMod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            138u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SRem {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            139u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SMod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            140u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FRem {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            141u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FMod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            142u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorTimesScalar {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                    scalar: Id(reader.next_word()?),
+                }))(reader)
+            }
+            143u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MatrixTimesScalar {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    matrix: Id(reader.next_word()?),
+                    scalar: Id(reader.next_word()?),
+                }))(reader)
+            }
+            144u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorTimesMatrix {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                    matrix: Id(reader.next_word()?),
+                }))(reader)
+            }
+            145u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MatrixTimesVector {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    matrix: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                }))(reader)
+            }
+            146u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MatrixTimesMatrix {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    left_matrix: Id(reader.next_word()?),
+                    right_matrix: Id(reader.next_word()?),
+                }))(reader)
+            }
+            147u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::OuterProduct {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            148u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Dot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            149u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAddCarry {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            150u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ISubBorrow {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            151u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UMulExtended {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            152u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SMulExtended {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            154u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Any {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                }))(reader)
+            }
+            155u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::All {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector: Id(reader.next_word()?),
+                }))(reader)
+            }
+            156u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsNan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            157u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsInf {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            158u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsFinite {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            159u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsNormal {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            160u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SignBitSet {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            161u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LessOrGreater {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                    y: Id(reader.next_word()?),
+                }))(reader)
+            }
+            162u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Ordered {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                    y: Id(reader.next_word()?),
+                }))(reader)
+            }
+            163u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Unordered {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    x: Id(reader.next_word()?),
+                    y: Id(reader.next_word()?),
+                }))(reader)
+            }
+            164u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            165u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalNotEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            166u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalOr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            167u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalAnd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            168u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalNot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            169u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Select {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    condition: Id(reader.next_word()?),
+                    object_1: Id(reader.next_word()?),
+                    object_2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            170u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            171u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::INotEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            172u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UGreaterThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            173u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SGreaterThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            174u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UGreaterThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            175u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SGreaterThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            176u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ULessThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            177u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SLessThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            178u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ULessThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            179u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SLessThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            180u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            181u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            182u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdNotEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            183u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordNotEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            184u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdLessThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            185u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordLessThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            186u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdGreaterThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            187u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordGreaterThan {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            188u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdLessThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            189u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordLessThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            190u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FOrdGreaterThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            191u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FUnordGreaterThanEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            194u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftRightLogical {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            195u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftRightArithmetic {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            196u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftLeftLogical {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            197u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseOr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            198u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseXor {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            199u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseAnd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            200u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Not {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            201u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitFieldInsert {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    insert: Id(reader.next_word()?),
+                    offset: Id(reader.next_word()?),
+                    count: Id(reader.next_word()?),
+                }))(reader)
+            }
+            202u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitFieldSExtract {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    offset: Id(reader.next_word()?),
+                    count: Id(reader.next_word()?),
+                }))(reader)
+            }
+            203u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitFieldUExtract {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    offset: Id(reader.next_word()?),
+                    count: Id(reader.next_word()?),
+                }))(reader)
+            }
+            204u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitReverse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                }))(reader)
+            }
+            205u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitCount {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                }))(reader)
+            }
+            207u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdx {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            208u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdy {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            209u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Fwidth {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            210u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdxFine {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            211u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdyFine {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            212u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FwidthFine {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            213u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdxCoarse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            214u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DPdyCoarse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            215u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FwidthCoarse {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    p: Id(reader.next_word()?),
+                }))(reader)
+            }
+            218u16 => Ok(Self::EmitVertex),
+            219u16 => Ok(Self::EndPrimitive),
+            220u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EmitStreamVertex {
+                    stream: Id(reader.next_word()?),
+                }))(reader)
+            }
+            221u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EndStreamPrimitive {
+                    stream: Id(reader.next_word()?),
+                }))(reader)
+            }
+            224u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ControlBarrier {
+                    execution: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            225u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemoryBarrier {
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            227u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicLoad {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            228u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicStore {
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            229u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicExchange {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            230u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicCompareExchange {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    equal: Id(reader.next_word()?),
+                    unequal: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    comparator: Id(reader.next_word()?),
+                }))(reader)
+            }
+            231u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicCompareExchangeWeak {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    equal: Id(reader.next_word()?),
+                    unequal: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    comparator: Id(reader.next_word()?),
+                }))(reader)
+            }
+            232u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicIIncrement {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            233u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicIDecrement {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            234u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicIAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            235u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicISub {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            236u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicSMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            237u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicUMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            238u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicSMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            239u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicUMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            240u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicAnd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            241u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicOr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            242u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicXor {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            245u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Phi {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    variable_parent: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push((Id(reader.next_word()?), Id(reader.next_word()?)));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            246u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LoopMerge {
+                    merge_block: Id(reader.next_word()?),
+                    continue_target: Id(reader.next_word()?),
+                    loop_control: LoopControl::parse(reader)?,
+                }))(reader)
+            }
+            247u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SelectionMerge {
+                    merge_block: Id(reader.next_word()?),
+                    selection_control: SelectionControl::parse(reader)?,
+                }))(reader)
+            }
+            248u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Label {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            249u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Branch {
+                    target_label: Id(reader.next_word()?),
+                }))(reader)
+            }
+            250u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BranchConditional {
+                    condition: Id(reader.next_word()?),
+                    true_label: Id(reader.next_word()?),
+                    false_label: Id(reader.next_word()?),
+                    branch_weights: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            251u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Switch {
+                    selector: Id(reader.next_word()?),
+                    default: Id(reader.next_word()?),
+                    target: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push((reader.next_word()?, Id(reader.next_word()?)));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            252u16 => Ok(Self::Kill),
+            253u16 => Ok(Self::Return),
+            254u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReturnValue {
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            255u16 => Ok(Self::Unreachable),
+            256u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LifetimeStart {
+                    pointer: Id(reader.next_word()?),
+                    size: reader.next_word()?,
+                }))(reader)
+            }
+            257u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LifetimeStop {
+                    pointer: Id(reader.next_word()?),
+                    size: reader.next_word()?,
+                }))(reader)
+            }
+            259u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupAsyncCopy {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    destination: Id(reader.next_word()?),
+                    source: Id(reader.next_word()?),
+                    num_elements: Id(reader.next_word()?),
+                    stride: Id(reader.next_word()?),
+                    event: Id(reader.next_word()?),
+                }))(reader)
+            }
+            260u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupWaitEvents {
+                    execution: Id(reader.next_word()?),
+                    num_events: Id(reader.next_word()?),
+                    events_list: Id(reader.next_word()?),
+                }))(reader)
+            }
+            261u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupAll {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            262u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupAny {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            263u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupBroadcast {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    local_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            264u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupIAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            265u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            266u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            267u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupUMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            268u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupSMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            269u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            270u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupUMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            271u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupSMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            274u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReadPipe {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            275u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::WritePipe {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            276u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReservedReadPipe {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            277u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReservedWritePipe {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            278u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReserveReadPipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    num_packets: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            279u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReserveWritePipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    num_packets: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            280u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CommitReadPipe {
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            281u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CommitWritePipe {
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            282u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsValidReserveId {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            283u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetNumPipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            284u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetMaxPipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            285u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupReserveReadPipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    num_packets: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            286u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupReserveWritePipePackets {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    num_packets: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            287u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupCommitReadPipe {
+                    execution: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            288u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupCommitWritePipe {
+                    execution: Id(reader.next_word()?),
+                    pipe: Id(reader.next_word()?),
+                    reserve_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            291u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EnqueueMarker {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    queue: Id(reader.next_word()?),
+                    num_events: Id(reader.next_word()?),
+                    wait_events: Id(reader.next_word()?),
+                    ret_event: Id(reader.next_word()?),
+                }))(reader)
+            }
+            292u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EnqueueKernel {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    queue: Id(reader.next_word()?),
+                    flags: Id(reader.next_word()?),
+                    nd_range: Id(reader.next_word()?),
+                    num_events: Id(reader.next_word()?),
+                    wait_events: Id(reader.next_word()?),
+                    ret_event: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                    local_size: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            293u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelNDrangeSubGroupCount {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    nd_range: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            294u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelNDrangeMaxSubGroupSize {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    nd_range: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            295u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelWorkGroupSize {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            296u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelPreferredWorkGroupSizeMultiple {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            297u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RetainEvent {
+                    event: Id(reader.next_word()?),
+                }))(reader)
+            }
+            298u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReleaseEvent {
+                    event: Id(reader.next_word()?),
+                }))(reader)
+            }
+            299u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CreateUserEvent {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            300u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsValidEvent {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    event: Id(reader.next_word()?),
+                }))(reader)
+            }
+            301u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SetUserEventStatus {
+                    event: Id(reader.next_word()?),
+                    status: Id(reader.next_word()?),
+                }))(reader)
+            }
+            302u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CaptureEventProfilingInfo {
+                    event: Id(reader.next_word()?),
+                    profiling_info: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            303u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetDefaultQueue {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            304u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BuildNDRange {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    global_work_size: Id(reader.next_word()?),
+                    local_work_size: Id(reader.next_word()?),
+                    global_work_offset: Id(reader.next_word()?),
+                }))(reader)
+            }
+            305u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            306u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            307u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleDrefImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            308u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleDrefExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            309u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleProjImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            310u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleProjExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            311u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleProjDrefImplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            312u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseSampleProjDrefExplicitLod {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: ImageOperands::parse(reader)?,
+                }))(reader)
+            }
+            313u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseFetch {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            314u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseGather {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    component: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            315u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseDrefGather {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    dref: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            316u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseTexelsResident {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    resident_code: Id(reader.next_word()?),
+                }))(reader)
+            }
+            317u16 => Ok(Self::NoLine),
+            318u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicFlagTestAndSet {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            319u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicFlagClear {
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            320u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSparseRead {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            321u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SizeOf {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            322u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypePipeStorage {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            323u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantPipeStorage {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packet_size: reader.next_word()?,
+                    packet_alignment: reader.next_word()?,
+                    capacity: reader.next_word()?,
+                }))(reader)
+            }
+            324u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CreatePipeFromPipeStorage {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pipe_storage: Id(reader.next_word()?),
+                }))(reader)
+            }
+            325u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelLocalSizeForSubgroupCount {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    subgroup_count: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            326u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GetKernelMaxNumSubgroups {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    invoke: Id(reader.next_word()?),
+                    param: Id(reader.next_word()?),
+                    param_size: Id(reader.next_word()?),
+                    param_align: Id(reader.next_word()?),
+                }))(reader)
+            }
+            327u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeNamedBarrier {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            328u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NamedBarrierInitialize {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    subgroup_count: Id(reader.next_word()?),
+                }))(reader)
+            }
+            329u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemoryNamedBarrier {
+                    named_barrier: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            330u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ModuleProcessed {
+                    process: reader.next_string()?,
+                }))(reader)
+            }
+            331u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExecutionModeId {
+                    entry_point: Id(reader.next_word()?),
+                    mode: ExecutionMode::parse(reader)?,
+                }))(reader)
+            }
+            332u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DecorateId {
+                    target: Id(reader.next_word()?),
+                    decoration: Decoration::parse(reader)?,
+                }))(reader)
+            }
+            333u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformElect {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                }))(reader)
+            }
+            334u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformAll {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            335u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformAny {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            336u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformAllEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            337u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBroadcast {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            338u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBroadcastFirst {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            339u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBallot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            340u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformInverseBallot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            341u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBallotBitExtract {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            342u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBallotBitCount {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            343u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBallotFindLSB {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            344u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBallotFindMSB {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            345u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformShuffle {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            346u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformShuffleXor {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    mask: Id(reader.next_word()?),
+                }))(reader)
+            }
+            347u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformShuffleUp {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    delta: Id(reader.next_word()?),
+                }))(reader)
+            }
+            348u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformShuffleDown {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    delta: Id(reader.next_word()?),
+                }))(reader)
+            }
+            349u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformIAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            350u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformFAdd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            351u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformIMul {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            352u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformFMul {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            353u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformSMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            354u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformUMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            355u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformFMin {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            356u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformSMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            357u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformUMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            358u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformFMax {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            359u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBitwiseAnd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            360u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBitwiseOr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            361u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformBitwiseXor {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            362u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformLogicalAnd {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            363u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformLogicalOr {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            364u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformLogicalXor {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    value: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            365u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformQuadBroadcast {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            366u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformQuadSwap {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                }))(reader)
+            }
+            400u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CopyLogical {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            401u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            402u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrNotEqual {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            403u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrDiff {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4160u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ColorAttachmentReadEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    attachment: Id(reader.next_word()?),
+                    sample: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4161u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DepthAttachmentReadEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sample: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4162u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::StencilAttachmentReadEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sample: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4416u16 => Ok(Self::TerminateInvocation),
+            4421u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupBallotKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4422u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupFirstInvocationKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4428u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAllKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4429u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAnyKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4430u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAllEqualKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4431u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformRotateKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    delta: Id(reader.next_word()?),
+                    cluster_size: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4432u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupReadInvocationKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4445u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TraceRayKHR {
+                    accel: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cull_mask: Id(reader.next_word()?),
+                    sbt_offset: Id(reader.next_word()?),
+                    sbt_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    ray_origin: Id(reader.next_word()?),
+                    ray_tmin: Id(reader.next_word()?),
+                    ray_direction: Id(reader.next_word()?),
+                    ray_tmax: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4446u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExecuteCallableKHR {
+                    sbt_index: Id(reader.next_word()?),
+                    callable_data: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4447u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToAccelerationStructureKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    accel: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4448u16 => Ok(Self::IgnoreIntersectionKHR),
+            4449u16 => Ok(Self::TerminateRayKHR),
+            4450u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SDot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4451u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UDot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4452u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SUDot {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4453u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SDotAccSat {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    accumulator: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4454u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UDotAccSat {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    accumulator: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4455u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SUDotAccSat {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    accumulator: Id(reader.next_word()?),
+                    packed_vector_format: if !reader.is_empty() {
+                        Some(PackedVectorFormat::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4456u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeCooperativeMatrixKHR {
+                    result_id: Id(reader.next_word()?),
+                    component_type: Id(reader.next_word()?),
+                    scope: Id(reader.next_word()?),
+                    rows: Id(reader.next_word()?),
+                    columns: Id(reader.next_word()?),
+                    usage: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4457u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixLoadKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory_layout: Id(reader.next_word()?),
+                    stride: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                    memory_operand: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4458u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixStoreKHR {
+                    pointer: Id(reader.next_word()?),
+                    object: Id(reader.next_word()?),
+                    memory_layout: Id(reader.next_word()?),
+                    stride: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                    memory_operand: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4459u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixMulAddKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    b: Id(reader.next_word()?),
+                    c: Id(reader.next_word()?),
+                    cooperative_matrix_operands: if !reader.is_empty() {
+                        Some(CooperativeMatrixOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            4460u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixLengthKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ty: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4472u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeRayQueryKHR {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4473u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryInitializeKHR {
+                    ray_query: Id(reader.next_word()?),
+                    accel: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cull_mask: Id(reader.next_word()?),
+                    ray_origin: Id(reader.next_word()?),
+                    ray_t_min: Id(reader.next_word()?),
+                    ray_direction: Id(reader.next_word()?),
+                    ray_t_max: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4474u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryTerminateKHR {
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4475u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGenerateIntersectionKHR {
+                    ray_query: Id(reader.next_word()?),
+                    hit_t: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4476u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryConfirmIntersectionKHR {
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4477u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryProceedKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4479u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionTypeKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4480u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleWeightedQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    texture: Id(reader.next_word()?),
+                    coordinates: Id(reader.next_word()?),
+                    weights: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4481u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBoxFilterQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    texture: Id(reader.next_word()?),
+                    coordinates: Id(reader.next_word()?),
+                    box_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4482u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchSSDQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4483u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchSADQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4500u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchWindowSSDQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target_sampled_image: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference_sampled_image: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4501u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchWindowSADQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target_sampled_image: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference_sampled_image: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4502u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchGatherSSDQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target_sampled_image: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference_sampled_image: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4503u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageBlockMatchGatherSADQCOM {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    target_sampled_image: Id(reader.next_word()?),
+                    target_coordinates: Id(reader.next_word()?),
+                    reference_sampled_image: Id(reader.next_word()?),
+                    reference_coordinates: Id(reader.next_word()?),
+                    block_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5000u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupIAddNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5001u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFAddNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5002u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFMinNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5003u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupUMinNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5004u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupSMinNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5005u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFMaxNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5006u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupUMaxNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5007u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupSMaxNonUniformAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5011u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FragmentMaskFetchAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5012u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FragmentFetchAMD {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    fragment_index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5056u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReadClockKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    scope: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5075u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FinalizeNodePayloadsAMDX {
+                    payload_array: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5078u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FinishWritingNodePayloadAMDX {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5090u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InitializeNodePayloadsAMDX {
+                    payload_array: Id(reader.next_word()?),
+                    visibility: Id(reader.next_word()?),
+                    payload_count: Id(reader.next_word()?),
+                    node_index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5110u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformQuadAllKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5111u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformQuadAnyKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    predicate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5249u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordHitMotionNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    primitive_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    hit_kind: Id(reader.next_word()?),
+                    sbt_record_offset: Id(reader.next_word()?),
+                    sbt_record_stride: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    current_time: Id(reader.next_word()?),
+                    hit_object_attributes: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5250u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordHitWithIndexMotionNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    primitive_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    hit_kind: Id(reader.next_word()?),
+                    sbt_record_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    current_time: Id(reader.next_word()?),
+                    hit_object_attributes: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5251u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordMissMotionNV {
+                    hit_object: Id(reader.next_word()?),
+                    sbt_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    current_time: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5252u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetWorldToObjectNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5253u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetObjectToWorldNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5254u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetObjectRayDirectionNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5255u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetObjectRayOriginNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5256u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectTraceRayMotionNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cullmask: Id(reader.next_word()?),
+                    sbt_record_offset: Id(reader.next_word()?),
+                    sbt_record_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    time: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5257u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetShaderRecordBufferHandleNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5258u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetShaderBindingTableRecordIndexNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5259u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordEmptyNV {
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5260u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectTraceRayNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cullmask: Id(reader.next_word()?),
+                    sbt_record_offset: Id(reader.next_word()?),
+                    sbt_record_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5261u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordHitNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    primitive_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    hit_kind: Id(reader.next_word()?),
+                    sbt_record_offset: Id(reader.next_word()?),
+                    sbt_record_stride: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    hit_object_attributes: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5262u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordHitWithIndexNV {
+                    hit_object: Id(reader.next_word()?),
+                    acceleration_structure: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    primitive_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    hit_kind: Id(reader.next_word()?),
+                    sbt_record_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                    hit_object_attributes: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5263u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectRecordMissNV {
+                    hit_object: Id(reader.next_word()?),
+                    sbt_index: Id(reader.next_word()?),
+                    origin: Id(reader.next_word()?),
+                    t_min: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    t_max: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5264u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectExecuteShaderNV {
+                    hit_object: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5265u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetCurrentTimeNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5266u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetAttributesNV {
+                    hit_object: Id(reader.next_word()?),
+                    hit_object_attribute: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5267u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetHitKindNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5268u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetPrimitiveIndexNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5269u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetGeometryIndexNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5270u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetInstanceIdNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5271u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetInstanceCustomIndexNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5272u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetWorldRayDirectionNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5273u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetWorldRayOriginNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5274u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetRayTMaxNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5275u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectGetRayTMinNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5276u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectIsEmptyNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5277u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectIsHitNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5278u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HitObjectIsMissNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit_object: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5279u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReorderThreadWithHitObjectNV {
+                    hit_object: Id(reader.next_word()?),
+                    hint: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                    bits: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5280u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReorderThreadWithHintNV {
+                    hint: Id(reader.next_word()?),
+                    bits: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5281u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeHitObjectNV {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5283u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImageSampleFootprintNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    sampled_image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    granularity: Id(reader.next_word()?),
+                    coarse: Id(reader.next_word()?),
+                    image_operands: if !reader.is_empty() {
+                        Some(ImageOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5294u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::EmitMeshTasksEXT {
+                    group_count_x: Id(reader.next_word()?),
+                    group_count_y: Id(reader.next_word()?),
+                    group_count_z: Id(reader.next_word()?),
+                    payload: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5295u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SetMeshOutputsEXT {
+                    vertex_count: Id(reader.next_word()?),
+                    primitive_count: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5296u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupNonUniformPartitionNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5299u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::WritePackedPrimitiveIndices4x8NV {
+                    index_offset: Id(reader.next_word()?),
+                    packed_indices: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5300u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FetchMicroTriangleVertexPositionNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    accel: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    primitive_index: Id(reader.next_word()?),
+                    barycentric: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5301u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FetchMicroTriangleVertexBarycentricNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    accel: Id(reader.next_word()?),
+                    instance_id: Id(reader.next_word()?),
+                    geometry_index: Id(reader.next_word()?),
+                    primitive_index: Id(reader.next_word()?),
+                    barycentric: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5334u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReportIntersectionKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    hit: Id(reader.next_word()?),
+                    hit_kind: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5335u16 => Ok(Self::IgnoreIntersectionNV),
+            5336u16 => Ok(Self::TerminateRayNV),
+            5337u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TraceNV {
+                    accel: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cull_mask: Id(reader.next_word()?),
+                    sbt_offset: Id(reader.next_word()?),
+                    sbt_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    ray_origin: Id(reader.next_word()?),
+                    ray_tmin: Id(reader.next_word()?),
+                    ray_direction: Id(reader.next_word()?),
+                    ray_tmax: Id(reader.next_word()?),
+                    payload_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5338u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TraceMotionNV {
+                    accel: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cull_mask: Id(reader.next_word()?),
+                    sbt_offset: Id(reader.next_word()?),
+                    sbt_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    ray_origin: Id(reader.next_word()?),
+                    ray_tmin: Id(reader.next_word()?),
+                    ray_direction: Id(reader.next_word()?),
+                    ray_tmax: Id(reader.next_word()?),
+                    time: Id(reader.next_word()?),
+                    payload_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5339u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TraceRayMotionNV {
+                    accel: Id(reader.next_word()?),
+                    ray_flags: Id(reader.next_word()?),
+                    cull_mask: Id(reader.next_word()?),
+                    sbt_offset: Id(reader.next_word()?),
+                    sbt_stride: Id(reader.next_word()?),
+                    miss_index: Id(reader.next_word()?),
+                    ray_origin: Id(reader.next_word()?),
+                    ray_tmin: Id(reader.next_word()?),
+                    ray_direction: Id(reader.next_word()?),
+                    ray_tmax: Id(reader.next_word()?),
+                    time: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5340u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionTriangleVertexPositionsKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5341u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAccelerationStructureKHR {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5344u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExecuteCallableNV {
+                    sbt_index: Id(reader.next_word()?),
+                    callable_data_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5358u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeCooperativeMatrixNV {
+                    result_id: Id(reader.next_word()?),
+                    component_type: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    rows: Id(reader.next_word()?),
+                    columns: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5359u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixLoadNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    stride: Id(reader.next_word()?),
+                    column_major: Id(reader.next_word()?),
+                    memory_access: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5360u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixStoreNV {
+                    pointer: Id(reader.next_word()?),
+                    object: Id(reader.next_word()?),
+                    stride: Id(reader.next_word()?),
+                    column_major: Id(reader.next_word()?),
+                    memory_access: if !reader.is_empty() {
+                        Some(MemoryAccess::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5361u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixMulAddNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    b: Id(reader.next_word()?),
+                    c: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5362u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CooperativeMatrixLengthNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ty: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5364u16 => Ok(Self::BeginInvocationInterlockEXT),
+            5365u16 => Ok(Self::EndInvocationInterlockEXT),
+            5380u16 => Ok(Self::DemoteToHelperInvocation),
+            5381u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IsHelperInvocationEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5391u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToImageNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5392u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToSamplerNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5393u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertImageToUNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5394u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertSamplerToUNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5395u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertUToSampledImageNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5396u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertSampledImageToUNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5397u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SamplerImageAddressingModeNV {
+                    bit_width: reader.next_word()?,
+                }))(reader)
+            }
+            5398u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RawAccessChainNV {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    base: Id(reader.next_word()?),
+                    byte_stride: Id(reader.next_word()?),
+                    element_index: Id(reader.next_word()?),
+                    byte_offset: Id(reader.next_word()?),
+                    raw_access_chain_operands: if !reader.is_empty() {
+                        Some(RawAccessChainOperands::parse(reader)?)
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5571u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupShuffleINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    data: Id(reader.next_word()?),
+                    invocation_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5572u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupShuffleDownINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    current: Id(reader.next_word()?),
+                    next: Id(reader.next_word()?),
+                    delta: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5573u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupShuffleUpINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    previous: Id(reader.next_word()?),
+                    current: Id(reader.next_word()?),
+                    delta: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5574u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupShuffleXorINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    data: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5575u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupBlockReadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ptr: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5576u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupBlockWriteINTEL {
+                    ptr: Id(reader.next_word()?),
+                    data: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5577u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupImageBlockReadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5578u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupImageBlockWriteINTEL {
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    data: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5580u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupImageMediaBlockReadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    width: Id(reader.next_word()?),
+                    height: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5581u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupImageMediaBlockWriteINTEL {
+                    image: Id(reader.next_word()?),
+                    coordinate: Id(reader.next_word()?),
+                    width: Id(reader.next_word()?),
+                    height: Id(reader.next_word()?),
+                    data: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5585u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UCountLeadingZerosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5586u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UCountTrailingZerosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5587u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AbsISubINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5588u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AbsUSubINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5589u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAddSatINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5590u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UAddSatINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5591u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAverageINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5592u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UAverageINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5593u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAverageRoundedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5594u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UAverageRoundedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5595u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ISubSatINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5596u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::USubSatINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5597u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IMul32x16INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5598u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UMul32x16INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5600u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantFunctionPointerINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    function: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5601u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionPointerCallINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    operand1: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            5609u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AsmTargetINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    asm_target: reader.next_string()?,
+                }))(reader)
+            }
+            5610u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AsmINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    asm_type: Id(reader.next_word()?),
+                    target: Id(reader.next_word()?),
+                    asm_instructions: reader.next_string()?,
+                    constraints: reader.next_string()?,
+                }))(reader)
+            }
+            5611u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AsmCallINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    asm: Id(reader.next_word()?),
+                    argument_0: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            5614u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicFMinEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5615u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicFMaxEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5630u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AssumeTrueKHR {
+                    condition: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5631u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ExpectKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                    expected_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5632u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DecorateString {
+                    target: Id(reader.next_word()?),
+                    decoration: Decoration::parse(reader)?,
+                }))(reader)
+            }
+            5633u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemberDecorateString {
+                    struct_type: Id(reader.next_word()?),
+                    member: reader.next_word()?,
+                    decoration: Decoration::parse(reader)?,
+                }))(reader)
+            }
+            5699u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VmeImageINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image_type: Id(reader.next_word()?),
+                    sampler: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5700u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeVmeImageINTEL {
+                    result_id: Id(reader.next_word()?),
+                    image_type: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5701u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImePayloadINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5702u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcRefPayloadINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5703u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcSicPayloadINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5704u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcMcePayloadINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5705u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcMceResultINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5706u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImeResultINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5707u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImeResultSingleReferenceStreamoutINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5708u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImeResultDualReferenceStreamoutINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5709u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImeSingleReferenceStreaminINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5710u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcImeDualReferenceStreaminINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5711u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcRefResultINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5712u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeAvcSicResultINTEL {
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5713u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5714u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    reference_base_penalty: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5715u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultInterShapePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5716u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetInterShapePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_shape_penalty: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5717u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5718u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetInterDirectionPenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    direction_cost: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5719u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5720u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5721u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5722u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5723u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5724u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetMotionVectorCostFunctionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_cost_center_delta: Id(reader.next_word()?),
+                    packed_cost_table: Id(reader.next_word()?),
+                    cost_precision: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5725u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    slice_type: Id(reader.next_word()?),
+                    qp: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5726u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5727u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5728u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetAcOnlyHaarINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5729u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    source_field_polarity: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5730u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    reference_field_polarity: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5731u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    forward_reference_field_polarity: Id(reader.next_word()?),
+                    backward_reference_field_polarity: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5732u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToImePayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5733u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToImeResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5734u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToRefPayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5735u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToRefResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5736u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToSicPayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5737u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceConvertToSicResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5738u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetMotionVectorsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5739u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterDistortionsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5740u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetBestInterDistortionsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5741u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterMajorShapeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5742u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterMinorShapeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5743u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterDirectionsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5744u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterMotionVectorCountINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5745u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterReferenceIdsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5746u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_reference_ids: Id(reader.next_word()?),
+                    packed_reference_parameter_field_polarities: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5747u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeInitializeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_coord: Id(reader.next_word()?),
+                    partition_mask: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5748u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetSingleReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ref_offset: Id(reader.next_word()?),
+                    search_window_config: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5749u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetDualReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    fwd_ref_offset: Id(reader.next_word()?),
+                    bwd_ref_offset: Id(reader.next_word()?),
+                    id_search_window_config: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5750u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeRefWindowSizeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    search_window_config: Id(reader.next_word()?),
+                    dual_ref: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5751u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeAdjustRefOffsetINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ref_offset: Id(reader.next_word()?),
+                    src_coord: Id(reader.next_word()?),
+                    ref_window_size: Id(reader.next_word()?),
+                    image_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5752u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeConvertToMcePayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5753u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetMaxMotionVectorCountINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    max_motion_vector_count: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5754u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetUnidirectionalMixDisableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5755u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetEarlySearchTerminationThresholdINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    threshold: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5756u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeSetWeightedSadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_sad_weights: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5757u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithSingleReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5758u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithDualReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5759u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    streamin_components: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5760u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    streamin_components: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5761u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5762u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5763u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    streamin_components: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5764u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    streamin_components: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5765u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeConvertToMceResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5766u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetSingleReferenceStreaminINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5767u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetDualReferenceStreaminINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5768u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeStripSingleReferenceStreamoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5769u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeStripDualReferenceStreamoutINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5770u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5771u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5772u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5773u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5774u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5775u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                    major_shape: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5776u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetBorderReachedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    image_select: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5777u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetTruncatedSearchIndicationINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5778u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5779u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5780u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5781u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcFmeInitializeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_coord: Id(reader.next_word()?),
+                    motion_vectors: Id(reader.next_word()?),
+                    major_shapes: Id(reader.next_word()?),
+                    minor_shapes: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    pixel_resolution: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5782u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcBmeInitializeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_coord: Id(reader.next_word()?),
+                    motion_vectors: Id(reader.next_word()?),
+                    major_shapes: Id(reader.next_word()?),
+                    minor_shapes: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                    pixel_resolution: Id(reader.next_word()?),
+                    bidirectional_weight: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5783u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefConvertToMcePayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5784u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefSetBidirectionalMixDisableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5785u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefSetBilinearFilterEnableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5786u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefEvaluateWithSingleReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5787u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefEvaluateWithDualReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5788u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefEvaluateWithMultiReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    packed_reference_ids: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5789u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    packed_reference_ids: Id(reader.next_word()?),
+                    packed_reference_field_polarities: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5790u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcRefConvertToMceResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5791u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicInitializeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_coord: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5792u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicConfigureSkcINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    skip_block_partition_type: Id(reader.next_word()?),
+                    skip_motion_vector_mask: Id(reader.next_word()?),
+                    motion_vectors: Id(reader.next_word()?),
+                    bidirectional_weight: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5793u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicConfigureIpeLumaINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    luma_intra_partition_mask: Id(reader.next_word()?),
+                    intra_neighbour_availabilty: Id(reader.next_word()?),
+                    left_edge_luma_pixels: Id(reader.next_word()?),
+                    upper_left_corner_luma_pixel: Id(reader.next_word()?),
+                    upper_edge_luma_pixels: Id(reader.next_word()?),
+                    upper_right_edge_luma_pixels: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5794u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicConfigureIpeLumaChromaINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    luma_intra_partition_mask: Id(reader.next_word()?),
+                    intra_neighbour_availabilty: Id(reader.next_word()?),
+                    left_edge_luma_pixels: Id(reader.next_word()?),
+                    upper_left_corner_luma_pixel: Id(reader.next_word()?),
+                    upper_edge_luma_pixels: Id(reader.next_word()?),
+                    upper_right_edge_luma_pixels: Id(reader.next_word()?),
+                    left_edge_chroma_pixels: Id(reader.next_word()?),
+                    upper_left_corner_chroma_pixel: Id(reader.next_word()?),
+                    upper_edge_chroma_pixels: Id(reader.next_word()?),
+                    sad_adjustment: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5795u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetMotionVectorMaskINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    skip_block_partition_type: Id(reader.next_word()?),
+                    direction: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5796u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicConvertToMcePayloadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5797u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetIntraLumaShapePenaltyINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_shape_penalty: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5798u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetIntraLumaModeCostFunctionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    luma_mode_penalty: Id(reader.next_word()?),
+                    luma_packed_neighbor_modes: Id(reader.next_word()?),
+                    luma_packed_non_dc_penalty: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5799u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetIntraChromaModeCostFunctionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    chroma_mode_base_penalty: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5800u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetBilinearFilterEnableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5801u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetSkcForwardTransformEnableINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packed_sad_coefficients: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5802u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicSetBlockBasedRawSkipSadINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    block_based_skip_type: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5803u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicEvaluateIpeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5804u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicEvaluateWithSingleReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5805u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicEvaluateWithDualReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    fwd_ref_image: Id(reader.next_word()?),
+                    bwd_ref_image: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5806u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicEvaluateWithMultiReferenceINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    packed_reference_ids: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5807u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    src_image: Id(reader.next_word()?),
+                    packed_reference_ids: Id(reader.next_word()?),
+                    packed_reference_field_polarities: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5808u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicConvertToMceResultINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5809u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetIpeLumaShapeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5810u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetBestIpeLumaDistortionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5811u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetBestIpeChromaDistortionINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5812u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetPackedIpeLumaModesINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5813u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetIpeChromaModeINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5814u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5815u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5816u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupAvcSicGetInterRawSadsINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    payload: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5818u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VariableLengthArrayINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    lenght: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5819u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SaveMemoryINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5820u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RestoreMemoryINTEL {
+                    ptr: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5840u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSinCosPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    from_sign: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5841u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCastINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5842u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCastFromIntINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    mout: reader.next_word()?,
+                    from_sign: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5843u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCastToIntINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5846u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatAddINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5847u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSubINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5848u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatMulINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5849u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatDivINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5850u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatGTINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                }))(reader)
+            }
+            5851u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatGEINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                }))(reader)
+            }
+            5852u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLTINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                }))(reader)
+            }
+            5853u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLEINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                }))(reader)
+            }
+            5854u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatEQINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                }))(reader)
+            }
+            5855u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatRecipINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5856u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatRSqrtINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5857u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCbrtINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5858u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatHypotINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5859u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSqrtINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5860u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLogINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5861u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLog2INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5862u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLog10INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5863u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatLog1pINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5864u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatExpINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5865u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatExp2INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5866u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatExp10INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5867u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatExpm1INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5868u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSinINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5869u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5870u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSinCosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5871u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatSinPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5872u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatCosPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5873u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatASinINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5874u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatASinPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5875u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatACosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5876u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatACosPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5877u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatATanINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5878u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatATanPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5879u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatATan2INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5880u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatPowINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5881u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatPowRINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    m2: reader.next_word()?,
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5882u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArbitraryFloatPowNINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    a: Id(reader.next_word()?),
+                    m1: reader.next_word()?,
+                    b: Id(reader.next_word()?),
+                    mout: reader.next_word()?,
+                    enable_subnormals: reader.next_word()?,
+                    rounding_mode: reader.next_word()?,
+                    rounding_accuracy: reader.next_word()?,
+                }))(reader)
+            }
+            5887u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LoopControlINTEL {
+                    loop_control_parameters: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            5911u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AliasDomainDeclINTEL {
+                    result_id: Id(reader.next_word()?),
+                    name: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5912u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AliasScopeDeclINTEL {
+                    result_id: Id(reader.next_word()?),
+                    alias_domain: Id(reader.next_word()?),
+                    name: if !reader.is_empty() {
+                        Some(Id(reader.next_word()?))
+                    } else {
+                        None
+                    },
+                }))(reader)
+            }
+            5913u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AliasScopeListDeclINTEL {
+                    result_id: Id(reader.next_word()?),
+                    alias_scope1_alias_scope2: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            5923u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedSqrtINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5924u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedRecipINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5925u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedRsqrtINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5926u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedSinINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5927u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedCosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5928u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedSinCosINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5929u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedSinPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5930u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedCosPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5931u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedSinCosPiINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5932u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedLogINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5933u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FixedExpINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    input_type: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                    s: reader.next_word()?,
+                    i: reader.next_word()?,
+                    r_i: reader.next_word()?,
+                    q: reader.next_word()?,
+                    o: reader.next_word()?,
+                }))(reader)
+            }
+            5934u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PtrCastToCrossWorkgroupINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5938u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CrossWorkgroupCastToPtrINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5946u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ReadPipeBlockingINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5947u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::WritePipeBlockingINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    packet_size: Id(reader.next_word()?),
+                    packet_alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5949u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FPGARegINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    result: Id(reader.next_word()?),
+                    input: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6016u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetRayTMinKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6017u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetRayFlagsKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6018u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionTKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6019u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionInstanceCustomIndexKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6020u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionInstanceIdKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6021u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionInstanceShaderBindingTableRecordOffsetKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6022u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionGeometryIndexKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6023u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionPrimitiveIndexKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6024u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionBarycentricsKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6025u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionFrontFaceKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6026u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionCandidateAABBOpaqueKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6027u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionObjectRayDirectionKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6028u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionObjectRayOriginKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6029u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetWorldRayDirectionKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6030u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetWorldRayOriginKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6031u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionObjectToWorldKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6032u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RayQueryGetIntersectionWorldToObjectKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ray_query: Id(reader.next_word()?),
+                    intersection: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6035u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AtomicFAddEXT {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    pointer: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6086u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeBufferSurfaceINTEL {
+                    result_id: Id(reader.next_word()?),
+                    access_qualifier: AccessQualifier::parse(reader)?,
+                }))(reader)
+            }
+            6090u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::TypeStructContinuedINTEL {
+                    member_types: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            6091u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConstantCompositeContinuedINTEL {
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            6092u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecConstantCompositeContinuedINTEL {
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            6096u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeConstructContinuedINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    constituents: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(Id(reader.next_word()?));
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            6116u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertFToBF16INTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    float_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6117u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ConvertBF16ToFINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    b_float16_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6142u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ControlBarrierArriveINTEL {
+                    execution: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6143u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ControlBarrierWaitINTEL {
+                    execution: Id(reader.next_word()?),
+                    memory: Id(reader.next_word()?),
+                    semantics: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6401u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupIMulKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6402u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupFMulKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6403u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupBitwiseAndKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6404u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupBitwiseOrKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6405u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupBitwiseXorKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6406u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupLogicalAndKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6407u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupLogicalOrKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6408u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GroupLogicalXorKHR {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    execution: Id(reader.next_word()?),
+                    operation: GroupOperation::parse(reader)?,
+                    x: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6428u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaskedGatherINTEL {
+                    result_type_id: Id(reader.next_word()?),
+                    result_id: Id(reader.next_word()?),
+                    ptr_vector: Id(reader.next_word()?),
+                    alignment: reader.next_word()?,
+                    mask: Id(reader.next_word()?),
+                    fill_empty: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6429u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaskedScatterINTEL {
+                    input_vector: Id(reader.next_word()?),
+                    ptr_vector: Id(reader.next_word()?),
+                    alignment: reader.next_word()?,
+                    mask: Id(reader.next_word()?),
+                }))(reader)
+            }
+            opcode => Err(reader.map_err(ParseErrors::UnknownOpcode(opcode))),
+        }
     }
     /// Returns the `Id` that is assigned by this instruction, if any.
     pub fn result_id(&self) -> Option<Id> {
@@ -11377,263 +11370,257 @@ impl SpecConstantInstruction {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
         let opcode = (reader.next_word()? & 0xffff) as u16;
-        Ok(
-            match opcode {
-                79u16 => {
-                    Self::VectorShuffle {
-                        vector_1: Id(reader.next_word()?),
-                        vector_2: Id(reader.next_word()?),
-                        components: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                81u16 => {
-                    Self::CompositeExtract {
-                        composite: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                82u16 => {
-                    Self::CompositeInsert {
-                        object: Id(reader.next_word()?),
-                        composite: Id(reader.next_word()?),
-                        indexes: {
-                            let mut vec = Vec::new();
-                            while !reader.is_empty() {
-                                vec.push(reader.next_word()?);
-                            }
-                            vec
-                        },
-                    }
-                }
-                113u16 => {
-                    Self::UConvert {
-                        unsigned_value: Id(reader.next_word()?),
-                    }
-                }
-                114u16 => {
-                    Self::SConvert {
-                        signed_value: Id(reader.next_word()?),
-                    }
-                }
-                115u16 => {
-                    Self::FConvert {
-                        float_value: Id(reader.next_word()?),
-                    }
-                }
-                116u16 => {
-                    Self::QuantizeToF16 {
-                        value: Id(reader.next_word()?),
-                    }
-                }
-                126u16 => {
-                    Self::SNegate {
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                128u16 => {
-                    Self::IAdd {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                130u16 => {
-                    Self::ISub {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                132u16 => {
-                    Self::IMul {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                134u16 => {
-                    Self::UDiv {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                135u16 => {
-                    Self::SDiv {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                137u16 => {
-                    Self::UMod {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                138u16 => {
-                    Self::SRem {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                139u16 => {
-                    Self::SMod {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                164u16 => {
-                    Self::LogicalEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                165u16 => {
-                    Self::LogicalNotEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                166u16 => {
-                    Self::LogicalOr {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                167u16 => {
-                    Self::LogicalAnd {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                168u16 => {
-                    Self::LogicalNot {
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                169u16 => {
-                    Self::Select {
-                        condition: Id(reader.next_word()?),
-                        object_1: Id(reader.next_word()?),
-                        object_2: Id(reader.next_word()?),
-                    }
-                }
-                170u16 => {
-                    Self::IEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                171u16 => {
-                    Self::INotEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                172u16 => {
-                    Self::UGreaterThan {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                173u16 => {
-                    Self::SGreaterThan {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                174u16 => {
-                    Self::UGreaterThanEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                175u16 => {
-                    Self::SGreaterThanEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                176u16 => {
-                    Self::ULessThan {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                177u16 => {
-                    Self::SLessThan {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                178u16 => {
-                    Self::ULessThanEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                179u16 => {
-                    Self::SLessThanEqual {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                194u16 => {
-                    Self::ShiftRightLogical {
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                195u16 => {
-                    Self::ShiftRightArithmetic {
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                196u16 => {
-                    Self::ShiftLeftLogical {
-                        base: Id(reader.next_word()?),
-                        shift: Id(reader.next_word()?),
-                    }
-                }
-                197u16 => {
-                    Self::BitwiseOr {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                198u16 => {
-                    Self::BitwiseXor {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                199u16 => {
-                    Self::BitwiseAnd {
-                        operand1: Id(reader.next_word()?),
-                        operand2: Id(reader.next_word()?),
-                    }
-                }
-                200u16 => {
-                    Self::Not {
-                        operand: Id(reader.next_word()?),
-                    }
-                }
-                opcode => {
-                    return Err(
-                        reader.map_err(ParseErrors::UnknownSpecConstantOpcode(opcode)),
-                    );
-                }
-            },
-        )
+        match opcode {
+            79u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VectorShuffle {
+                    vector_1: Id(reader.next_word()?),
+                    vector_2: Id(reader.next_word()?),
+                    components: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            81u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeExtract {
+                    composite: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            82u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CompositeInsert {
+                    object: Id(reader.next_word()?),
+                    composite: Id(reader.next_word()?),
+                    indexes: {
+                        let mut vec = Vec::new();
+                        while !reader.is_empty() {
+                            vec.push(reader.next_word()?);
+                        }
+                        vec
+                    },
+                }))(reader)
+            }
+            113u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UConvert {
+                    unsigned_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            114u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SConvert {
+                    signed_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            115u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FConvert {
+                    float_value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            116u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::QuantizeToF16 {
+                    value: Id(reader.next_word()?),
+                }))(reader)
+            }
+            126u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SNegate {
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            128u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IAdd {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            130u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ISub {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            132u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IMul {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            134u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UDiv {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            135u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SDiv {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            137u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UMod {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            138u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SRem {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            139u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SMod {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            164u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            165u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalNotEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            166u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalOr {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            167u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalAnd {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            168u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LogicalNot {
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            169u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Select {
+                    condition: Id(reader.next_word()?),
+                    object_1: Id(reader.next_word()?),
+                    object_2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            170u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            171u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::INotEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            172u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UGreaterThan {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            173u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SGreaterThan {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            174u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UGreaterThanEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            175u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SGreaterThanEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            176u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ULessThan {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            177u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SLessThan {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            178u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ULessThanEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            179u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SLessThanEqual {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            194u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftRightLogical {
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            195u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftRightArithmetic {
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            196u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShiftLeftLogical {
+                    base: Id(reader.next_word()?),
+                    shift: Id(reader.next_word()?),
+                }))(reader)
+            }
+            197u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseOr {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            198u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseXor {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            199u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BitwiseAnd {
+                    operand1: Id(reader.next_word()?),
+                    operand2: Id(reader.next_word()?),
+                }))(reader)
+            }
+            200u16 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Not {
+                    operand: Id(reader.next_word()?),
+                }))(reader)
+            }
+            opcode => Err(reader.map_err(ParseErrors::UnknownSpecConstantOpcode(opcode))),
+        }
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -12280,31 +12267,27 @@ pub enum SourceLanguage {
 impl SourceLanguage {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<SourceLanguage, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Unknown,
-                1u32 => Self::ESSL,
-                2u32 => Self::GLSL,
-                3u32 => Self::OpenCL_C,
-                4u32 => Self::OpenCL_CPP,
-                5u32 => Self::HLSL,
-                6u32 => Self::CPP_for_OpenCL,
-                7u32 => Self::SYCL,
-                8u32 => Self::HERO_C,
-                9u32 => Self::NZSL,
-                10u32 => Self::WGSL,
-                11u32 => Self::Slang,
-                12u32 => Self::Zig,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("SourceLanguage", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Unknown),
+            1u32 => Ok(Self::ESSL),
+            2u32 => Ok(Self::GLSL),
+            3u32 => Ok(Self::OpenCL_C),
+            4u32 => Ok(Self::OpenCL_CPP),
+            5u32 => Ok(Self::HLSL),
+            6u32 => Ok(Self::CPP_for_OpenCL),
+            7u32 => Ok(Self::SYCL),
+            8u32 => Ok(Self::HERO_C),
+            9u32 => Ok(Self::NZSL),
+            10u32 => Ok(Self::WGSL),
+            11u32 => Ok(Self::Slang),
+            12u32 => Ok(Self::Zig),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("SourceLanguage", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for SourceLanguage {
@@ -12353,35 +12336,31 @@ pub enum ExecutionModel {
 impl ExecutionModel {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<ExecutionModel, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Vertex,
-                1u32 => Self::TessellationControl,
-                2u32 => Self::TessellationEvaluation,
-                3u32 => Self::Geometry,
-                4u32 => Self::Fragment,
-                5u32 => Self::GLCompute,
-                6u32 => Self::Kernel,
-                5267u32 => Self::TaskNV,
-                5268u32 => Self::MeshNV,
-                5313u32 => Self::RayGenerationKHR,
-                5314u32 => Self::IntersectionKHR,
-                5315u32 => Self::AnyHitKHR,
-                5316u32 => Self::ClosestHitKHR,
-                5317u32 => Self::MissKHR,
-                5318u32 => Self::CallableKHR,
-                5364u32 => Self::TaskEXT,
-                5365u32 => Self::MeshEXT,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("ExecutionModel", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Vertex),
+            1u32 => Ok(Self::TessellationControl),
+            2u32 => Ok(Self::TessellationEvaluation),
+            3u32 => Ok(Self::Geometry),
+            4u32 => Ok(Self::Fragment),
+            5u32 => Ok(Self::GLCompute),
+            6u32 => Ok(Self::Kernel),
+            5267u32 => Ok(Self::TaskNV),
+            5268u32 => Ok(Self::MeshNV),
+            5313u32 => Ok(Self::RayGenerationKHR),
+            5314u32 => Ok(Self::IntersectionKHR),
+            5315u32 => Ok(Self::AnyHitKHR),
+            5316u32 => Ok(Self::ClosestHitKHR),
+            5317u32 => Ok(Self::MissKHR),
+            5318u32 => Ok(Self::CallableKHR),
+            5364u32 => Ok(Self::TaskEXT),
+            5365u32 => Ok(Self::MeshEXT),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("ExecutionModel", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for ExecutionModel {
@@ -12421,22 +12400,18 @@ pub enum AddressingModel {
 impl AddressingModel {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<AddressingModel, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Logical,
-                1u32 => Self::Physical32,
-                2u32 => Self::Physical64,
-                5348u32 => Self::PhysicalStorageBuffer64,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("AddressingModel", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Logical),
+            1u32 => Ok(Self::Physical32),
+            2u32 => Ok(Self::Physical64),
+            5348u32 => Ok(Self::PhysicalStorageBuffer64),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("AddressingModel", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for AddressingModel {
@@ -12463,20 +12438,15 @@ pub enum MemoryModel {
 impl MemoryModel {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<MemoryModel, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Simple,
-                1u32 => Self::GLSL450,
-                2u32 => Self::OpenCL,
-                3u32 => Self::Vulkan,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(ParseErrors::UnknownEnumerant("MemoryModel", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Simple),
+            1u32 => Ok(Self::GLSL450),
+            2u32 => Ok(Self::OpenCL),
+            3u32 => Ok(Self::Vulkan),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("MemoryModel", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for MemoryModel {
@@ -12597,271 +12567,266 @@ pub enum ExecutionMode {
 impl ExecutionMode {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<ExecutionMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => {
-                    Self::Invocations {
-                        number_of_invocation_invocations: reader.next_word()?,
-                    }
-                }
-                1u32 => Self::SpacingEqual,
-                2u32 => Self::SpacingFractionalEven,
-                3u32 => Self::SpacingFractionalOdd,
-                4u32 => Self::VertexOrderCw,
-                5u32 => Self::VertexOrderCcw,
-                6u32 => Self::PixelCenterInteger,
-                7u32 => Self::OriginUpperLeft,
-                8u32 => Self::OriginLowerLeft,
-                9u32 => Self::EarlyFragmentTests,
-                10u32 => Self::PointMode,
-                11u32 => Self::Xfb,
-                12u32 => Self::DepthReplacing,
-                14u32 => Self::DepthGreater,
-                15u32 => Self::DepthLess,
-                16u32 => Self::DepthUnchanged,
-                17u32 => {
-                    Self::LocalSize {
-                        x_size: reader.next_word()?,
-                        y_size: reader.next_word()?,
-                        z_size: reader.next_word()?,
-                    }
-                }
-                18u32 => {
-                    Self::LocalSizeHint {
-                        x_size: reader.next_word()?,
-                        y_size: reader.next_word()?,
-                        z_size: reader.next_word()?,
-                    }
-                }
-                19u32 => Self::InputPoints,
-                20u32 => Self::InputLines,
-                21u32 => Self::InputLinesAdjacency,
-                22u32 => Self::Triangles,
-                23u32 => Self::InputTrianglesAdjacency,
-                24u32 => Self::Quads,
-                25u32 => Self::Isolines,
-                26u32 => {
-                    Self::OutputVertices {
-                        vertex_count: reader.next_word()?,
-                    }
-                }
-                27u32 => Self::OutputPoints,
-                28u32 => Self::OutputLineStrip,
-                29u32 => Self::OutputTriangleStrip,
-                30u32 => {
-                    Self::VecTypeHint {
-                        vector_type: reader.next_word()?,
-                    }
-                }
-                31u32 => Self::ContractionOff,
-                33u32 => Self::Initializer,
-                34u32 => Self::Finalizer,
-                35u32 => {
-                    Self::SubgroupSize {
-                        subgroup_size: reader.next_word()?,
-                    }
-                }
-                36u32 => {
-                    Self::SubgroupsPerWorkgroup {
-                        subgroups_per_workgroup: reader.next_word()?,
-                    }
-                }
-                37u32 => {
-                    Self::SubgroupsPerWorkgroupId {
-                        subgroups_per_workgroup: Id(reader.next_word()?),
-                    }
-                }
-                38u32 => {
-                    Self::LocalSizeId {
-                        x_size: Id(reader.next_word()?),
-                        y_size: Id(reader.next_word()?),
-                        z_size: Id(reader.next_word()?),
-                    }
-                }
-                39u32 => {
-                    Self::LocalSizeHintId {
-                        x_size_hint: Id(reader.next_word()?),
-                        y_size_hint: Id(reader.next_word()?),
-                        z_size_hint: Id(reader.next_word()?),
-                    }
-                }
-                4169u32 => Self::NonCoherentColorAttachmentReadEXT,
-                4170u32 => Self::NonCoherentDepthAttachmentReadEXT,
-                4171u32 => Self::NonCoherentStencilAttachmentReadEXT,
-                4421u32 => Self::SubgroupUniformControlFlowKHR,
-                4446u32 => Self::PostDepthCoverage,
-                4459u32 => {
-                    Self::DenormPreserve {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                4460u32 => {
-                    Self::DenormFlushToZero {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                4461u32 => {
-                    Self::SignedZeroInfNanPreserve {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                4462u32 => {
-                    Self::RoundingModeRTE {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                4463u32 => {
-                    Self::RoundingModeRTZ {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                5017u32 => Self::EarlyAndLateFragmentTestsAMD,
-                5027u32 => Self::StencilRefReplacingEXT,
-                5069u32 => Self::CoalescingAMDX,
-                5071u32 => {
-                    Self::MaxNodeRecursionAMDX {
-                        number_of_recursions: Id(reader.next_word()?),
-                    }
-                }
-                5072u32 => {
-                    Self::StaticNumWorkgroupsAMDX {
-                        x_size: Id(reader.next_word()?),
-                        y_size: Id(reader.next_word()?),
-                        z_size: Id(reader.next_word()?),
-                    }
-                }
-                5073u32 => {
-                    Self::ShaderIndexAMDX {
-                        shader_index: Id(reader.next_word()?),
-                    }
-                }
-                5077u32 => {
-                    Self::MaxNumWorkgroupsAMDX {
-                        x_size: Id(reader.next_word()?),
-                        y_size: Id(reader.next_word()?),
-                        z_size: Id(reader.next_word()?),
-                    }
-                }
-                5079u32 => Self::StencilRefUnchangedFrontAMD,
-                5080u32 => Self::StencilRefGreaterFrontAMD,
-                5081u32 => Self::StencilRefLessFrontAMD,
-                5082u32 => Self::StencilRefUnchangedBackAMD,
-                5083u32 => Self::StencilRefGreaterBackAMD,
-                5084u32 => Self::StencilRefLessBackAMD,
-                5088u32 => Self::QuadDerivativesKHR,
-                5089u32 => Self::RequireFullQuadsKHR,
-                5269u32 => Self::OutputLinesEXT,
-                5270u32 => {
-                    Self::OutputPrimitivesEXT {
-                        primitive_count: reader.next_word()?,
-                    }
-                }
-                5289u32 => Self::DerivativeGroupQuadsNV,
-                5290u32 => Self::DerivativeGroupLinearNV,
-                5298u32 => Self::OutputTrianglesEXT,
-                5366u32 => Self::PixelInterlockOrderedEXT,
-                5367u32 => Self::PixelInterlockUnorderedEXT,
-                5368u32 => Self::SampleInterlockOrderedEXT,
-                5369u32 => Self::SampleInterlockUnorderedEXT,
-                5370u32 => Self::ShadingRateInterlockOrderedEXT,
-                5371u32 => Self::ShadingRateInterlockUnorderedEXT,
-                5618u32 => {
-                    Self::SharedLocalMemorySizeINTEL {
-                        size: reader.next_word()?,
-                    }
-                }
-                5620u32 => {
-                    Self::RoundingModeRTPINTEL {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                5621u32 => {
-                    Self::RoundingModeRTNINTEL {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                5622u32 => {
-                    Self::FloatingPointModeALTINTEL {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                5623u32 => {
-                    Self::FloatingPointModeIEEEINTEL {
-                        target_width: reader.next_word()?,
-                    }
-                }
-                5893u32 => {
-                    Self::MaxWorkgroupSizeINTEL {
-                        max_x_size: reader.next_word()?,
-                        max_y_size: reader.next_word()?,
-                        max_z_size: reader.next_word()?,
-                    }
-                }
-                5894u32 => {
-                    Self::MaxWorkDimINTEL {
-                        max_dimensions: reader.next_word()?,
-                    }
-                }
-                5895u32 => Self::NoGlobalOffsetINTEL,
-                5896u32 => {
-                    Self::NumSIMDWorkitemsINTEL {
-                        vector_width: reader.next_word()?,
-                    }
-                }
-                5903u32 => {
-                    Self::SchedulerTargetFmaxMhzINTEL {
-                        target_fmax: reader.next_word()?,
-                    }
-                }
-                6023u32 => Self::MaximallyReconvergesKHR,
-                6028u32 => {
-                    Self::FPFastMathDefault {
-                        target_type: Id(reader.next_word()?),
-                        fast_math_mode: Id(reader.next_word()?),
-                    }
-                }
-                6154u32 => {
-                    Self::StreamingInterfaceINTEL {
-                        stall_free_return: reader.next_word()?,
-                    }
-                }
-                6160u32 => {
-                    Self::RegisterMapInterfaceINTEL {
-                        wait_for_done_write: reader.next_word()?,
-                    }
-                }
-                6417u32 => {
-                    Self::NamedBarrierCountINTEL {
-                        barrier_count: reader.next_word()?,
-                    }
-                }
-                6461u32 => {
-                    Self::MaximumRegistersINTEL {
-                        number_of_registers: reader.next_word()?,
-                    }
-                }
-                6462u32 => {
-                    Self::MaximumRegistersIdINTEL {
-                        number_of_registers: Id(reader.next_word()?),
-                    }
-                }
-                6463u32 => {
-                    Self::NamedMaximumRegistersINTEL {
-                        named_maximum_number_of_registers: NamedMaximumNumberOfRegisters::parse(
-                            reader,
-                        )?,
-                    }
-                }
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("ExecutionMode", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Invocations {
+                    number_of_invocation_invocations: reader.next_word()?,
+                }))(reader)
+            }
+            1u32 => Ok(Self::SpacingEqual),
+            2u32 => Ok(Self::SpacingFractionalEven),
+            3u32 => Ok(Self::SpacingFractionalOdd),
+            4u32 => Ok(Self::VertexOrderCw),
+            5u32 => Ok(Self::VertexOrderCcw),
+            6u32 => Ok(Self::PixelCenterInteger),
+            7u32 => Ok(Self::OriginUpperLeft),
+            8u32 => Ok(Self::OriginLowerLeft),
+            9u32 => Ok(Self::EarlyFragmentTests),
+            10u32 => Ok(Self::PointMode),
+            11u32 => Ok(Self::Xfb),
+            12u32 => Ok(Self::DepthReplacing),
+            14u32 => Ok(Self::DepthGreater),
+            15u32 => Ok(Self::DepthLess),
+            16u32 => Ok(Self::DepthUnchanged),
+            17u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LocalSize {
+                    x_size: reader.next_word()?,
+                    y_size: reader.next_word()?,
+                    z_size: reader.next_word()?,
+                }))(reader)
+            }
+            18u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LocalSizeHint {
+                    x_size: reader.next_word()?,
+                    y_size: reader.next_word()?,
+                    z_size: reader.next_word()?,
+                }))(reader)
+            }
+            19u32 => Ok(Self::InputPoints),
+            20u32 => Ok(Self::InputLines),
+            21u32 => Ok(Self::InputLinesAdjacency),
+            22u32 => Ok(Self::Triangles),
+            23u32 => Ok(Self::InputTrianglesAdjacency),
+            24u32 => Ok(Self::Quads),
+            25u32 => Ok(Self::Isolines),
+            26u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::OutputVertices {
+                    vertex_count: reader.next_word()?,
+                }))(reader)
+            }
+            27u32 => Ok(Self::OutputPoints),
+            28u32 => Ok(Self::OutputLineStrip),
+            29u32 => Ok(Self::OutputTriangleStrip),
+            30u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::VecTypeHint {
+                    vector_type: reader.next_word()?,
+                }))(reader)
+            }
+            31u32 => Ok(Self::ContractionOff),
+            33u32 => Ok(Self::Initializer),
+            34u32 => Ok(Self::Finalizer),
+            35u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupSize {
+                    subgroup_size: reader.next_word()?,
+                }))(reader)
+            }
+            36u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupsPerWorkgroup {
+                    subgroups_per_workgroup: reader.next_word()?,
+                }))(reader)
+            }
+            37u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SubgroupsPerWorkgroupId {
+                    subgroups_per_workgroup: Id(reader.next_word()?),
+                }))(reader)
+            }
+            38u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LocalSizeId {
+                    x_size: Id(reader.next_word()?),
+                    y_size: Id(reader.next_word()?),
+                    z_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            39u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LocalSizeHintId {
+                    x_size_hint: Id(reader.next_word()?),
+                    y_size_hint: Id(reader.next_word()?),
+                    z_size_hint: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4169u32 => Ok(Self::NonCoherentColorAttachmentReadEXT),
+            4170u32 => Ok(Self::NonCoherentDepthAttachmentReadEXT),
+            4171u32 => Ok(Self::NonCoherentStencilAttachmentReadEXT),
+            4421u32 => Ok(Self::SubgroupUniformControlFlowKHR),
+            4446u32 => Ok(Self::PostDepthCoverage),
+            4459u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DenormPreserve {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            4460u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DenormFlushToZero {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            4461u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SignedZeroInfNanPreserve {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            4462u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RoundingModeRTE {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            4463u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RoundingModeRTZ {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            5017u32 => Ok(Self::EarlyAndLateFragmentTestsAMD),
+            5027u32 => Ok(Self::StencilRefReplacingEXT),
+            5069u32 => Ok(Self::CoalescingAMDX),
+            5071u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxNodeRecursionAMDX {
+                    number_of_recursions: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5072u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::StaticNumWorkgroupsAMDX {
+                    x_size: Id(reader.next_word()?),
+                    y_size: Id(reader.next_word()?),
+                    z_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5073u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ShaderIndexAMDX {
+                    shader_index: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5077u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxNumWorkgroupsAMDX {
+                    x_size: Id(reader.next_word()?),
+                    y_size: Id(reader.next_word()?),
+                    z_size: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5079u32 => Ok(Self::StencilRefUnchangedFrontAMD),
+            5080u32 => Ok(Self::StencilRefGreaterFrontAMD),
+            5081u32 => Ok(Self::StencilRefLessFrontAMD),
+            5082u32 => Ok(Self::StencilRefUnchangedBackAMD),
+            5083u32 => Ok(Self::StencilRefGreaterBackAMD),
+            5084u32 => Ok(Self::StencilRefLessBackAMD),
+            5088u32 => Ok(Self::QuadDerivativesKHR),
+            5089u32 => Ok(Self::RequireFullQuadsKHR),
+            5269u32 => Ok(Self::OutputLinesEXT),
+            5270u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::OutputPrimitivesEXT {
+                    primitive_count: reader.next_word()?,
+                }))(reader)
+            }
+            5289u32 => Ok(Self::DerivativeGroupQuadsNV),
+            5290u32 => Ok(Self::DerivativeGroupLinearNV),
+            5298u32 => Ok(Self::OutputTrianglesEXT),
+            5366u32 => Ok(Self::PixelInterlockOrderedEXT),
+            5367u32 => Ok(Self::PixelInterlockUnorderedEXT),
+            5368u32 => Ok(Self::SampleInterlockOrderedEXT),
+            5369u32 => Ok(Self::SampleInterlockUnorderedEXT),
+            5370u32 => Ok(Self::ShadingRateInterlockOrderedEXT),
+            5371u32 => Ok(Self::ShadingRateInterlockUnorderedEXT),
+            5618u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SharedLocalMemorySizeINTEL {
+                    size: reader.next_word()?,
+                }))(reader)
+            }
+            5620u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RoundingModeRTPINTEL {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            5621u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RoundingModeRTNINTEL {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            5622u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FloatingPointModeALTINTEL {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            5623u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FloatingPointModeIEEEINTEL {
+                    target_width: reader.next_word()?,
+                }))(reader)
+            }
+            5893u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxWorkgroupSizeINTEL {
+                    max_x_size: reader.next_word()?,
+                    max_y_size: reader.next_word()?,
+                    max_z_size: reader.next_word()?,
+                }))(reader)
+            }
+            5894u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxWorkDimINTEL {
+                    max_dimensions: reader.next_word()?,
+                }))(reader)
+            }
+            5895u32 => Ok(Self::NoGlobalOffsetINTEL),
+            5896u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NumSIMDWorkitemsINTEL {
+                    vector_width: reader.next_word()?,
+                }))(reader)
+            }
+            5903u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SchedulerTargetFmaxMhzINTEL {
+                    target_fmax: reader.next_word()?,
+                }))(reader)
+            }
+            6023u32 => Ok(Self::MaximallyReconvergesKHR),
+            6028u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FPFastMathDefault {
+                    target_type: Id(reader.next_word()?),
+                    fast_math_mode: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6154u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::StreamingInterfaceINTEL {
+                    stall_free_return: reader.next_word()?,
+                }))(reader)
+            }
+            6160u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::RegisterMapInterfaceINTEL {
+                    wait_for_done_write: reader.next_word()?,
+                }))(reader)
+            }
+            6417u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NamedBarrierCountINTEL {
+                    barrier_count: reader.next_word()?,
+                }))(reader)
+            }
+            6461u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaximumRegistersINTEL {
+                    number_of_registers: reader.next_word()?,
+                }))(reader)
+            }
+            6462u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaximumRegistersIdINTEL {
+                    number_of_registers: Id(reader.next_word()?),
+                }))(reader)
+            }
+            6463u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NamedMaximumRegistersINTEL {
+                    named_maximum_number_of_registers: NamedMaximumNumberOfRegisters::parse(
+                        reader,
+                    )?,
+                }))(reader)
+            }
+            value => {
+                Err(
+                    reader.map_err(ParseErrors::UnknownEnumerant("ExecutionMode", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for ExecutionMode {
@@ -12964,46 +12929,39 @@ pub enum StorageClass {
 impl StorageClass {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<StorageClass, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::UniformConstant,
-                1u32 => Self::Input,
-                2u32 => Self::Uniform,
-                3u32 => Self::Output,
-                4u32 => Self::Workgroup,
-                5u32 => Self::CrossWorkgroup,
-                6u32 => Self::Private,
-                7u32 => Self::Function,
-                8u32 => Self::Generic,
-                9u32 => Self::PushConstant,
-                10u32 => Self::AtomicCounter,
-                11u32 => Self::Image,
-                12u32 => Self::StorageBuffer,
-                4172u32 => Self::TileImageEXT,
-                5068u32 => Self::NodePayloadAMDX,
-                5076u32 => Self::NodeOutputPayloadAMDX,
-                5328u32 => Self::CallableDataKHR,
-                5329u32 => Self::IncomingCallableDataKHR,
-                5338u32 => Self::RayPayloadKHR,
-                5339u32 => Self::HitAttributeKHR,
-                5342u32 => Self::IncomingRayPayloadKHR,
-                5343u32 => Self::ShaderRecordBufferKHR,
-                5349u32 => Self::PhysicalStorageBuffer,
-                5385u32 => Self::HitObjectAttributeNV,
-                5402u32 => Self::TaskPayloadWorkgroupEXT,
-                5605u32 => Self::CodeSectionINTEL,
-                5936u32 => Self::DeviceOnlyINTEL,
-                5937u32 => Self::HostOnlyINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("StorageClass", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::UniformConstant),
+            1u32 => Ok(Self::Input),
+            2u32 => Ok(Self::Uniform),
+            3u32 => Ok(Self::Output),
+            4u32 => Ok(Self::Workgroup),
+            5u32 => Ok(Self::CrossWorkgroup),
+            6u32 => Ok(Self::Private),
+            7u32 => Ok(Self::Function),
+            8u32 => Ok(Self::Generic),
+            9u32 => Ok(Self::PushConstant),
+            10u32 => Ok(Self::AtomicCounter),
+            11u32 => Ok(Self::Image),
+            12u32 => Ok(Self::StorageBuffer),
+            4172u32 => Ok(Self::TileImageEXT),
+            5068u32 => Ok(Self::NodePayloadAMDX),
+            5076u32 => Ok(Self::NodeOutputPayloadAMDX),
+            5328u32 => Ok(Self::CallableDataKHR),
+            5329u32 => Ok(Self::IncomingCallableDataKHR),
+            5338u32 => Ok(Self::RayPayloadKHR),
+            5339u32 => Ok(Self::HitAttributeKHR),
+            5342u32 => Ok(Self::IncomingRayPayloadKHR),
+            5343u32 => Ok(Self::ShaderRecordBufferKHR),
+            5349u32 => Ok(Self::PhysicalStorageBuffer),
+            5385u32 => Ok(Self::HitObjectAttributeNV),
+            5402u32 => Ok(Self::TaskPayloadWorkgroupEXT),
+            5605u32 => Ok(Self::CodeSectionINTEL),
+            5936u32 => Ok(Self::DeviceOnlyINTEL),
+            5937u32 => Ok(Self::HostOnlyINTEL),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("StorageClass", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for StorageClass {
@@ -13058,23 +13016,17 @@ pub enum Dim {
 impl Dim {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Dim, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Dim1D,
-                1u32 => Self::Dim2D,
-                2u32 => Self::Dim3D,
-                3u32 => Self::Cube,
-                4u32 => Self::Rect,
-                5u32 => Self::Buffer,
-                6u32 => Self::SubpassData,
-                4173u32 => Self::TileImageDataEXT,
-                value => {
-                    return Err(
-                        reader.map_err(ParseErrors::UnknownEnumerant("Dim", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Dim1D),
+            1u32 => Ok(Self::Dim2D),
+            2u32 => Ok(Self::Dim3D),
+            3u32 => Ok(Self::Cube),
+            4u32 => Ok(Self::Rect),
+            5u32 => Ok(Self::Buffer),
+            6u32 => Ok(Self::SubpassData),
+            4173u32 => Ok(Self::TileImageDataEXT),
+            value => Err(reader.map_err(ParseErrors::UnknownEnumerant("Dim", value))),
+        }
     }
 }
 impl TryFrom<u32> for Dim {
@@ -13108,26 +13060,21 @@ impl SamplerAddressingMode {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<SamplerAddressingMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::None,
-                1u32 => Self::ClampToEdge,
-                2u32 => Self::Clamp,
-                3u32 => Self::Repeat,
-                4u32 => Self::RepeatMirrored,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "SamplerAddressingMode",
-                                    value,
-                                ),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::None),
+            1u32 => Ok(Self::ClampToEdge),
+            2u32 => Ok(Self::Clamp),
+            3u32 => Ok(Self::Repeat),
+            4u32 => Ok(Self::RepeatMirrored),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("SamplerAddressingMode", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for SamplerAddressingMode {
@@ -13155,20 +13102,18 @@ impl SamplerFilterMode {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<SamplerFilterMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Nearest,
-                1u32 => Self::Linear,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("SamplerFilterMode", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Nearest),
+            1u32 => Ok(Self::Linear),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("SamplerFilterMode", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for SamplerFilterMode {
@@ -13231,58 +13176,53 @@ pub enum ImageFormat {
 impl ImageFormat {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<ImageFormat, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Unknown,
-                1u32 => Self::Rgba32f,
-                2u32 => Self::Rgba16f,
-                3u32 => Self::R32f,
-                4u32 => Self::Rgba8,
-                5u32 => Self::Rgba8Snorm,
-                6u32 => Self::Rg32f,
-                7u32 => Self::Rg16f,
-                8u32 => Self::R11fG11fB10f,
-                9u32 => Self::R16f,
-                10u32 => Self::Rgba16,
-                11u32 => Self::Rgb10A2,
-                12u32 => Self::Rg16,
-                13u32 => Self::Rg8,
-                14u32 => Self::R16,
-                15u32 => Self::R8,
-                16u32 => Self::Rgba16Snorm,
-                17u32 => Self::Rg16Snorm,
-                18u32 => Self::Rg8Snorm,
-                19u32 => Self::R16Snorm,
-                20u32 => Self::R8Snorm,
-                21u32 => Self::Rgba32i,
-                22u32 => Self::Rgba16i,
-                23u32 => Self::Rgba8i,
-                24u32 => Self::R32i,
-                25u32 => Self::Rg32i,
-                26u32 => Self::Rg16i,
-                27u32 => Self::Rg8i,
-                28u32 => Self::R16i,
-                29u32 => Self::R8i,
-                30u32 => Self::Rgba32ui,
-                31u32 => Self::Rgba16ui,
-                32u32 => Self::Rgba8ui,
-                33u32 => Self::R32ui,
-                34u32 => Self::Rgb10a2ui,
-                35u32 => Self::Rg32ui,
-                36u32 => Self::Rg16ui,
-                37u32 => Self::Rg8ui,
-                38u32 => Self::R16ui,
-                39u32 => Self::R8ui,
-                40u32 => Self::R64ui,
-                41u32 => Self::R64i,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(ParseErrors::UnknownEnumerant("ImageFormat", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Unknown),
+            1u32 => Ok(Self::Rgba32f),
+            2u32 => Ok(Self::Rgba16f),
+            3u32 => Ok(Self::R32f),
+            4u32 => Ok(Self::Rgba8),
+            5u32 => Ok(Self::Rgba8Snorm),
+            6u32 => Ok(Self::Rg32f),
+            7u32 => Ok(Self::Rg16f),
+            8u32 => Ok(Self::R11fG11fB10f),
+            9u32 => Ok(Self::R16f),
+            10u32 => Ok(Self::Rgba16),
+            11u32 => Ok(Self::Rgb10A2),
+            12u32 => Ok(Self::Rg16),
+            13u32 => Ok(Self::Rg8),
+            14u32 => Ok(Self::R16),
+            15u32 => Ok(Self::R8),
+            16u32 => Ok(Self::Rgba16Snorm),
+            17u32 => Ok(Self::Rg16Snorm),
+            18u32 => Ok(Self::Rg8Snorm),
+            19u32 => Ok(Self::R16Snorm),
+            20u32 => Ok(Self::R8Snorm),
+            21u32 => Ok(Self::Rgba32i),
+            22u32 => Ok(Self::Rgba16i),
+            23u32 => Ok(Self::Rgba8i),
+            24u32 => Ok(Self::R32i),
+            25u32 => Ok(Self::Rg32i),
+            26u32 => Ok(Self::Rg16i),
+            27u32 => Ok(Self::Rg8i),
+            28u32 => Ok(Self::R16i),
+            29u32 => Ok(Self::R8i),
+            30u32 => Ok(Self::Rgba32ui),
+            31u32 => Ok(Self::Rgba16ui),
+            32u32 => Ok(Self::Rgba8ui),
+            33u32 => Ok(Self::R32ui),
+            34u32 => Ok(Self::Rgb10a2ui),
+            35u32 => Ok(Self::Rg32ui),
+            36u32 => Ok(Self::Rg16ui),
+            37u32 => Ok(Self::Rg8ui),
+            38u32 => Ok(Self::R16ui),
+            39u32 => Ok(Self::R8ui),
+            40u32 => Ok(Self::R64ui),
+            41u32 => Ok(Self::R64i),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("ImageFormat", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for ImageFormat {
@@ -13365,38 +13305,36 @@ impl ImageChannelOrder {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<ImageChannelOrder, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::R,
-                1u32 => Self::A,
-                2u32 => Self::RG,
-                3u32 => Self::RA,
-                4u32 => Self::RGB,
-                5u32 => Self::RGBA,
-                6u32 => Self::BGRA,
-                7u32 => Self::ARGB,
-                8u32 => Self::Intensity,
-                9u32 => Self::Luminance,
-                10u32 => Self::Rx,
-                11u32 => Self::RGx,
-                12u32 => Self::RGBx,
-                13u32 => Self::Depth,
-                14u32 => Self::DepthStencil,
-                15u32 => Self::sRGB,
-                16u32 => Self::sRGBx,
-                17u32 => Self::sRGBA,
-                18u32 => Self::sBGRA,
-                19u32 => Self::ABGR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("ImageChannelOrder", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::R),
+            1u32 => Ok(Self::A),
+            2u32 => Ok(Self::RG),
+            3u32 => Ok(Self::RA),
+            4u32 => Ok(Self::RGB),
+            5u32 => Ok(Self::RGBA),
+            6u32 => Ok(Self::BGRA),
+            7u32 => Ok(Self::ARGB),
+            8u32 => Ok(Self::Intensity),
+            9u32 => Ok(Self::Luminance),
+            10u32 => Ok(Self::Rx),
+            11u32 => Ok(Self::RGx),
+            12u32 => Ok(Self::RGBx),
+            13u32 => Ok(Self::Depth),
+            14u32 => Ok(Self::DepthStencil),
+            15u32 => Ok(Self::sRGB),
+            16u32 => Ok(Self::sRGBx),
+            17u32 => Ok(Self::sRGBA),
+            18u32 => Ok(Self::sBGRA),
+            19u32 => Ok(Self::ABGR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("ImageChannelOrder", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for ImageChannelOrder {
@@ -13456,37 +13394,35 @@ impl ImageChannelDataType {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<ImageChannelDataType, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::SnormInt8,
-                1u32 => Self::SnormInt16,
-                2u32 => Self::UnormInt8,
-                3u32 => Self::UnormInt16,
-                4u32 => Self::UnormShort565,
-                5u32 => Self::UnormShort555,
-                6u32 => Self::UnormInt101010,
-                7u32 => Self::SignedInt8,
-                8u32 => Self::SignedInt16,
-                9u32 => Self::SignedInt32,
-                10u32 => Self::UnsignedInt8,
-                11u32 => Self::UnsignedInt16,
-                12u32 => Self::UnsignedInt32,
-                13u32 => Self::HalfFloat,
-                14u32 => Self::Float,
-                15u32 => Self::UnormInt24,
-                16u32 => Self::UnormInt101010_2,
-                19u32 => Self::UnsignedIntRaw10EXT,
-                20u32 => Self::UnsignedIntRaw12EXT,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("ImageChannelDataType", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::SnormInt8),
+            1u32 => Ok(Self::SnormInt16),
+            2u32 => Ok(Self::UnormInt8),
+            3u32 => Ok(Self::UnormInt16),
+            4u32 => Ok(Self::UnormShort565),
+            5u32 => Ok(Self::UnormShort555),
+            6u32 => Ok(Self::UnormInt101010),
+            7u32 => Ok(Self::SignedInt8),
+            8u32 => Ok(Self::SignedInt16),
+            9u32 => Ok(Self::SignedInt32),
+            10u32 => Ok(Self::UnsignedInt8),
+            11u32 => Ok(Self::UnsignedInt16),
+            12u32 => Ok(Self::UnsignedInt32),
+            13u32 => Ok(Self::HalfFloat),
+            14u32 => Ok(Self::Float),
+            15u32 => Ok(Self::UnormInt24),
+            16u32 => Ok(Self::UnormInt101010_2),
+            19u32 => Ok(Self::UnsignedIntRaw10EXT),
+            20u32 => Ok(Self::UnsignedIntRaw12EXT),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("ImageChannelDataType", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for ImageChannelDataType {
@@ -13528,22 +13464,18 @@ pub enum FPRoundingMode {
 impl FPRoundingMode {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<FPRoundingMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RTE,
-                1u32 => Self::RTZ,
-                2u32 => Self::RTP,
-                3u32 => Self::RTN,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("FPRoundingMode", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::RTE),
+            1u32 => Ok(Self::RTZ),
+            2u32 => Ok(Self::RTP),
+            3u32 => Ok(Self::RTN),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("FPRoundingMode", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for FPRoundingMode {
@@ -13568,20 +13500,13 @@ pub enum FPDenormMode {
 impl FPDenormMode {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<FPDenormMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Preserve,
-                1u32 => Self::FlushToZero,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("FPDenormMode", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Preserve),
+            1u32 => Ok(Self::FlushToZero),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("FPDenormMode", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for FPDenormMode {
@@ -13612,26 +13537,24 @@ impl QuantizationModes {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<QuantizationModes, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::TRN,
-                1u32 => Self::TRN_ZERO,
-                2u32 => Self::RND,
-                3u32 => Self::RND_ZERO,
-                4u32 => Self::RND_INF,
-                5u32 => Self::RND_MIN_INF,
-                6u32 => Self::RND_CONV,
-                7u32 => Self::RND_CONV_ODD,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("QuantizationModes", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::TRN),
+            1u32 => Ok(Self::TRN_ZERO),
+            2u32 => Ok(Self::RND),
+            3u32 => Ok(Self::RND_ZERO),
+            4u32 => Ok(Self::RND_INF),
+            5u32 => Ok(Self::RND_MIN_INF),
+            6u32 => Ok(Self::RND_CONV),
+            7u32 => Ok(Self::RND_CONV_ODD),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("QuantizationModes", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for QuantizationModes {
@@ -13660,20 +13583,16 @@ pub enum FPOperationMode {
 impl FPOperationMode {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<FPOperationMode, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::IEEE,
-                1u32 => Self::ALT,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("FPOperationMode", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::IEEE),
+            1u32 => Ok(Self::ALT),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("FPOperationMode", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for FPOperationMode {
@@ -13698,22 +13617,17 @@ pub enum OverflowModes {
 impl OverflowModes {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<OverflowModes, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::WRAP,
-                1u32 => Self::SAT,
-                2u32 => Self::SAT_ZERO,
-                3u32 => Self::SAT_SYM,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("OverflowModes", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::WRAP),
+            1u32 => Ok(Self::SAT),
+            2u32 => Ok(Self::SAT_ZERO),
+            3u32 => Ok(Self::SAT_SYM),
+            value => {
+                Err(
+                    reader.map_err(ParseErrors::UnknownEnumerant("OverflowModes", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for OverflowModes {
@@ -13739,19 +13653,14 @@ pub enum LinkageType {
 impl LinkageType {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<LinkageType, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Export,
-                1u32 => Self::Import,
-                2u32 => Self::LinkOnceODR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(ParseErrors::UnknownEnumerant("LinkageType", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Export),
+            1u32 => Ok(Self::Import),
+            2u32 => Ok(Self::LinkOnceODR),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("LinkageType", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for LinkageType {
@@ -13776,21 +13685,17 @@ pub enum AccessQualifier {
 impl AccessQualifier {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<AccessQualifier, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::ReadOnly,
-                1u32 => Self::WriteOnly,
-                2u32 => Self::ReadWrite,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("AccessQualifier", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::ReadOnly),
+            1u32 => Ok(Self::WriteOnly),
+            2u32 => Ok(Self::ReadWrite),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("AccessQualifier", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for AccessQualifier {
@@ -13818,22 +13723,20 @@ impl HostAccessQualifier {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<HostAccessQualifier, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::NoneINTEL,
-                1u32 => Self::ReadINTEL,
-                2u32 => Self::WriteINTEL,
-                3u32 => Self::ReadWriteINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("HostAccessQualifier", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::NoneINTEL),
+            1u32 => Ok(Self::ReadINTEL),
+            2u32 => Ok(Self::WriteINTEL),
+            3u32 => Ok(Self::ReadWriteINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("HostAccessQualifier", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for HostAccessQualifier {
@@ -13867,30 +13770,28 @@ impl FunctionParameterAttribute {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<FunctionParameterAttribute, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Zext,
-                1u32 => Self::Sext,
-                2u32 => Self::ByVal,
-                3u32 => Self::Sret,
-                4u32 => Self::NoAlias,
-                5u32 => Self::NoCapture,
-                6u32 => Self::NoWrite,
-                7u32 => Self::NoReadWrite,
-                5940u32 => Self::RuntimeAlignedINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "FunctionParameterAttribute",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::Zext),
+            1u32 => Ok(Self::Sext),
+            2u32 => Ok(Self::ByVal),
+            3u32 => Ok(Self::Sret),
+            4u32 => Ok(Self::NoAlias),
+            5u32 => Ok(Self::NoCapture),
+            6u32 => Ok(Self::NoWrite),
+            7u32 => Ok(Self::NoReadWrite),
+            5940u32 => Ok(Self::RuntimeAlignedINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "FunctionParameterAttribute",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for FunctionParameterAttribute {
@@ -14075,451 +13976,446 @@ pub enum Decoration {
 impl Decoration {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Decoration, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RelaxedPrecision,
-                1u32 => {
-                    Self::SpecId {
-                        specialization_constant_id: reader.next_word()?,
-                    }
-                }
-                2u32 => Self::Block,
-                3u32 => Self::BufferBlock,
-                4u32 => Self::RowMajor,
-                5u32 => Self::ColMajor,
-                6u32 => {
-                    Self::ArrayStride {
-                        array_stride: reader.next_word()?,
-                    }
-                }
-                7u32 => {
-                    Self::MatrixStride {
-                        matrix_stride: reader.next_word()?,
-                    }
-                }
-                8u32 => Self::GLSLShared,
-                9u32 => Self::GLSLPacked,
-                10u32 => Self::CPacked,
-                11u32 => {
-                    Self::BuiltIn {
-                        built_in: BuiltIn::parse(reader)?,
-                    }
-                }
-                13u32 => Self::NoPerspective,
-                14u32 => Self::Flat,
-                15u32 => Self::Patch,
-                16u32 => Self::Centroid,
-                17u32 => Self::Sample,
-                18u32 => Self::Invariant,
-                19u32 => Self::Restrict,
-                20u32 => Self::Aliased,
-                21u32 => Self::Volatile,
-                22u32 => Self::Constant,
-                23u32 => Self::Coherent,
-                24u32 => Self::NonWritable,
-                25u32 => Self::NonReadable,
-                26u32 => Self::Uniform,
-                27u32 => {
-                    Self::UniformId {
-                        execution: Id(reader.next_word()?),
-                    }
-                }
-                28u32 => Self::SaturatedConversion,
-                29u32 => {
-                    Self::Stream {
-                        stream_number: reader.next_word()?,
-                    }
-                }
-                30u32 => {
-                    Self::Location {
-                        location: reader.next_word()?,
-                    }
-                }
-                31u32 => {
-                    Self::Component {
-                        component: reader.next_word()?,
-                    }
-                }
-                32u32 => {
-                    Self::Index {
-                        index: reader.next_word()?,
-                    }
-                }
-                33u32 => {
-                    Self::Binding {
-                        binding_point: reader.next_word()?,
-                    }
-                }
-                34u32 => {
-                    Self::DescriptorSet {
-                        descriptor_set: reader.next_word()?,
-                    }
-                }
-                35u32 => {
-                    Self::Offset {
-                        byte_offset: reader.next_word()?,
-                    }
-                }
-                36u32 => {
-                    Self::XfbBuffer {
-                        xfb_buffer_number: reader.next_word()?,
-                    }
-                }
-                37u32 => {
-                    Self::XfbStride {
-                        xfb_stride: reader.next_word()?,
-                    }
-                }
-                38u32 => {
-                    Self::FuncParamAttr {
-                        function_parameter_attribute: FunctionParameterAttribute::parse(
-                            reader,
-                        )?,
-                    }
-                }
-                39u32 => {
-                    Self::FPRoundingMode {
-                        floating_point_rounding_mode: FPRoundingMode::parse(reader)?,
-                    }
-                }
-                40u32 => {
-                    Self::FPFastMathMode {
-                        fast_math_mode: FPFastMathMode::parse(reader)?,
-                    }
-                }
-                41u32 => {
-                    Self::LinkageAttributes {
-                        name: reader.next_string()?,
-                        linkage_type: LinkageType::parse(reader)?,
-                    }
-                }
-                42u32 => Self::NoContraction,
-                43u32 => {
-                    Self::InputAttachmentIndex {
-                        attachment_index: reader.next_word()?,
-                    }
-                }
-                44u32 => {
-                    Self::Alignment {
-                        alignment: reader.next_word()?,
-                    }
-                }
-                45u32 => {
-                    Self::MaxByteOffset {
-                        max_byte_offset: reader.next_word()?,
-                    }
-                }
-                46u32 => {
-                    Self::AlignmentId {
-                        alignment: Id(reader.next_word()?),
-                    }
-                }
-                47u32 => {
-                    Self::MaxByteOffsetId {
-                        max_byte_offset: Id(reader.next_word()?),
-                    }
-                }
-                4469u32 => Self::NoSignedWrap,
-                4470u32 => Self::NoUnsignedWrap,
-                4487u32 => Self::WeightTextureQCOM,
-                4488u32 => Self::BlockMatchTextureQCOM,
-                4499u32 => Self::BlockMatchSamplerQCOM,
-                4999u32 => Self::ExplicitInterpAMD,
-                5019u32 => {
-                    Self::NodeSharesPayloadLimitsWithAMDX {
-                        payload_array: Id(reader.next_word()?),
-                    }
-                }
-                5020u32 => {
-                    Self::NodeMaxPayloadsAMDX {
-                        max_number_of_payloads: Id(reader.next_word()?),
-                    }
-                }
-                5078u32 => Self::TrackFinishWritingAMDX,
-                5091u32 => {
-                    Self::PayloadNodeNameAMDX {
-                        node_name: reader.next_string()?,
-                    }
-                }
-                5248u32 => Self::OverrideCoverageNV,
-                5250u32 => Self::PassthroughNV,
-                5252u32 => Self::ViewportRelativeNV,
-                5256u32 => {
-                    Self::SecondaryViewportRelativeNV {
-                        offset: reader.next_word()?,
-                    }
-                }
-                5271u32 => Self::PerPrimitiveEXT,
-                5272u32 => Self::PerViewNV,
-                5273u32 => Self::PerTaskNV,
-                5285u32 => Self::PerVertexKHR,
-                5300u32 => Self::NonUniform,
-                5355u32 => Self::RestrictPointer,
-                5356u32 => Self::AliasedPointer,
-                5386u32 => Self::HitObjectShaderRecordBufferNV,
-                5398u32 => Self::BindlessSamplerNV,
-                5399u32 => Self::BindlessImageNV,
-                5400u32 => Self::BoundSamplerNV,
-                5401u32 => Self::BoundImageNV,
-                5599u32 => {
-                    Self::SIMTCallINTEL {
-                        n: reader.next_word()?,
-                    }
-                }
-                5602u32 => Self::ReferencedIndirectlyINTEL,
-                5607u32 => {
-                    Self::ClobberINTEL {
-                        register: reader.next_string()?,
-                    }
-                }
-                5608u32 => Self::SideEffectsINTEL,
-                5624u32 => Self::VectorComputeVariableINTEL,
-                5625u32 => {
-                    Self::FuncParamIOKindINTEL {
-                        kind: reader.next_word()?,
-                    }
-                }
-                5626u32 => Self::VectorComputeFunctionINTEL,
-                5627u32 => Self::StackCallINTEL,
-                5628u32 => {
-                    Self::GlobalVariableOffsetINTEL {
-                        offset: reader.next_word()?,
-                    }
-                }
-                5634u32 => {
-                    Self::CounterBuffer {
-                        counter_buffer: Id(reader.next_word()?),
-                    }
-                }
-                5635u32 => {
-                    Self::UserSemantic {
-                        semantic: reader.next_string()?,
-                    }
-                }
-                5636u32 => {
-                    Self::UserTypeGOOGLE {
-                        user_type: reader.next_string()?,
-                    }
-                }
-                5822u32 => {
-                    Self::FunctionRoundingModeINTEL {
-                        target_width: reader.next_word()?,
-                        fp_rounding_mode: FPRoundingMode::parse(reader)?,
-                    }
-                }
-                5823u32 => {
-                    Self::FunctionDenormModeINTEL {
-                        target_width: reader.next_word()?,
-                        fp_denorm_mode: FPDenormMode::parse(reader)?,
-                    }
-                }
-                5825u32 => Self::RegisterINTEL,
-                5826u32 => {
-                    Self::MemoryINTEL {
-                        memory_type: reader.next_string()?,
-                    }
-                }
-                5827u32 => {
-                    Self::NumbanksINTEL {
-                        banks: reader.next_word()?,
-                    }
-                }
-                5828u32 => {
-                    Self::BankwidthINTEL {
-                        bank_width: reader.next_word()?,
-                    }
-                }
-                5829u32 => {
-                    Self::MaxPrivateCopiesINTEL {
-                        maximum_copies: reader.next_word()?,
-                    }
-                }
-                5830u32 => Self::SinglepumpINTEL,
-                5831u32 => Self::DoublepumpINTEL,
-                5832u32 => {
-                    Self::MaxReplicatesINTEL {
-                        maximum_replicates: reader.next_word()?,
-                    }
-                }
-                5833u32 => Self::SimpleDualPortINTEL,
-                5834u32 => {
-                    Self::MergeINTEL {
-                        merge_key: reader.next_string()?,
-                        merge_type: reader.next_string()?,
-                    }
-                }
-                5835u32 => {
-                    Self::BankBitsINTEL {
-                        bank_bits: reader.next_word()?,
-                    }
-                }
-                5836u32 => {
-                    Self::ForcePow2DepthINTEL {
-                        force_key: reader.next_word()?,
-                    }
-                }
-                5883u32 => {
-                    Self::StridesizeINTEL {
-                        stride_size: reader.next_word()?,
-                    }
-                }
-                5884u32 => {
-                    Self::WordsizeINTEL {
-                        word_size: reader.next_word()?,
-                    }
-                }
-                5885u32 => Self::TrueDualPortINTEL,
-                5899u32 => Self::BurstCoalesceINTEL,
-                5900u32 => {
-                    Self::CacheSizeINTEL {
-                        cache_size_in_bytes: reader.next_word()?,
-                    }
-                }
-                5901u32 => Self::DontStaticallyCoalesceINTEL,
-                5902u32 => {
-                    Self::PrefetchINTEL {
-                        prefetcher_size_in_bytes: reader.next_word()?,
-                    }
-                }
-                5905u32 => Self::StallEnableINTEL,
-                5907u32 => Self::FuseLoopsInFunctionINTEL,
-                5909u32 => {
-                    Self::MathOpDSPModeINTEL {
-                        mode: reader.next_word()?,
-                        propagate: reader.next_word()?,
-                    }
-                }
-                5914u32 => {
-                    Self::AliasScopeINTEL {
-                        aliasing_scopes_list: Id(reader.next_word()?),
-                    }
-                }
-                5915u32 => {
-                    Self::NoAliasINTEL {
-                        aliasing_scopes_list: Id(reader.next_word()?),
-                    }
-                }
-                5917u32 => {
-                    Self::InitiationIntervalINTEL {
-                        cycles: reader.next_word()?,
-                    }
-                }
-                5918u32 => {
-                    Self::MaxConcurrencyINTEL {
-                        invocations: reader.next_word()?,
-                    }
-                }
-                5919u32 => {
-                    Self::PipelineEnableINTEL {
-                        enable: reader.next_word()?,
-                    }
-                }
-                5921u32 => {
-                    Self::BufferLocationINTEL {
-                        buffer_location_id: reader.next_word()?,
-                    }
-                }
-                5944u32 => {
-                    Self::IOPipeStorageINTEL {
-                        io_pipe_id: reader.next_word()?,
-                    }
-                }
-                6080u32 => {
-                    Self::FunctionFloatingPointModeINTEL {
-                        target_width: reader.next_word()?,
-                        fp_operation_mode: FPOperationMode::parse(reader)?,
-                    }
-                }
-                6085u32 => Self::SingleElementVectorINTEL,
-                6087u32 => Self::VectorComputeCallableFunctionINTEL,
-                6140u32 => Self::MediaBlockIOINTEL,
-                6151u32 => Self::StallFreeINTEL,
-                6170u32 => {
-                    Self::FPMaxErrorDecorationINTEL {
-                        max_error: f32::from_bits(reader.next_word()?),
-                    }
-                }
-                6172u32 => {
-                    Self::LatencyControlLabelINTEL {
-                        latency_label: reader.next_word()?,
-                    }
-                }
-                6173u32 => {
-                    Self::LatencyControlConstraintINTEL {
-                        relative_to: reader.next_word()?,
-                        control_type: reader.next_word()?,
-                        relative_cycle: reader.next_word()?,
-                    }
-                }
-                6175u32 => Self::ConduitKernelArgumentINTEL,
-                6176u32 => Self::RegisterMapKernelArgumentINTEL,
-                6177u32 => {
-                    Self::MMHostInterfaceAddressWidthINTEL {
-                        address_width: reader.next_word()?,
-                    }
-                }
-                6178u32 => {
-                    Self::MMHostInterfaceDataWidthINTEL {
-                        data_width: reader.next_word()?,
-                    }
-                }
-                6179u32 => {
-                    Self::MMHostInterfaceLatencyINTEL {
-                        latency: reader.next_word()?,
-                    }
-                }
-                6180u32 => {
-                    Self::MMHostInterfaceReadWriteModeINTEL {
-                        read_write_mode: AccessQualifier::parse(reader)?,
-                    }
-                }
-                6181u32 => {
-                    Self::MMHostInterfaceMaxBurstINTEL {
-                        max_burst_count: reader.next_word()?,
-                    }
-                }
-                6182u32 => {
-                    Self::MMHostInterfaceWaitRequestINTEL {
-                        waitrequest: reader.next_word()?,
-                    }
-                }
-                6183u32 => Self::StableKernelArgumentINTEL,
-                6188u32 => {
-                    Self::HostAccessINTEL {
-                        access: HostAccessQualifier::parse(reader)?,
-                        name: reader.next_string()?,
-                    }
-                }
-                6190u32 => {
-                    Self::InitModeINTEL {
-                        trigger: InitializationModeQualifier::parse(reader)?,
-                    }
-                }
-                6191u32 => {
-                    Self::ImplementInRegisterMapINTEL {
-                        value: reader.next_word()?,
-                    }
-                }
-                6442u32 => {
-                    Self::CacheControlLoadINTEL {
-                        cache_level: reader.next_word()?,
-                        cache_control: LoadCacheControl::parse(reader)?,
-                    }
-                }
-                6443u32 => {
-                    Self::CacheControlStoreINTEL {
-                        cache_level: reader.next_word()?,
-                        cache_control: StoreCacheControl::parse(reader)?,
-                    }
-                }
-                value => {
-                    return Err(
-                        reader
-                            .map_err(ParseErrors::UnknownEnumerant("Decoration", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::RelaxedPrecision),
+            1u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SpecId {
+                    specialization_constant_id: reader.next_word()?,
+                }))(reader)
+            }
+            2u32 => Ok(Self::Block),
+            3u32 => Ok(Self::BufferBlock),
+            4u32 => Ok(Self::RowMajor),
+            5u32 => Ok(Self::ColMajor),
+            6u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ArrayStride {
+                    array_stride: reader.next_word()?,
+                }))(reader)
+            }
+            7u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MatrixStride {
+                    matrix_stride: reader.next_word()?,
+                }))(reader)
+            }
+            8u32 => Ok(Self::GLSLShared),
+            9u32 => Ok(Self::GLSLPacked),
+            10u32 => Ok(Self::CPacked),
+            11u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BuiltIn {
+                    built_in: BuiltIn::parse(reader)?,
+                }))(reader)
+            }
+            13u32 => Ok(Self::NoPerspective),
+            14u32 => Ok(Self::Flat),
+            15u32 => Ok(Self::Patch),
+            16u32 => Ok(Self::Centroid),
+            17u32 => Ok(Self::Sample),
+            18u32 => Ok(Self::Invariant),
+            19u32 => Ok(Self::Restrict),
+            20u32 => Ok(Self::Aliased),
+            21u32 => Ok(Self::Volatile),
+            22u32 => Ok(Self::Constant),
+            23u32 => Ok(Self::Coherent),
+            24u32 => Ok(Self::NonWritable),
+            25u32 => Ok(Self::NonReadable),
+            26u32 => Ok(Self::Uniform),
+            27u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UniformId {
+                    execution: Id(reader.next_word()?),
+                }))(reader)
+            }
+            28u32 => Ok(Self::SaturatedConversion),
+            29u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Stream {
+                    stream_number: reader.next_word()?,
+                }))(reader)
+            }
+            30u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Location {
+                    location: reader.next_word()?,
+                }))(reader)
+            }
+            31u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Component {
+                    component: reader.next_word()?,
+                }))(reader)
+            }
+            32u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Index {
+                    index: reader.next_word()?,
+                }))(reader)
+            }
+            33u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Binding {
+                    binding_point: reader.next_word()?,
+                }))(reader)
+            }
+            34u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::DescriptorSet {
+                    descriptor_set: reader.next_word()?,
+                }))(reader)
+            }
+            35u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Offset {
+                    byte_offset: reader.next_word()?,
+                }))(reader)
+            }
+            36u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::XfbBuffer {
+                    xfb_buffer_number: reader.next_word()?,
+                }))(reader)
+            }
+            37u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::XfbStride {
+                    xfb_stride: reader.next_word()?,
+                }))(reader)
+            }
+            38u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FuncParamAttr {
+                    function_parameter_attribute: FunctionParameterAttribute::parse(
+                        reader,
+                    )?,
+                }))(reader)
+            }
+            39u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FPRoundingMode {
+                    floating_point_rounding_mode: FPRoundingMode::parse(reader)?,
+                }))(reader)
+            }
+            40u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FPFastMathMode {
+                    fast_math_mode: FPFastMathMode::parse(reader)?,
+                }))(reader)
+            }
+            41u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LinkageAttributes {
+                    name: reader.next_string()?,
+                    linkage_type: LinkageType::parse(reader)?,
+                }))(reader)
+            }
+            42u32 => Ok(Self::NoContraction),
+            43u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InputAttachmentIndex {
+                    attachment_index: reader.next_word()?,
+                }))(reader)
+            }
+            44u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::Alignment {
+                    alignment: reader.next_word()?,
+                }))(reader)
+            }
+            45u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxByteOffset {
+                    max_byte_offset: reader.next_word()?,
+                }))(reader)
+            }
+            46u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AlignmentId {
+                    alignment: Id(reader.next_word()?),
+                }))(reader)
+            }
+            47u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxByteOffsetId {
+                    max_byte_offset: Id(reader.next_word()?),
+                }))(reader)
+            }
+            4469u32 => Ok(Self::NoSignedWrap),
+            4470u32 => Ok(Self::NoUnsignedWrap),
+            4487u32 => Ok(Self::WeightTextureQCOM),
+            4488u32 => Ok(Self::BlockMatchTextureQCOM),
+            4499u32 => Ok(Self::BlockMatchSamplerQCOM),
+            4999u32 => Ok(Self::ExplicitInterpAMD),
+            5019u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NodeSharesPayloadLimitsWithAMDX {
+                    payload_array: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5020u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NodeMaxPayloadsAMDX {
+                    max_number_of_payloads: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5078u32 => Ok(Self::TrackFinishWritingAMDX),
+            5091u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PayloadNodeNameAMDX {
+                    node_name: reader.next_string()?,
+                }))(reader)
+            }
+            5248u32 => Ok(Self::OverrideCoverageNV),
+            5250u32 => Ok(Self::PassthroughNV),
+            5252u32 => Ok(Self::ViewportRelativeNV),
+            5256u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SecondaryViewportRelativeNV {
+                    offset: reader.next_word()?,
+                }))(reader)
+            }
+            5271u32 => Ok(Self::PerPrimitiveEXT),
+            5272u32 => Ok(Self::PerViewNV),
+            5273u32 => Ok(Self::PerTaskNV),
+            5285u32 => Ok(Self::PerVertexKHR),
+            5300u32 => Ok(Self::NonUniform),
+            5355u32 => Ok(Self::RestrictPointer),
+            5356u32 => Ok(Self::AliasedPointer),
+            5386u32 => Ok(Self::HitObjectShaderRecordBufferNV),
+            5398u32 => Ok(Self::BindlessSamplerNV),
+            5399u32 => Ok(Self::BindlessImageNV),
+            5400u32 => Ok(Self::BoundSamplerNV),
+            5401u32 => Ok(Self::BoundImageNV),
+            5599u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::SIMTCallINTEL {
+                    n: reader.next_word()?,
+                }))(reader)
+            }
+            5602u32 => Ok(Self::ReferencedIndirectlyINTEL),
+            5607u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ClobberINTEL {
+                    register: reader.next_string()?,
+                }))(reader)
+            }
+            5608u32 => Ok(Self::SideEffectsINTEL),
+            5624u32 => Ok(Self::VectorComputeVariableINTEL),
+            5625u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FuncParamIOKindINTEL {
+                    kind: reader.next_word()?,
+                }))(reader)
+            }
+            5626u32 => Ok(Self::VectorComputeFunctionINTEL),
+            5627u32 => Ok(Self::StackCallINTEL),
+            5628u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::GlobalVariableOffsetINTEL {
+                    offset: reader.next_word()?,
+                }))(reader)
+            }
+            5634u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CounterBuffer {
+                    counter_buffer: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5635u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UserSemantic {
+                    semantic: reader.next_string()?,
+                }))(reader)
+            }
+            5636u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::UserTypeGOOGLE {
+                    user_type: reader.next_string()?,
+                }))(reader)
+            }
+            5822u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionRoundingModeINTEL {
+                    target_width: reader.next_word()?,
+                    fp_rounding_mode: FPRoundingMode::parse(reader)?,
+                }))(reader)
+            }
+            5823u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionDenormModeINTEL {
+                    target_width: reader.next_word()?,
+                    fp_denorm_mode: FPDenormMode::parse(reader)?,
+                }))(reader)
+            }
+            5825u32 => Ok(Self::RegisterINTEL),
+            5826u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MemoryINTEL {
+                    memory_type: reader.next_string()?,
+                }))(reader)
+            }
+            5827u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NumbanksINTEL {
+                    banks: reader.next_word()?,
+                }))(reader)
+            }
+            5828u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BankwidthINTEL {
+                    bank_width: reader.next_word()?,
+                }))(reader)
+            }
+            5829u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxPrivateCopiesINTEL {
+                    maximum_copies: reader.next_word()?,
+                }))(reader)
+            }
+            5830u32 => Ok(Self::SinglepumpINTEL),
+            5831u32 => Ok(Self::DoublepumpINTEL),
+            5832u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxReplicatesINTEL {
+                    maximum_replicates: reader.next_word()?,
+                }))(reader)
+            }
+            5833u32 => Ok(Self::SimpleDualPortINTEL),
+            5834u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MergeINTEL {
+                    merge_key: reader.next_string()?,
+                    merge_type: reader.next_string()?,
+                }))(reader)
+            }
+            5835u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BankBitsINTEL {
+                    bank_bits: reader.next_word()?,
+                }))(reader)
+            }
+            5836u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ForcePow2DepthINTEL {
+                    force_key: reader.next_word()?,
+                }))(reader)
+            }
+            5883u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::StridesizeINTEL {
+                    stride_size: reader.next_word()?,
+                }))(reader)
+            }
+            5884u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::WordsizeINTEL {
+                    word_size: reader.next_word()?,
+                }))(reader)
+            }
+            5885u32 => Ok(Self::TrueDualPortINTEL),
+            5899u32 => Ok(Self::BurstCoalesceINTEL),
+            5900u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CacheSizeINTEL {
+                    cache_size_in_bytes: reader.next_word()?,
+                }))(reader)
+            }
+            5901u32 => Ok(Self::DontStaticallyCoalesceINTEL),
+            5902u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PrefetchINTEL {
+                    prefetcher_size_in_bytes: reader.next_word()?,
+                }))(reader)
+            }
+            5905u32 => Ok(Self::StallEnableINTEL),
+            5907u32 => Ok(Self::FuseLoopsInFunctionINTEL),
+            5909u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MathOpDSPModeINTEL {
+                    mode: reader.next_word()?,
+                    propagate: reader.next_word()?,
+                }))(reader)
+            }
+            5914u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::AliasScopeINTEL {
+                    aliasing_scopes_list: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5915u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::NoAliasINTEL {
+                    aliasing_scopes_list: Id(reader.next_word()?),
+                }))(reader)
+            }
+            5917u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InitiationIntervalINTEL {
+                    cycles: reader.next_word()?,
+                }))(reader)
+            }
+            5918u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MaxConcurrencyINTEL {
+                    invocations: reader.next_word()?,
+                }))(reader)
+            }
+            5919u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::PipelineEnableINTEL {
+                    enable: reader.next_word()?,
+                }))(reader)
+            }
+            5921u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::BufferLocationINTEL {
+                    buffer_location_id: reader.next_word()?,
+                }))(reader)
+            }
+            5944u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::IOPipeStorageINTEL {
+                    io_pipe_id: reader.next_word()?,
+                }))(reader)
+            }
+            6080u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FunctionFloatingPointModeINTEL {
+                    target_width: reader.next_word()?,
+                    fp_operation_mode: FPOperationMode::parse(reader)?,
+                }))(reader)
+            }
+            6085u32 => Ok(Self::SingleElementVectorINTEL),
+            6087u32 => Ok(Self::VectorComputeCallableFunctionINTEL),
+            6140u32 => Ok(Self::MediaBlockIOINTEL),
+            6151u32 => Ok(Self::StallFreeINTEL),
+            6170u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::FPMaxErrorDecorationINTEL {
+                    max_error: f32::from_bits(reader.next_word()?),
+                }))(reader)
+            }
+            6172u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LatencyControlLabelINTEL {
+                    latency_label: reader.next_word()?,
+                }))(reader)
+            }
+            6173u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::LatencyControlConstraintINTEL {
+                    relative_to: reader.next_word()?,
+                    control_type: reader.next_word()?,
+                    relative_cycle: reader.next_word()?,
+                }))(reader)
+            }
+            6175u32 => Ok(Self::ConduitKernelArgumentINTEL),
+            6176u32 => Ok(Self::RegisterMapKernelArgumentINTEL),
+            6177u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceAddressWidthINTEL {
+                    address_width: reader.next_word()?,
+                }))(reader)
+            }
+            6178u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceDataWidthINTEL {
+                    data_width: reader.next_word()?,
+                }))(reader)
+            }
+            6179u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceLatencyINTEL {
+                    latency: reader.next_word()?,
+                }))(reader)
+            }
+            6180u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceReadWriteModeINTEL {
+                    read_write_mode: AccessQualifier::parse(reader)?,
+                }))(reader)
+            }
+            6181u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceMaxBurstINTEL {
+                    max_burst_count: reader.next_word()?,
+                }))(reader)
+            }
+            6182u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::MMHostInterfaceWaitRequestINTEL {
+                    waitrequest: reader.next_word()?,
+                }))(reader)
+            }
+            6183u32 => Ok(Self::StableKernelArgumentINTEL),
+            6188u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::HostAccessINTEL {
+                    access: HostAccessQualifier::parse(reader)?,
+                    name: reader.next_string()?,
+                }))(reader)
+            }
+            6190u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::InitModeINTEL {
+                    trigger: InitializationModeQualifier::parse(reader)?,
+                }))(reader)
+            }
+            6191u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::ImplementInRegisterMapINTEL {
+                    value: reader.next_word()?,
+                }))(reader)
+            }
+            6442u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CacheControlLoadINTEL {
+                    cache_level: reader.next_word()?,
+                    cache_control: LoadCacheControl::parse(reader)?,
+                }))(reader)
+            }
+            6443u32 => {
+                (|reader: &mut InstructionReader<'_>| Ok(Self::CacheControlStoreINTEL {
+                    cache_level: reader.next_word()?,
+                    cache_control: StoreCacheControl::parse(reader)?,
+                }))(reader)
+            }
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("Decoration", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for Decoration {
@@ -14721,131 +14617,125 @@ pub enum BuiltIn {
 impl BuiltIn {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<BuiltIn, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Position,
-                1u32 => Self::PointSize,
-                3u32 => Self::ClipDistance,
-                4u32 => Self::CullDistance,
-                5u32 => Self::VertexId,
-                6u32 => Self::InstanceId,
-                7u32 => Self::PrimitiveId,
-                8u32 => Self::InvocationId,
-                9u32 => Self::Layer,
-                10u32 => Self::ViewportIndex,
-                11u32 => Self::TessLevelOuter,
-                12u32 => Self::TessLevelInner,
-                13u32 => Self::TessCoord,
-                14u32 => Self::PatchVertices,
-                15u32 => Self::FragCoord,
-                16u32 => Self::PointCoord,
-                17u32 => Self::FrontFacing,
-                18u32 => Self::SampleId,
-                19u32 => Self::SamplePosition,
-                20u32 => Self::SampleMask,
-                22u32 => Self::FragDepth,
-                23u32 => Self::HelperInvocation,
-                24u32 => Self::NumWorkgroups,
-                25u32 => Self::WorkgroupSize,
-                26u32 => Self::WorkgroupId,
-                27u32 => Self::LocalInvocationId,
-                28u32 => Self::GlobalInvocationId,
-                29u32 => Self::LocalInvocationIndex,
-                30u32 => Self::WorkDim,
-                31u32 => Self::GlobalSize,
-                32u32 => Self::EnqueuedWorkgroupSize,
-                33u32 => Self::GlobalOffset,
-                34u32 => Self::GlobalLinearId,
-                36u32 => Self::SubgroupSize,
-                37u32 => Self::SubgroupMaxSize,
-                38u32 => Self::NumSubgroups,
-                39u32 => Self::NumEnqueuedSubgroups,
-                40u32 => Self::SubgroupId,
-                41u32 => Self::SubgroupLocalInvocationId,
-                42u32 => Self::VertexIndex,
-                43u32 => Self::InstanceIndex,
-                4160u32 => Self::CoreIDARM,
-                4161u32 => Self::CoreCountARM,
-                4162u32 => Self::CoreMaxIDARM,
-                4163u32 => Self::WarpIDARM,
-                4164u32 => Self::WarpMaxIDARM,
-                4416u32 => Self::SubgroupEqMask,
-                4417u32 => Self::SubgroupGeMask,
-                4418u32 => Self::SubgroupGtMask,
-                4419u32 => Self::SubgroupLeMask,
-                4420u32 => Self::SubgroupLtMask,
-                4424u32 => Self::BaseVertex,
-                4425u32 => Self::BaseInstance,
-                4426u32 => Self::DrawIndex,
-                4432u32 => Self::PrimitiveShadingRateKHR,
-                4438u32 => Self::DeviceIndex,
-                4440u32 => Self::ViewIndex,
-                4444u32 => Self::ShadingRateKHR,
-                4992u32 => Self::BaryCoordNoPerspAMD,
-                4993u32 => Self::BaryCoordNoPerspCentroidAMD,
-                4994u32 => Self::BaryCoordNoPerspSampleAMD,
-                4995u32 => Self::BaryCoordSmoothAMD,
-                4996u32 => Self::BaryCoordSmoothCentroidAMD,
-                4997u32 => Self::BaryCoordSmoothSampleAMD,
-                4998u32 => Self::BaryCoordPullModelAMD,
-                5014u32 => Self::FragStencilRefEXT,
-                5021u32 => Self::CoalescedInputCountAMDX,
-                5073u32 => Self::ShaderIndexAMDX,
-                5253u32 => Self::ViewportMaskNV,
-                5257u32 => Self::SecondaryPositionNV,
-                5258u32 => Self::SecondaryViewportMaskNV,
-                5261u32 => Self::PositionPerViewNV,
-                5262u32 => Self::ViewportMaskPerViewNV,
-                5264u32 => Self::FullyCoveredEXT,
-                5274u32 => Self::TaskCountNV,
-                5275u32 => Self::PrimitiveCountNV,
-                5276u32 => Self::PrimitiveIndicesNV,
-                5277u32 => Self::ClipDistancePerViewNV,
-                5278u32 => Self::CullDistancePerViewNV,
-                5279u32 => Self::LayerPerViewNV,
-                5280u32 => Self::MeshViewCountNV,
-                5281u32 => Self::MeshViewIndicesNV,
-                5286u32 => Self::BaryCoordKHR,
-                5287u32 => Self::BaryCoordNoPerspKHR,
-                5292u32 => Self::FragSizeEXT,
-                5293u32 => Self::FragInvocationCountEXT,
-                5294u32 => Self::PrimitivePointIndicesEXT,
-                5295u32 => Self::PrimitiveLineIndicesEXT,
-                5296u32 => Self::PrimitiveTriangleIndicesEXT,
-                5299u32 => Self::CullPrimitiveEXT,
-                5319u32 => Self::LaunchIdKHR,
-                5320u32 => Self::LaunchSizeKHR,
-                5321u32 => Self::WorldRayOriginKHR,
-                5322u32 => Self::WorldRayDirectionKHR,
-                5323u32 => Self::ObjectRayOriginKHR,
-                5324u32 => Self::ObjectRayDirectionKHR,
-                5325u32 => Self::RayTminKHR,
-                5326u32 => Self::RayTmaxKHR,
-                5327u32 => Self::InstanceCustomIndexKHR,
-                5330u32 => Self::ObjectToWorldKHR,
-                5331u32 => Self::WorldToObjectKHR,
-                5332u32 => Self::HitTNV,
-                5333u32 => Self::HitKindKHR,
-                5334u32 => Self::CurrentRayTimeNV,
-                5335u32 => Self::HitTriangleVertexPositionsKHR,
-                5337u32 => Self::HitMicroTriangleVertexPositionsNV,
-                5344u32 => Self::HitMicroTriangleVertexBarycentricsNV,
-                5351u32 => Self::IncomingRayFlagsKHR,
-                5352u32 => Self::RayGeometryIndexKHR,
-                5374u32 => Self::WarpsPerSMNV,
-                5375u32 => Self::SMCountNV,
-                5376u32 => Self::WarpIDNV,
-                5377u32 => Self::SMIDNV,
-                5405u32 => Self::HitKindFrontFacingMicroTriangleNV,
-                5406u32 => Self::HitKindBackFacingMicroTriangleNV,
-                6021u32 => Self::CullMaskKHR,
-                value => {
-                    return Err(
-                        reader.map_err(ParseErrors::UnknownEnumerant("BuiltIn", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Position),
+            1u32 => Ok(Self::PointSize),
+            3u32 => Ok(Self::ClipDistance),
+            4u32 => Ok(Self::CullDistance),
+            5u32 => Ok(Self::VertexId),
+            6u32 => Ok(Self::InstanceId),
+            7u32 => Ok(Self::PrimitiveId),
+            8u32 => Ok(Self::InvocationId),
+            9u32 => Ok(Self::Layer),
+            10u32 => Ok(Self::ViewportIndex),
+            11u32 => Ok(Self::TessLevelOuter),
+            12u32 => Ok(Self::TessLevelInner),
+            13u32 => Ok(Self::TessCoord),
+            14u32 => Ok(Self::PatchVertices),
+            15u32 => Ok(Self::FragCoord),
+            16u32 => Ok(Self::PointCoord),
+            17u32 => Ok(Self::FrontFacing),
+            18u32 => Ok(Self::SampleId),
+            19u32 => Ok(Self::SamplePosition),
+            20u32 => Ok(Self::SampleMask),
+            22u32 => Ok(Self::FragDepth),
+            23u32 => Ok(Self::HelperInvocation),
+            24u32 => Ok(Self::NumWorkgroups),
+            25u32 => Ok(Self::WorkgroupSize),
+            26u32 => Ok(Self::WorkgroupId),
+            27u32 => Ok(Self::LocalInvocationId),
+            28u32 => Ok(Self::GlobalInvocationId),
+            29u32 => Ok(Self::LocalInvocationIndex),
+            30u32 => Ok(Self::WorkDim),
+            31u32 => Ok(Self::GlobalSize),
+            32u32 => Ok(Self::EnqueuedWorkgroupSize),
+            33u32 => Ok(Self::GlobalOffset),
+            34u32 => Ok(Self::GlobalLinearId),
+            36u32 => Ok(Self::SubgroupSize),
+            37u32 => Ok(Self::SubgroupMaxSize),
+            38u32 => Ok(Self::NumSubgroups),
+            39u32 => Ok(Self::NumEnqueuedSubgroups),
+            40u32 => Ok(Self::SubgroupId),
+            41u32 => Ok(Self::SubgroupLocalInvocationId),
+            42u32 => Ok(Self::VertexIndex),
+            43u32 => Ok(Self::InstanceIndex),
+            4160u32 => Ok(Self::CoreIDARM),
+            4161u32 => Ok(Self::CoreCountARM),
+            4162u32 => Ok(Self::CoreMaxIDARM),
+            4163u32 => Ok(Self::WarpIDARM),
+            4164u32 => Ok(Self::WarpMaxIDARM),
+            4416u32 => Ok(Self::SubgroupEqMask),
+            4417u32 => Ok(Self::SubgroupGeMask),
+            4418u32 => Ok(Self::SubgroupGtMask),
+            4419u32 => Ok(Self::SubgroupLeMask),
+            4420u32 => Ok(Self::SubgroupLtMask),
+            4424u32 => Ok(Self::BaseVertex),
+            4425u32 => Ok(Self::BaseInstance),
+            4426u32 => Ok(Self::DrawIndex),
+            4432u32 => Ok(Self::PrimitiveShadingRateKHR),
+            4438u32 => Ok(Self::DeviceIndex),
+            4440u32 => Ok(Self::ViewIndex),
+            4444u32 => Ok(Self::ShadingRateKHR),
+            4992u32 => Ok(Self::BaryCoordNoPerspAMD),
+            4993u32 => Ok(Self::BaryCoordNoPerspCentroidAMD),
+            4994u32 => Ok(Self::BaryCoordNoPerspSampleAMD),
+            4995u32 => Ok(Self::BaryCoordSmoothAMD),
+            4996u32 => Ok(Self::BaryCoordSmoothCentroidAMD),
+            4997u32 => Ok(Self::BaryCoordSmoothSampleAMD),
+            4998u32 => Ok(Self::BaryCoordPullModelAMD),
+            5014u32 => Ok(Self::FragStencilRefEXT),
+            5021u32 => Ok(Self::CoalescedInputCountAMDX),
+            5073u32 => Ok(Self::ShaderIndexAMDX),
+            5253u32 => Ok(Self::ViewportMaskNV),
+            5257u32 => Ok(Self::SecondaryPositionNV),
+            5258u32 => Ok(Self::SecondaryViewportMaskNV),
+            5261u32 => Ok(Self::PositionPerViewNV),
+            5262u32 => Ok(Self::ViewportMaskPerViewNV),
+            5264u32 => Ok(Self::FullyCoveredEXT),
+            5274u32 => Ok(Self::TaskCountNV),
+            5275u32 => Ok(Self::PrimitiveCountNV),
+            5276u32 => Ok(Self::PrimitiveIndicesNV),
+            5277u32 => Ok(Self::ClipDistancePerViewNV),
+            5278u32 => Ok(Self::CullDistancePerViewNV),
+            5279u32 => Ok(Self::LayerPerViewNV),
+            5280u32 => Ok(Self::MeshViewCountNV),
+            5281u32 => Ok(Self::MeshViewIndicesNV),
+            5286u32 => Ok(Self::BaryCoordKHR),
+            5287u32 => Ok(Self::BaryCoordNoPerspKHR),
+            5292u32 => Ok(Self::FragSizeEXT),
+            5293u32 => Ok(Self::FragInvocationCountEXT),
+            5294u32 => Ok(Self::PrimitivePointIndicesEXT),
+            5295u32 => Ok(Self::PrimitiveLineIndicesEXT),
+            5296u32 => Ok(Self::PrimitiveTriangleIndicesEXT),
+            5299u32 => Ok(Self::CullPrimitiveEXT),
+            5319u32 => Ok(Self::LaunchIdKHR),
+            5320u32 => Ok(Self::LaunchSizeKHR),
+            5321u32 => Ok(Self::WorldRayOriginKHR),
+            5322u32 => Ok(Self::WorldRayDirectionKHR),
+            5323u32 => Ok(Self::ObjectRayOriginKHR),
+            5324u32 => Ok(Self::ObjectRayDirectionKHR),
+            5325u32 => Ok(Self::RayTminKHR),
+            5326u32 => Ok(Self::RayTmaxKHR),
+            5327u32 => Ok(Self::InstanceCustomIndexKHR),
+            5330u32 => Ok(Self::ObjectToWorldKHR),
+            5331u32 => Ok(Self::WorldToObjectKHR),
+            5332u32 => Ok(Self::HitTNV),
+            5333u32 => Ok(Self::HitKindKHR),
+            5334u32 => Ok(Self::CurrentRayTimeNV),
+            5335u32 => Ok(Self::HitTriangleVertexPositionsKHR),
+            5337u32 => Ok(Self::HitMicroTriangleVertexPositionsNV),
+            5344u32 => Ok(Self::HitMicroTriangleVertexBarycentricsNV),
+            5351u32 => Ok(Self::IncomingRayFlagsKHR),
+            5352u32 => Ok(Self::RayGeometryIndexKHR),
+            5374u32 => Ok(Self::WarpsPerSMNV),
+            5375u32 => Ok(Self::SMCountNV),
+            5376u32 => Ok(Self::WarpIDNV),
+            5377u32 => Ok(Self::SMIDNV),
+            5405u32 => Ok(Self::HitKindFrontFacingMicroTriangleNV),
+            5406u32 => Ok(Self::HitKindBackFacingMicroTriangleNV),
+            6021u32 => Ok(Self::CullMaskKHR),
+            value => Err(reader.map_err(ParseErrors::UnknownEnumerant("BuiltIn", value))),
+        }
     }
 }
 impl TryFrom<u32> for BuiltIn {
@@ -14987,22 +14877,16 @@ pub enum Scope {
 impl Scope {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Scope, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::CrossDevice,
-                1u32 => Self::Device,
-                2u32 => Self::Workgroup,
-                3u32 => Self::Subgroup,
-                4u32 => Self::Invocation,
-                5u32 => Self::QueueFamily,
-                6u32 => Self::ShaderCallKHR,
-                value => {
-                    return Err(
-                        reader.map_err(ParseErrors::UnknownEnumerant("Scope", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::CrossDevice),
+            1u32 => Ok(Self::Device),
+            2u32 => Ok(Self::Workgroup),
+            3u32 => Ok(Self::Subgroup),
+            4u32 => Ok(Self::Invocation),
+            5u32 => Ok(Self::QueueFamily),
+            6u32 => Ok(Self::ShaderCallKHR),
+            value => Err(reader.map_err(ParseErrors::UnknownEnumerant("Scope", value))),
+        }
     }
 }
 impl TryFrom<u32> for Scope {
@@ -15035,25 +14919,21 @@ pub enum GroupOperation {
 impl GroupOperation {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<GroupOperation, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Reduce,
-                1u32 => Self::InclusiveScan,
-                2u32 => Self::ExclusiveScan,
-                3u32 => Self::ClusteredReduce,
-                6u32 => Self::PartitionedReduceNV,
-                7u32 => Self::PartitionedInclusiveScanNV,
-                8u32 => Self::PartitionedExclusiveScanNV,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("GroupOperation", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Reduce),
+            1u32 => Ok(Self::InclusiveScan),
+            2u32 => Ok(Self::ExclusiveScan),
+            3u32 => Ok(Self::ClusteredReduce),
+            6u32 => Ok(Self::PartitionedReduceNV),
+            7u32 => Ok(Self::PartitionedInclusiveScanNV),
+            8u32 => Ok(Self::PartitionedExclusiveScanNV),
+            value => {
+                Err(
+                    reader
+                        .map_err(ParseErrors::UnknownEnumerant("GroupOperation", value)),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for GroupOperation {
@@ -15084,21 +14964,19 @@ impl KernelEnqueueFlags {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<KernelEnqueueFlags, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::NoWait,
-                1u32 => Self::WaitKernel,
-                2u32 => Self::WaitWorkGroup,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("KernelEnqueueFlags", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::NoWait),
+            1u32 => Ok(Self::WaitKernel),
+            2u32 => Ok(Self::WaitWorkGroup),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("KernelEnqueueFlags", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for KernelEnqueueFlags {
@@ -15354,250 +15232,245 @@ pub enum Capability {
 impl Capability {
     #[allow(dead_code)]
     fn parse(reader: &mut InstructionReader<'_>) -> Result<Capability, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::Matrix,
-                1u32 => Self::Shader,
-                2u32 => Self::Geometry,
-                3u32 => Self::Tessellation,
-                4u32 => Self::Addresses,
-                5u32 => Self::Linkage,
-                6u32 => Self::Kernel,
-                7u32 => Self::Vector16,
-                8u32 => Self::Float16Buffer,
-                9u32 => Self::Float16,
-                10u32 => Self::Float64,
-                11u32 => Self::Int64,
-                12u32 => Self::Int64Atomics,
-                13u32 => Self::ImageBasic,
-                14u32 => Self::ImageReadWrite,
-                15u32 => Self::ImageMipmap,
-                17u32 => Self::Pipes,
-                18u32 => Self::Groups,
-                19u32 => Self::DeviceEnqueue,
-                20u32 => Self::LiteralSampler,
-                21u32 => Self::AtomicStorage,
-                22u32 => Self::Int16,
-                23u32 => Self::TessellationPointSize,
-                24u32 => Self::GeometryPointSize,
-                25u32 => Self::ImageGatherExtended,
-                27u32 => Self::StorageImageMultisample,
-                28u32 => Self::UniformBufferArrayDynamicIndexing,
-                29u32 => Self::SampledImageArrayDynamicIndexing,
-                30u32 => Self::StorageBufferArrayDynamicIndexing,
-                31u32 => Self::StorageImageArrayDynamicIndexing,
-                32u32 => Self::ClipDistance,
-                33u32 => Self::CullDistance,
-                34u32 => Self::ImageCubeArray,
-                35u32 => Self::SampleRateShading,
-                36u32 => Self::ImageRect,
-                37u32 => Self::SampledRect,
-                38u32 => Self::GenericPointer,
-                39u32 => Self::Int8,
-                40u32 => Self::InputAttachment,
-                41u32 => Self::SparseResidency,
-                42u32 => Self::MinLod,
-                43u32 => Self::Sampled1D,
-                44u32 => Self::Image1D,
-                45u32 => Self::SampledCubeArray,
-                46u32 => Self::SampledBuffer,
-                47u32 => Self::ImageBuffer,
-                48u32 => Self::ImageMSArray,
-                49u32 => Self::StorageImageExtendedFormats,
-                50u32 => Self::ImageQuery,
-                51u32 => Self::DerivativeControl,
-                52u32 => Self::InterpolationFunction,
-                53u32 => Self::TransformFeedback,
-                54u32 => Self::GeometryStreams,
-                55u32 => Self::StorageImageReadWithoutFormat,
-                56u32 => Self::StorageImageWriteWithoutFormat,
-                57u32 => Self::MultiViewport,
-                58u32 => Self::SubgroupDispatch,
-                59u32 => Self::NamedBarrier,
-                60u32 => Self::PipeStorage,
-                61u32 => Self::GroupNonUniform,
-                62u32 => Self::GroupNonUniformVote,
-                63u32 => Self::GroupNonUniformArithmetic,
-                64u32 => Self::GroupNonUniformBallot,
-                65u32 => Self::GroupNonUniformShuffle,
-                66u32 => Self::GroupNonUniformShuffleRelative,
-                67u32 => Self::GroupNonUniformClustered,
-                68u32 => Self::GroupNonUniformQuad,
-                69u32 => Self::ShaderLayer,
-                70u32 => Self::ShaderViewportIndex,
-                71u32 => Self::UniformDecoration,
-                4165u32 => Self::CoreBuiltinsARM,
-                4166u32 => Self::TileImageColorReadAccessEXT,
-                4167u32 => Self::TileImageDepthReadAccessEXT,
-                4168u32 => Self::TileImageStencilReadAccessEXT,
-                4422u32 => Self::FragmentShadingRateKHR,
-                4423u32 => Self::SubgroupBallotKHR,
-                4427u32 => Self::DrawParameters,
-                4428u32 => Self::WorkgroupMemoryExplicitLayoutKHR,
-                4429u32 => Self::WorkgroupMemoryExplicitLayout8BitAccessKHR,
-                4430u32 => Self::WorkgroupMemoryExplicitLayout16BitAccessKHR,
-                4431u32 => Self::SubgroupVoteKHR,
-                4433u32 => Self::StorageBuffer16BitAccess,
-                4434u32 => Self::UniformAndStorageBuffer16BitAccess,
-                4435u32 => Self::StoragePushConstant16,
-                4436u32 => Self::StorageInputOutput16,
-                4437u32 => Self::DeviceGroup,
-                4439u32 => Self::MultiView,
-                4441u32 => Self::VariablePointersStorageBuffer,
-                4442u32 => Self::VariablePointers,
-                4445u32 => Self::AtomicStorageOps,
-                4447u32 => Self::SampleMaskPostDepthCoverage,
-                4448u32 => Self::StorageBuffer8BitAccess,
-                4449u32 => Self::UniformAndStorageBuffer8BitAccess,
-                4450u32 => Self::StoragePushConstant8,
-                4464u32 => Self::DenormPreserve,
-                4465u32 => Self::DenormFlushToZero,
-                4466u32 => Self::SignedZeroInfNanPreserve,
-                4467u32 => Self::RoundingModeRTE,
-                4468u32 => Self::RoundingModeRTZ,
-                4471u32 => Self::RayQueryProvisionalKHR,
-                4472u32 => Self::RayQueryKHR,
-                4478u32 => Self::RayTraversalPrimitiveCullingKHR,
-                4479u32 => Self::RayTracingKHR,
-                4484u32 => Self::TextureSampleWeightedQCOM,
-                4485u32 => Self::TextureBoxFilterQCOM,
-                4486u32 => Self::TextureBlockMatchQCOM,
-                4498u32 => Self::TextureBlockMatch2QCOM,
-                5008u32 => Self::Float16ImageAMD,
-                5009u32 => Self::ImageGatherBiasLodAMD,
-                5010u32 => Self::FragmentMaskAMD,
-                5013u32 => Self::StencilExportEXT,
-                5015u32 => Self::ImageReadWriteLodAMD,
-                5016u32 => Self::Int64ImageEXT,
-                5055u32 => Self::ShaderClockKHR,
-                5067u32 => Self::ShaderEnqueueAMDX,
-                5087u32 => Self::QuadControlKHR,
-                5249u32 => Self::SampleMaskOverrideCoverageNV,
-                5251u32 => Self::GeometryShaderPassthroughNV,
-                5254u32 => Self::ShaderViewportIndexLayerEXT,
-                5255u32 => Self::ShaderViewportMaskNV,
-                5259u32 => Self::ShaderStereoViewNV,
-                5260u32 => Self::PerViewAttributesNV,
-                5265u32 => Self::FragmentFullyCoveredEXT,
-                5266u32 => Self::MeshShadingNV,
-                5282u32 => Self::ImageFootprintNV,
-                5283u32 => Self::MeshShadingEXT,
-                5284u32 => Self::FragmentBarycentricKHR,
-                5288u32 => Self::ComputeDerivativeGroupQuadsNV,
-                5291u32 => Self::FragmentDensityEXT,
-                5297u32 => Self::GroupNonUniformPartitionedNV,
-                5301u32 => Self::ShaderNonUniform,
-                5302u32 => Self::RuntimeDescriptorArray,
-                5303u32 => Self::InputAttachmentArrayDynamicIndexing,
-                5304u32 => Self::UniformTexelBufferArrayDynamicIndexing,
-                5305u32 => Self::StorageTexelBufferArrayDynamicIndexing,
-                5306u32 => Self::UniformBufferArrayNonUniformIndexing,
-                5307u32 => Self::SampledImageArrayNonUniformIndexing,
-                5308u32 => Self::StorageBufferArrayNonUniformIndexing,
-                5309u32 => Self::StorageImageArrayNonUniformIndexing,
-                5310u32 => Self::InputAttachmentArrayNonUniformIndexing,
-                5311u32 => Self::UniformTexelBufferArrayNonUniformIndexing,
-                5312u32 => Self::StorageTexelBufferArrayNonUniformIndexing,
-                5336u32 => Self::RayTracingPositionFetchKHR,
-                5340u32 => Self::RayTracingNV,
-                5341u32 => Self::RayTracingMotionBlurNV,
-                5345u32 => Self::VulkanMemoryModel,
-                5346u32 => Self::VulkanMemoryModelDeviceScope,
-                5347u32 => Self::PhysicalStorageBufferAddresses,
-                5350u32 => Self::ComputeDerivativeGroupLinearNV,
-                5353u32 => Self::RayTracingProvisionalKHR,
-                5357u32 => Self::CooperativeMatrixNV,
-                5363u32 => Self::FragmentShaderSampleInterlockEXT,
-                5372u32 => Self::FragmentShaderShadingRateInterlockEXT,
-                5373u32 => Self::ShaderSMBuiltinsNV,
-                5378u32 => Self::FragmentShaderPixelInterlockEXT,
-                5379u32 => Self::DemoteToHelperInvocation,
-                5380u32 => Self::DisplacementMicromapNV,
-                5381u32 => Self::RayTracingOpacityMicromapEXT,
-                5383u32 => Self::ShaderInvocationReorderNV,
-                5390u32 => Self::BindlessTextureNV,
-                5391u32 => Self::RayQueryPositionFetchKHR,
-                5404u32 => Self::AtomicFloat16VectorNV,
-                5409u32 => Self::RayTracingDisplacementMicromapNV,
-                5414u32 => Self::RawAccessChainsNV,
-                5568u32 => Self::SubgroupShuffleINTEL,
-                5569u32 => Self::SubgroupBufferBlockIOINTEL,
-                5570u32 => Self::SubgroupImageBlockIOINTEL,
-                5579u32 => Self::SubgroupImageMediaBlockIOINTEL,
-                5582u32 => Self::RoundToInfinityINTEL,
-                5583u32 => Self::FloatingPointModeINTEL,
-                5584u32 => Self::IntegerFunctions2INTEL,
-                5603u32 => Self::FunctionPointersINTEL,
-                5604u32 => Self::IndirectReferencesINTEL,
-                5606u32 => Self::AsmINTEL,
-                5612u32 => Self::AtomicFloat32MinMaxEXT,
-                5613u32 => Self::AtomicFloat64MinMaxEXT,
-                5616u32 => Self::AtomicFloat16MinMaxEXT,
-                5617u32 => Self::VectorComputeINTEL,
-                5619u32 => Self::VectorAnyINTEL,
-                5629u32 => Self::ExpectAssumeKHR,
-                5696u32 => Self::SubgroupAvcMotionEstimationINTEL,
-                5697u32 => Self::SubgroupAvcMotionEstimationIntraINTEL,
-                5698u32 => Self::SubgroupAvcMotionEstimationChromaINTEL,
-                5817u32 => Self::VariableLengthArrayINTEL,
-                5821u32 => Self::FunctionFloatControlINTEL,
-                5824u32 => Self::FPGAMemoryAttributesINTEL,
-                5837u32 => Self::FPFastMathModeINTEL,
-                5844u32 => Self::ArbitraryPrecisionIntegersINTEL,
-                5845u32 => Self::ArbitraryPrecisionFloatingPointINTEL,
-                5886u32 => Self::UnstructuredLoopControlsINTEL,
-                5888u32 => Self::FPGALoopControlsINTEL,
-                5892u32 => Self::KernelAttributesINTEL,
-                5897u32 => Self::FPGAKernelAttributesINTEL,
-                5898u32 => Self::FPGAMemoryAccessesINTEL,
-                5904u32 => Self::FPGAClusterAttributesINTEL,
-                5906u32 => Self::LoopFuseINTEL,
-                5908u32 => Self::FPGADSPControlINTEL,
-                5910u32 => Self::MemoryAccessAliasingINTEL,
-                5916u32 => Self::FPGAInvocationPipeliningAttributesINTEL,
-                5920u32 => Self::FPGABufferLocationINTEL,
-                5922u32 => Self::ArbitraryPrecisionFixedPointINTEL,
-                5935u32 => Self::USMStorageClassesINTEL,
-                5939u32 => Self::RuntimeAlignedAttributeINTEL,
-                5943u32 => Self::IOPipesINTEL,
-                5945u32 => Self::BlockingPipesINTEL,
-                5948u32 => Self::FPGARegINTEL,
-                6016u32 => Self::DotProductInputAll,
-                6017u32 => Self::DotProductInput4x8Bit,
-                6018u32 => Self::DotProductInput4x8BitPacked,
-                6019u32 => Self::DotProduct,
-                6020u32 => Self::RayCullMaskKHR,
-                6022u32 => Self::CooperativeMatrixKHR,
-                6025u32 => Self::BitInstructions,
-                6026u32 => Self::GroupNonUniformRotateKHR,
-                6029u32 => Self::FloatControls2,
-                6033u32 => Self::AtomicFloat32AddEXT,
-                6034u32 => Self::AtomicFloat64AddEXT,
-                6089u32 => Self::LongCompositesINTEL,
-                6094u32 => Self::OptNoneINTEL,
-                6095u32 => Self::AtomicFloat16AddEXT,
-                6114u32 => Self::DebugInfoModuleINTEL,
-                6115u32 => Self::BFloat16ConversionINTEL,
-                6141u32 => Self::SplitBarrierINTEL,
-                6150u32 => Self::FPGAClusterAttributesV2INTEL,
-                6161u32 => Self::FPGAKernelAttributesv2INTEL,
-                6169u32 => Self::FPMaxErrorINTEL,
-                6171u32 => Self::FPGALatencyControlINTEL,
-                6174u32 => Self::FPGAArgumentInterfacesINTEL,
-                6187u32 => Self::GlobalVariableHostAccessINTEL,
-                6189u32 => Self::GlobalVariableFPGADecorationsINTEL,
-                6400u32 => Self::GroupUniformArithmeticKHR,
-                6427u32 => Self::MaskedGatherScatterINTEL,
-                6441u32 => Self::CacheControlsINTEL,
-                6460u32 => Self::RegisterLimitsINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(ParseErrors::UnknownEnumerant("Capability", value)),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::Matrix),
+            1u32 => Ok(Self::Shader),
+            2u32 => Ok(Self::Geometry),
+            3u32 => Ok(Self::Tessellation),
+            4u32 => Ok(Self::Addresses),
+            5u32 => Ok(Self::Linkage),
+            6u32 => Ok(Self::Kernel),
+            7u32 => Ok(Self::Vector16),
+            8u32 => Ok(Self::Float16Buffer),
+            9u32 => Ok(Self::Float16),
+            10u32 => Ok(Self::Float64),
+            11u32 => Ok(Self::Int64),
+            12u32 => Ok(Self::Int64Atomics),
+            13u32 => Ok(Self::ImageBasic),
+            14u32 => Ok(Self::ImageReadWrite),
+            15u32 => Ok(Self::ImageMipmap),
+            17u32 => Ok(Self::Pipes),
+            18u32 => Ok(Self::Groups),
+            19u32 => Ok(Self::DeviceEnqueue),
+            20u32 => Ok(Self::LiteralSampler),
+            21u32 => Ok(Self::AtomicStorage),
+            22u32 => Ok(Self::Int16),
+            23u32 => Ok(Self::TessellationPointSize),
+            24u32 => Ok(Self::GeometryPointSize),
+            25u32 => Ok(Self::ImageGatherExtended),
+            27u32 => Ok(Self::StorageImageMultisample),
+            28u32 => Ok(Self::UniformBufferArrayDynamicIndexing),
+            29u32 => Ok(Self::SampledImageArrayDynamicIndexing),
+            30u32 => Ok(Self::StorageBufferArrayDynamicIndexing),
+            31u32 => Ok(Self::StorageImageArrayDynamicIndexing),
+            32u32 => Ok(Self::ClipDistance),
+            33u32 => Ok(Self::CullDistance),
+            34u32 => Ok(Self::ImageCubeArray),
+            35u32 => Ok(Self::SampleRateShading),
+            36u32 => Ok(Self::ImageRect),
+            37u32 => Ok(Self::SampledRect),
+            38u32 => Ok(Self::GenericPointer),
+            39u32 => Ok(Self::Int8),
+            40u32 => Ok(Self::InputAttachment),
+            41u32 => Ok(Self::SparseResidency),
+            42u32 => Ok(Self::MinLod),
+            43u32 => Ok(Self::Sampled1D),
+            44u32 => Ok(Self::Image1D),
+            45u32 => Ok(Self::SampledCubeArray),
+            46u32 => Ok(Self::SampledBuffer),
+            47u32 => Ok(Self::ImageBuffer),
+            48u32 => Ok(Self::ImageMSArray),
+            49u32 => Ok(Self::StorageImageExtendedFormats),
+            50u32 => Ok(Self::ImageQuery),
+            51u32 => Ok(Self::DerivativeControl),
+            52u32 => Ok(Self::InterpolationFunction),
+            53u32 => Ok(Self::TransformFeedback),
+            54u32 => Ok(Self::GeometryStreams),
+            55u32 => Ok(Self::StorageImageReadWithoutFormat),
+            56u32 => Ok(Self::StorageImageWriteWithoutFormat),
+            57u32 => Ok(Self::MultiViewport),
+            58u32 => Ok(Self::SubgroupDispatch),
+            59u32 => Ok(Self::NamedBarrier),
+            60u32 => Ok(Self::PipeStorage),
+            61u32 => Ok(Self::GroupNonUniform),
+            62u32 => Ok(Self::GroupNonUniformVote),
+            63u32 => Ok(Self::GroupNonUniformArithmetic),
+            64u32 => Ok(Self::GroupNonUniformBallot),
+            65u32 => Ok(Self::GroupNonUniformShuffle),
+            66u32 => Ok(Self::GroupNonUniformShuffleRelative),
+            67u32 => Ok(Self::GroupNonUniformClustered),
+            68u32 => Ok(Self::GroupNonUniformQuad),
+            69u32 => Ok(Self::ShaderLayer),
+            70u32 => Ok(Self::ShaderViewportIndex),
+            71u32 => Ok(Self::UniformDecoration),
+            4165u32 => Ok(Self::CoreBuiltinsARM),
+            4166u32 => Ok(Self::TileImageColorReadAccessEXT),
+            4167u32 => Ok(Self::TileImageDepthReadAccessEXT),
+            4168u32 => Ok(Self::TileImageStencilReadAccessEXT),
+            4422u32 => Ok(Self::FragmentShadingRateKHR),
+            4423u32 => Ok(Self::SubgroupBallotKHR),
+            4427u32 => Ok(Self::DrawParameters),
+            4428u32 => Ok(Self::WorkgroupMemoryExplicitLayoutKHR),
+            4429u32 => Ok(Self::WorkgroupMemoryExplicitLayout8BitAccessKHR),
+            4430u32 => Ok(Self::WorkgroupMemoryExplicitLayout16BitAccessKHR),
+            4431u32 => Ok(Self::SubgroupVoteKHR),
+            4433u32 => Ok(Self::StorageBuffer16BitAccess),
+            4434u32 => Ok(Self::UniformAndStorageBuffer16BitAccess),
+            4435u32 => Ok(Self::StoragePushConstant16),
+            4436u32 => Ok(Self::StorageInputOutput16),
+            4437u32 => Ok(Self::DeviceGroup),
+            4439u32 => Ok(Self::MultiView),
+            4441u32 => Ok(Self::VariablePointersStorageBuffer),
+            4442u32 => Ok(Self::VariablePointers),
+            4445u32 => Ok(Self::AtomicStorageOps),
+            4447u32 => Ok(Self::SampleMaskPostDepthCoverage),
+            4448u32 => Ok(Self::StorageBuffer8BitAccess),
+            4449u32 => Ok(Self::UniformAndStorageBuffer8BitAccess),
+            4450u32 => Ok(Self::StoragePushConstant8),
+            4464u32 => Ok(Self::DenormPreserve),
+            4465u32 => Ok(Self::DenormFlushToZero),
+            4466u32 => Ok(Self::SignedZeroInfNanPreserve),
+            4467u32 => Ok(Self::RoundingModeRTE),
+            4468u32 => Ok(Self::RoundingModeRTZ),
+            4471u32 => Ok(Self::RayQueryProvisionalKHR),
+            4472u32 => Ok(Self::RayQueryKHR),
+            4478u32 => Ok(Self::RayTraversalPrimitiveCullingKHR),
+            4479u32 => Ok(Self::RayTracingKHR),
+            4484u32 => Ok(Self::TextureSampleWeightedQCOM),
+            4485u32 => Ok(Self::TextureBoxFilterQCOM),
+            4486u32 => Ok(Self::TextureBlockMatchQCOM),
+            4498u32 => Ok(Self::TextureBlockMatch2QCOM),
+            5008u32 => Ok(Self::Float16ImageAMD),
+            5009u32 => Ok(Self::ImageGatherBiasLodAMD),
+            5010u32 => Ok(Self::FragmentMaskAMD),
+            5013u32 => Ok(Self::StencilExportEXT),
+            5015u32 => Ok(Self::ImageReadWriteLodAMD),
+            5016u32 => Ok(Self::Int64ImageEXT),
+            5055u32 => Ok(Self::ShaderClockKHR),
+            5067u32 => Ok(Self::ShaderEnqueueAMDX),
+            5087u32 => Ok(Self::QuadControlKHR),
+            5249u32 => Ok(Self::SampleMaskOverrideCoverageNV),
+            5251u32 => Ok(Self::GeometryShaderPassthroughNV),
+            5254u32 => Ok(Self::ShaderViewportIndexLayerEXT),
+            5255u32 => Ok(Self::ShaderViewportMaskNV),
+            5259u32 => Ok(Self::ShaderStereoViewNV),
+            5260u32 => Ok(Self::PerViewAttributesNV),
+            5265u32 => Ok(Self::FragmentFullyCoveredEXT),
+            5266u32 => Ok(Self::MeshShadingNV),
+            5282u32 => Ok(Self::ImageFootprintNV),
+            5283u32 => Ok(Self::MeshShadingEXT),
+            5284u32 => Ok(Self::FragmentBarycentricKHR),
+            5288u32 => Ok(Self::ComputeDerivativeGroupQuadsNV),
+            5291u32 => Ok(Self::FragmentDensityEXT),
+            5297u32 => Ok(Self::GroupNonUniformPartitionedNV),
+            5301u32 => Ok(Self::ShaderNonUniform),
+            5302u32 => Ok(Self::RuntimeDescriptorArray),
+            5303u32 => Ok(Self::InputAttachmentArrayDynamicIndexing),
+            5304u32 => Ok(Self::UniformTexelBufferArrayDynamicIndexing),
+            5305u32 => Ok(Self::StorageTexelBufferArrayDynamicIndexing),
+            5306u32 => Ok(Self::UniformBufferArrayNonUniformIndexing),
+            5307u32 => Ok(Self::SampledImageArrayNonUniformIndexing),
+            5308u32 => Ok(Self::StorageBufferArrayNonUniformIndexing),
+            5309u32 => Ok(Self::StorageImageArrayNonUniformIndexing),
+            5310u32 => Ok(Self::InputAttachmentArrayNonUniformIndexing),
+            5311u32 => Ok(Self::UniformTexelBufferArrayNonUniformIndexing),
+            5312u32 => Ok(Self::StorageTexelBufferArrayNonUniformIndexing),
+            5336u32 => Ok(Self::RayTracingPositionFetchKHR),
+            5340u32 => Ok(Self::RayTracingNV),
+            5341u32 => Ok(Self::RayTracingMotionBlurNV),
+            5345u32 => Ok(Self::VulkanMemoryModel),
+            5346u32 => Ok(Self::VulkanMemoryModelDeviceScope),
+            5347u32 => Ok(Self::PhysicalStorageBufferAddresses),
+            5350u32 => Ok(Self::ComputeDerivativeGroupLinearNV),
+            5353u32 => Ok(Self::RayTracingProvisionalKHR),
+            5357u32 => Ok(Self::CooperativeMatrixNV),
+            5363u32 => Ok(Self::FragmentShaderSampleInterlockEXT),
+            5372u32 => Ok(Self::FragmentShaderShadingRateInterlockEXT),
+            5373u32 => Ok(Self::ShaderSMBuiltinsNV),
+            5378u32 => Ok(Self::FragmentShaderPixelInterlockEXT),
+            5379u32 => Ok(Self::DemoteToHelperInvocation),
+            5380u32 => Ok(Self::DisplacementMicromapNV),
+            5381u32 => Ok(Self::RayTracingOpacityMicromapEXT),
+            5383u32 => Ok(Self::ShaderInvocationReorderNV),
+            5390u32 => Ok(Self::BindlessTextureNV),
+            5391u32 => Ok(Self::RayQueryPositionFetchKHR),
+            5404u32 => Ok(Self::AtomicFloat16VectorNV),
+            5409u32 => Ok(Self::RayTracingDisplacementMicromapNV),
+            5414u32 => Ok(Self::RawAccessChainsNV),
+            5568u32 => Ok(Self::SubgroupShuffleINTEL),
+            5569u32 => Ok(Self::SubgroupBufferBlockIOINTEL),
+            5570u32 => Ok(Self::SubgroupImageBlockIOINTEL),
+            5579u32 => Ok(Self::SubgroupImageMediaBlockIOINTEL),
+            5582u32 => Ok(Self::RoundToInfinityINTEL),
+            5583u32 => Ok(Self::FloatingPointModeINTEL),
+            5584u32 => Ok(Self::IntegerFunctions2INTEL),
+            5603u32 => Ok(Self::FunctionPointersINTEL),
+            5604u32 => Ok(Self::IndirectReferencesINTEL),
+            5606u32 => Ok(Self::AsmINTEL),
+            5612u32 => Ok(Self::AtomicFloat32MinMaxEXT),
+            5613u32 => Ok(Self::AtomicFloat64MinMaxEXT),
+            5616u32 => Ok(Self::AtomicFloat16MinMaxEXT),
+            5617u32 => Ok(Self::VectorComputeINTEL),
+            5619u32 => Ok(Self::VectorAnyINTEL),
+            5629u32 => Ok(Self::ExpectAssumeKHR),
+            5696u32 => Ok(Self::SubgroupAvcMotionEstimationINTEL),
+            5697u32 => Ok(Self::SubgroupAvcMotionEstimationIntraINTEL),
+            5698u32 => Ok(Self::SubgroupAvcMotionEstimationChromaINTEL),
+            5817u32 => Ok(Self::VariableLengthArrayINTEL),
+            5821u32 => Ok(Self::FunctionFloatControlINTEL),
+            5824u32 => Ok(Self::FPGAMemoryAttributesINTEL),
+            5837u32 => Ok(Self::FPFastMathModeINTEL),
+            5844u32 => Ok(Self::ArbitraryPrecisionIntegersINTEL),
+            5845u32 => Ok(Self::ArbitraryPrecisionFloatingPointINTEL),
+            5886u32 => Ok(Self::UnstructuredLoopControlsINTEL),
+            5888u32 => Ok(Self::FPGALoopControlsINTEL),
+            5892u32 => Ok(Self::KernelAttributesINTEL),
+            5897u32 => Ok(Self::FPGAKernelAttributesINTEL),
+            5898u32 => Ok(Self::FPGAMemoryAccessesINTEL),
+            5904u32 => Ok(Self::FPGAClusterAttributesINTEL),
+            5906u32 => Ok(Self::LoopFuseINTEL),
+            5908u32 => Ok(Self::FPGADSPControlINTEL),
+            5910u32 => Ok(Self::MemoryAccessAliasingINTEL),
+            5916u32 => Ok(Self::FPGAInvocationPipeliningAttributesINTEL),
+            5920u32 => Ok(Self::FPGABufferLocationINTEL),
+            5922u32 => Ok(Self::ArbitraryPrecisionFixedPointINTEL),
+            5935u32 => Ok(Self::USMStorageClassesINTEL),
+            5939u32 => Ok(Self::RuntimeAlignedAttributeINTEL),
+            5943u32 => Ok(Self::IOPipesINTEL),
+            5945u32 => Ok(Self::BlockingPipesINTEL),
+            5948u32 => Ok(Self::FPGARegINTEL),
+            6016u32 => Ok(Self::DotProductInputAll),
+            6017u32 => Ok(Self::DotProductInput4x8Bit),
+            6018u32 => Ok(Self::DotProductInput4x8BitPacked),
+            6019u32 => Ok(Self::DotProduct),
+            6020u32 => Ok(Self::RayCullMaskKHR),
+            6022u32 => Ok(Self::CooperativeMatrixKHR),
+            6025u32 => Ok(Self::BitInstructions),
+            6026u32 => Ok(Self::GroupNonUniformRotateKHR),
+            6029u32 => Ok(Self::FloatControls2),
+            6033u32 => Ok(Self::AtomicFloat32AddEXT),
+            6034u32 => Ok(Self::AtomicFloat64AddEXT),
+            6089u32 => Ok(Self::LongCompositesINTEL),
+            6094u32 => Ok(Self::OptNoneINTEL),
+            6095u32 => Ok(Self::AtomicFloat16AddEXT),
+            6114u32 => Ok(Self::DebugInfoModuleINTEL),
+            6115u32 => Ok(Self::BFloat16ConversionINTEL),
+            6141u32 => Ok(Self::SplitBarrierINTEL),
+            6150u32 => Ok(Self::FPGAClusterAttributesV2INTEL),
+            6161u32 => Ok(Self::FPGAKernelAttributesv2INTEL),
+            6169u32 => Ok(Self::FPMaxErrorINTEL),
+            6171u32 => Ok(Self::FPGALatencyControlINTEL),
+            6174u32 => Ok(Self::FPGAArgumentInterfacesINTEL),
+            6187u32 => Ok(Self::GlobalVariableHostAccessINTEL),
+            6189u32 => Ok(Self::GlobalVariableFPGADecorationsINTEL),
+            6400u32 => Ok(Self::GroupUniformArithmeticKHR),
+            6427u32 => Ok(Self::MaskedGatherScatterINTEL),
+            6441u32 => Ok(Self::CacheControlsINTEL),
+            6460u32 => Ok(Self::RegisterLimitsINTEL),
+            value => {
+                Err(reader.map_err(ParseErrors::UnknownEnumerant("Capability", value)))
+            }
+        }
     }
 }
 impl TryFrom<u32> for Capability {
@@ -15854,20 +15727,18 @@ impl RayQueryIntersection {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<RayQueryIntersection, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RayQueryCandidateIntersectionKHR,
-                1u32 => Self::RayQueryCommittedIntersectionKHR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("RayQueryIntersection", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::RayQueryCandidateIntersectionKHR),
+            1u32 => Ok(Self::RayQueryCommittedIntersectionKHR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("RayQueryIntersection", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for RayQueryIntersection {
@@ -15893,24 +15764,22 @@ impl RayQueryCommittedIntersectionType {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<RayQueryCommittedIntersectionType, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RayQueryCommittedIntersectionNoneKHR,
-                1u32 => Self::RayQueryCommittedIntersectionTriangleKHR,
-                2u32 => Self::RayQueryCommittedIntersectionGeneratedKHR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "RayQueryCommittedIntersectionType",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::RayQueryCommittedIntersectionNoneKHR),
+            1u32 => Ok(Self::RayQueryCommittedIntersectionTriangleKHR),
+            2u32 => Ok(Self::RayQueryCommittedIntersectionGeneratedKHR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "RayQueryCommittedIntersectionType",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for RayQueryCommittedIntersectionType {
@@ -15936,23 +15805,21 @@ impl RayQueryCandidateIntersectionType {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<RayQueryCandidateIntersectionType, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RayQueryCandidateIntersectionTriangleKHR,
-                1u32 => Self::RayQueryCandidateIntersectionAABBKHR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "RayQueryCandidateIntersectionType",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::RayQueryCandidateIntersectionTriangleKHR),
+            1u32 => Ok(Self::RayQueryCandidateIntersectionAABBKHR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "RayQueryCandidateIntersectionType",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for RayQueryCandidateIntersectionType {
@@ -15976,19 +15843,17 @@ impl PackedVectorFormat {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<PackedVectorFormat, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::PackedVectorFormat4x8Bit,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("PackedVectorFormat", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::PackedVectorFormat4x8Bit),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("PackedVectorFormat", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for PackedVectorFormat {
@@ -16012,23 +15877,21 @@ impl CooperativeMatrixLayout {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<CooperativeMatrixLayout, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::RowMajorKHR,
-                1u32 => Self::ColumnMajorKHR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "CooperativeMatrixLayout",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::RowMajorKHR),
+            1u32 => Ok(Self::ColumnMajorKHR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "CooperativeMatrixLayout",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for CooperativeMatrixLayout {
@@ -16054,21 +15917,19 @@ impl CooperativeMatrixUse {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<CooperativeMatrixUse, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::MatrixAKHR,
-                1u32 => Self::MatrixBKHR,
-                2u32 => Self::MatrixAccumulatorKHR,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("CooperativeMatrixUse", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::MatrixAKHR),
+            1u32 => Ok(Self::MatrixBKHR),
+            2u32 => Ok(Self::MatrixAccumulatorKHR),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("CooperativeMatrixUse", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for CooperativeMatrixUse {
@@ -16094,23 +15955,21 @@ impl InitializationModeQualifier {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<InitializationModeQualifier, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::InitOnDeviceReprogramINTEL,
-                1u32 => Self::InitOnDeviceResetINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "InitializationModeQualifier",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::InitOnDeviceReprogramINTEL),
+            1u32 => Ok(Self::InitOnDeviceResetINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "InitializationModeQualifier",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for InitializationModeQualifier {
@@ -16138,23 +15997,21 @@ impl LoadCacheControl {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<LoadCacheControl, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::UncachedINTEL,
-                1u32 => Self::CachedINTEL,
-                2u32 => Self::StreamingINTEL,
-                3u32 => Self::InvalidateAfterReadINTEL,
-                4u32 => Self::ConstCachedINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("LoadCacheControl", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::UncachedINTEL),
+            1u32 => Ok(Self::CachedINTEL),
+            2u32 => Ok(Self::StreamingINTEL),
+            3u32 => Ok(Self::InvalidateAfterReadINTEL),
+            4u32 => Ok(Self::ConstCachedINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("LoadCacheControl", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for LoadCacheControl {
@@ -16184,22 +16041,20 @@ impl StoreCacheControl {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<StoreCacheControl, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::UncachedINTEL,
-                1u32 => Self::WriteThroughINTEL,
-                2u32 => Self::WriteBackINTEL,
-                3u32 => Self::StreamingINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant("StoreCacheControl", value),
-                            ),
-                    );
-                }
-            },
-        )
+        match reader.next_word()? {
+            0u32 => Ok(Self::UncachedINTEL),
+            1u32 => Ok(Self::WriteThroughINTEL),
+            2u32 => Ok(Self::WriteBackINTEL),
+            3u32 => Ok(Self::StreamingINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant("StoreCacheControl", value),
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for StoreCacheControl {
@@ -16225,22 +16080,20 @@ impl NamedMaximumNumberOfRegisters {
     fn parse(
         reader: &mut InstructionReader<'_>,
     ) -> Result<NamedMaximumNumberOfRegisters, ParseError> {
-        Ok(
-            match reader.next_word()? {
-                0u32 => Self::AutoINTEL,
-                value => {
-                    return Err(
-                        reader
-                            .map_err(
-                                ParseErrors::UnknownEnumerant(
-                                    "NamedMaximumNumberOfRegisters",
-                                    value,
-                                ),
+        match reader.next_word()? {
+            0u32 => Ok(Self::AutoINTEL),
+            value => {
+                Err(
+                    reader
+                        .map_err(
+                            ParseErrors::UnknownEnumerant(
+                                "NamedMaximumNumberOfRegisters",
+                                value,
                             ),
-                    );
-                }
-            },
-        )
+                        ),
+                )
+            }
+        }
     }
 }
 impl TryFrom<u32> for NamedMaximumNumberOfRegisters {
