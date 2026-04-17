@@ -763,7 +763,7 @@ impl<'a> InstructionReader<'a> {
 
     /// Returns the next word in the sequence.
     fn next_word(&mut self) -> Result<u32, ParseError> {
-        let word = *self.words.get(self.next_word).ok_or(ParseError {
+        let word = *self.words.get(self.next_word).ok_or_else(|| ParseError {
             instruction: self.instruction,
             word: self.next_word, // No -1 because we didn't advance yet
             error: ParseErrors::MissingOperands,
