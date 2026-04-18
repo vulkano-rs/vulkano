@@ -34,12 +34,12 @@
             libGL
 
             # winit dependencies
+            libx11
+            libxcursor
+            libxi
             libxkbcommon
+            libxrandr
             wayland
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
