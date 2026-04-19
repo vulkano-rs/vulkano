@@ -15,7 +15,7 @@
 ### Breaking changes
 
 - `DriverId::VeriSiliconPropertary` is now correctly spelled `DriverId::VeriSiliconProprietary`.
-- Interoperation with windowing libraries using `raw-window-handle` is not gated behind a feature gate.
+- Interoperation with windowing libraries using `raw-window-handle` is now gated behind a feature gate.
 
 Global changes:
 - Where owned `Arc`s and owned structs, as well as owned collections such as `Vec`s, `SmallVec`s, `HashMap`s and `BTreeMap`s were previously taken as arguments, references and slices are used instead, respectively.
