@@ -138,7 +138,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
          }| {
             if operands.is_empty() {
                 quote! {
-                    #opcode => Self::#name,
+                    #opcode => Ok(Self::#name),
                 }
             } else {
                 let operands_items =
@@ -148,10 +148,16 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                         }
                     });
 
+                // We wrap the parsing code for each match arm in its own function such that we
+                // don't have to rely on LLVM to prove that the different stack allocations can
+                // safely be overlapped. These optimizations are not enabled in debug mode, and
+                // that previously lead to gigantic stack consumption in debug mode. The closure
+                // syntax is a nice and easy way to define a function; it is not a closure in the
+                // sense that it doesn't capture anything and lowers to a regular function.
                 quote! {
-                    #opcode => Self::#name {
+                    #opcode => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                         #(#operands_items)*
-                    },
+                    }))(reader),
                 }
             }
         },
@@ -471,10 +477,10 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
             fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
                 let opcode = (reader.next_word()? & 0xffff) as u16;
 
-                Ok(match opcode {
+                match opcode {
                     #(#parse_items)*
-                    opcode => return Err(reader.map_err(ParseErrors::#opcode_error(opcode))),
-                })
+                    opcode => Err(reader.map_err(ParseErrors::#opcode_error(opcode))),
+                }
             }
 
             #result_fns
@@ -812,7 +818,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
              }| {
                 if parameters.is_empty() {
                     quote! {
-                        #value => Self::#name,
+                        #value => Ok(Self::#name),
                     }
                 } else {
                     let params_items =
@@ -822,10 +828,12 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                             }
                         });
 
+                    // See the documentation in `instruction_output` for why we wrap each match arm
+                    // in a function.
                     quote! {
-                        #value => Self::#name {
+                        #value => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                             #(#params_items)*
-                        },
+                        }))(reader),
                     }
                 }
             },
@@ -848,10 +856,10 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
             impl #name {
                 #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
-                    Ok(match reader.next_word()? {
+                    match reader.next_word()? {
                         #(#parse_items)*
-                        value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
-                    })
+                        value => Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
+                    }
                 }
             }
 
