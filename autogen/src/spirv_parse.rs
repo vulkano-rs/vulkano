@@ -148,6 +148,12 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                         }
                     });
 
+                // We wrap the parsing code for each match arm in its own function such that we
+                // don't have to rely on LLVM to prove that the different stack allocations can
+                // safely be overlapped. These optimizations are not enabled in debug mode, and
+                // that previously lead to gigantic stack consumption in debug mode. The closure
+                // syntax is a nice and easy way to define a function; it is not a closure in the
+                // sense that it doesn't capture anything and lowers to a regular function.
                 quote! {
                     #opcode => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                         #(#operands_items)*
@@ -822,6 +828,8 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                             }
                         });
 
+                    // See the documentation in `instruction_output` for why we wrap each match arm
+                    // in a function.
                     quote! {
                         #value => (|reader: &mut InstructionReader<'_>| Ok(Self::#name {
                             #(#params_items)*
