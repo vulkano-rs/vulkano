@@ -578,11 +578,8 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
                 .into_iter()
                 .filter_map(|(n, c)| if c > 1 { Some(n) } else { None })
             {
-                let mut num = 1;
-
-                for operand in operands.iter_mut().filter(|o| o.name == name) {
+                for (num, operand) in (1..).zip(operands.iter_mut().filter(|o| o.name == name)) {
                     operand.name = format_ident!("{}{}", name, format!("{}", num));
-                    num += 1;
                 }
             }
 

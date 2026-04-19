@@ -225,8 +225,8 @@ impl RecordingCommandBuffer {
                 .iter()
                 .chain(color_attachments.iter())
                 .chain(color_resolve_attachments.iter())
-                .chain(depth_stencil_attachment.into_iter())
-                .chain(depth_stencil_resolve_attachment.into_iter())
+                .chain(depth_stencil_attachment)
+                .chain(depth_stencil_resolve_attachment)
                 .flatten()
             {
                 let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
