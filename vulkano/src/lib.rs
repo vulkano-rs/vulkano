@@ -90,13 +90,13 @@
 //!
 //! # Cargo features
 //!
-//! | Feature              | Description                                                    |
-//! |----------------------|----------------------------------------------------------------|
-//! | `macros`             | Include reexports from [`vulkano-macros`]. Enabled by default. |
-//! | `x11`                | Support for X11 platforms. Enabled by default.                 |
-//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
-//! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
-//! | `raw_window_handle`  | Include the raw-window-handle dependency and its dependents.   |
+//! | Feature              | Description                                                                               |
+//! |----------------------|-------------------------------------------------------------------------------------------|
+//! | `macros`             | Include reexports from [`vulkano-macros`]. Enabled by default.                            |
+//! | `raw_window_handle`  | Enables interop with windowing libraries using [`raw-window-handle`]. Enabled by default. |
+//! | `x11`                | When `raw_window_handle` is enabled, support for X11 platforms. Enabled by default.       |
+//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                            |
+//! | `serde`              | Enables (de)serialization of certain types using [`serde`].                               |
 //!
 //! [`Instance`]: instance::Instance
 //! [`Surface`]: swapchain::Surface
@@ -118,6 +118,7 @@
 //! [`RenderPass`]: render_pass::RenderPass
 //! [`Framebuffer`]: render_pass::Framebuffer
 //! [`vulkano-macros`]: vulkano_macros
+//! [`raw-window-handle`]: raw_window_handle
 //! [`serde`]: https://crates.io/crates/serde
 
 pub use ash;

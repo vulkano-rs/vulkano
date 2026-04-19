@@ -1,4 +1,6 @@
 use super::{FullScreenExclusive, PresentGravityFlags, PresentScalingFlags, Win32Monitor};
+#[cfg(feature = "raw_window_handle")]
+use crate::instance::InstanceExtensions;
 use crate::{
     cache::OnceCache,
     device::physical::PhysicalDevice,
@@ -11,6 +13,10 @@ use crate::{
     VulkanObject,
 };
 use ash::vk;
+#[cfg(feature = "raw_window_handle")]
+use raw_window_handle::{
+    HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -23,13 +29,7 @@ use std::{
     sync::Arc,
 };
 #[cfg(feature = "raw_window_handle")]
-use {
-    crate::instance::InstanceExtensions,
-    raw_window_handle::{
-        HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
-    },
-    std::{error::Error, fmt::Display},
-};
+use std::{error::Error, fmt::Display};
 
 /// Represents a surface on the screen.
 ///
