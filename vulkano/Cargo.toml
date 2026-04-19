@@ -22,7 +22,7 @@ foldhash = { workspace = true }
 half = { workspace = true, features = ["bytemuck"] }
 libloading = { workspace = true }
 parking_lot = { workspace = true, features = ["send_guard"] }
-raw-window-handle = { workspace = true, features = ["std"] }
+raw-window-handle = { workspace = true, optional = true, features = ["std"] }
 serde = { workspace = true, optional = true }
 slabbin = { workspace = true }
 smallvec = { workspace = true }
@@ -34,15 +34,16 @@ raw-window-metal = { workspace = true }
 
 [target.'cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "hurd", target_os = "illumos", target_os = "linux", target_os = "netbsd", target_os = "openbsd", target_os = "solaris"))'.dependencies]
 x11-dl = { workspace = true, optional = true }
-x11rb = { workspace = true, features = ["allow-unsafe-code"], optional = true }
+x11rb = { workspace = true, optional = true, features = ["allow-unsafe-code"] }
 
 [dev-dependencies]
 libc = "0.2.153"
 
 [features]
-default = ["macros", "x11"]
+default = ["macros", "raw_window_handle", "x11"]
 document_unchecked = []
 macros = ["dep:vulkano-macros"]
+raw_window_handle = ["dep:raw-window-handle"]
 x11 = ["dep:x11-dl", "dep:x11rb"]
 
 [lints]
