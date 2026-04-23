@@ -136,11 +136,6 @@ unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
         self.inner.usage()
     }
 
-    #[inline]
-    fn is_protected(&self) -> bool {
-        self.inner.is_protected()
-    }
-
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
@@ -682,7 +677,7 @@ mod tests {
         builder.fill_buffer(my_buffer.clone(), 0u32).unwrap();
 
         let cb = builder.build().unwrap();
-        assert!(cb.is_protected());
+        assert!(cb.inner.is_protected());
 
         let future = cb
             .execute(queue)
