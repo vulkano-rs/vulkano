@@ -363,13 +363,11 @@ impl RawBuffer {
                         the `property_flags` of the memory type of `allocation.device_memory()` \
                         does not contain `MemoryPropertyFlags::PROTECTED`"
                         .into(),
-                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01899"],
+                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01898"],
                     ..Default::default()
                 }));
             }
-        }
-
-        if !self.flags.intersects(BufferCreateFlags::PROTECTED) {
+        } else {
             if memory_type
                 .property_flags
                 .intersects(MemoryPropertyFlags::PROTECTED)
@@ -379,7 +377,7 @@ impl RawBuffer {
                         the `property_flags` of the memory type of `allocation.device_memory()` \
                         contains `MemoryPropertyFlags::PROTECTED`"
                         .into(),
-                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01900"],
+                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01899"],
                     ..Default::default()
                 }));
             }

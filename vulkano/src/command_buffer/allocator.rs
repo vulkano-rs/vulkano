@@ -178,7 +178,7 @@ pub struct StandardCommandBufferAllocator {
     // Each queue family index points directly to its entry.
     pools: ThreadLocal<SmallVec<[UnsafeCell<Option<Entry>>; 8]>>,
     buffer_count: [usize; 2],
-    _command_pool_create_flags: CommandPoolCreateFlags,
+    command_pool_create_flags: CommandPoolCreateFlags,
 }
 
 impl StandardCommandBufferAllocator {
@@ -196,7 +196,7 @@ impl StandardCommandBufferAllocator {
             device: InstanceOwnedDebugWrapper(device.clone()),
             pools: ThreadLocal::new(),
             buffer_count,
-            _command_pool_create_flags: create_info.command_pool_create_flags,
+            command_pool_create_flags: create_info.command_pool_create_flags,
         }
     }
 
@@ -281,7 +281,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         let entry_ptr = self.entry(queue_family_index);
         let entry = unsafe { &mut *entry_ptr };
         let command_pool_create_info = CommandPoolCreateInfo {
-            flags: self._command_pool_create_flags,
+            flags: self.command_pool_create_flags,
             queue_family_index,
             ..Default::default()
         };
