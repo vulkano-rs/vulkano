@@ -43,6 +43,7 @@ jobs:
         shell: ${{ matrix.shell }}
     env:
       common_args: >-
+        --locked
         --target ${{ matrix.target }}
         --target-dir ${{ matrix.target-dir }}
         --profile CI
@@ -95,6 +96,7 @@ jobs:
         shell: ${{ matrix.shell }}
     env:
       common_args: >-
+        --locked
         --target ${{ matrix.target }}
         --target-dir ${{ matrix.target-dir }}
         --profile CI
