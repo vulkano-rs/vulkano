@@ -5,6 +5,7 @@ on:
     branches-ignore:
       - master
       - 'gh-readonly-queue/**'
+      - 'dependabot/**'
     paths-ignore:
       - '**.md'
   pull_request:
