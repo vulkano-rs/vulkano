@@ -973,6 +973,11 @@ pub struct SubmitInfo<'a> {
     /// The default value is empty.
     pub signal_semaphores: &'a [SemaphoreSubmitInfo<'a>],
 
+    /// Indicates whether the submission is protected.
+    ///
+    /// The default value indicates unprotected submit.
+    pub protected: ProtectedSubmitInfo,
+
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -991,6 +996,7 @@ impl SubmitInfo<'_> {
             wait_semaphores: &[],
             command_buffers: &[],
             signal_semaphores: &[],
+            protected: ProtectedSubmitInfo::new(),
             _ne: crate::NE,
         }
     }
@@ -1000,6 +1006,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected,
             _ne: _,
         } = self;
 
@@ -1013,6 +1020,30 @@ impl SubmitInfo<'_> {
             command_buffer_submit_info
                 .validate(device)
                 .map_err(|err| err.add_context(format!("command_buffers[{}]", index)))?;
+
+            if !protected.protected_submit
+                && command_buffer_submit_info.command_buffer.is_protected()
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("command_buffer[{}]", index).into(),
+                    problem: "is a protected command_buffer, but the protected structure has protected_submit set to false.".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "protected_memory",
+                )])]),
+                    vuids: &["VUID-VkSubmitInfo-pNext-04120"],
+                }));
+            } else if protected.protected_submit
+                && !command_buffer_submit_info.command_buffer.is_protected()
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("command_buffer[{}]", index).into(),
+                    problem: "is an unprotected command_buffer, but the protected structure has protected_submit set to true.".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "protected_memory",
+                )])]),
+                    vuids: &["VUID-VkSubmitInfo-pNext-04148"],
+                }));
+            }
         }
 
         for (index, semaphore_submit_info) in signal_semaphores.iter().enumerate() {
@@ -1067,6 +1098,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected: _,
             _ne: _,
         } = self;
 
@@ -1128,8 +1160,9 @@ impl SubmitInfo<'_> {
     ) -> SubmitInfoExtensionsVk<'a> {
         let &Self {
             wait_semaphores,
-            command_buffers,
+            command_buffers: _,
             signal_semaphores,
+            protected,
             _ne: _,
         } = self;
         let SubmitInfoFields1Vk {
@@ -1152,10 +1185,8 @@ impl SubmitInfo<'_> {
                     .signal_semaphore_values(signal_semaphore_values_vk)
             });
 
-        let protected_vk = (command_buffers.iter())
-            .any(|command_buffer_submit_info| {
-                command_buffer_submit_info.command_buffer.is_protected()
-            })
+        let protected_vk = protected
+            .protected_submit
             .then(|| vk::ProtectedSubmitInfo::default().protected_submit(true));
 
         SubmitInfoExtensionsVk {
@@ -1169,6 +1200,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected: _,
             _ne: _,
         } = self;
 
@@ -1554,12 +1586,44 @@ impl<'a> SemaphoreSubmitInfo<'a> {
     }
 }
 
+/// Structure indicating whether the submission is protected.
+#[derive(Copy, Clone, Debug)]
+pub struct ProtectedSubmitInfo {
+    pub protected_submit: bool,
+    pub _ne: crate::NonExhaustive<'static>,
+}
+
+impl ProtectedSubmitInfo {
+    /// An unprotected ProtectedSubmitInfo.
+    pub const UNPROTECTED: Self = Self {
+        protected_submit: false,
+        _ne: crate::NE,
+    };
+
+    /// A protected ProtectedSubmitInfo.
+    pub const PROTECTED: Self = Self {
+        protected_submit: true,
+        _ne: crate::NE,
+    };
+
+    pub const fn new() -> Self {
+        Self::UNPROTECTED
+    }
+}
+
+impl Default for ProtectedSubmitInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[doc(hidden)]
 pub struct OldSubmitInfo {
     pub(crate) wait_semaphores: Vec<Arc<Semaphore>>,
     pub(crate) command_buffers: Vec<Arc<dyn PrimaryCommandBufferAbstract>>,
     pub(crate) signal_semaphores: Vec<Arc<Semaphore>>,
+    pub(crate) protected: ProtectedSubmitInfo,
 }
 
 #[derive(Debug, Default)]

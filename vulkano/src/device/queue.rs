@@ -807,6 +807,7 @@ impl<'a> QueueGuard<'a> {
                 wait_semaphores,
                 command_buffers,
                 signal_semaphores,
+                protected: _,
                 _ne: _,
             } = submit_info;
 
