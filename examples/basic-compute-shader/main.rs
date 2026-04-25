@@ -29,33 +29,33 @@ mod compute_shader {
     vulkano_shaders::shader! {
         ty: "compute",
         src: r"
-                #version 450
+            #version 450
 
-                #include <vulkano.glsl>
+            #include <vulkano.glsl>
 
-                VKO_DECLARE_STORAGE_BUFFER(buffer, Buffer {
-                    uint data[];
-                })
+            VKO_DECLARE_STORAGE_BUFFER(buffer, Buffer {
+                uint data[];
+            })
 
-                layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-                layout(push_constant, std430) uniform PushConstants {
-                    StorageBufferId buffer_id;
-                    uint buffer_len;
-                };
+            layout(push_constant, std430) uniform PushConstants {
+                StorageBufferId buffer_id;
+                uint buffer_len;
+            };
 
-                #define buffer vko_buffer(buffer, buffer_id)
+            #define buffer vko_buffer(buffer, buffer_id)
 
-                void main() {
-                    uint idx = gl_GlobalInvocationID.x;
-                    // Because we dispatch a multiple of 64 threads (work group size) it's usually
-                    // required to guard against accessing buffers or storage images out of bounds.
-                    if (idx >= buffer_len) {
-                        return;
-                    }
-                    buffer.data[idx] *= 12;
+            void main() {
+                uint idx = gl_GlobalInvocationID.x;
+                // Because we dispatch a multiple of 64 threads (work group size) it's usually
+                // required to guard against accessing buffers or storage images out of bounds.
+                if (idx >= buffer_len) {
+                    return;
                 }
-            ",
+                buffer.data[idx] *= 12;
+            }
+        ",
     }
 }
 
@@ -72,7 +72,8 @@ fn main() {
     .unwrap();
 
     // Choose which physical device to use.
-    // We make use of Vulkano's bindless feature to handle resource bindings. This way we don't
+    //
+    // We make use of vulkano's bindless feature to handle resource bindings. This way we don't
     // need to worry about managing descriptors. Bindless requires additional extensions and
     // features.
     let device_extensions = DeviceExtensions {
@@ -145,8 +146,8 @@ fn main() {
     // GPU will need to access data, there is no other choice but to transfer the data through the
     // slow PCI express bus.
 
-    // The Resources type is used in conjunction with the task graph and tracks available resources
-    // for automatic synchronization and cleanup.
+    // The `Resources` type is used in conjunction with the task graph and tracks available
+    // resources for automatic synchronization and cleanup.
     let resources = Resources::new(
         &device,
         &ResourcesCreateInfo {
@@ -169,8 +170,9 @@ fn main() {
             .entry_point("main")
             .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&module);
-        let layout =
-            BindlessContext::pipeline_layout_from_stages(bcx, slice::from_ref(&stage)).unwrap();
+        let layout = bcx
+            .pipeline_layout_from_stages(slice::from_ref(&stage))
+            .unwrap();
 
         ComputePipeline::new(
             &device,
@@ -182,7 +184,7 @@ fn main() {
 
     // Create a flight.
     //
-    // We going to execute a one-shot compute shader, so a single frame in flight is enough.
+    // We're going to execute a one-shot compute shader, so a single frame in flight is enough.
     let flight_id = resources.create_flight(1).unwrap();
 
     // Create a storage buffer.
@@ -201,7 +203,7 @@ fn main() {
                     | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
-            DeviceLayout::new_sized::<[u32; BUFFER_LEN as usize]>(),
+            DeviceLayout::new_unsized::<[u32]>(BUFFER_LEN.into()).unwrap(),
         )
         .unwrap();
 
@@ -213,9 +215,9 @@ fn main() {
         .create_storage_buffer(buffer_id, 0, None)
         .unwrap();
 
-    // We can use vulkano_taskgraph::execute to run our simple workload as a single "task node".
+    // We can use `vulkano_taskgraph::execute` to run our simple workload as a single "task node".
     //
-    // It's important to specify all resources we want to access within the task node.
+    // It's important to specify all resource accesses we want to do within the task.
     unsafe {
         vulkano_taskgraph::execute(
             &queue,
@@ -223,15 +225,12 @@ fn main() {
             flight_id,
             |cbf, tcx| {
                 // Initialize the buffer with our data.
-                for (i, value) in tcx
-                    .write_buffer::<[u32]>(buffer_id, ..)?
-                    .iter_mut()
-                    .enumerate()
-                {
-                    *value = i.try_into().unwrap();
+                for (i, value) in (0..).zip(tcx.write_buffer::<[u32]>(buffer_id, ..)?) {
+                    *value = i;
                 }
 
-                cbf.bind_pipeline_compute(&pipeline)?.push_constants(
+                cbf.bind_pipeline_compute(&pipeline)?;
+                cbf.push_constants(
                     pipeline.layout(),
                     0,
                     &compute_shader::PushConstants {
@@ -240,9 +239,8 @@ fn main() {
                     },
                 )?;
 
-                // We have set the local size of the shader to (64, 1, 1).
-                // Each thread processes one item in the buffer, so ceil(n / 64) groups are
-                // required.
+                // We have set the local size of the shader to (64, 1, 1). Each thread processes
+                // one item in the buffer, so ceil(n / 64) groups are required.
                 let groups_x = BUFFER_LEN.div_ceil(64);
                 cbf.dispatch([groups_x, 1, 1])?;
 
@@ -281,8 +279,9 @@ fn main() {
     .unwrap();
 
     assert_eq!(data_buffer_content.len(), BUFFER_LEN.try_into().unwrap());
-    for (i, value) in data_buffer_content.iter().enumerate() {
-        assert_eq!(*value, i as u32 * 12);
+
+    for (i, value) in (0..).zip(data_buffer_content) {
+        assert_eq!(value, i * 12);
     }
 
     println!("Success");
