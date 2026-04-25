@@ -61,6 +61,7 @@
             shaderc
 
             # Workflow dependencies
+            cargo-hack
             typos
           ];
 

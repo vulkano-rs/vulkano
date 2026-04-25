@@ -2917,6 +2917,8 @@ unsafe impl InstanceOwned for PhysicalDevice {
 impl_id_counter!(PhysicalDevice);
 
 #[cfg(all(
+    feature = "raw_window_handle",
+    feature = "x11",
     any(
         target_os = "dragonfly",
         target_os = "freebsd",
@@ -2926,8 +2928,7 @@ impl_id_counter!(PhysicalDevice);
         target_os = "netbsd",
         target_os = "openbsd",
         target_os = "solaris"
-    ),
-    feature = "x11"
+    )
 ))]
 unsafe fn get_xcb_root_visual_id(
     connection: *mut std::ffi::c_void,
@@ -2944,6 +2945,8 @@ unsafe fn get_xcb_root_visual_id(
 }
 
 #[cfg(all(
+    feature = "raw_window_handle",
+    feature = "x11",
     any(
         target_os = "dragonfly",
         target_os = "freebsd",
@@ -2953,8 +2956,7 @@ unsafe fn get_xcb_root_visual_id(
         target_os = "netbsd",
         target_os = "openbsd",
         target_os = "solaris"
-    ),
-    feature = "x11"
+    )
 ))]
 unsafe fn get_xlib_root_visual_id(
     display: *mut std::ffi::c_void,

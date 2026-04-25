@@ -61,6 +61,8 @@ jobs:
           cmd-format: nix develop .#CI -c {0}
       - name: Run clippy
         run: nix develop .#CI -c cargo clippy ${{ env.common_args }} -- -Dwarnings
+      - name: Build with each feature
+        run: nix develop .#CI -s RUSTFLAGS '-Dwarnings' -c cargo hack build ${{ env.common_args }} --ignore-private --each-feature --optional-deps --exclude-features shaderc-build-from-source
       - name: Build tests
         run: nix develop .#CI -c cargo build ${{ env.common_args }} --tests
       - name: Run tests
