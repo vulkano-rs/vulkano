@@ -4,29 +4,60 @@
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
-use std::{slice, sync::Arc};
+use std::slice;
 use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorBufferInfo, DescriptorSet,
-        WriteDescriptorSet,
-    },
+    buffer::{BufferCreateInfo, BufferUsage},
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
-        PipelineLayout, PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline,
+        PipelineShaderStageCreateInfo,
     },
-    sync::{self, GpuFuture},
     VulkanLibrary,
 };
+use vulkano_taskgraph::{
+    descriptor_set::{BindlessContext, BindlessContextCreateInfo},
+    resource::{AccessTypes, HostAccessType, Resources, ResourcesCreateInfo},
+};
+
+// The compute shader we are going to run.
+mod compute_shader {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        src: r"
+            #version 450
+
+            #include <vulkano.glsl>
+
+            VKO_DECLARE_STORAGE_BUFFER(buffer, Buffer {
+                uint data[];
+            })
+
+            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+            layout(push_constant) uniform PushConstants {
+                StorageBufferId buffer_id;
+                uint buffer_len;
+            };
+
+            #define buffer vko_buffer(buffer, buffer_id)
+
+            void main() {
+                uint idx = gl_GlobalInvocationID.x;
+                // Because we dispatch a multiple of 64 threads (work group size) it's usually
+                // required to guard against accessing buffers or storage images out of bounds.
+                if (idx >= buffer_len) {
+                    return;
+                }
+                buffer.data[idx] *= 12;
+            }
+        ",
+    }
+}
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -41,14 +72,22 @@ fn main() {
     .unwrap();
 
     // Choose which physical device to use.
+    //
+    // We make use of vulkano's bindless feature to handle resource bindings. This way we don't
+    // need to worry about managing descriptors. Bindless requires additional extensions and
+    // features.
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
-        ..DeviceExtensions::empty()
+        ..BindlessContext::required_extensions(&instance)
     };
+    let device_features = BindlessContext::required_features(&instance);
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
         .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
+        .filter(|p| {
+            p.supported_extensions().contains(&device_extensions)
+                && p.supported_features().contains(&device_features)
+        })
         .filter_map(|p| {
             // The Vulkan specs guarantee that a compliant implementation must provide at least one
             // queue that supports compute operations.
@@ -78,6 +117,7 @@ fn main() {
         &physical_device,
         &DeviceCreateInfo {
             enabled_extensions: &device_extensions,
+            enabled_features: &device_features,
             queue_create_infos: &[QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
@@ -106,34 +146,33 @@ fn main() {
     // GPU will need to access data, there is no other choice but to transfer the data through the
     // slow PCI express bus.
 
+    // The `Resources` type is used in conjunction with the task graph and tracks available
+    // resources for automatic synchronization and cleanup.
+    let resources = Resources::new(
+        &device,
+        &ResourcesCreateInfo {
+            bindless_context: Some(&BindlessContextCreateInfo::default()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // We'll use the bindless context to bind our buffer.
+    let bcx = resources.bindless_context().unwrap();
+
     // We need to create the compute pipeline that describes our operation.
     //
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
     let pipeline = {
-        mod cs {
-            vulkano_shaders::shader! {
-                ty: "compute",
-                src: r"
-                    #version 450
-
-                    layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-                    layout(set = 0, binding = 0) buffer Data {
-                        uint data[];
-                    };
-
-                    void main() {
-                        uint idx = gl_GlobalInvocationID.x;
-                        data[idx] *= 12;
-                    }
-                ",
-            }
-        }
-
-        let cs = cs::load(&device).unwrap().entry_point("main").unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(&cs);
-        let layout = PipelineLayout::from_stages(&device, slice::from_ref(&stage)).unwrap();
+        let module = compute_shader::load(&device)
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(&module);
+        let layout = bcx
+            .pipeline_layout_from_stages(slice::from_ref(&stage))
+            .unwrap();
 
         ComputePipeline::new(
             &device,
@@ -143,116 +182,106 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
-    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        &device,
-        &Default::default(),
-    ));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        &device,
-        &Default::default(),
-    ));
-
-    // We start by creating the buffer that will store the data.
-    let data_buffer = Buffer::from_iter(
-        &memory_allocator,
-        &BufferCreateInfo {
-            usage: BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        &AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
-            ..Default::default()
-        },
-        // Iterator that produces the data.
-        0..65536u32,
-    )
-    .unwrap();
-
-    // In order to let the shader access the buffer, we need to build a *descriptor set* that
-    // contains the buffer.
+    // Create a flight.
     //
-    // The resources that we bind to the descriptor set must match the resources expected by the
-    // pipeline which we pass as the first parameter.
+    // We're going to execute a one-shot compute shader, so a single frame in flight is enough.
+    let flight_id = resources.create_flight(1).unwrap();
+
+    // Create a storage buffer.
     //
-    // If you want to run the pipeline on multiple different buffers, you need to create multiple
-    // descriptor sets that each contain the buffer you want to run the shader on.
-    let layout = &pipeline.layout().set_layouts()[0];
-    let set = DescriptorSet::new(
-        &descriptor_set_allocator,
-        layout,
-        &[WriteDescriptorSet::buffer(
-            0,
-            &DescriptorBufferInfo {
-                buffer: Some(data_buffer.buffer()),
+    // This example reads and writes the same buffer from a compute shader. The buffer also needs to
+    // be accessible from the host to copy the initial data into it and read the result back later.
+    const BUFFER_LEN: u32 = 65536;
+    let buffer_id = resources
+        .create_buffer(
+            &BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
-        )],
-        &[],
-    )
-    .unwrap();
-
-    // In order to execute our operation, we have to build a command buffer.
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
-    // Note that we clone the pipeline and the set. Since they are both wrapped in an `Arc`,
-    // this only clones the `Arc` and not the whole pipeline or set (which aren't cloneable
-    // anyway). In this example we would avoid cloning them since this is the last time we use
-    // them, but in real code you would probably need to clone them.
-    builder
-        .bind_pipeline_compute(pipeline.clone())
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set,
+            &AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+                ..Default::default()
+            },
+            DeviceLayout::new_unsized::<[u32]>(BUFFER_LEN.into()).unwrap(),
         )
         .unwrap();
 
-    // The command buffer only does one thing: execute the compute pipeline. This is called a
-    // *dispatch* operation.
-    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
-
-    // Finish building the command buffer by calling `build`.
-    let command_buffer = builder.build().unwrap();
-
-    // Let's execute this command buffer now.
-    let future = sync::now(device)
-        .then_execute(queue, command_buffer)
-        .unwrap()
-        // This line instructs the GPU to signal a *fence* once the command buffer has finished
-        // execution. A fence is a Vulkan object that allows the CPU to know when the GPU has
-        // reached a certain point. We need to signal a fence here because below we want to block
-        // the CPU until the GPU has reached that point in the execution.
-        .then_signal_fence_and_flush()
+    // Add the storage buffer to the bindless context.
+    //
+    // We can send this ID to our compute shader and use it to access the buffer.
+    let buffer_bindless_id = bcx
+        .global_set()
+        .create_storage_buffer(buffer_id, 0, None)
         .unwrap();
 
-    // Blocks execution until the GPU has finished the operation. This method only exists on the
-    // future that corresponds to a signaled fence. In other words, this method wouldn't be
-    // available if we didn't call `.then_signal_fence_and_flush()` earlier. The `None` parameter
-    // is an optional timeout.
+    // We can use `vulkano_taskgraph::execute` to run our simple workload as a single "task node".
     //
-    // Note however that dropping the `future` variable (with `drop(future)` for example) would
-    // block execution as well, and this would be the case even if we didn't call
-    // `.then_signal_fence_and_flush()`. Therefore the actual point of calling
-    // `.then_signal_fence_and_flush()` and `.wait()` is to make things more explicit. In the
-    // future, if the Rust language gets linear types vulkano may get modified so that only
-    // fence-signaled futures can get destroyed like this.
-    future.wait(None).unwrap();
+    // It's important to specify all resource accesses we want to do within the task.
+    unsafe {
+        vulkano_taskgraph::execute(
+            &queue,
+            &resources,
+            flight_id,
+            |cbf, tcx| {
+                // Initialize the buffer with our data.
+                for (i, value) in (0..).zip(tcx.write_buffer::<[u32]>(buffer_id, ..)?) {
+                    *value = i;
+                }
 
-    // Now that the GPU is done, the content of the buffer should have been modified. Let's check
-    // it out. The call to `read()` would return an error if the buffer was still in use by the
-    // GPU.
-    let data_buffer_content = data_buffer.read().unwrap();
-    for n in 0..65536u32 {
-        assert_eq!(data_buffer_content[n as usize], n * 12);
+                cbf.bind_pipeline_compute(&pipeline)?;
+                cbf.push_constants(
+                    pipeline.layout(),
+                    0,
+                    &compute_shader::PushConstants {
+                        buffer_id: buffer_bindless_id,
+                        buffer_len: BUFFER_LEN,
+                    },
+                )?;
+
+                // We have set the local size of the shader to (64, 1, 1). Each thread processes
+                // one item in the buffer, so ceil(n / 64) groups are required.
+                let groups_x = BUFFER_LEN.div_ceil(64);
+                cbf.dispatch([groups_x, 1, 1])?;
+
+                Ok(())
+            },
+            [(buffer_id, HostAccessType::Write)],
+            [(
+                buffer_id,
+                AccessTypes::COMPUTE_SHADER_STORAGE_READ
+                    | AccessTypes::COMPUTE_SHADER_STORAGE_WRITE,
+            )],
+            [],
+        )
+    }
+    .unwrap();
+
+    // Wait for the compute work to finish on the GPU before proceeding.
+    resources.flight(flight_id).unwrap().wait_idle().unwrap();
+
+    // Read our data back from the GPU and verify the result.
+    let mut data_buffer_content: Vec<u32> = Vec::new();
+    unsafe {
+        vulkano_taskgraph::execute(
+            &queue,
+            &resources,
+            flight_id,
+            |_cbf, tcx| {
+                data_buffer_content = tcx.read_buffer::<[u32]>(buffer_id, ..)?.to_vec();
+                Ok(())
+            },
+            [(buffer_id, HostAccessType::Read)],
+            [],
+            [],
+        )
+    }
+    .unwrap();
+
+    assert_eq!(data_buffer_content.len(), BUFFER_LEN.try_into().unwrap());
+
+    for (i, value) in (0..).zip(data_buffer_content) {
+        assert_eq!(value, i * 12);
     }
 
     println!("Success");
