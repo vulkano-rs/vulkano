@@ -15,7 +15,7 @@ categories = { workspace = true }
 
 [dependencies]
 foldhash = { workspace = true }
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["raw_window_handle"] }
 winit = { workspace = true }
 
 [lints]
