@@ -15,6 +15,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'vulkano-rs/vulkano'
     strategy:
       matrix:
         include:
@@ -68,6 +69,7 @@ jobs:
       - name: Build examples
         run: nix develop .#CI -c cargo build ${{ env.common_args }} --bins
   msrv:
+    if: github.repository == 'vulkano-rs/vulkano'
     strategy:
       matrix:
         include:
@@ -115,6 +117,7 @@ jobs:
       - name: Build libraries
         run: nix develop .#CI-MSRV -c cargo build ${{ env.common_args }} --lib
   fmt:
+    if: github.repository == 'vulkano-rs/vulkano'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +125,7 @@ jobs:
       - name: Run fmt check
         run: nix develop .#CI -c cargo fmt --check
   typos:
+    if: github.repository == 'vulkano-rs/vulkano'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
