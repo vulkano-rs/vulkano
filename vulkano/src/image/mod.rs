@@ -1140,12 +1140,11 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(khr_maintenance2)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
+    /// Specifies that the image is a protected image.
     PROTECTED = PROTECTED
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
-    ]),*/
+    ]),
 
     /// For images with a multi-planar format, whether each plane will have its memory bound
     /// separately, rather than having a single memory binding for the whole image.

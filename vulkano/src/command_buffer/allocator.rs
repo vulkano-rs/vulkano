@@ -6,8 +6,8 @@
 
 use super::{
     pool::{
-        CommandBufferAllocateInfo, CommandPool, CommandPoolAlloc, CommandPoolCreateInfo,
-        CommandPoolResetFlags,
+        CommandBufferAllocateInfo, CommandPool, CommandPoolAlloc, CommandPoolCreateFlags,
+        CommandPoolCreateInfo, CommandPoolResetFlags,
     },
     CommandBufferLevel,
 };
@@ -178,6 +178,7 @@ pub struct StandardCommandBufferAllocator {
     // Each queue family index points directly to its entry.
     pools: ThreadLocal<SmallVec<[UnsafeCell<Option<Entry>>; 8]>>,
     buffer_count: [usize; 2],
+    command_pool_create_flags: CommandPoolCreateFlags,
 }
 
 impl StandardCommandBufferAllocator {
@@ -195,6 +196,7 @@ impl StandardCommandBufferAllocator {
             device: InstanceOwnedDebugWrapper(device.clone()),
             pools: ThreadLocal::new(),
             buffer_count,
+            command_pool_create_flags: create_info.command_pool_create_flags,
         }
     }
 
@@ -278,11 +280,16 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
         let entry_ptr = self.entry(queue_family_index);
         let entry = unsafe { &mut *entry_ptr };
+        let command_pool_create_info = CommandPoolCreateInfo {
+            flags: self.command_pool_create_flags,
+            queue_family_index,
+            ..Default::default()
+        };
 
         if entry.is_none() {
             *entry = Some(Entry::new(
                 &self.device,
-                queue_family_index,
+                &command_pool_create_info,
                 &self.buffer_count,
                 Arc::new(ArrayQueue::new(MAX_POOLS)),
             )?);
@@ -290,7 +297,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
         let entry = entry.as_mut().unwrap();
 
-        Ok(entry.allocate(queue_family_index, level, &self.buffer_count)?)
+        Ok(entry.allocate(&command_pool_create_info, level, &self.buffer_count)?)
     }
 
     #[inline]
@@ -384,12 +391,17 @@ unsafe impl Send for Entry {}
 impl Entry {
     fn new(
         device: &Arc<Device>,
-        queue_family_index: u32,
+        command_pool_create_info: &CommandPoolCreateInfo<'_>,
         buffer_count: &[usize; 2],
         pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
     ) -> Result<Self, VulkanError> {
         Ok(Entry {
-            pool: Pool::new(device, queue_family_index, buffer_count, &pool_reserve)?,
+            pool: Pool::new(
+                device,
+                command_pool_create_info,
+                buffer_count,
+                &pool_reserve,
+            )?,
             allocations: [0; 2],
             pool_reserve,
         })
@@ -397,7 +409,7 @@ impl Entry {
 
     fn allocate(
         &mut self,
-        queue_family_index: u32,
+        command_pool_create_info: &CommandPoolCreateInfo<'_>,
         level: CommandBufferLevel,
         buffer_count: &[usize; 2],
     ) -> Result<CommandBufferAlloc, VulkanError> {
@@ -435,7 +447,7 @@ impl Entry {
                 } else {
                     *self = Entry::new(
                         self.pool.inner.device(),
-                        queue_family_index,
+                        command_pool_create_info,
                         buffer_count,
                         self.pool_reserve.clone(),
                     )?;
@@ -493,18 +505,12 @@ struct Pool {
 impl Pool {
     fn new(
         device: &Arc<Device>,
-        queue_family_index: u32,
+        command_pool_create_info: &CommandPoolCreateInfo<'_>,
         buffer_counts: &[usize; 2],
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let inner = CommandPool::new(
-            device,
-            &CommandPoolCreateInfo {
-                queue_family_index,
-                ..Default::default()
-            },
-        )
-        .map_err(Validated::unwrap)?;
+        let inner =
+            CommandPool::new(device, command_pool_create_info).map_err(Validated::unwrap)?;
 
         let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
         let mut buffer_reserve = [None, None];
@@ -558,6 +564,11 @@ pub struct StandardCommandBufferAllocatorCreateInfo<'a> {
     /// The default value is `0`.
     pub secondary_buffer_count: usize,
 
+    /// Used to set the flags for pools that the allocator creates.
+    ///
+    /// The default value is empty.
+    pub command_pool_create_flags: CommandPoolCreateFlags,
+
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -575,6 +586,7 @@ impl StandardCommandBufferAllocatorCreateInfo<'_> {
         StandardCommandBufferAllocatorCreateInfo {
             primary_buffer_count: 32,
             secondary_buffer_count: 0,
+            command_pool_create_flags: CommandPoolCreateFlags::empty(),
             _ne: crate::NE,
         }
     }
@@ -610,5 +622,67 @@ impl From<VulkanError> for ResetCommandPoolError {
 impl From<ResetCommandPoolError> for Validated<ResetCommandPoolError> {
     fn from(err: ResetCommandPoolError) -> Self {
         Self::Error(err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CommandBufferAllocator, StandardCommandBufferAllocator,
+        StandardCommandBufferAllocatorCreateInfo,
+    };
+    use crate::{
+        command_buffer::{pool::CommandPoolCreateFlags, CommandBufferLevel},
+        Version,
+    };
+
+    #[test]
+    fn basic_create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = StandardCommandBufferAllocator::new(
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
+                ..Default::default()
+            },
+        );
+    }
+
+    #[test]
+    fn basic_alloc() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let allocator = StandardCommandBufferAllocator::new(
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
+                ..Default::default()
+            },
+        );
+        let buffer = allocator
+            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary)
+            .unwrap();
+        assert_eq!(buffer.pool.flags(), CommandPoolCreateFlags::empty());
+    }
+
+    #[test]
+    fn alloc_with_command_pool_create_flags() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let desired_flags = {
+            let mut flags = CommandPoolCreateFlags::TRANSIENT;
+
+            if device.api_version() >= Version::V1_1 {
+                flags |= CommandPoolCreateFlags::PROTECTED;
+            }
+            flags
+        };
+        let allocator = StandardCommandBufferAllocator::new(
+            &device,
+            &StandardCommandBufferAllocatorCreateInfo {
+                command_pool_create_flags: desired_flags,
+                ..Default::default()
+            },
+        );
+        let buffer = allocator
+            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary)
+            .unwrap();
+        assert_eq!(buffer.pool.flags(), desired_flags);
     }
 }

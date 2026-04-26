@@ -353,17 +353,34 @@ impl RawBuffer {
             }
         }
 
-        if memory_type
-            .property_flags
-            .intersects(MemoryPropertyFlags::PROTECTED)
-        {
-            return Err(Box::new(ValidationError {
-                problem: "the `property_flags` of the memory type of \
-                    `allocation.device_memory()` contains `MemoryPropertyFlags::PROTECTED`"
-                    .into(),
-                vuids: &["VUID-VkBindBufferMemoryInfo-None-01899"],
-                ..Default::default()
-            }));
+        if self.flags.intersects(BufferCreateFlags::PROTECTED) {
+            if !memory_type
+                .property_flags
+                .intersects(MemoryPropertyFlags::PROTECTED)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the buffer was created with `BufferCreateFlags::PROTECTED`, but \
+                        the `property_flags` of the memory type of `allocation.device_memory()` \
+                        does not contain `MemoryPropertyFlags::PROTECTED`"
+                        .into(),
+                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01898"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if memory_type
+                .property_flags
+                .intersects(MemoryPropertyFlags::PROTECTED)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the buffer was not created with `BufferCreateFlags::PROTECTED`, but \
+                        the `property_flags` of the memory type of `allocation.device_memory()` \
+                        contains `MemoryPropertyFlags::PROTECTED`"
+                        .into(),
+                    vuids: &["VUID-VkBindBufferMemoryInfo-None-01899"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if !memory.export_handle_types().is_empty() {

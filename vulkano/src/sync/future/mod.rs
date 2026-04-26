@@ -749,16 +749,18 @@ pub(crate) unsafe fn queue_submit(
                     .iter()
                     .map(|semaphore| SemaphoreSubmitInfo::new(semaphore))
                     .collect::<Vec<_>>(),
+                submit_info.protected,
             )
         })
         .collect::<Vec<_>>();
     let new_submit_infos = new_submit_infos
         .iter()
         .map(
-            |(wait_semaphores, command_buffers, signal_semaphores)| SubmitInfo {
+            |(wait_semaphores, command_buffers, signal_semaphores, protected)| SubmitInfo {
                 wait_semaphores,
                 command_buffers,
                 signal_semaphores,
+                protected: *protected,
                 ..Default::default()
             },
         )
@@ -772,6 +774,7 @@ pub(crate) unsafe fn queue_submit(
             wait_semaphores: _,
             command_buffers,
             signal_semaphores: _,
+            protected: _,
         } = submit_info;
 
         for command_buffer in command_buffers {
@@ -837,6 +840,7 @@ impl<'a> States<'a> {
                 wait_semaphores: _,
                 command_buffers: info_command_buffers,
                 signal_semaphores: _,
+                protected: _,
             } = submit_info;
 
             for command_buffer in info_command_buffers {
