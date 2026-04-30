@@ -1,7 +1,4 @@
-use crate::{
-    structs::{self, TypeRegistry},
-    MacroInput,
-};
+use crate::{structs::{self, TypeRegistry}, MacroInput, SourceLanguage};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -153,9 +150,12 @@ pub(super) fn compile(
     macro_defines: &[(String, String)],
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
     let includes = RefCell::new(Vec::new());
-    let compiler = Compiler::new().or(Err("failed to create GLSL compiler"))?;
+    let compiler = Compiler::new().or(Err("failed to create shader compiler"))?;
     let mut compile_options =
         CompileOptions::new().or(Err("failed to initialize compile options"))?;
+
+    let source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
+    compile_options.set_source_language(source_language);
 
     compile_options.set_target_env(
         TargetEnv::Vulkan,
@@ -168,7 +168,10 @@ pub(super) fn compile(
 
     let root_source_path = path.as_deref().unwrap_or(
         // An arbitrary placeholder file name for embedded shaders.
-        "shader.glsl",
+        match source_language {
+            SourceLanguage::GLSL => "shader.glsl",
+            SourceLanguage::HLSL => "shader.hlsl",
+        },
     );
 
     // Specify the file resolution callback for the `#include` directive.

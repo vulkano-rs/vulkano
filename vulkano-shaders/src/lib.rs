@@ -1,5 +1,5 @@
 //! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust
+//! Manages the compile-time compilation of shader code into SPIR-V and generation of associated Rust
 //! code.
 //!
 //! # Basic usage
@@ -92,7 +92,7 @@
 //!
 //! ## `ty: "..."`
 //!
-//! This defines what shader type the given GLSL source will be compiled into. The type can be any
+//! This defines what shader type the given shader source will be compiled into. The type can be any
 //! of the following:
 //!
 //! - `vertex`
@@ -114,12 +114,12 @@
 //!
 //! ## `src: "..."`
 //!
-//! Provides the raw GLSL source to be compiled in the form of a string. Cannot be used in
+//! Provides the raw shader source to be compiled in the form of a string. Cannot be used in
 //! conjunction with the `path` or `bytes` field.
 //!
 //! ## `path: "..."`
 //!
-//! Provides the path to the GLSL source to be compiled, relative to your `Cargo.toml`. Cannot be
+//! Provides the path to the shader source to be compiled, relative to your `Cargo.toml`. Cannot be
 //! used in conjunction with the `src` or `bytes` field.
 //!
 //! ## `bytes: "..."`
@@ -167,6 +167,11 @@
 //!
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing the
 //! `-DNAME=VALUE` argument on the command line.
+//!
+//! ## `lang: "..."`
+//!
+//! Provides the language of the shader source. Must be either `glsl` or `hlsl` (defaults to
+//! `glsl`).
 //!
 //! ## `vulkan_version: "major.minor"` and `spirv_version: "major.minor"`
 //!
@@ -235,7 +240,7 @@ use crate::codegen::ShaderKind;
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use shaderc::{EnvVersion, SpirvVersion};
+use shaderc::{EnvVersion, SourceLanguage, SpirvVersion};
 use std::{
     env, fs, mem,
     path::{Path, PathBuf},
@@ -405,6 +410,7 @@ struct MacroInput {
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
     shaders: HashMap<String, ShaderFields>,
+    source_language: Option<SourceLanguage>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
     generate_structs: bool,
@@ -433,6 +439,7 @@ impl MacroInput {
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
+            source_language: None,
         }
     }
 }
@@ -458,6 +465,7 @@ impl Parse for MacroInput {
         let mut custom_derives = None;
         let mut linalg_type = None;
         let mut dump = None;
+        let mut source_language = None;
 
         fn parse_shader_fields(
             output: &mut MaybeShaderFields,
@@ -679,6 +687,18 @@ impl Parse for MacroInput {
                         }
                     }
                 }
+                "lang" => {
+                    let lit = input.parse::<LitStr>()?;
+                    if source_language.is_some() {
+                        bail!(lit, "field `lang` is already defined");
+                    }
+
+                    source_language = Some(match lit.value().as_str() {
+                        "glsl" => SourceLanguage::GLSL,
+                        "hlsl" => SourceLanguage::HLSL,
+                        lang => bail!(lit, "expected `glsl` or `hlsl`, found `{lang}`"),
+                    })
+                }
                 "vulkan_version" => {
                     let lit = input.parse::<LitStr>()?;
                     if vulkan_version.is_some() {
@@ -846,6 +866,7 @@ impl Parse for MacroInput {
             }),
             linalg_type: linalg_type.unwrap_or_default(),
             dump: dump.unwrap_or_else(|| LitBool::new(false, Span::call_site())),
+            source_language,
         })
     }
 }
