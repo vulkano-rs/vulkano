@@ -1,7 +1,4 @@
-use crate::{
-    structs::{self, TypeRegistry},
-    MacroInput, SourceLanguage,
-};
+use crate::{structs::{self, TypeRegistry}, MacroInput, SourceLanguage};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

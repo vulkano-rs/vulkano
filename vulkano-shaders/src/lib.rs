@@ -1,6 +1,6 @@
 //! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of shader code into SPIR-V and generation of associated
-//! Rust code.
+//! Manages the compile-time compilation of shader code into SPIR-V and generation of associated Rust
+//! code.
 //!
 //! # Basic usage
 //!
@@ -92,8 +92,8 @@
 //!
 //! ## `ty: "..."`
 //!
-//! This defines what shader type the given shader source will be compiled into. The type can be
-//! any of the following:
+//! This defines what shader type the given shader source will be compiled into. The type can be any
+//! of the following:
 //!
 //! - `vertex`
 //! - `tess_ctrl`
