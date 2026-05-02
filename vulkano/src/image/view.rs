@@ -568,7 +568,7 @@ impl ImageView {
             match chroma_sampling {
                 ChromaSampling::Mode444 => (),
                 ChromaSampling::Mode422 => {
-                    if image.extent()[0] % 2 != 0 {
+                    if !image.extent()[0].is_multiple_of(2) {
                         return Err(Box::new(ValidationError {
                             problem: "`create_info.format` is a YCbCr format with horizontal \
                                 chroma subsampling, but \
@@ -581,7 +581,8 @@ impl ImageView {
                     }
                 }
                 ChromaSampling::Mode420 => {
-                    if !(image.extent()[0] % 2 == 0 && image.extent()[1] % 2 == 0) {
+                    if !(image.extent()[0].is_multiple_of(2) && image.extent()[1].is_multiple_of(2))
+                    {
                         return Err(Box::new(ValidationError {
                             problem: "`create_info.format` is a YCbCr format with horizontal \
                                 and vertical chroma subsampling, but \

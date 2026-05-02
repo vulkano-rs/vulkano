@@ -139,7 +139,7 @@ impl BufferView {
         let block_size = format.block_size();
         let texels_per_block = format.texels_per_block();
 
-        if subbuffer.size() % block_size != 0 {
+        if !subbuffer.size().is_multiple_of(block_size) {
             return Err(Box::new(ValidationError {
                 problem: "`subbuffer.size()` is not a multiple of \
                     `create_info.format.block_size()`"

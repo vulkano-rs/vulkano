@@ -127,7 +127,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -268,7 +268,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -289,7 +289,7 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if stride % 4 != 0 {
+            if !stride.is_multiple_of(4) {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
@@ -441,7 +441,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -462,7 +462,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if count_buffer_offset % 4 != 0 {
+        if !count_buffer_offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "count_buffer_offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -471,7 +471,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if stride % 4 != 0 {
+        if !stride.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 4".into(),
@@ -679,7 +679,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -700,7 +700,7 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if stride % 4 != 0 {
+            if !stride.is_multiple_of(4) {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
@@ -858,7 +858,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -879,7 +879,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if count_buffer_offset % 4 != 0 {
+        if !count_buffer_offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "count_buffer_offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -888,7 +888,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if stride % 4 != 0 {
+        if !stride.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 4".into(),
@@ -1088,7 +1088,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -1109,7 +1109,7 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if stride % 4 != 0 {
+            if !stride.is_multiple_of(4) {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is greater than 1, but `stride` is not a multiple of 4"
                         .into(),
@@ -1278,7 +1278,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -1299,7 +1299,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if count_buffer_offset % 4 != 0 {
+        if !count_buffer_offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "count_buffer_offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -1308,7 +1308,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if stride % 4 != 0 {
+        if !stride.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 4".into(),

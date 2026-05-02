@@ -474,8 +474,8 @@ impl Image {
         debug_assert!(range.end <= self.range_size);
 
         if range.end - range.start > self.aspect_size {
-            debug_assert!(range.start % self.aspect_size == 0);
-            debug_assert!(range.end % self.aspect_size == 0);
+            debug_assert!(range.start.is_multiple_of(self.aspect_size));
+            debug_assert!(range.end.is_multiple_of(self.aspect_size));
 
             let start_aspect_num = (range.start / self.aspect_size) as usize;
             let end_aspect_num = (range.end / self.aspect_size) as usize;
@@ -500,8 +500,8 @@ impl Image {
             }
 
             if range.end - range.start > self.mip_level_size {
-                debug_assert!(range.start % self.mip_level_size == 0);
-                debug_assert!(range.end % self.mip_level_size == 0);
+                debug_assert!(range.start.is_multiple_of(self.mip_level_size));
+                debug_assert!(range.end.is_multiple_of(self.mip_level_size));
 
                 let base_mip_level = (range.start / self.mip_level_size) as u32;
                 let end_mip_level = (range.end / self.mip_level_size) as u32;

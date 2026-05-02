@@ -580,7 +580,9 @@ impl RecordingCommandBuffer {
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination
+            .offset()
+            .is_multiple_of(size_of::<T>() as DeviceSize));
 
         if !first_query
             .checked_add(query_count)

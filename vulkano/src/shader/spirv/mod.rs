@@ -908,7 +908,7 @@ pub fn bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, SpirvBytesNotMulti
         return Ok(Cow::Borrowed(words));
     }
 
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err(SpirvBytesNotMultipleOf4);
     }
 

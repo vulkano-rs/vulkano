@@ -309,7 +309,8 @@ impl RecordingCommandBuffer {
                             }));
                         }
 
-                        if primitive_offset as u64 % index_data.index_type().size() != 0 {
+                        if !(primitive_offset as u64).is_multiple_of(index_data.index_type().size())
+                        {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`info.geometries` is \
@@ -1361,7 +1362,12 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if indirect_buffer.device_address().unwrap().get() % 4 != 0 {
+        if !indirect_buffer
+            .device_address()
+            .unwrap()
+            .get()
+            .is_multiple_of(4)
+        {
             return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer's device address is not a multiple of 4".into(),
@@ -1370,7 +1376,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if stride % 4 != 0 {
+        if !stride.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 4".into(),
@@ -1492,7 +1498,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if info.dst.device_address().unwrap().get() % 256 != 0 {
+        if !info.dst.device_address().unwrap().get().is_multiple_of(256) {
             return Err(Box::new(ValidationError {
                 context: "info.dst".into(),
                 problem: "the device address of the buffer is not a multiple of 256".into(),
@@ -1551,7 +1557,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if info.src.device_address().unwrap().get() % 256 != 0 {
+        if !info.src.device_address().unwrap().get().is_multiple_of(256) {
             return Err(Box::new(ValidationError {
                 context: "info.src".into(),
                 problem: "the device address of the buffer is not a multiple of 256".into(),

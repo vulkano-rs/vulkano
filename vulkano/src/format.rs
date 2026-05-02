@@ -244,11 +244,11 @@ impl ChromaSampling {
         match self {
             ChromaSampling::Mode444 => (),
             ChromaSampling::Mode422 => {
-                debug_assert!(extent[0] % 2 == 0);
+                debug_assert!(extent[0].is_multiple_of(2));
                 extent[0] /= 2;
             }
             ChromaSampling::Mode420 => {
-                debug_assert!(extent[0] % 2 == 0 && extent[1] % 2 == 0);
+                debug_assert!(extent[0].is_multiple_of(2) && extent[1].is_multiple_of(2));
                 extent[0] /= 2;
                 extent[1] /= 2;
             }

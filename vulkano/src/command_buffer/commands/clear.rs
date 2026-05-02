@@ -268,7 +268,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if dst_offset % 4 != 0 {
+        if !dst_offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "dst_buffer.offset()".into(),
                 problem: "is not a multiple of 4".into(),
@@ -286,7 +286,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if data_size % 4 != 0 {
+        if !data_size.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "data".into(),
                 problem: "the size is not a multiple of 4".into(),

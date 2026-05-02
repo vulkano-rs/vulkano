@@ -802,7 +802,7 @@ impl RecordingCommandBuffer {
     ) -> Result<(), Box<ValidationError>> {
         let mut remaining_size = size as usize;
 
-        if offset % 4 != 0 {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
@@ -811,7 +811,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if remaining_size % 4 != 0 {
+        if !remaining_size.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "values".into(),
                 problem: "the size is not a multiple of 4".into(),
