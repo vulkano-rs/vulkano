@@ -263,10 +263,16 @@ impl VulkanLibrary {
     /// you need to pass its name (returned by `LayerProperties::name()`) when creating the
     /// [`Instance`](crate::instance::Instance).
     ///
-    /// > **Note**: The available layers may change between successive calls to this function, so
-    /// > each call may return different results. It is possible that one of the layers enumerated
-    /// > here is no longer available when you create the `Instance`. This will lead to an error
-    /// > when calling `Instance::new`.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > The available layers may change between successive calls to this function, so each call
+    /// > may return different results. It is possible that one of the layers enumerated here is no
+    /// > longer available when you create the `Instance`. This will lead to an error when calling
+    /// > `Instance::new`.
+    ///
+    /// </div>
     ///
     /// # Examples
     ///

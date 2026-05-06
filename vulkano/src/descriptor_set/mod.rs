@@ -15,8 +15,13 @@
 //!
 //! # Examples
 //!
-//! > **Note**: This section describes the simple way to bind resources. There are more optimized
-//! > ways.
+//! <div class="vulkano-alert-note">
+//!
+//! > Note
+//! >
+//! > This section describes the simple way to bind resources. There are more optimized ways.
+//!
+//! </div>
 //!
 //! There are two steps to give access to a resource in a shader: creating the descriptor set, and
 //! passing the descriptor sets when drawing.
