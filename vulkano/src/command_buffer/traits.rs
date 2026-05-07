@@ -1,6 +1,6 @@
 use super::{
     CommandBuffer, CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, OldSubmitInfo, ProtectedSubmitInfo, SecondaryCommandBufferResourcesUsage,
+    CommandBufferUsage, OldSubmitInfo, SecondaryCommandBufferResourcesUsage,
 };
 use crate::{
     buffer::Buffer,
@@ -266,10 +266,7 @@ where
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 OldSubmitInfo {
                     command_buffers: vec![self.command_buffer.clone()],
-                    protected: ProtectedSubmitInfo {
-                        protected_submit: self.command_buffer.as_raw().is_protected(),
-                        ..Default::default()
-                    },
+                    protected_submit: self.command_buffer.as_raw().is_protected(),
                     ..Default::default()
                 },
                 None,
@@ -278,10 +275,7 @@ where
                 OldSubmitInfo {
                     wait_semaphores: semaphores.into_iter().collect(),
                     command_buffers: vec![self.command_buffer.clone()],
-                    protected: ProtectedSubmitInfo {
-                        protected_submit: self.command_buffer.as_raw().is_protected(),
-                        ..Default::default()
-                    },
+                    protected_submit: self.command_buffer.as_raw().is_protected(),
                     ..Default::default()
                 },
                 None,
