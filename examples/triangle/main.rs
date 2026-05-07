@@ -7,20 +7,16 @@
 // that you want to learn Vulkan. This means that for example it won't go into details about what a
 // vertex or a shader is.
 
-use std::{error::Error, sync::Arc};
+use std::{error::Error, slice, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
-    },
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
         QueueCreateInfo, QueueFlags,
     },
-    image::{view::ImageView, Image, ImageUsage},
+    image::ImageUsage,
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -33,12 +29,15 @@ use vulkano::{
         },
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{
-        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
-    },
-    sync::{self, GpuFuture},
-    Validated, VulkanError, VulkanLibrary,
+    render_pass::Subpass,
+    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
+    VulkanError, VulkanLibrary,
+};
+use vulkano_taskgraph::{
+    command_buffer::RecordingCommandBuffer,
+    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
+    resource_map, ClearValues, Id, QueueFamilyType, Task, TaskContext,
 };
 use winit::{
     application::ApplicationHandler,
@@ -46,6 +45,9 @@ use winit::{
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowId},
 };
+
+const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+const MIN_SWAPCHAIN_IMAGES: u32 = MAX_FRAMES_IN_FLIGHT + 1;
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
@@ -58,20 +60,244 @@ struct App {
     instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-    vertex_buffer: Subbuffer<[MyVertex]>,
+    resources: Arc<Resources>,
+    flight_id: Id<Flight>,
     rcx: Option<RenderContext>,
 }
 
 struct RenderContext {
     window: Arc<Window>,
-    swapchain: Arc<Swapchain>,
-    render_pass: Arc<RenderPass>,
-    framebuffers: Vec<Arc<Framebuffer>>,
-    pipeline: Arc<GraphicsPipeline>,
+    swapchain_id: Id<Swapchain>,
     viewport: Viewport,
     recreate_swapchain: bool,
-    previous_frame_end: Option<Box<dyn GpuFuture>>,
+    task_graph: ExecutableTaskGraph<Self>,
+    virtual_swapchain_id: Id<Swapchain>,
+}
+
+struct TriangleTask {
+    pipeline: Option<Arc<GraphicsPipeline>>,
+    vertex_buffer_id: Id<Buffer>,
+    swapchain_id: Id<Swapchain>,
+}
+
+impl TriangleTask {
+    fn new(app: &mut App, swapchain_id: Id<Swapchain>) -> Self {
+        // We now create a buffer that will store the shape of our triangle.
+        let vertices = [
+            MyVertex {
+                position: [-0.5, -0.25],
+            },
+            MyVertex {
+                position: [0.0, 0.5],
+            },
+            MyVertex {
+                position: [0.25, -0.1],
+            },
+        ];
+
+        let vertex_buffer_id = app
+            .resources
+            .create_buffer(
+                &BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                &AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                DeviceLayout::for_value(vertices.as_slice()).unwrap(),
+            )
+            .unwrap();
+
+        app.resources
+            .flight(app.flight_id)
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        unsafe {
+            vulkano_taskgraph::execute(
+                &app.queue,
+                &app.resources,
+                app.flight_id,
+                |_cbf, tcx| {
+                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
+                        .copy_from_slice(&vertices);
+
+                    Ok(())
+                },
+                [(vertex_buffer_id, HostAccessType::Write)],
+                [],
+                [],
+            )
+        }
+        .unwrap();
+
+        Self {
+            pipeline: None,
+            vertex_buffer_id,
+            swapchain_id,
+        }
+    }
+
+    pub fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
+        // The next step is to create the shaders.
+        //
+        // The raw shader creation API provided by the vulkano library is unsafe for various
+        // reasons, so The `shader!` macro provides a way to generate a Rust module from GLSL
+        // source - in the example below, the source is provided as a string input directly to the
+        // shader, but a path to a source file can be provided as well. Note that the user must
+        // specify the type of shader (e.g. "vertex", "fragment", etc.) using the `ty` option of
+        // the macro.
+        //
+        // The items generated by the `shader!` macro include a `load` function which loads the
+        // shader using an input logical device. The module also includes type definitions for
+        // layout structures defined in the shader source, for example uniforms and push constants.
+        //
+        // A more detailed overview of what the `shader!` macro generates can be found in the
+        // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
+        mod vs {
+            vulkano_shaders::shader! {
+                ty: "vertex",
+                src: r"
+                    #version 450
+
+                    layout(location = 0) in vec2 position;
+
+                    void main() {
+                        gl_Position = vec4(position, 0.0, 1.0);
+                    }
+                ",
+            }
+        }
+
+        mod fs {
+            vulkano_shaders::shader! {
+                ty: "fragment",
+                src: r"
+                    #version 450
+
+                    layout(location = 0) out vec4 frag_color;
+
+                    void main() {
+                        frag_color = vec4(251.0 / 255.0, 113.0 / 255.0, 133.0 / 255.0, 1.0);
+                    }
+                ",
+            }
+        }
+
+        // Before we draw, we have to create what is called a **pipeline**. A pipeline describes
+        // how a GPU operation is to be performed. It is similar to an OpenGL program, but it also
+        // contains many settings for customization, all baked into a single object. For drawing,
+        // we create a **graphics** pipeline, but there are also other types of pipeline.
+        let pipeline = {
+            // First, we load the shaders that the pipeline will use: the vertex shader and the
+            // fragment shader.
+            //
+            // A Vulkan shader can in theory contain multiple entry points, so we have to specify
+            // which one.
+            let vs = unsafe { vs::load(&app.device) }
+                .unwrap().entry_point("main").unwrap();
+            let fs = unsafe { fs::load(&app.device) }
+                .unwrap().entry_point("main").unwrap();
+
+            // Automatically generate a vertex input state from the vertex shader's input
+            // interface, that takes a single vertex buffer containing `Vertex` structs.
+            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+
+            // Make a list of the shader stages that the pipeline will have.
+            let stages = [
+                PipelineShaderStageCreateInfo::new(&vs),
+                PipelineShaderStageCreateInfo::new(&fs),
+            ];
+
+            // We must now create a **pipeline layout** object, which describes the locations and
+            // types of descriptor sets and push constants used by the shaders in the pipeline.
+            //
+            // Multiple pipelines can share a common layout object, which is more efficient. The
+            // shaders in a pipeline must use a subset of the resources described in its pipeline
+            // layout, but the pipeline layout is allowed to contain resources that are not present
+            // in the shaders; they can be used by shaders in other pipelines that share the same
+            // layout. Thus, it is a good idea to design shaders so that many pipelines have common
+            // resource locations, which allows them to share pipeline layouts.
+            //
+            // Since we only have one pipeline in this example, and thus one pipeline layout, we
+            // automatically generate the layout from the resources used in the shaders. In a real
+            // application, you would specify this information manually so that you can re-use one
+            // layout in multiple pipelines.
+            let layout = PipelineLayout::from_stages(&app.device, &stages).unwrap();
+
+            // Finally, create the pipeline.
+            GraphicsPipeline::new(
+                &app.device,
+                None,
+                &GraphicsPipelineCreateInfo {
+                    stages: &stages,
+                    // How vertex data is read from the vertex buffers into the vertex shader.
+                    vertex_input_state: Some(&vertex_input_state),
+                    // How vertices are arranged into primitive shapes. The default primitive shape
+                    // is a triangle.
+                    input_assembly_state: Some(&InputAssemblyState::default()),
+                    // How primitives are transformed and clipped to fit the framebuffer. We use a
+                    // resizable viewport, set to draw over the entire window.
+                    viewport_state: Some(&ViewportState::default()),
+                    // How polygons are culled and converted into a raster of pixels. The default
+                    // value does not perform any culling.
+                    rasterization_state: Some(&RasterizationState::default()),
+                    // How multiple fragment shader samples are converted to a single pixel value.
+                    // The default value does not perform any multisampling.
+                    multisample_state: Some(&MultisampleState::default()),
+                    // How pixel values are combined with the values already present in the
+                    // framebuffer. The default value overwrites the old value with the new one,
+                    // without any blending.
+                    color_blend_state: Some(&ColorBlendState {
+                        attachments: &[ColorBlendAttachmentState::default()],
+                        ..Default::default()
+                    }),
+                    // Dynamic states allows us to specify parts of the pipeline settings when
+                    // recording the command buffer, before we perform drawing. Here, we specify
+                    // that the viewport should be dynamic.
+                    dynamic_state: &[DynamicState::Viewport],
+                    // We have to indicate which subpass of which render pass this pipeline is
+                    // going to be used in. The pipeline will only be usable from this particular
+                    // subpass.
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::new(&layout)
+                },
+            )
+            .unwrap()
+        };
+
+        self.pipeline = Some(pipeline);
+    }
+}
+
+impl Task for TriangleTask {
+    type World = RenderContext;
+
+    fn clear_values(&self, clear_values: &mut ClearValues<'_>, _world: &Self::World) {
+        clear_values.set(
+            self.swapchain_id.current_image_id(),
+            [2.0 / 255.0, 6.0 / 255.0, 24.0 / 255.0, 1.0],
+        );
+    }
+
+    unsafe fn execute(
+        &self,
+        cbf: &mut RecordingCommandBuffer<'_>,
+        _tcx: &mut TaskContext<'_>,
+        rcx: &Self::World,
+    ) -> vulkano_taskgraph::TaskResult {
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+
+        unsafe { cbf.draw(3, 1, 0, 0) }?;
+
+        Ok(())
+    }
 }
 
 impl App {
@@ -207,42 +433,9 @@ impl App {
         // the iterator.
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
+        let resources = Resources::new(&device, &Default::default()).unwrap();
 
-        // Before we can start creating and recording command buffers, we need a way of allocating
-        // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command
-        // pools underneath and provides a safe interface for them.
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            &device,
-            &Default::default(),
-        ));
-
-        // We now create a buffer that will store the shape of our triangle.
-        let vertices = [
-            MyVertex {
-                position: [-0.5, -0.25],
-            },
-            MyVertex {
-                position: [0.0, 0.5],
-            },
-            MyVertex {
-                position: [0.25, -0.1],
-            },
-        ];
-        let vertex_buffer = Buffer::from_iter(
-            &memory_allocator,
-            &BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            &AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
         let rcx = None;
 
@@ -250,8 +443,8 @@ impl App {
             instance,
             device,
             queue,
-            command_buffer_allocator,
-            vertex_buffer,
+            resources,
+            flight_id,
             rcx,
         }
     }
@@ -276,7 +469,8 @@ impl ApplicationHandler for App {
         // Before we can draw on the surface, we have to create what is called a swapchain.
         // Creating a swapchain allocates the color buffers that will contain the image that will
         // ultimately be visible on the screen. These images are returned alongside the swapchain.
-        let (swapchain, images) = {
+        let swapchain_format;
+        let swapchain_id = {
             // Querying the capabilities of the surface. When we create the swapchain we can only
             // pass values that are allowed by the capabilities.
             let surface_capabilities = self
@@ -286,228 +480,54 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             // Choosing the internal format that the images will have.
-            let (image_format, _) = self
+            (swapchain_format, _) = self
                 .device
                 .physical_device()
                 .surface_formats(&surface, &Default::default())
                 .unwrap()[0];
 
             // Please take a look at the docs for the meaning of the parameters we didn't mention.
-            Swapchain::new(
-                &self.device,
-                &surface,
-                &SwapchainCreateInfo {
-                    // Some drivers report an `min_image_count` of 1, but fullscreen mode requires
-                    // at least 2. Therefore we must ensure the count is at least 2, otherwise the
-                    // program would crash when entering fullscreen mode on those drivers.
-                    min_image_count: surface_capabilities.min_image_count.max(2),
+            self.resources
+                .create_swapchain(
+                    &surface,
+                    &SwapchainCreateInfo {
+                        // Some drivers report an `min_image_count` of 1, but fullscreen mode
+                        // requires at least 2. Therefore we must ensure the count is at least 2,
+                        // otherwise the program would crash when entering fullscreen mode on those
+                        // drivers.
+                        min_image_count: surface_capabilities
+                            .min_image_count
+                            .max(MIN_SWAPCHAIN_IMAGES),
+                        image_format: swapchain_format,
 
-                    image_format,
+                        // The size of the window, only used to initially setup the swapchain.
+                        //
+                        // NOTE:
+                        // On some drivers the swapchain extent is specified by
+                        // `surface_capabilities.current_extent` and the swapchain size must use
+                        // this extent. This extent is always the same as the window size.
+                        //
+                        // However, other drivers don't specify a value, i.e.
+                        // `surface_capabilities.current_extent` is `None`. These drivers will allow
+                        // anything, but the only sensible value is the window size.
+                        //
+                        // Both of these cases need the swapchain to use the window size, so we just
+                        // use that.
+                        image_extent: window_size.into(),
+                        image_usage: ImageUsage::COLOR_ATTACHMENT,
 
-                    // The size of the window, only used to initially setup the swapchain.
-                    //
-                    // NOTE:
-                    // On some drivers the swapchain extent is specified by
-                    // `surface_capabilities.current_extent` and the swapchain size must use this
-                    // extent. This extent is always the same as the window size.
-                    //
-                    // However, other drivers don't specify a value, i.e.
-                    // `surface_capabilities.current_extent` is `None`. These drivers will allow
-                    // anything, but the only sensible value is the window size.
-                    //
-                    // Both of these cases need the swapchain to use the window size, so we just
-                    // use that.
-                    image_extent: window_size.into(),
-
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-
-                    // The alpha mode indicates how the alpha value of the final image will behave.
-                    // For example, you can choose whether the window will be
-                    // opaque or transparent.
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        };
-
-        // The next step is to create the shaders.
-        //
-        // The raw shader creation API provided by the vulkano library is unsafe for various
-        // reasons, so The `shader!` macro provides a way to generate a Rust module from GLSL
-        // source - in the example below, the source is provided as a string input directly to the
-        // shader, but a path to a source file can be provided as well. Note that the user must
-        // specify the type of shader (e.g. "vertex", "fragment", etc.) using the `ty` option of
-        // the macro.
-        //
-        // The items generated by the `shader!` macro include a `load` function which loads the
-        // shader using an input logical device. The module also includes type definitions for
-        // layout structures defined in the shader source, for example uniforms and push constants.
-        //
-        // A more detailed overview of what the `shader!` macro generates can be found in the
-        // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
-        mod vs {
-            vulkano_shaders::shader! {
-                ty: "vertex",
-                src: r"
-                    #version 450
-
-                    layout(location = 0) in vec2 position;
-
-                    void main() {
-                        gl_Position = vec4(position, 0.0, 1.0);
-                    }
-                ",
-            }
-        }
-
-        mod fs {
-            vulkano_shaders::shader! {
-                ty: "fragment",
-                src: r"
-                    #version 450
-
-                    layout(location = 0) out vec4 f_color;
-
-                    void main() {
-                        f_color = vec4(1.0, 0.0, 0.0, 1.0);
-                    }
-                ",
-            }
-        }
-
-        // The next step is to create a *render pass*, which is an object that describes where the
-        // output of the graphics pipeline will go. It describes the layout of the images where the
-        // colors, depth and/or stencil information will be written.
-        let render_pass = vulkano::single_pass_renderpass!(
-            &self.device,
-            attachments: {
-                // `color` is a custom name we give to the first and only attachment.
-                color: {
-                    // `format: <ty>` indicates the type of the format of the image. This has to be
-                    // one of the types of the `vulkano::format` module (or alternatively one of
-                    // your structs that implements the `FormatDesc` trait). Here we use the same
-                    // format as the swapchain.
-                    format: swapchain.image_format(),
-                    // `samples: 1` means that we ask the GPU to use one sample to determine the
-                    // value of each pixel in the color attachment. We could use a larger value
-                    // (multisampling) for antialiasing. An example of this can be found in
-                    // msaa-renderpass.rs.
-                    samples: 1,
-                    // `load_op: Clear` means that we ask the GPU to clear the content of this
-                    // attachment at the start of the drawing.
-                    load_op: Clear,
-                    // `store_op: Store` means that we ask the GPU to store the output of the draw
-                    // in the actual image. We could also ask it to discard the result.
-                    store_op: Store,
-                },
-            },
-            pass: {
-                // We use the attachment named `color` as the one and only color attachment.
-                color: [color],
-                // No depth-stencil attachment is indicated with empty brackets.
-                depth_stencil: {},
-            },
-        )
-        .unwrap();
-
-        // The render pass we created above only describes the layout of our framebuffers. Before
-        // we can draw we also need to create the actual framebuffers.
-        //
-        // Since we need to draw to multiple images, we are going to create a different framebuffer
-        // for each image.
-        let framebuffers = window_size_dependent_setup(&images, &render_pass);
-
-        // Before we draw, we have to create what is called a **pipeline**. A pipeline describes
-        // how a GPU operation is to be performed. It is similar to an OpenGL program, but it also
-        // contains many settings for customization, all baked into a single object. For drawing,
-        // we create a **graphics** pipeline, but there are also other types of pipeline.
-        let pipeline = {
-            // First, we load the shaders that the pipeline will use: the vertex shader and the
-            // fragment shader.
-            //
-            // A Vulkan shader can in theory contain multiple entry points, so we have to specify
-            // which one.
-            let vs = unsafe { vs::load(&self.device) }
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = unsafe { fs::load(&self.device) }
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-
-            // Automatically generate a vertex input state from the vertex shader's input
-            // interface, that takes a single vertex buffer containing `Vertex` structs.
-            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
-
-            // Make a list of the shader stages that the pipeline will have.
-            let stages = [
-                PipelineShaderStageCreateInfo::new(&vs),
-                PipelineShaderStageCreateInfo::new(&fs),
-            ];
-
-            // We must now create a **pipeline layout** object, which describes the locations and
-            // types of descriptor sets and push constants used by the shaders in the pipeline.
-            //
-            // Multiple pipelines can share a common layout object, which is more efficient. The
-            // shaders in a pipeline must use a subset of the resources described in its pipeline
-            // layout, but the pipeline layout is allowed to contain resources that are not present
-            // in the shaders; they can be used by shaders in other pipelines that share the same
-            // layout. Thus, it is a good idea to design shaders so that many pipelines have common
-            // resource locations, which allows them to share pipeline layouts.
-            //
-            // Since we only have one pipeline in this example, and thus one pipeline layout, we
-            // automatically generate the layout from the resources used in the shaders. In a real
-            // application, you would specify this information manually so that you can re-use one
-            // layout in multiple pipelines.
-            let layout = PipelineLayout::from_stages(&self.device, &stages).unwrap();
-
-            // We have to indicate which subpass of which render pass this pipeline is going to be
-            // used in. The pipeline will only be usable from this particular subpass.
-            let subpass = Subpass::new(&render_pass, 0).unwrap();
-
-            // Finally, create the pipeline.
-            GraphicsPipeline::new(
-                &self.device,
-                None,
-                &GraphicsPipelineCreateInfo {
-                    stages: &stages,
-                    // How vertex data is read from the vertex buffers into the vertex shader.
-                    vertex_input_state: Some(&vertex_input_state),
-                    // How vertices are arranged into primitive shapes. The default primitive shape
-                    // is a triangle.
-                    input_assembly_state: Some(&InputAssemblyState::default()),
-                    // How primitives are transformed and clipped to fit the framebuffer. We use a
-                    // resizable viewport, set to draw over the entire window.
-                    viewport_state: Some(&ViewportState::default()),
-                    // How polygons are culled and converted into a raster of pixels. The default
-                    // value does not perform any culling.
-                    rasterization_state: Some(&RasterizationState::default()),
-                    // How multiple fragment shader samples are converted to a single pixel value.
-                    // The default value does not perform any multisampling.
-                    multisample_state: Some(&MultisampleState::default()),
-                    // How pixel values are combined with the values already present in the
-                    // framebuffer. The default value overwrites the old value with the new one,
-                    // without any blending.
-                    color_blend_state: Some(&ColorBlendState {
-                        attachments: &[ColorBlendAttachmentState::default()],
+                        // The alpha mode indicates how the alpha value of the final image will
+                        // behave. For example, you can choose whether the window will be opaque or
+                        // transparent.
+                        composite_alpha: surface_capabilities
+                            .supported_composite_alpha
+                            .into_iter()
+                            .next()
+                            .unwrap(),
                         ..Default::default()
-                    }),
-                    // Dynamic states allows us to specify parts of the pipeline settings when
-                    // recording the command buffer, before we perform drawing. Here, we specify
-                    // that the viewport should be dynamic.
-                    dynamic_state: &[DynamicState::Viewport],
-                    subpass: Some((&subpass).into()),
-                    ..GraphicsPipelineCreateInfo::new(&layout)
-                },
-            )
-            .unwrap()
+                    },
+                )
+                .unwrap()
         };
 
         // Dynamic viewports allow us to recreate just the viewport when the window is resized.
@@ -518,6 +538,51 @@ impl ApplicationHandler for App {
             min_depth: 0.0,
             max_depth: 1.0,
         };
+
+        let mut task_graph = TaskGraph::new(&self.resources);
+
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
+            image_format: swapchain_format,
+            ..Default::default()
+        });
+
+        let virtual_framebuffer_id = task_graph.add_framebuffer();
+
+        let triangle_node_id = task_graph
+            .create_task_node(
+                "Triangle",
+                QueueFamilyType::Graphics,
+                TriangleTask::new(self, virtual_swapchain_id),
+            )
+            .framebuffer(virtual_framebuffer_id)
+            .color_attachment(
+                virtual_swapchain_id.current_image_id(),
+                AccessTypes::COLOR_ATTACHMENT_READ | AccessTypes::COLOR_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+                &AttachmentInfo {
+                    clear: true,
+                    ..Default::default()
+                },
+            )
+            .build();
+
+        let mut task_graph = unsafe {
+            task_graph.compile(&CompileInfo {
+                queues: &[&self.queue],
+                present_queue: Some(&self.queue),
+                flight_id: self.flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let triangle_node = task_graph.task_node_mut(triangle_node_id).unwrap();
+        let subpass = triangle_node.subpass().unwrap().clone();
+        triangle_node
+            .task_mut()
+            .downcast_mut::<TriangleTask>()
+            .unwrap()
+            .create_pipeline(self, &subpass);
 
         // In some situations, the swapchain will become invalid by itself. This includes for
         // example when the window is resized (as the images of the swapchain will no longer match
@@ -530,23 +595,13 @@ impl ApplicationHandler for App {
         // swapchain. Here, we remember that we need to do this for the next loop iteration.
         let recreate_swapchain = false;
 
-        // In the `window_event` handler below we are going to submit commands to the GPU.
-        // Submitting a command produces an object that implements the `GpuFuture` trait, which
-        // holds the resources for as long as they are in use by the GPU.
-        //
-        // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to
-        // avoid that, we store the submission of the previous frame here.
-        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
-
         self.rcx = Some(RenderContext {
             window,
-            swapchain,
-            render_pass,
-            framebuffers,
-            pipeline,
+            swapchain_id,
             viewport,
             recreate_swapchain,
-            previous_frame_end,
+            task_graph,
+            virtual_swapchain_id,
         });
     }
 
@@ -574,11 +629,7 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                // It is important to call this function from time to time, otherwise resources
-                // will keep accumulating and you will eventually reach an out of memory error.
-                // Calling this function polls various fences in order to determine what the GPU
-                // has already processed, and frees the resources that are no longer needed.
-                rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
+                let flight = self.resources.flight(self.flight_id).unwrap();
 
                 // Whenever the window resizes we need to recreate everything dependent on the
                 // window size. In this example that includes the swapchain, the framebuffers and
@@ -586,149 +637,38 @@ impl ApplicationHandler for App {
                 if rcx.recreate_swapchain {
                     // Use the new dimensions of the window.
 
-                    let (new_swapchain, new_images) = rcx
-                        .swapchain
-                        .recreate(&SwapchainCreateInfo {
+                    rcx.swapchain_id = self
+                        .resources
+                        .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
                             image_extent: window_size.into(),
-                            ..rcx.swapchain.create_info()
+                            ..*create_info
                         })
                         .expect("failed to recreate swapchain");
-
-                    rcx.swapchain = new_swapchain;
-
-                    // Because framebuffers contains a reference to the old swapchain, we need to
-                    // recreate framebuffers as well.
-                    rcx.framebuffers = window_size_dependent_setup(&new_images, &rcx.render_pass);
 
                     rcx.viewport.extent = window_size.into();
 
                     rcx.recreate_swapchain = false;
                 }
 
-                // Before we can draw on the output, we have to *acquire* an image from the
-                // swapchain. If no image is available (which happens if you submit draw commands
-                // too quickly), then the function will block. This operation returns the index of
-                // the image that we are allowed to draw upon.
-                //
-                // This function can block if no image is available. The parameter is an optional
-                // timeout after which the function call will return an error.
-                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
-                    rcx.swapchain.clone(),
-                    None,
-                )
-                .map_err(Validated::unwrap)
-                {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
+                flight.wait(None).unwrap();
+
+                let resource_map =
+                    resource_map!(&rcx.task_graph, rcx.virtual_swapchain_id => rcx.swapchain_id)
+                        .unwrap();
+
+                match unsafe {
+                    rcx.task_graph
+                        .execute(resource_map, rcx, || rcx.window.pre_present_notify())
+                } {
+                    Ok(()) => {}
+                    Err(ExecuteError::Swapchain {
+                        error: VulkanError::OutOfDate,
+                        ..
+                    }) => {
                         rcx.recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
-                };
-
-                // `acquire_next_image` can be successful, but suboptimal. This means that the
-                // swapchain image will still work, but it may not display correctly. With some
-                // drivers this can be when the window resizes, but it may not cause the swapchain
-                // to become out of date.
-                if suboptimal {
-                    rcx.recreate_swapchain = true;
-                }
-
-                // In order to draw, we have to record a *command buffer*. The command buffer
-                // object holds the list of commands that are going to be executed.
-                //
-                // Recording a command buffer is an expensive operation (usually a few hundred
-                // microseconds), but it is known to be a hot path in the driver and is expected to
-                // be optimized.
-                //
-                // Note that we have to pass a queue family when we create the command buffer. The
-                // command buffer will only be executable on that given queue family.
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    self.command_buffer_allocator.clone(),
-                    self.queue.queue_family_index(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                builder
-                    // Before we can draw, we have to *enter a render pass*.
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            // A list of values to clear the attachments with. This list contains
-                            // one item for each attachment in the render pass. In this case, there
-                            // is only one attachment, and we clear it with a blue color.
-                            //
-                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
-                            // with clear values, any others should use `None` as the clear value.
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-
-                            ..RenderPassBeginInfo::framebuffer(
-                                rcx.framebuffers[image_index as usize].clone(),
-                            )
-                        },
-                        SubpassBeginInfo {
-                            // The contents of the first (and only) subpass. This can be either
-                            // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more
-                            // advanced and is not covered here.
-                            contents: SubpassContents::Inline,
-                            ..Default::default()
-                        },
-                    )
-                    .unwrap()
-                    // We are now inside the first subpass of the render pass.
-                    //
-                    // TODO: Document state setting and how it affects subsequent draw commands.
-                    .set_viewport(0, [rcx.viewport.clone()].into_iter().collect())
-                    .unwrap()
-                    .bind_pipeline_graphics(rcx.pipeline.clone())
-                    .unwrap()
-                    .bind_vertex_buffers(0, self.vertex_buffer.clone())
-                    .unwrap();
-
-                // We add a draw command.
-                unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
-
-                builder
-                    // We leave the render pass. Note that if we had multiple subpasses we could
-                    // have called `next_subpass` to jump to the next subpass.
-                    .end_render_pass(Default::default())
-                    .unwrap();
-
-                // Finish recording the command buffer by calling `end`.
-                let command_buffer = builder.build().unwrap();
-
-                let future = rcx
-                    .previous_frame_end
-                    .take()
-                    .unwrap()
-                    .join(acquire_future)
-                    .then_execute(self.queue.clone(), command_buffer)
-                    .unwrap()
-                    // The color output is now expected to contain our triangle. But in order to
-                    // show it on the screen, we have to *present* the image by calling
-                    // `then_swapchain_present`.
-                    //
-                    // This function does not actually present the image immediately. Instead it
-                    // submits a present command at the end of the queue. This means that it will
-                    // only be presented once the GPU has finished executing the command buffer
-                    // that draws the triangle.
-                    .then_swapchain_present(
-                        self.queue.clone(),
-                        SwapchainPresentInfo::new(rcx.swapchain.clone(), image_index),
-                    )
-                    .then_signal_fence_and_flush();
-
-                match future.map_err(Validated::unwrap) {
-                    Ok(future) => {
-                        rcx.previous_frame_end = Some(future.boxed());
-                    }
-                    Err(VulkanError::OutOfDate) => {
-                        rcx.recreate_swapchain = true;
-                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                     Err(e) => {
-                        panic!("failed to flush future: {e}");
-                        // previous_frame_end = Some(sync::now(&device).boxed());
+                        panic!("failed to execute next frame: {e:?}");
                     }
                 }
             }
@@ -744,31 +684,9 @@ impl ApplicationHandler for App {
 
 // We use `#[repr(C)]` here to force rustc to use a defined layout for our data, as the default
 // representation has *no guarantees*.
-#[derive(BufferContents, Vertex)]
+#[derive(Clone, Copy, BufferContents, Vertex)]
 #[repr(C)]
 struct MyVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
-}
-
-/// This function is called once during initialization, then again whenever the window is resized.
-fn window_size_dependent_setup(
-    images: &[Arc<Image>],
-    render_pass: &Arc<RenderPass>,
-) -> Vec<Arc<Framebuffer>> {
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image).unwrap();
-
-            Framebuffer::new(
-                render_pass,
-                &FramebufferCreateInfo {
-                    attachments: &[&view],
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
 }
