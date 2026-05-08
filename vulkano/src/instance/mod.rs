@@ -218,17 +218,29 @@ include!(crate::autogen_output!("instance_extensions.rs"));
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
 /// could send information to a debugger that will debug your application.
 ///
-/// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
-/// > and Linux, layers can be installed by third party installers or by package managers and can
-/// > also be activated by setting the value of the `VK_INSTANCE_LAYERS` environment variable
-/// > before starting the program. See the documentation of the official Vulkan loader for these
+/// <div class="vulkano-alert-note">
+///
+/// > Note
+/// >
+/// > From an application's point of view, layers "just exist". In practice, on Windows and Linux,
+/// > layers can be installed by third party installers or by package managers and can also be
+/// > activated by setting the value of the `VK_INSTANCE_LAYERS` environment variable before
+/// > starting the program. See the documentation of the official Vulkan loader for these
 /// > platforms.
 ///
-/// > **Note**: In practice, the most common use of layers right now is for debugging purposes.
-/// > To do so, you are encouraged to set the `VK_INSTANCE_LAYERS` environment variable on Windows
-/// > or Linux instead of modifying the source code of your program. For example:
-/// > `export VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump` on Linux if you installed the Vulkan SDK
-/// > will print the list of raw Vulkan function calls.
+/// </div>
+///
+/// <div class="vulkano-alert-note">
+///
+/// > Note
+/// >
+/// > In practice, the most common use of layers right now is for debugging purposes. To do so, you
+/// > are encouraged to set the `VK_INSTANCE_LAYERS` environment variable on Windows or Linux
+/// > instead of modifying the source code of your program. For example: `export
+/// > VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump` on Linux if you installed the Vulkan SDK will
+/// > print the list of raw Vulkan function calls.
+///
+/// </div>
 ///
 /// ## Examples
 ///

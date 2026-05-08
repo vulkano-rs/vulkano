@@ -1866,11 +1866,17 @@ vulkan_enum! {
     /// have a precise absolute meaning in terms of color, that is the same across all systems and
     /// monitors.
     ///
-    /// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
     /// > representation of the data, but not how it is interpreted. You can think of this a bit
     /// > like text encoding. An *RGB* value is a like a byte, in other words it is the medium by
     /// > which values are communicated, and a *color space* is like a text encoding (e.g.. UTF-8),
     /// > in other words it is the way the value should be interpreted.
+    ///
+    /// </div>
     ///
     /// The most commonly used color space today is sRGB. Most monitors today use this color space,
     /// and most images files are encoded in this color space.
@@ -1888,8 +1894,14 @@ vulkan_enum! {
     /// calculating the lighting of a texture with a dot product are mathematically incorrect and
     /// will produce incorrect colors.
     ///
-    /// > **Note**: If the texture format has an alpha component, it is not affected by the color
-    /// > space and always behaves linearly.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > If the texture format has an alpha component, it is not affected by the color space and
+    /// > always behaves linearly.
+    ///
+    /// </div>
     ///
     /// In order to solve this Vulkan also provides image formats with the `Srgb` suffix, which are
     /// expected to contain RGB data in the sRGB color space. When you sample an image with such a
@@ -1904,10 +1916,16 @@ vulkan_enum! {
     /// The color space that you specify when you create a swapchain is how the implementation will
     /// interpret the raw data inside of the image.
     ///
-    /// > **Note**: The implementation can choose to send the data in the swapchain image directly
-    /// > to the monitor, but it can also choose to write it in an intermediary buffer that is then
-    /// > read by the operating system or windowing system. Therefore the color space that the
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > The implementation can choose to send the data in the swapchain image directly to the
+    /// > monitor, but it can also choose to write it in an intermediary buffer that is then read
+    /// > by the operating system or windowing system. Therefore the color space that the
     /// > implementation supports is not necessarily the same as the one supported by the monitor.
+    ///
+    /// </div>
     ///
     /// It is *your* job to ensure that the data in the swapchain image is in the color space
     /// that is specified here, otherwise colors will be incorrect. The implementation will never
@@ -1924,9 +1942,15 @@ vulkan_enum! {
     ///   computations or to store non-color data.
     /// - Swapchain images should have a format with the `Srgb` suffix.
     ///
-    /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
-    /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
-    /// > example. These are all hacks and you should use the sRGB pixel formats instead.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > Lots of developers are confused by color spaces. You can sometimes find articles talking
+    /// > about gamma correction and suggestion to put your colors to the power 2.2 for example.
+    /// > These are all hacks and you should use the sRGB pixel formats instead.
+    ///
+    /// </div>
     ///
     /// If you follow these three rules, then everything should render the same way on all
     /// platforms.

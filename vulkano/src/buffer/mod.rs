@@ -228,9 +228,15 @@ impl Buffer {
     /// Creates a new `Buffer` and writes `data` in it. Returns a [`Subbuffer`] spanning the whole
     /// buffer.
     ///
-    /// > **Note**: This only works with memory types that are host-visible. If you want to upload
-    /// > data to a buffer allocated in device-local memory, you will need to create a staging
-    /// > buffer and copy the contents over.
+    /// <div class="vulkano-alert-warning">
+    ///
+    /// > Warning
+    /// >
+    /// > This only works with memory types that are host-visible. If you want to upload data to a
+    /// > buffer allocated in device-local memory, you will need to create a staging buffer and
+    /// > copy the contents over.
+    ///
+    /// </div>
     ///
     /// # Panics
     ///
@@ -258,9 +264,15 @@ impl Buffer {
     /// Creates a new `Buffer` and writes all elements of `iter` in it. Returns a [`Subbuffer`]
     /// spanning the whole buffer.
     ///
-    /// > **Note**: This only works with memory types that are host-visible. If you want to upload
-    /// > data to a buffer allocated in device-local memory, you will need to create a staging
-    /// > buffer and copy the contents over.
+    /// <div class="vulkano-alert-warning">
+    ///
+    /// > Warning
+    /// >
+    /// > This only works with memory types that are host-visible. If you want to upload data to a
+    /// > buffer allocated in device-local memory, you will need to create a staging buffer and
+    /// > copy the contents over.
+    ///
+    /// </div>
     ///
     /// # Panics
     ///

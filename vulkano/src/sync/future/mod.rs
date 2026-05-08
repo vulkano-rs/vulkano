@@ -51,9 +51,14 @@
 //! Adding a semaphore is a simple as replacing `prev_future.then_execute(...)` with
 //! `prev_future.then_signal_semaphore().then_execute(...)`.
 //!
-//! > **Note**: A common use-case is using a transfer queue (i.e. a queue that is only capable of
-//! > performing transfer operations) to write data to a buffer, then read that data from the
-//! > rendering queue.
+//! <div class="vulkano-alert-note">
+//!
+//! > Note
+//! >
+//! > A common use-case is using a transfer queue (i.e. a queue that is only capable of performing
+//! > transfer operations) to write data to a buffer, then read that data from the rendering queue.
+//!
+//! </div>
 //!
 //! What happens when you do so is that the first queue will execute the first set of operations
 //! (represented by `prev_future` in the example), then put a semaphore in the signaled state.
@@ -185,8 +190,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given buffer on the given queue.
     ///
-    /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
-    /// > "don't know". Therefore returning `Err` is never unsafe.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > Returning `Ok` means "access granted", while returning `Err` means "don't know".
+    /// > Therefore returning `Err` is never unsafe.
+    ///
+    /// </div>
     fn check_buffer_access(
         &self,
         buffer: &Buffer,
@@ -201,11 +212,22 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Implementations must ensure that the image is in the given layout. However if the `layout`
     /// is `Undefined` then the implementation should accept any actual layout.
     ///
-    /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
-    /// > "don't know". Therefore returning `Err` is never unsafe.
+    /// <div class="vulkano-alert-note">
     ///
-    /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
-    /// > access.
+    /// > Note
+    /// >
+    /// > Returning `Ok` means "access granted", while returning `Err` means "don't know".
+    /// > Therefore returning `Err` is never unsafe.
+    ///
+    /// </div>
+    ///
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > Keep in mind that changing the layout of an image also requires exclusive access.
+    ///
+    /// </div>
     fn check_image_access(
         &self,
         image: &Image,
@@ -217,8 +239,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Checks whether accessing a swapchain image is permitted.
     ///
-    /// > **Note**: Setting `before` to `true` should skip checking the current future and always
-    /// > forward the call to the future before.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > Setting `before` to `true` should skip checking the current future and always forward the
+    /// > call to the future before.
+    ///
+    /// </div>
     fn check_swapchain_image_acquired(
         &self,
         swapchain: &Swapchain,
@@ -238,8 +266,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Executes a command buffer after this future.
     ///
-    /// > **Note**: This is just a shortcut function. The actual implementation is in the
-    /// > `CommandBuffer` trait.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > This is just a shortcut function. The actual implementation is in the `CommandBuffer`
+    /// > trait.
+    ///
+    /// </div>
     fn then_execute(
         self,
         queue: Arc<Queue>,
@@ -253,8 +287,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Executes a command buffer after this future, on the same queue as the future.
     ///
-    /// > **Note**: This is just a shortcut function. The actual implementation is in the
-    /// > `CommandBuffer` trait.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > This is just a shortcut function. The actual implementation is in the `CommandBuffer`
+    /// > trait.
+    ///
+    /// </div>
     fn then_execute_same_queue(
         self,
         command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>,
@@ -306,8 +346,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Signals a fence after this future. Returns another future that represents the signal.
     ///
-    /// > **Note**: More often than not you want to immediately flush the future after calling this
-    /// > function. If so, consider using `then_signal_fence_and_flush`.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > More often than not you want to immediately flush the future after calling this function.
+    /// > If so, consider using `then_signal_fence_and_flush`.
+    ///
+    /// </div>
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self>
     where
@@ -335,7 +381,13 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// You should only ever do this indirectly after a `SwapchainAcquireFuture` of the same image,
     /// otherwise an error will occur when flushing.
     ///
-    /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > This is just a shortcut for the `Swapchain::present()` function.
+    ///
+    /// </div>
     #[inline]
     fn then_swapchain_present(
         self,

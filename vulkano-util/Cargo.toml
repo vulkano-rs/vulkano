@@ -13,6 +13,9 @@ homepage = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
 
+[package.metadata.docs.rs]
+rustdoc-args = ["--extend-css", "assets/rustdoc.css"]
+
 [dependencies]
 foldhash = { workspace = true }
 vulkano = { workspace = true, features = ["raw_window_handle"] }

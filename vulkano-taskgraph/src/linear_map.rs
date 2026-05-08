@@ -1,7 +1,13 @@
 use std::fmt;
 
-/// > **Note**: This map **permits duplicate keys** as an optimization. It is assumed that this
-/// > doesn't happen in the codebase and this is validated with debug assertions on.
+/// <div class="vulkano-alert-caution">
+///
+/// > Caution
+/// >
+/// > This map **permits duplicate keys** as an optimization. It is assumed that this doesn't
+/// > happen in the codebase and this is validated with debug assertions on.
+///
+/// </div>
 #[derive(Clone)]
 pub struct LinearMap<K, V> {
     inner: Vec<(K, V)>,

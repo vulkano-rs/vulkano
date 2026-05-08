@@ -52,10 +52,21 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     /// [`then_signal_semaphore_and_flush()`][GpuFuture::then_signal_semaphore_and_flush],
     /// respectively.
     ///
-    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
-    /// > concrete type.
+    /// <div class="vulkano-alert-note">
     ///
-    /// > **Note**: This is just a shortcut for `execute_after(vulkano::sync::now(), queue)`.
+    /// > Note
+    /// >
+    /// > In the future this function may return `-> impl GpuFuture` instead of a concrete type.
+    ///
+    /// </div>
+    ///
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > This is just a shortcut for `execute_after(vulkano::sync::now(), queue)`.
+    ///
+    /// </div>
     ///
     /// # Panics
     ///
@@ -86,8 +97,13 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     /// [`then_signal_semaphore_and_flush()`][GpuFuture::then_signal_semaphore_and_flush],
     /// respectively.
     ///
-    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
-    /// > concrete type.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > In the future this function may return `-> impl GpuFuture` instead of a concrete type.
+    ///
+    /// </div>
     ///
     /// This function requires the `'static` lifetime to be on the command buffer. This is because
     /// this function returns a `CommandBufferExecFuture` whose job is to lock resources and keep

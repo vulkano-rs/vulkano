@@ -57,9 +57,15 @@
 //! Two of the parameters that you pass to `Device::new` are the list of the features and the list
 //! of extensions to enable on the newly-created device.
 //!
-//! > **Note**: Device extensions are the same as instance extensions, except for the device.
-//! > Features are similar to extensions, except that they are part of the core Vulkan
-//! > specifications instead of being separate documents.
+//! <div class="vulkano-alert-note">
+//!
+//! > Note
+//! >
+//! > Device extensions are the same as instance extensions, except for the device. Features are
+//! > similar to extensions, except that they are part of the core Vulkan specifications instead of
+//! > being separate documents.
+//!
+//! </div>
 //!
 //! Some Vulkan capabilities, such as swapchains (that allow you to render on the screen) or
 //! geometry shaders for example, require that you enable a certain feature or extension when you
@@ -71,17 +77,29 @@
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
 //! `DeviceExtensions::supported_by_device`.
 //!
-//! > **Note**: The fact that you need to manually enable features at initialization also means
-//! > that you don't need to worry about a capability not being supported later on in your code.
+//! <div class="vulkano-alert-note">
+//!
+//! > Note
+//! >
+//! > The fact that you need to manually enable features at initialization also means that you
+//! > don't need to worry about a capability not being supported later on in your code.
+//!
+//! </div>
 //!
 //! # Queues
 //!
 //! Each physical device proposes one or more *queues* that are divided in *queue families*. A
 //! queue is a thread of execution to which you can submit commands that the GPU will execute.
 //!
-//! > **Note**: You can think of a queue like a CPU thread. Each queue executes its commands one
-//! > after the other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
+//! <div class="vulkano-alert-note">
+//!
+//! > Note
+//! >
+//! > You can think of a queue like a CPU thread. Each queue executes its commands one after the
+//! > other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
 //! > technology, in the sense that queues will only run partially in parallel.
+//!
+//! </div>
 //!
 //! The Vulkan API requires that you specify the list of queues that you are going to use at the
 //! same time as when you create the device. This is done in vulkano by passing an iterator where
@@ -1361,7 +1379,13 @@ impl Device {
     /// Waits until all work on this device has finished. You should never need to call
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
-    /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
+    /// <div class="vulkano-alert-note">
+    ///
+    /// > Note
+    /// >
+    /// > This is the Vulkan equivalent of OpenGL's `glFinish`.
+    ///
+    /// </div>
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
         struct UnlockGuard<'a> {
             queue_locks: &'a [(NonZero<u64>, Arc<dyn QueueMutex>)],

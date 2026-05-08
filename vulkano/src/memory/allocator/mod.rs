@@ -1889,7 +1889,13 @@ impl GenericMemoryAllocatorCreateInfo<'_> {
 
 /// Returns the smallest value greater or equal to `val` that is a multiple of `alignment`.
 ///
-/// > **Note**: Returns zero on overflow.
+/// <div class="vulkano-alert-note">
+///
+/// > Note
+/// >
+/// > Returns zero on overflow.
+///
+/// </div>
 #[inline(always)]
 pub const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
     align_down(val.wrapping_add(alignment.as_devicesize() - 1), alignment)

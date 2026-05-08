@@ -644,7 +644,13 @@ impl From<AllocationType> for SuballocationType {
 
 /// Checks if resources A and B share a page.
 ///
-/// > **Note**: Assumes `a_offset + a_size > 0` and `a_offset + a_size <= b_offset`.
+/// <div class="vulkano-alert-note">
+///
+/// > Note
+/// >
+/// > Assumes `a_offset + a_size > 0` and `a_offset + a_size <= b_offset`.
+///
+/// </div>
 fn are_blocks_on_same_page(
     a_offset: DeviceSize,
     a_size: DeviceSize,
