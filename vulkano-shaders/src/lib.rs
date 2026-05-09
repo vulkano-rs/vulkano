@@ -236,11 +236,9 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
 
-use crate::codegen::ShaderKind;
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use shaderc::{EnvVersion, SourceLanguage, SpirvVersion};
 use std::{
     env, fs, mem,
     path::{Path, PathBuf},
@@ -317,17 +315,14 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
             SourceKind::Src(source) => {
                 let (artifact, includes) = codegen::compile(
                     &input,
-                    None,
-                    root_path,
                     &source.value(),
+                    Path::new("shader.glsl"),
                     shader_kind.unwrap(),
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
-                let words = artifact.as_binary();
-
-                codegen::reflect(&input, source, name, words, includes, &mut type_registry)?
+                codegen::reflect(&input, source, name, &artifact, includes, &mut type_registry)?
             }
             SourceKind::Path(path) => {
                 let full_path = root_path.join(path.value());
@@ -340,24 +335,23 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     );
                 }
 
-                let source_code = fs::read_to_string(&full_path)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
+                let source = fs::read_to_string(&full_path)
+                    .map_err(|err| Error::new_spanned(&path, format!("failed to read shader source `{full_path:?}`: {err}")))?;
 
                 let (artifact, mut includes) = codegen::compile(
                     &input,
-                    Some(path.value()),
-                    root_path,
-                    &source_code,
+                    &source,
+                    &full_path,
                     shader_kind.unwrap(),
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
-                let words = artifact.as_binary();
+                let words = artifact;
 
                 includes.push(full_path.into_os_string().into_string().unwrap());
 
-                codegen::reflect(&input, path, name, words, includes, &mut type_registry)?
+                codegen::reflect(&input, path, name, &words, includes, &mut type_registry)?
             }
             SourceKind::Bytes(path) => {
                 let full_path = root_path.join(path.value());
@@ -405,14 +399,105 @@ enum SourceKind {
     Bytes(LitStr),
 }
 
+#[derive(Copy, Clone)]
+enum SourceLanguage {
+    GLSL,
+    HLSL,
+    Slang
+}
+
+impl From<SourceLanguage> for &str {
+    fn from(lang: SourceLanguage) -> Self {
+        match lang {
+            SourceLanguage::GLSL => "glsl",
+            SourceLanguage::HLSL => "hlsl",
+            SourceLanguage::Slang => "slang",
+        }
+    }
+}
+
+impl std::fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum ShaderKind {
+    Vertex,
+    TessControl,
+    TessEvaluation,
+    Geometry,
+    Task,
+    Mesh,
+    Fragment,
+    Compute,
+    RayGeneration,
+    AnyHit,
+    ClosestHit,
+    Miss,
+    Intersection,
+    Callable,
+}
+
+impl ShaderKind {
+    fn as_glslc_stage(&self) -> &'static str {
+        match self {
+            ShaderKind::Vertex => "vert",
+            ShaderKind::TessControl => "tesc",
+            ShaderKind::TessEvaluation => "tese",
+            ShaderKind::Geometry => "geom",
+            ShaderKind::Task => "task",
+            ShaderKind::Mesh => "mesh",
+            ShaderKind::Fragment => "frag",
+            ShaderKind::Compute => "comp",
+            ShaderKind::RayGeneration => "rgen",
+            ShaderKind::AnyHit => "rahit",
+            ShaderKind::ClosestHit => "rchit",
+            ShaderKind::Miss => "rmiss",
+            ShaderKind::Intersection => "rint",
+            ShaderKind::Callable => "rcall",
+        }
+    }
+}
+
+impl TryFrom<&str> for ShaderKind {
+    type Error = String;
+
+    fn try_from(s: &str) -> std::result::Result<Self, Self::Error> {
+        match s {
+            "vertex" => Ok(ShaderKind::Vertex),
+            "tess_ctrl" => Ok(ShaderKind::TessControl),
+            "tess_eval" => Ok(ShaderKind::TessEvaluation),
+            "geometry" => Ok(ShaderKind::Geometry),
+            "task" => Ok(ShaderKind::Task),
+            "mesh" => Ok(ShaderKind::Mesh),
+            "fragment" => Ok(ShaderKind::Fragment),
+            "compute" => Ok(ShaderKind::Compute),
+            "raygen" => Ok(ShaderKind::RayGeneration),
+            "anyhit" => Ok(ShaderKind::AnyHit),
+            "closesthit" => Ok(ShaderKind::ClosestHit),
+            "miss" => Ok(ShaderKind::Miss),
+            "intersection" => Ok(ShaderKind::Intersection),
+            "callable" => Ok(ShaderKind::Callable),
+            _ => Err(format!(
+                "unknown shader kind: {}. Expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, \
+                `mesh`, `fragment`, `compute`, `raygen`, `anyhit`, `closesthit`, \
+                `miss`, `intersection` or `callable`", s
+            )),
+        }
+    }
+}
+
+
 struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
     shaders: HashMap<String, ShaderFields>,
     source_language: Option<SourceLanguage>,
-    spirv_version: Option<SpirvVersion>,
-    vulkan_version: Option<EnvVersion>,
+    spirv_version: Option<codegen::SpirvVersion>,
+    vulkan_version: Option<codegen::VulkanEnvVersion>,
     generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
@@ -479,27 +564,9 @@ impl Parse for MacroInput {
                         bail!(lit, "field `ty` is already defined");
                     }
 
-                    output.shader_kind = Some(match lit.value().as_str() {
-                        "vertex" => ShaderKind::Vertex,
-                        "tess_ctrl" => ShaderKind::TessControl,
-                        "tess_eval" => ShaderKind::TessEvaluation,
-                        "geometry" => ShaderKind::Geometry,
-                        "task" => ShaderKind::Task,
-                        "mesh" => ShaderKind::Mesh,
-                        "fragment" => ShaderKind::Fragment,
-                        "compute" => ShaderKind::Compute,
-                        "raygen" => ShaderKind::RayGeneration,
-                        "anyhit" => ShaderKind::AnyHit,
-                        "closesthit" => ShaderKind::ClosestHit,
-                        "miss" => ShaderKind::Miss,
-                        "intersection" => ShaderKind::Intersection,
-                        "callable" => ShaderKind::Callable,
-                        ty => bail!(
-                            lit,
-                            "expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, \
-                            `mesh`, `fragment` `compute`, `raygen`, `anyhit`, `closesthit`, \
-                            `miss`, `intersection` or `callable`, found `{ty}`",
-                        ),
+                    output.shader_kind = Some(match ShaderKind::try_from(lit.value().as_str()) {
+                        Ok(shader_kind) => shader_kind,
+                        Err(msg) => bail!(lit, "{msg}"),
                     });
                 }
                 "bytes" => {
@@ -706,10 +773,10 @@ impl Parse for MacroInput {
                     }
 
                     vulkan_version = Some(match lit.value().as_str() {
-                        "1.0" => EnvVersion::Vulkan1_0,
-                        "1.1" => EnvVersion::Vulkan1_1,
-                        "1.2" => EnvVersion::Vulkan1_2,
-                        "1.3" => EnvVersion::Vulkan1_3,
+                        "1.0" => codegen::VulkanEnvVersion::Vulkan1_0,
+                        "1.1" => codegen::VulkanEnvVersion::Vulkan1_1,
+                        "1.2" => codegen::VulkanEnvVersion::Vulkan1_2,
+                        "1.3" => codegen::VulkanEnvVersion::Vulkan1_3,
                         ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
                     });
                 }
@@ -720,13 +787,13 @@ impl Parse for MacroInput {
                     }
 
                     spirv_version = Some(match lit.value().as_str() {
-                        "1.0" => SpirvVersion::V1_0,
-                        "1.1" => SpirvVersion::V1_1,
-                        "1.2" => SpirvVersion::V1_2,
-                        "1.3" => SpirvVersion::V1_3,
-                        "1.4" => SpirvVersion::V1_4,
-                        "1.5" => SpirvVersion::V1_5,
-                        "1.6" => SpirvVersion::V1_6,
+                        "1.0" => codegen::SpirvVersion::V1_0,
+                        "1.1" => codegen::SpirvVersion::V1_1,
+                        "1.2" => codegen::SpirvVersion::V1_2,
+                        "1.3" => codegen::SpirvVersion::V1_3,
+                        "1.4" => codegen::SpirvVersion::V1_4,
+                        "1.5" => codegen::SpirvVersion::V1_5,
+                        "1.6" => codegen::SpirvVersion::V1_6,
                         ver => bail!(
                             lit,
                             "expected `1.0`, `1.1`, `1.2`, `1.3`, `1.4`, `1.5` or `1.6`, found \

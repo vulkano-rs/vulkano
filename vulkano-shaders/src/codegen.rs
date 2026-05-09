@@ -1,17 +1,21 @@
-use crate::{
-    structs::{self, TypeRegistry},
-    MacroInput, SourceLanguage,
-};
+use crate::{structs::{self, TypeRegistry}, MacroInput, ShaderKind, SourceLanguage};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
-use shaderc::{CompileOptions, Compiler, EnvVersion, TargetEnv};
+pub enum IncludeType {
+    Relative,
+    Standard,
+}
+
+pub struct ResolvedInclude {
+    pub resolved_name: String,
+    pub content: String,
+}
 use std::{
-    cell::RefCell,
     fs,
     iter::Iterator,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU32, Ordering},
 };
 use syn::{Error, LitStr};
 use vulkano::shader::spirv::Spirv;
@@ -128,7 +132,8 @@ fn include_callback(
             shader source: {err}",
         )
     })?;
-    let resolved_name = file_to_include
+    let normalized: PathBuf = file_to_include.components().collect();
+    let resolved_name = normalized
         .into_os_string()
         .into_string()
         .map_err(|_| {
@@ -144,75 +149,279 @@ fn include_callback(
     })
 }
 
+fn preprocess_includes(
+    source: &str,
+    source_path: &str,
+    include_directories: &[PathBuf],
+    root_source_has_path: bool,
+    base_path: &Path,
+    includes: &mut Vec<String>,
+    depth: usize,
+) -> Result<String, String> {
+    let mut result = String::new();
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("#include") {
+            let rest = rest.trim();
+            let parsed = if rest.starts_with('"') {
+                let inner = &rest[1..];
+                inner.find('"').map(|end| (IncludeType::Relative, &inner[..end]))
+            } else if rest.starts_with('<') {
+                let inner = &rest[1..];
+                inner.find('>').map(|end| (IncludeType::Standard, &inner[..end]))
+            } else {
+                None
+            };
+
+            if let Some((directive_type, include_path)) = parsed {
+                let resolved = include_callback(
+                    include_path,
+                    directive_type,
+                    source_path,
+                    depth,
+                    include_directories,
+                    root_source_has_path,
+                    base_path,
+                    includes,
+                )?;
+
+                let nested = preprocess_includes(
+                    &resolved.content,
+                    &resolved.resolved_name,
+                    include_directories,
+                    true,
+                    base_path,
+                    includes,
+                    depth + 1,
+                )?;
+
+                result.push_str(&nested);
+            } else {
+                result.push_str(line);
+                result.push('\n');
+            }
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    Ok(result)
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum VulkanEnvVersion {
+    Vulkan1_0,
+    Vulkan1_1,
+    Vulkan1_2,
+    Vulkan1_3,
+    Vulkan1_4,
+    OpenGL4_5,
+    WebGPU,
+}
+
+impl std::fmt::Display for VulkanEnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+impl From<VulkanEnvVersion> for &str {
+    fn from(version: VulkanEnvVersion) -> Self {
+        match version {
+            VulkanEnvVersion::Vulkan1_0 => "vulkan1.0",
+            VulkanEnvVersion::Vulkan1_1 => "vulkan1.1",
+            VulkanEnvVersion::Vulkan1_2 => "vulkan1.2",
+            VulkanEnvVersion::Vulkan1_3 => "vulkan1.3",
+            VulkanEnvVersion::Vulkan1_4 => "vulkan1.4",
+            VulkanEnvVersion::OpenGL4_5 => "opengl4.5",
+            VulkanEnvVersion::WebGPU => "webgpu",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum SpirvVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+    V1_4,
+    V1_5,
+    V1_6,
+}
+
+impl std::fmt::Display for SpirvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+impl From<SpirvVersion> for &str {
+    fn from(version: SpirvVersion) -> Self {
+        match version {
+            SpirvVersion::V1_0 => "spv1.0",
+            SpirvVersion::V1_1 => "spv1.1",
+            SpirvVersion::V1_2 => "spv1.2",
+            SpirvVersion::V1_3 => "spv1.3",
+            SpirvVersion::V1_4 => "spv1.4",
+            SpirvVersion::V1_5 => "spv1.5",
+            SpirvVersion::V1_6 => "spv1.6",
+        }
+    }
+}
+
+struct CompileOptions {
+    source_language: SourceLanguage,
+    target_env: VulkanEnvVersion,
+    target_spirv: SpirvVersion,
+    macro_definitions: Vec<(String, String)>,
+    include_directories: Vec<PathBuf>,
+    debug: bool,
+}
+
+impl CompileOptions {
+    pub fn new() -> Self {
+        CompileOptions {
+            source_language: SourceLanguage::GLSL,
+            target_env: VulkanEnvVersion::Vulkan1_0,
+            target_spirv: SpirvVersion::V1_0,
+            macro_definitions: Vec::new(),
+            include_directories: Vec::new(),
+            debug: false,
+        }
+    }
+}
+
+fn spv_to_words(data: &[u8]) -> Vec<u32> {
+    data.chunks(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
+struct Compiler {
+    command: std::process::Command
+}
+
+impl Compiler {
+    pub fn new() -> Self {
+        Compiler {
+            command: std::process::Command::new("glslc")
+        }
+    }
+
+    pub fn compile_into_spirv(
+        &mut self,
+        shader_kind: ShaderKind,
+        source: &str,
+        file_name: &str,
+        entry_point_name: &str,
+        additional_options: Option<&CompileOptions>,
+    ) -> Result<Vec<u32>, String> {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+
+        let ext = match additional_options.map(|o| o.source_language).unwrap_or(SourceLanguage::GLSL) {
+            SourceLanguage::GLSL => "glsl",
+            SourceLanguage::HLSL => "hlsl",
+            SourceLanguage::Slang => "slang",
+        };
+
+        let input_path = std::env::temp_dir().join(format!("{file_name}_{pid}_{id}.{ext}"));
+        let mut output_path = input_path.clone();
+        output_path.add_extension("spv");
+
+        fs::write(&input_path, source)
+            .map_err(|e| format!("Failed to write shader file: {e} \n"))?;
+
+        if let Some(opts) = additional_options {
+            self.command
+                .arg("-x")
+                .arg(opts.source_language.to_string())
+                .arg(format!("--target-env={}", opts.target_env))
+                .arg(format!("--target-spv={}", opts.target_spirv))
+                .arg("-g");
+
+            for (macro_name, macro_value) in &opts.macro_definitions {
+                self.command.arg(format!("-D{macro_name}={macro_value}"));
+            }
+        }
+
+        self.command
+            .arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
+            .arg(format!("-fentry-point={}", entry_point_name))
+            .arg("-o")
+            .arg(&output_path)
+            .arg(&input_path);
+
+        let output = self.command.output()
+            .map_err(|e| format!("Failed to call glslc: {e} \n"))?;
+
+        if !output.status.success() {
+            let _ = fs::remove_file(&input_path);
+            return Err(format!("glslc failed: \n{}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        let spirv_bytes = fs::read(&output_path)
+            .map_err(|e| format!("Failed to read glslc output: {e}"))?;
+
+        let _ = fs::remove_file(&input_path);
+        let _ = fs::remove_file(&output_path);
+
+        Ok(spv_to_words(&spirv_bytes))
+    }
+}
+
 pub(super) fn compile(
     input: &MacroInput,
-    path: Option<String>,
-    base_path: &Path,
-    code: &str,
+    source: &str,
+    path: &Path,
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
-) -> Result<(CompilationArtifact, Vec<String>), String> {
-    let includes = RefCell::new(Vec::new());
-    let compiler = Compiler::new().or(Err("failed to create shader compiler"))?;
-    let mut compile_options =
-        CompileOptions::new().or(Err("failed to initialize compile options"))?;
+) -> Result<(Vec<u32>, Vec<String>), String> {
+    let mut compiler = Compiler::new();
+    let mut compile_options = CompileOptions::new();
 
     let source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
-    compile_options.set_source_language(source_language);
+    compile_options.source_language = source_language;
+    compile_options.target_env = input.vulkan_version.unwrap_or(VulkanEnvVersion::Vulkan1_0);
+    compile_options.target_spirv = input.spirv_version.unwrap_or(SpirvVersion::V1_0);
 
-    compile_options.set_target_env(
-        TargetEnv::Vulkan,
-        input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0) as u32,
-    );
+    compile_options.macro_definitions = input.global_macro_defines.iter().chain(macro_defines.iter()).cloned().collect();
+    compile_options.include_directories = input.include_directories.clone();
 
-    if let Some(spirv_version) = input.spirv_version {
-        compile_options.set_target_spirv(spirv_version);
-    }
+    compile_options.debug = cfg!(feature = "shaderc-debug");
 
-    let root_source_path = path.as_deref().unwrap_or(
-        // An arbitrary placeholder file name for embedded shaders.
-        match source_language {
-            SourceLanguage::GLSL => "shader.glsl",
-            SourceLanguage::HLSL => "shader.hlsl",
-        },
-    );
+    let source_path = path.to_string_lossy().to_string();
+    let base_path = path.parent().unwrap_or(Path::new(""));
+    let file_name = path.file_stem()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .to_string();
 
-    // Specify the file resolution callback for the `#include` directive.
-    compile_options.set_include_callback(
-        |requested_source_path, directive_type, contained_within_path, recursion_depth| {
-            include_callback(
-                requested_source_path,
-                directive_type,
-                contained_within_path,
-                recursion_depth,
-                &input.include_directories,
-                path.is_some(),
-                base_path,
-                &mut includes.borrow_mut(),
-            )
-        },
-    );
+    let mut includes = Vec::new();
+    let preprocessed = preprocess_includes(
+        source,
+        &source_path,
+        &compile_options.include_directories,
+        true,
+        base_path,
+        &mut includes,
+        1,
+    ).map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
-    for (macro_name, macro_value) in input.global_macro_defines.iter().chain(macro_defines) {
-        compile_options.add_macro_definition(macro_name, Some(macro_value));
-    }
-
-    #[cfg(feature = "shaderc-debug")]
-    compile_options.set_generate_debug_info();
-
-    let content = compiler
+    let spirv = compiler
         .compile_into_spirv(
-            code,
             shader_kind,
-            root_source_path,
+            &preprocessed,
+            &file_name,
             "main",
             Some(&compile_options),
-        )
-        .map_err(|e| e.to_string().replace("(s): ", "(s):\n"))?;
+        ).map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
-    drop(compile_options);
-
-    Ok((content, includes.into_inner()))
+    Ok((spirv, includes))
 }
 
 pub(super) fn reflect(
@@ -279,20 +488,26 @@ mod tests {
     use super::*;
     use proc_macro2::Span;
     use quote::ToTokens;
-    use shaderc::SpirvVersion;
     use syn::{File, Item};
     use vulkano::shader::reflect;
+    use crate::codegen::VulkanEnvVersion;
 
-    fn spv_to_words(data: &[u8]) -> Vec<u32> {
-        data.chunks(4)
-            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect()
+    fn compile_inline(
+        input: &MacroInput,
+        source: &str,
+        shader_kind: ShaderKind,
+        macro_defines: &[(String, String)],
+    ) -> Result<(Vec<u32>, Vec<String>), String> {
+        compile(input, source, Path::new("shader.glsl"), shader_kind, macro_defines)
     }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
         paths
             .iter()
-            .map(|p| root_path.join(p).into_os_string().into_string().unwrap())
+            .map(|p| {
+                let normalized: PathBuf = root_path.join(p).components().collect();
+                normalized.into_os_string().into_string().unwrap()
+            })
             .collect()
     }
 
@@ -324,22 +539,18 @@ mod tests {
     fn include_resolution() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
+        let include_test_path = root_path.join("tests").join("include_test.glsl");
+        let include_test_source = std::fs::read_to_string(&include_test_path).unwrap();
         let (_compile_relative, _) = compile(
             &MacroInput::empty(),
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
-            r#"
-                #version 450
-                #include "include_dir_a/target_a.glsl"
-                #include "include_dir_b/target_b.glsl"
-                void main() {}
-            "#,
+            &include_test_source,
+            &include_test_path,
             ShaderKind::Vertex,
             &[],
         )
         .expect("cannot resolve include files");
 
-        let (_compile_include_paths, includes) = compile(
+        let (_compile_include_paths, includes) = compile_inline(
             &MacroInput {
                 include_directories: vec![
                     root_path.join("tests").join("include_dir_a"),
@@ -347,8 +558,6 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_a.glsl>
@@ -375,13 +584,11 @@ mod tests {
             ),
         );
 
-        let (_compile_include_paths_with_relative, includes_with_relative) = compile(
+        let (_compile_include_paths_with_relative, includes_with_relative) = compile_inline(
             &MacroInput {
                 include_directories: vec![root_path.join("tests").join("include_dir_a")],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_a.glsl>
@@ -414,11 +621,10 @@ mod tests {
             .join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
-            .expect("cannot run tests in a folder with non unicode characters");
-        let (_compile_absolute_path, includes_absolute_path) = compile(
+            .expect("cannot run tests in a folder with non unicode characters")
+            .replace('\\', "/");
+        let (_compile_absolute_path, includes_absolute_path) = compile_inline(
             &MacroInput::empty(),
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             &format!(
                 r#"
                     #version 450
@@ -441,7 +647,7 @@ mod tests {
             ),
         );
 
-        let (_compile_recursive_, includes_recursive) = compile(
+        let (_compile_recursive_, includes_recursive) = compile_inline(
             &MacroInput {
                 include_directories: vec![
                     root_path.join("tests").join("include_dir_b"),
@@ -449,8 +655,6 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_c.glsl>
@@ -484,22 +688,24 @@ mod tests {
     fn macros() {
         let need_defines = r#"
             #version 450
-            #if defined(NAME1) && NAME2 > 29
-            void main() {}
+            #ifndef NAME1
+            #error NAME1 must be defined
             #endif
+            #if NAME2 <= 29
+            #error NAME2 must be greater than 29
+            #endif
+            void main() {}
         "#;
 
-        let compile_no_defines = compile(
+        let compile_no_defines = compile_inline(
             &MacroInput::empty(),
-            None,
-            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
             &[],
         );
         assert!(compile_no_defines.is_err());
 
-        compile(
+        compile_inline(
             &MacroInput {
                 global_macro_defines: vec![
                     ("NAME1".into(), "".into()),
@@ -507,21 +713,17 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
             &[],
         )
         .expect("setting global shader macros did not work");
 
-        compile(
+        compile_inline(
             &MacroInput {
                 global_macro_defines: vec![("NAME1".into(), "".into())],
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
             &[("NAME2".into(), "58".into())],
@@ -673,16 +875,14 @@ mod tests {
         );
     }
 
-    fn descriptor_calculation_with_multiple_functions_shader() -> (CompilationArtifact, Vec<String>)
+    fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>)
     {
-        compile(
+        compile_inline(
             &MacroInput {
                 spirv_version: Some(SpirvVersion::V1_6),
-                vulkan_version: Some(EnvVersion::Vulkan1_3),
+                vulkan_version: Some(VulkanEnvVersion::Vulkan1_3),
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             r#"
                 #version 460
 
@@ -718,7 +918,7 @@ mod tests {
     #[test]
     fn descriptor_calculation_with_multiple_functions() {
         let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
-        let spirv = Spirv::new(artifact.as_binary()).unwrap();
+        let spirv = Spirv::new(&artifact).unwrap();
 
         if let Some((_, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
@@ -749,7 +949,7 @@ mod tests {
                 Span::call_site(),
             ),
             String::new(),
-            artifact.as_binary(),
+            &artifact,
             Vec::new(),
             &mut type_registry,
         )
