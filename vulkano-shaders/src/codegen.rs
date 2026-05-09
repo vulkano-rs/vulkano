@@ -18,7 +18,6 @@ use std::{
     fs,
     iter::Iterator,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU32, Ordering},
 };
 use syn::{Error, LitStr};
 use vulkano::shader::spirv::Spirv;
@@ -308,87 +307,70 @@ struct Compiler {
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Compiler {
             command: std::process::Command::new("glslc"),
         }
     }
 
-    pub fn compile_into_spirv(
+    fn compile_into_spirv(
         &mut self,
         shader_kind: ShaderKind,
         source: &str,
-        file_name: &str,
         entry_point_name: &str,
-        additional_options: Option<&CompileOptions>,
+        options: &CompileOptions,
     ) -> Result<Vec<u32>, String> {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let pid = std::process::id();
+        use std::{io::Write, process::Stdio};
 
-        let ext = match additional_options
-            .map(|o| o.source_language)
-            .unwrap_or(SourceLanguage::GLSL)
-        {
-            SourceLanguage::GLSL => "glsl",
-            SourceLanguage::HLSL => "hlsl",
-            SourceLanguage::Slang => "slang",
-        };
+        self.command
+            .arg("-x")
+            .arg(options.source_language.to_string())
+            .arg(format!("--target-env={}", options.target_env));
 
-        let input_path = std::env::temp_dir().join(format!("{file_name}_{pid}_{id}.{ext}"));
-        let output_path = input_path.with_extension(format!(
-            "{}.spv",
-            input_path.extension().unwrap_or_default().to_string_lossy()
-        ));
+        if let Some(spirv) = options.target_spirv {
+            self.command.arg(format!("--target-spv={}", spirv));
+        }
 
-        fs::write(&input_path, source)
-            .map_err(|e| format!("Failed to write shader file: {e} \n"))?;
+        self.command.arg("-g");
 
-        if let Some(opts) = additional_options {
-            self.command
-                .arg("-x")
-                .arg(opts.source_language.to_string())
-                .arg(format!("--target-env={}", opts.target_env));
-
-            if let Some(spirv) = opts.target_spirv {
-                self.command.arg(format!("--target-spv={}", spirv));
-            }
-
-            self.command
-                .arg("-g");
-
-            for (macro_name, macro_value) in &opts.macro_definitions {
-                self.command.arg(format!("-D{macro_name}={macro_value}"));
-            }
+        for (macro_name, macro_value) in &options.macro_definitions {
+            self.command.arg(format!("-D{macro_name}={macro_value}"));
         }
 
         self.command
             .arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
             .arg(format!("-fentry-point={}", entry_point_name))
             .arg("-o")
-            .arg(&output_path)
-            .arg(&input_path);
+            .arg("-")
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        let output = self
+        let mut child = self
             .command
-            .output()
-            .map_err(|e| format!("Failed to call glslc: {e} \n"))?;
+            .spawn()
+            .map_err(|e| format!("Failed to call glslc: {e}"))?;
+
+        child
+            .stdin
+            .take()
+            .ok_or("Failed to open glslc stdin")?
+            .write_all(source.as_bytes())
+            .map_err(|e| format!("Failed to write to glslc stdin: {e}"))?;
+
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to wait for glslc: {e}"))?;
 
         if !output.status.success() {
-            let _ = fs::remove_file(&input_path);
             return Err(format!(
-                "glslc failed: \n{}",
+                "glslc failed:\n{}",
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
 
-        let spirv_bytes =
-            fs::read(&output_path).map_err(|e| format!("Failed to read glslc output: {e}"))?;
-
-        let _ = fs::remove_file(&input_path);
-        let _ = fs::remove_file(&output_path);
-
-        Ok(spv_to_words(&spirv_bytes))
+        Ok(spv_to_words(&output.stdout))
     }
 }
 
@@ -402,11 +384,9 @@ pub(super) fn compile(
     let mut compiler = Compiler::new();
     let mut compile_options = CompileOptions::new();
 
-    let source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
-    compile_options.source_language = source_language;
+    compile_options.source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
     compile_options.target_env = input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
     compile_options.target_spirv = input.spirv_version;
-
     compile_options.macro_definitions = input
         .global_macro_defines
         .iter()
@@ -414,16 +394,10 @@ pub(super) fn compile(
         .cloned()
         .collect();
     compile_options.include_directories = input.include_directories.clone();
-
     compile_options.debug = cfg!(feature = "shaderc-debug");
 
     let source_path = path.to_string_lossy().to_string();
     let base_path = path.parent().unwrap_or(Path::new(""));
-    let file_name = path
-        .file_stem()
-        .unwrap_or(path.as_os_str())
-        .to_string_lossy()
-        .to_string();
 
     let mut includes = Vec::new();
     let preprocessed = preprocess_includes(
@@ -438,13 +412,7 @@ pub(super) fn compile(
     .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
     let spirv = compiler
-        .compile_into_spirv(
-            shader_kind,
-            &preprocessed,
-            &file_name,
-            "main",
-            Some(&compile_options),
-        )
+        .compile_into_spirv(shader_kind, &preprocessed, "main", &compile_options)
         .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
     Ok((spirv, includes))
