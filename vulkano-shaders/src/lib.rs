@@ -322,7 +322,14 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                 )
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
-                codegen::reflect(&input, source, name, &artifact, includes, &mut type_registry)?
+                codegen::reflect(
+                    &input,
+                    source,
+                    name,
+                    &artifact,
+                    includes,
+                    &mut type_registry,
+                )?
             }
             SourceKind::Path(path) => {
                 let full_path = root_path.join(path.value());
@@ -335,8 +342,12 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     );
                 }
 
-                let source = fs::read_to_string(&full_path)
-                    .map_err(|err| Error::new_spanned(&path, format!("failed to read shader source `{full_path:?}`: {err}")))?;
+                let source = fs::read_to_string(&full_path).map_err(|err| {
+                    Error::new_spanned(
+                        &path,
+                        format!("failed to read shader source `{full_path:?}`: {err}"),
+                    )
+                })?;
 
                 let (artifact, mut includes) = codegen::compile(
                     &input,
@@ -403,7 +414,7 @@ enum SourceKind {
 enum SourceLanguage {
     GLSL,
     HLSL,
-    Slang
+    Slang,
 }
 
 impl From<SourceLanguage> for &str {
@@ -488,7 +499,6 @@ impl TryFrom<&str> for ShaderKind {
         }
     }
 }
-
 
 struct MacroInput {
     root_path_env: Option<LitStr>,

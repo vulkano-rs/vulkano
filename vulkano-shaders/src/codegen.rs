@@ -1,4 +1,7 @@
-use crate::{structs::{self, TypeRegistry}, MacroInput, ShaderKind, SourceLanguage};
+use crate::{
+    structs::{self, TypeRegistry},
+    MacroInput, ShaderKind, SourceLanguage,
+};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -133,13 +136,10 @@ fn include_callback(
         )
     })?;
     let normalized: PathBuf = file_to_include.components().collect();
-    let resolved_name = normalized
-        .into_os_string()
-        .into_string()
-        .map_err(|_| {
-            "failed to stringify the file to be included; make sure the path consists of valid \
+    let resolved_name = normalized.into_os_string().into_string().map_err(|_| {
+        "failed to stringify the file to be included; make sure the path consists of valid \
             unicode characters"
-        })?;
+    })?;
 
     includes.push(resolved_name.clone());
 
@@ -166,10 +166,14 @@ fn preprocess_includes(
             let rest = rest.trim();
             let parsed = if rest.starts_with('"') {
                 let inner = &rest[1..];
-                inner.find('"').map(|end| (IncludeType::Relative, &inner[..end]))
+                inner
+                    .find('"')
+                    .map(|end| (IncludeType::Relative, &inner[..end]))
             } else if rest.starts_with('<') {
                 let inner = &rest[1..];
-                inner.find('>').map(|end| (IncludeType::Standard, &inner[..end]))
+                inner
+                    .find('>')
+                    .map(|end| (IncludeType::Standard, &inner[..end]))
             } else {
                 None
             };
@@ -301,13 +305,13 @@ fn spv_to_words(data: &[u8]) -> Vec<u32> {
 }
 
 struct Compiler {
-    command: std::process::Command
+    command: std::process::Command,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
-            command: std::process::Command::new("glslc")
+            command: std::process::Command::new("glslc"),
         }
     }
 
@@ -323,7 +327,10 @@ impl Compiler {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
         let pid = std::process::id();
 
-        let ext = match additional_options.map(|o| o.source_language).unwrap_or(SourceLanguage::GLSL) {
+        let ext = match additional_options
+            .map(|o| o.source_language)
+            .unwrap_or(SourceLanguage::GLSL)
+        {
             SourceLanguage::GLSL => "glsl",
             SourceLanguage::HLSL => "hlsl",
             SourceLanguage::Slang => "slang",
@@ -356,16 +363,21 @@ impl Compiler {
             .arg(&output_path)
             .arg(&input_path);
 
-        let output = self.command.output()
+        let output = self
+            .command
+            .output()
             .map_err(|e| format!("Failed to call glslc: {e} \n"))?;
 
         if !output.status.success() {
             let _ = fs::remove_file(&input_path);
-            return Err(format!("glslc failed: \n{}", String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "glslc failed: \n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
-        let spirv_bytes = fs::read(&output_path)
-            .map_err(|e| format!("Failed to read glslc output: {e}"))?;
+        let spirv_bytes =
+            fs::read(&output_path).map_err(|e| format!("Failed to read glslc output: {e}"))?;
 
         let _ = fs::remove_file(&input_path);
         let _ = fs::remove_file(&output_path);
@@ -389,14 +401,20 @@ pub(super) fn compile(
     compile_options.target_env = input.vulkan_version.unwrap_or(VulkanEnvVersion::Vulkan1_0);
     compile_options.target_spirv = input.spirv_version.unwrap_or(SpirvVersion::V1_0);
 
-    compile_options.macro_definitions = input.global_macro_defines.iter().chain(macro_defines.iter()).cloned().collect();
+    compile_options.macro_definitions = input
+        .global_macro_defines
+        .iter()
+        .chain(macro_defines.iter())
+        .cloned()
+        .collect();
     compile_options.include_directories = input.include_directories.clone();
 
     compile_options.debug = cfg!(feature = "shaderc-debug");
 
     let source_path = path.to_string_lossy().to_string();
     let base_path = path.parent().unwrap_or(Path::new(""));
-    let file_name = path.file_stem()
+    let file_name = path
+        .file_stem()
         .unwrap_or(path.as_os_str())
         .to_string_lossy()
         .to_string();
@@ -410,7 +428,8 @@ pub(super) fn compile(
         base_path,
         &mut includes,
         1,
-    ).map_err(|e| e.replace("(s): ", "(s):\n"))?;
+    )
+    .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
     let spirv = compiler
         .compile_into_spirv(
@@ -419,7 +438,8 @@ pub(super) fn compile(
             &file_name,
             "main",
             Some(&compile_options),
-        ).map_err(|e| e.replace("(s): ", "(s):\n"))?;
+        )
+        .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
     Ok((spirv, includes))
 }
@@ -486,11 +506,11 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codegen::VulkanEnvVersion;
     use proc_macro2::Span;
     use quote::ToTokens;
     use syn::{File, Item};
     use vulkano::shader::reflect;
-    use crate::codegen::VulkanEnvVersion;
 
     fn compile_inline(
         input: &MacroInput,
@@ -498,7 +518,13 @@ mod tests {
         shader_kind: ShaderKind,
         macro_defines: &[(String, String)],
     ) -> Result<(Vec<u32>, Vec<String>), String> {
-        compile(input, source, Path::new("shader.glsl"), shader_kind, macro_defines)
+        compile(
+            input,
+            source,
+            Path::new("shader.glsl"),
+            shader_kind,
+            macro_defines,
+        )
     }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
@@ -697,12 +723,8 @@ mod tests {
             void main() {}
         "#;
 
-        let compile_no_defines = compile_inline(
-            &MacroInput::empty(),
-            need_defines,
-            ShaderKind::Vertex,
-            &[],
-        );
+        let compile_no_defines =
+            compile_inline(&MacroInput::empty(), need_defines, ShaderKind::Vertex, &[]);
         assert!(compile_no_defines.is_err());
 
         compile_inline(
@@ -875,8 +897,7 @@ mod tests {
         );
     }
 
-    fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>)
-    {
+    fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>) {
         compile_inline(
             &MacroInput {
                 spirv_version: Some(SpirvVersion::V1_6),
