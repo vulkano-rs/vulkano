@@ -120,18 +120,15 @@ We would love to mention some members, who put significant contributions to this
 
 ## Setup and Troubleshooting
 
-Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation.  Refer to shaderc-rs documentation to provide a pre-built libshaderc for faster build times.
+Vulkano uses [`glslc`](https://github.com/google/shaderc/tree/main/glslc) for shader compilation.
+`glslc` must be installed and available on your `PATH`. It is bundled with the
+[Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) or can be installed separately via your package manager.
 
 Note that in general vulkano does **not** require you to install the official Vulkan SDK. This is
 not something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
 required. However, macOS, iOS and tvOS platforms do require a little more Vulkan setup since it is not
 natively supported. See below for more details.
-
-Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
-- [CMake](https://cmake.org/)
-- [Ninja](https://ninja-build.org/) Is optional except when building with MSVC.  It may speed up build time for libshaderc.
-- [Python](https://www.python.org/) (works with both Python 2.x and 3.x, on windows the executable must be named `python.exe`)
 
 These requirements can be either installed with your favourite package manager or with installers
 from the projects' websites. Below are some examples of ways to set up.

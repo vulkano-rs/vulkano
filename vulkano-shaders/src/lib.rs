@@ -2,6 +2,14 @@
 //! Manages the compile-time compilation of shader code into SPIR-V and generation of associated
 //! Rust code.
 //!
+//! # Requirements
+//!
+//! This crate invokes [`glslc`] at compile time to compile shaders. `glslc` must be installed and
+//! available on your `PATH`. It is included in the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
+//! or can be installed separately via your package manager.
+//!
+//! [`glslc`]: https://github.com/google/shaderc/tree/main/glslc
+//!
 //! # Basic usage
 //!
 //! ```
@@ -220,17 +228,14 @@
 //!
 //! # Cargo features
 //!
-//! | Feature                     | Description                                             |
-//! |-----------------------------|---------------------------------------------------------|
-//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
-//! | `shaderc-debug`             | Compile shaders with debug information included.        |
+//! | Feature         | Description                                      |
+//! |-----------------|--------------------------------------------------|
+//! | `shaderc-debug` | Compile shaders with debug information included. |
 //!
 //! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule`]: vulkano::shader::ShaderModule
 //! [pipeline]: vulkano::pipeline
-//! [`set_target_env`]: shaderc::CompileOptions::set_target_env
-//! [`set_target_spirv`]: shaderc::CompileOptions::set_target_spirv
 //! [`BufferContents`]: vulkano::buffer::BufferContents
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
