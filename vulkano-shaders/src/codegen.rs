@@ -164,13 +164,11 @@ fn preprocess_includes(
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("#include") {
             let rest = rest.trim();
-            let parsed = if rest.starts_with('"') {
-                let inner = &rest[1..];
+            let parsed = if let Some(inner) = rest.strip_prefix('"') {
                 inner
                     .find('"')
                     .map(|end| (IncludeType::Relative, &inner[..end]))
-            } else if rest.starts_with('<') {
-                let inner = &rest[1..];
+            } else if let Some(inner) = rest.strip_prefix('<') {
                 inner
                     .find('>')
                     .map(|end| (IncludeType::Standard, &inner[..end]))
@@ -215,7 +213,8 @@ fn preprocess_includes(
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) enum VulkanEnvVersion {
+#[allow(dead_code)]
+pub(crate) enum EnvVersion {
     Vulkan1_0,
     Vulkan1_1,
     Vulkan1_2,
@@ -225,22 +224,22 @@ pub(crate) enum VulkanEnvVersion {
     WebGPU,
 }
 
-impl std::fmt::Display for VulkanEnvVersion {
+impl std::fmt::Display for EnvVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(<&str>::from(*self))
     }
 }
 
-impl From<VulkanEnvVersion> for &str {
-    fn from(version: VulkanEnvVersion) -> Self {
+impl From<EnvVersion> for &str {
+    fn from(version: EnvVersion) -> Self {
         match version {
-            VulkanEnvVersion::Vulkan1_0 => "vulkan1.0",
-            VulkanEnvVersion::Vulkan1_1 => "vulkan1.1",
-            VulkanEnvVersion::Vulkan1_2 => "vulkan1.2",
-            VulkanEnvVersion::Vulkan1_3 => "vulkan1.3",
-            VulkanEnvVersion::Vulkan1_4 => "vulkan1.4",
-            VulkanEnvVersion::OpenGL4_5 => "opengl4.5",
-            VulkanEnvVersion::WebGPU => "webgpu",
+            EnvVersion::Vulkan1_0 => "vulkan1.0",
+            EnvVersion::Vulkan1_1 => "vulkan1.1",
+            EnvVersion::Vulkan1_2 => "vulkan1.2",
+            EnvVersion::Vulkan1_3 => "vulkan1.3",
+            EnvVersion::Vulkan1_4 => "vulkan1.4",
+            EnvVersion::OpenGL4_5 => "opengl4.5",
+            EnvVersion::WebGPU => "webgpu",
         }
     }
 }
@@ -278,8 +277,8 @@ impl From<SpirvVersion> for &str {
 
 struct CompileOptions {
     source_language: SourceLanguage,
-    target_env: VulkanEnvVersion,
-    target_spirv: SpirvVersion,
+    target_env: EnvVersion,
+    target_spirv: Option<SpirvVersion>,
     macro_definitions: Vec<(String, String)>,
     include_directories: Vec<PathBuf>,
     debug: bool,
@@ -289,8 +288,8 @@ impl CompileOptions {
     pub fn new() -> Self {
         CompileOptions {
             source_language: SourceLanguage::GLSL,
-            target_env: VulkanEnvVersion::Vulkan1_0,
-            target_spirv: SpirvVersion::V1_0,
+            target_env: EnvVersion::Vulkan1_0,
+            target_spirv: None,
             macro_definitions: Vec::new(),
             include_directories: Vec::new(),
             debug: false,
@@ -337,8 +336,10 @@ impl Compiler {
         };
 
         let input_path = std::env::temp_dir().join(format!("{file_name}_{pid}_{id}.{ext}"));
-        let mut output_path = input_path.clone();
-        output_path.add_extension("spv");
+        let output_path = input_path.with_extension(format!(
+            "{}.spv",
+            input_path.extension().unwrap_or_default().to_string_lossy()
+        ));
 
         fs::write(&input_path, source)
             .map_err(|e| format!("Failed to write shader file: {e} \n"))?;
@@ -347,8 +348,13 @@ impl Compiler {
             self.command
                 .arg("-x")
                 .arg(opts.source_language.to_string())
-                .arg(format!("--target-env={}", opts.target_env))
-                .arg(format!("--target-spv={}", opts.target_spirv))
+                .arg(format!("--target-env={}", opts.target_env));
+
+            if let Some(spirv) = opts.target_spirv {
+                self.command.arg(format!("--target-spv={}", spirv));
+            }
+
+            self.command
                 .arg("-g");
 
             for (macro_name, macro_value) in &opts.macro_definitions {
@@ -398,8 +404,8 @@ pub(super) fn compile(
 
     let source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
     compile_options.source_language = source_language;
-    compile_options.target_env = input.vulkan_version.unwrap_or(VulkanEnvVersion::Vulkan1_0);
-    compile_options.target_spirv = input.spirv_version.unwrap_or(SpirvVersion::V1_0);
+    compile_options.target_env = input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
+    compile_options.target_spirv = input.spirv_version;
 
     compile_options.macro_definitions = input
         .global_macro_defines
@@ -506,7 +512,7 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codegen::VulkanEnvVersion;
+    use crate::codegen::EnvVersion;
     use proc_macro2::Span;
     use quote::ToTokens;
     use syn::{File, Item};
@@ -901,7 +907,7 @@ mod tests {
         compile_inline(
             &MacroInput {
                 spirv_version: Some(SpirvVersion::V1_6),
-                vulkan_version: Some(VulkanEnvVersion::Vulkan1_3),
+                vulkan_version: Some(EnvVersion::Vulkan1_3),
                 ..MacroInput::empty()
             },
             r#"

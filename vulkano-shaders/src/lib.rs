@@ -363,11 +363,9 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
-                let words = artifact;
-
                 includes.push(full_path.into_os_string().into_string().unwrap());
 
-                codegen::reflect(&input, path, name, &words, includes, &mut type_registry)?
+                codegen::reflect(&input, path, name, &artifact, includes, &mut type_registry)?
             }
             SourceKind::Bytes(path) => {
                 let full_path = root_path.join(path.value());
@@ -416,6 +414,7 @@ enum SourceKind {
 }
 
 #[derive(Copy, Clone)]
+#[allow(dead_code, clippy::upper_case_acronyms)]
 enum SourceLanguage {
     GLSL,
     HLSL,
@@ -457,7 +456,7 @@ enum ShaderKind {
 }
 
 impl ShaderKind {
-    fn as_glslc_stage(&self) -> &'static str {
+    fn as_glslc_stage(self) -> &'static str {
         match self {
             ShaderKind::Vertex => "vert",
             ShaderKind::TessControl => "tesc",
@@ -512,7 +511,7 @@ struct MacroInput {
     shaders: HashMap<String, ShaderFields>,
     source_language: Option<SourceLanguage>,
     spirv_version: Option<codegen::SpirvVersion>,
-    vulkan_version: Option<codegen::VulkanEnvVersion>,
+    vulkan_version: Option<codegen::EnvVersion>,
     generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
@@ -788,10 +787,10 @@ impl Parse for MacroInput {
                     }
 
                     vulkan_version = Some(match lit.value().as_str() {
-                        "1.0" => codegen::VulkanEnvVersion::Vulkan1_0,
-                        "1.1" => codegen::VulkanEnvVersion::Vulkan1_1,
-                        "1.2" => codegen::VulkanEnvVersion::Vulkan1_2,
-                        "1.3" => codegen::VulkanEnvVersion::Vulkan1_3,
+                        "1.0" => codegen::EnvVersion::Vulkan1_0,
+                        "1.1" => codegen::EnvVersion::Vulkan1_1,
+                        "1.2" => codegen::EnvVersion::Vulkan1_2,
+                        "1.3" => codegen::EnvVersion::Vulkan1_3,
                         ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
                     });
                 }
