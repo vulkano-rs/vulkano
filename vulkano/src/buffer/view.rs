@@ -204,7 +204,7 @@ impl BufferView {
                 }));
             }
 
-            if range.saturating_add(offset) >= buffer.size() {
+            if range.saturating_add(offset) > buffer.size() {
                 return Err(Box::new(ValidationError {
                     problem: "`create_info.offset + create_info.range` must be less than or \
                         equal to `buffer.size()`"
