@@ -12,7 +12,13 @@ use std::ffi::c_void;
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn clear_color_image(
+    #[track_caller]
+    pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_clear_color_image(clear_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_clear_color_image(
         &mut self,
         clear_info: &ClearColorImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -70,7 +76,16 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn clear_depth_stencil_image(
+        &mut self,
+        clear_info: &ClearDepthStencilImageInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_clear_depth_stencil_image(clear_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_clear_depth_stencil_image(
         &mut self,
         clear_info: &ClearDepthStencilImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -128,7 +143,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn fill_buffer(
+    #[track_caller]
+    pub unsafe fn fill_buffer(&mut self, fill_info: &FillBufferInfo<'_>) -> &mut Self {
+        unsafe { self.try_fill_buffer(fill_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_fill_buffer(
         &mut self,
         fill_info: &FillBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -198,7 +219,18 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn update_buffer(
+        &mut self,
+        dst_buffer: &Buffer,
+        dst_offset: DeviceSize,
+        data: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe { self.try_update_buffer(dst_buffer, dst_offset, data) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_update_buffer(
         &mut self,
         dst_buffer: &Buffer,
         dst_offset: DeviceSize,

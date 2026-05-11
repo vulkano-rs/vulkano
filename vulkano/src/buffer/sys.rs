@@ -43,16 +43,42 @@ pub struct RawBuffer {
 }
 
 impl RawBuffer {
+    /// Creates a new `RawBuffer`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    /// - Panics if `create_info.sharing` is [`Concurrent`] with less than 2 items.
+    /// - Panics if `create_info.size` is zero.
+    /// - Panics if `create_info.usage` is empty.
+    ///
+    /// [`try_new`]: Self::try_new
+    /// [`Concurrent`]: Sharing::Concurrent
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &BufferCreateInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `RawBuffer`.
     ///
     /// # Panics
     ///
-    /// - Panics if `create_info.sharing` is [`Concurrent`](Sharing::Concurrent) with less than 2
-    ///   items.
+    /// - Panics if `create_info.sharing` is [`Concurrent`] with less than 2 items.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.usage` is empty.
+    ///
+    /// [`Concurrent`]: Sharing::Concurrent
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &BufferCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -251,9 +277,30 @@ impl RawBuffer {
         )
     }
 
+    /// Binds device memory to this buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_memory().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_memory`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_memory`]: Self::try_bind_memory
+    #[inline]
+    #[track_caller]
+    pub fn bind_memory(
+        self,
+        allocation: ResourceMemory,
+    ) -> Result<Buffer, (VulkanError, RawBuffer, ResourceMemory)> {
+        match self.try_bind_memory(allocation) {
+            Ok(buffer) => Ok(buffer),
+            Err((err, this, allocation)) => Err((err.unwrap(), this, allocation)),
+        }
+    }
+
     /// Binds device memory to this buffer.
     #[inline]
-    pub fn bind_memory(
+    pub fn try_bind_memory(
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
@@ -990,7 +1037,7 @@ mod tests {
     fn create_empty_buffer() {
         let (device, _) = gfx_dev_and_queue!();
 
-        RawBuffer::new(
+        RawBuffer::try_new(
             &device,
             &BufferCreateInfo {
                 size: 0,

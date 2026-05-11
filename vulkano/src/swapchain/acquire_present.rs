@@ -172,7 +172,7 @@ pub fn acquire_next_image(
         image_index,
         is_suboptimal,
     } = unsafe {
-        swapchain.acquire_next_image(&AcquireNextImageInfo {
+        swapchain.try_acquire_next_image(&AcquireNextImageInfo {
             timeout,
             semaphore: Some(&semaphore),
             fence: Some(&fence),
@@ -296,7 +296,7 @@ impl SwapchainAcquireFuture {
     /// You still need to join with this future for present to work
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         match &self.fence {
-            Some(fence) => fence.wait(timeout),
+            Some(fence) => unsafe { fence.wait_unchecked(timeout) },
             None => Ok(()),
         }
     }
@@ -1319,5 +1319,5 @@ pub fn wait_for_present(
     present_id: u64,
     timeout: Option<Duration>,
 ) -> Result<bool, Validated<VulkanError>> {
-    swapchain.wait_for_present(present_id.try_into().unwrap(), timeout)
+    swapchain.try_wait_for_present(present_id.try_into().unwrap(), timeout)
 }

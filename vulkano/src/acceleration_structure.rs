@@ -110,6 +110,35 @@ pub struct AccelerationStructure {
 }
 
 impl AccelerationStructure {
+    /// Creates a new `AccelerationStructure`, panicking on a validation error.
+    ///
+    /// The [`acceleration_structure`] feature must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.buffer` (and any subbuffer it overlaps with) must not be accessed while it
+    ///   is bound to the acceleration structure.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`acceleration_structure`]: crate::device::DeviceFeatures::acceleration_structure
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new(
+        device: &Arc<Device>,
+        create_info: &AccelerationStructureCreateInfo<'_>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_new(device, create_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `AccelerationStructure`.
     ///
     /// The [`acceleration_structure`] feature must be enabled on the device.
@@ -121,7 +150,7 @@ impl AccelerationStructure {
     ///
     /// [`acceleration_structure`]: crate::device::DeviceFeatures::acceleration_structure
     #[inline]
-    pub unsafe fn new(
+    pub unsafe fn try_new(
         device: &Arc<Device>,
         create_info: &AccelerationStructureCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {

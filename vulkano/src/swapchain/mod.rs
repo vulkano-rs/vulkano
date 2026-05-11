@@ -424,6 +424,34 @@ struct ImageEntry {
 }
 
 impl Swapchain {
+    /// Creates a new `Swapchain`, panicking on a validation error.
+    ///
+    /// This function returns the swapchain plus a list of the images that belong to the
+    /// swapchain. The order in which the images are returned is important for the
+    /// `acquire_next_image` and `present` functions.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    /// - Panics if the device and the surface don't belong to the same instance.
+    /// - Panics if `create_info.usage` is empty.
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
+        match Self::try_new(device, surface, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Swapchain`.
     ///
     /// This function returns the swapchain plus a list of the images that belong to the
@@ -435,7 +463,7 @@ impl Swapchain {
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `create_info.usage` is empty.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         surface: &Arc<Surface>,
         create_info: &SwapchainCreateInfo<'_>,
@@ -458,6 +486,29 @@ impl Swapchain {
         unsafe { Self::from_handle(device, handle, image_handles, surface, create_info) }
     }
 
+    /// Creates a new swapchain from this one, panicking on a validation error.
+    ///
+    /// Use this when a swapchain has become invalidated, such as due to window resizes.
+    ///
+    /// This is a shortcut for `try_recreate().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_recreate`] returns a [`ValidationError`].
+    /// - Panics if `create_info.usage` is empty.
+    ///
+    /// [`try_recreate`]: Self::try_recreate
+    #[track_caller]
+    pub fn recreate(
+        self: &Arc<Self>,
+        create_info: &SwapchainCreateInfo<'_>,
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
+        match Self::try_recreate(self, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new swapchain from this one.
     ///
     /// Use this when a swapchain has become invalidated, such as due to window resizes.
@@ -465,7 +516,7 @@ impl Swapchain {
     /// # Panics
     ///
     /// - Panics if `create_info.usage` is empty.
-    pub fn recreate(
+    pub fn try_recreate(
         self: &Arc<Self>,
         create_info: &SwapchainCreateInfo<'_>,
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
@@ -1300,6 +1351,52 @@ impl Swapchain {
         self.full_screen_exclusive
     }
 
+    /// Acquires temporary ownership of a swapchain image, panicking on a validation error.
+    ///
+    /// The function returns the index of the image in the array of images that was returned
+    /// when creating the swapchain. The image will not be available immediately after the function
+    /// returns successfully.
+    ///
+    /// When the image becomes available, a semaphore or fence will be signaled. The image can then
+    /// be accessed by the host or device. After this, the image must be *presented* back to the
+    /// swapchain, using the [`present`] queue command.
+    ///
+    /// This is a shortcut for `try_acquire_next_image().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be kept alive until either `acquire_info.semaphore` or `acquire_info.fence`
+    ///   is signaled.
+    /// - If all images from `self` are currently acquired, and have not been presented yet, then
+    ///   `acquire_info.timeout` must not be `None`.
+    ///
+    /// If `acquire_info.semaphore` is `Some`:
+    /// - The semaphore must be kept alive until it is signaled.
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `acquire_info.fence` is `Some`:
+    /// - The fence must be kept alive until it is signaled.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_acquire_next_image`] returns a [`ValidationError`].
+    ///
+    /// [`present`]: crate::device::QueueGuard::present
+    /// [`try_acquire_next_image`]: Self::try_acquire_next_image
+    #[inline]
+    #[track_caller]
+    pub unsafe fn acquire_next_image(
+        &self,
+        acquire_info: &AcquireNextImageInfo<'_>,
+    ) -> Result<AcquiredImage, VulkanError> {
+        match unsafe { self.try_acquire_next_image(acquire_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Acquires temporary ownership of a swapchain image.
     ///
     /// The function returns the index of the image in the array of images that was returned
@@ -1328,7 +1425,7 @@ impl Swapchain {
     ///
     /// [`present`]: crate::device::QueueGuard::present
     #[inline]
-    pub unsafe fn acquire_next_image(
+    pub unsafe fn try_acquire_next_image(
         &self,
         acquire_info: &AcquireNextImageInfo<'_>,
     ) -> Result<AcquiredImage, Validated<VulkanError>> {
@@ -1423,6 +1520,36 @@ impl Swapchain {
         })
     }
 
+    /// Waits for a swapchain image with a specific present ID to be presented to the user,
+    /// panicking on a validation error.
+    ///
+    /// For this to work, you must set [`SwapchainPresentInfo::present_id`] to `Some` when
+    /// presenting. This function will then wait until the swapchain image with the specified ID is
+    /// presented.
+    ///
+    /// Returns whether the presentation was suboptimal. This has the same meaning as in
+    /// [`AcquiredImage::is_suboptimal`].
+    ///
+    /// This is a shortcut for `try_wait_for_present().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wait_for_present`] returns a [`ValidationError`].
+    ///
+    /// [`try_wait_for_present`]: Self::try_wait_for_present
+    #[inline]
+    #[track_caller]
+    pub fn wait_for_present(
+        &self,
+        present_id: NonZero<u64>,
+        timeout: Option<Duration>,
+    ) -> Result<bool, VulkanError> {
+        match self.try_wait_for_present(present_id, timeout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Waits for a swapchain image with a specific present ID to be presented to the user.
     ///
     /// For this to work, you must set [`SwapchainPresentInfo::present_id`] to `Some` when
@@ -1432,7 +1559,7 @@ impl Swapchain {
     /// Returns whether the presentation was suboptimal. This has the same meaning as in
     /// [`AcquiredImage::is_suboptimal`].
     #[inline]
-    pub fn wait_for_present(
+    pub fn try_wait_for_present(
         &self,
         present_id: NonZero<u64>,
         timeout: Option<Duration>,
@@ -1517,6 +1644,30 @@ impl Swapchain {
         }
     }
 
+    /// Acquires full-screen exclusivity, panicking on a validation error.
+    ///
+    /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
+    /// and must not already hold full-screen exclusivity. Full-screen exclusivity is held until
+    /// either the `release_full_screen_exclusive` is called, or if any of the the other
+    /// `Swapchain` functions return `FullScreenExclusiveLost`.
+    ///
+    /// This is a shortcut for
+    /// `try_acquire_full_screen_exclusive_mode().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_acquire_full_screen_exclusive_mode`] returns a [`ValidationError`].
+    ///
+    /// [`try_acquire_full_screen_exclusive_mode`]: Self::try_acquire_full_screen_exclusive_mode
+    #[inline]
+    #[track_caller]
+    pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), VulkanError> {
+        match self.try_acquire_full_screen_exclusive_mode() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Acquires full-screen exclusivity.
     ///
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
@@ -1524,7 +1675,7 @@ impl Swapchain {
     /// either the `release_full_screen_exclusive` is called, or if any of the the other
     /// `Swapchain` functions return `FullScreenExclusiveLost`.
     #[inline]
-    pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
+    pub fn try_acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_acquire_full_screen_exclusive_mode()?;
 
         Ok(unsafe { self.acquire_full_screen_exclusive_mode_unchecked() }?)
@@ -1581,12 +1732,34 @@ impl Swapchain {
         Ok(())
     }
 
+    /// Releases full-screen exclusivity, panicking on a validation error.
+    ///
+    /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
+    /// and must currently hold full-screen exclusivity.
+    ///
+    /// This is a shortcut for
+    /// `try_release_full_screen_exclusive_mode().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_release_full_screen_exclusive_mode`] returns a [`ValidationError`].
+    ///
+    /// [`try_release_full_screen_exclusive_mode`]: Self::try_release_full_screen_exclusive_mode
+    #[inline]
+    #[track_caller]
+    pub fn release_full_screen_exclusive_mode(&self) -> Result<(), VulkanError> {
+        match self.try_release_full_screen_exclusive_mode() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Releases full-screen exclusivity.
     ///
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
     /// and must currently hold full-screen exclusivity.
     #[inline]
-    pub fn release_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
+    pub fn try_release_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_release_full_screen_exclusive_mode()?;
 
         Ok(unsafe { self.release_full_screen_exclusive_mode_unchecked() }?)

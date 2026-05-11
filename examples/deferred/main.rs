@@ -87,7 +87,7 @@ pub struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -116,7 +116,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -419,7 +419,7 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let flight = self.resources.flight(self.flight_id).unwrap();
+                let flight = self.resources.flight(self.flight_id);
 
                 if rcx.recreate_swapchain {
                     rcx.swapchain_id = self
@@ -489,7 +489,7 @@ fn window_size_dependent_setup(
     resources: &Resources,
     swapchain_id: Id<Swapchain>,
 ) -> (Id<Image>, Id<Image>, Id<Image>) {
-    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
+    let swapchain_state = resources.swapchain(swapchain_id);
     let images = swapchain_state.images();
     let extent = images[0].extent();
 

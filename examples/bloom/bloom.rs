@@ -29,7 +29,7 @@ impl BloomTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let downsample_pipeline = {
-            let cs = downsample::load(&app.device)
+            let cs = unsafe { downsample::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -47,7 +47,7 @@ impl BloomTask {
         };
 
         let upsample_pipeline = {
-            let cs = upsample::load(&app.device)
+            let cs = unsafe { upsample::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -81,7 +81,7 @@ impl Task for BloomTask {
         tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        let bloom_image = tcx.image(self.bloom_image_id)?.image();
+        let bloom_image = tcx.image(self.bloom_image_id).image();
 
         let dependency_info = DependencyInfo {
             memory_barriers: &[MemoryBarrier {
@@ -94,7 +94,7 @@ impl Task for BloomTask {
             ..Default::default()
         };
 
-        cbf.bind_pipeline_compute(&self.downsample_pipeline)?;
+        cbf.bind_pipeline_compute(&self.downsample_pipeline);
 
         for src_mip_level in 0..bloom_image.mip_levels() - 1 {
             let dst_mip_level = src_mip_level + 1;
@@ -112,14 +112,14 @@ impl Task for BloomTask {
                     threshold: THRESHOLD,
                     knee: KNEE,
                 },
-            )?;
+            );
 
-            unsafe { cbf.dispatch(group_counts) }?;
+            unsafe { cbf.dispatch(group_counts) };
 
-            cbf.pipeline_barrier(&dependency_info)?;
+            cbf.pipeline_barrier(&dependency_info);
         }
 
-        cbf.bind_pipeline_compute(&self.upsample_pipeline)?;
+        cbf.bind_pipeline_compute(&self.upsample_pipeline);
 
         for dst_mip_level in (0..bloom_image.mip_levels() - 1).rev() {
             let dst_extent = mip_level_extent(bloom_image.extent(), dst_mip_level).unwrap();
@@ -135,12 +135,12 @@ impl Task for BloomTask {
                     dst_mip_level,
                     intensity: INTENSITY,
                 },
-            )?;
+            );
 
-            unsafe { cbf.dispatch(group_counts) }?;
+            unsafe { cbf.dispatch(group_counts) };
 
             if dst_mip_level != 0 {
-                cbf.pipeline_barrier(&dependency_info)?;
+                cbf.pipeline_barrier(&dependency_info);
             }
         }
 

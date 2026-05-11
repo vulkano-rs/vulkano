@@ -383,7 +383,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     };
 
                     #[cfg(debug_assertions)]
-                    unsafe { self.inner.pipeline_barrier(&dependency_info_raw) }
+                    unsafe { self.inner.try_pipeline_barrier(&dependency_info_raw) }
                         .expect("bug in Vulkano");
 
                     #[cfg(not(debug_assertions))]
@@ -452,7 +452,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 };
 
                 #[cfg(debug_assertions)]
-                unsafe { self.inner.pipeline_barrier(&dependency_info_raw) }
+                unsafe { self.inner.try_pipeline_barrier(&dependency_info_raw) }
                     .expect("bug in Vulkano");
 
                 #[cfg(not(debug_assertions))]

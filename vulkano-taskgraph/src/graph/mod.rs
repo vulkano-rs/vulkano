@@ -426,7 +426,7 @@ impl Resources {
         physical_id: Id<Buffer>,
     ) -> Result<Id<Buffer>, InvalidSlotError> {
         let physical_resources = self.physical_resources.clone();
-        let buffer_state = physical_resources.buffer(physical_id)?;
+        let buffer_state = physical_resources.try_buffer(physical_id)?;
         let buffer = buffer_state.buffer();
         let virtual_id = self.add_buffer(&BufferCreateInfo {
             sharing: buffer.sharing(),
@@ -443,7 +443,7 @@ impl Resources {
         physical_id: Id<Image>,
     ) -> Result<Id<Image>, InvalidSlotError> {
         let physical_resources = self.physical_resources.clone();
-        let image_state = physical_resources.image(physical_id)?;
+        let image_state = physical_resources.try_image(physical_id)?;
         let image = image_state.image();
         let virtual_id = self.add_image(&ImageCreateInfo {
             sharing: image.sharing(),
@@ -460,7 +460,7 @@ impl Resources {
         id: Id<Swapchain>,
     ) -> Result<Id<Swapchain>, InvalidSlotError> {
         let physical_resources = self.physical_resources.clone();
-        let swapchain_state = physical_resources.swapchain(id)?;
+        let swapchain_state = physical_resources.try_swapchain(id)?;
         let swapchain = swapchain_state.swapchain();
         let virtual_id = self.add_swapchain(&SwapchainCreateInfo {
             image_sharing: swapchain.image_sharing(),

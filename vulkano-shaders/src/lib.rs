@@ -33,11 +33,11 @@
 //!
 //! The macro generates the following items of interest:
 //!
-//! - The `load` constructor. This function takes an `Arc<Device>`, constructs a [`ShaderModule`]
+//! - The `load` function. This function takes an `&Arc<Device>`, constructs a [`ShaderModule`]
 //!   with the passed-in device and the shader data provided via the macro, and returns
-//!   `Result<Arc<ShaderModule>, Validated<VulkanError>>`. Before doing so, it checks every
-//!   capability instruction in the shader data, verifying that the passed-in `Device` has the
-//!   appropriate features enabled.
+//!   `Result<Arc<ShaderModule>, VulkanError>`. It also generates the `try_load` function, which
+//!   works the same, but returns a `Result<Arc<ShaderModule>, Validated<VulkanError>>`. These
+//!   functions are both unsafe because they delegate to the unsafe [`ShaderModule::try_new`].
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //! - A Rust struct translated from each struct contained in the shader data. By default, each
@@ -78,9 +78,9 @@
 //! }
 //!
 //! impl Shaders {
-//!     pub fn load(device: &Arc<Device>) -> Result<Self, Validated<VulkanError>> {
+//!     pub unsafe fn load(device: &Arc<Device>) -> Result<Self, VulkanError> {
 //!         Ok(Self {
-//!             vs: vs::load(device)?,
+//!             vs: unsafe { vs::load(device) }?,
 //!         })
 //!     }
 //! }
@@ -228,6 +228,7 @@
 //! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule`]: vulkano::shader::ShaderModule
+//! [`ShaderModule::try_new`]: vulkano::shader::ShaderModule::try_new
 //! [pipeline]: vulkano::pipeline
 //! [`set_target_env`]: shaderc::CompileOptions::set_target_env
 //! [`set_target_spirv`]: shaderc::CompileOptions::set_target_spirv

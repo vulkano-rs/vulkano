@@ -30,13 +30,22 @@ pub struct RawDescriptorSet {
 }
 
 impl RawDescriptorSet {
-    /// Allocates a new descriptor set and returns it.
+    /// Allocates a new descriptor set and returns it, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
     #[inline]
+    #[track_caller]
     pub fn new(
         allocator: &Arc<impl DescriptorSetAllocator + ?Sized>,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
+    ) -> Result<RawDescriptorSet, VulkanError> {
         Self::new_inner(
             allocator.clone().as_dyn(),
             layout,
@@ -44,13 +53,73 @@ impl RawDescriptorSet {
         )
     }
 
+    #[inline]
+    #[track_caller]
     fn new_inner(
         allocator: Arc<dyn DescriptorSetAllocator>,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
-        let allocation = allocator.allocate(layout, variable_descriptor_count)?;
+    ) -> Result<RawDescriptorSet, VulkanError> {
+        match Self::try_new_inner(allocator, layout, variable_descriptor_count) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
 
+    /// Allocates a new descriptor set and returns it.
+    #[inline]
+    pub fn try_new(
+        allocator: &Arc<impl DescriptorSetAllocator + ?Sized>,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
+        Self::try_new_inner(
+            allocator.clone().as_dyn(),
+            layout,
+            variable_descriptor_count,
+        )
+    }
+
+    fn try_new_inner(
+        allocator: Arc<dyn DescriptorSetAllocator>,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
+        let allocation = allocator.try_allocate(layout, variable_descriptor_count)?;
+
+        Ok(unsafe { Self::new_unchecked_inner_inner(allocator, allocation) }?)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        allocator: &Arc<impl DescriptorSetAllocator + ?Sized>,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<RawDescriptorSet, VulkanError> {
+        unsafe {
+            Self::new_unchecked_inner(
+                allocator.clone().as_dyn(),
+                layout,
+                variable_descriptor_count,
+            )
+        }
+    }
+
+    unsafe fn new_unchecked_inner(
+        allocator: Arc<dyn DescriptorSetAllocator>,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<RawDescriptorSet, VulkanError> {
+        let allocation =
+            unsafe { allocator.allocate_unchecked(layout, variable_descriptor_count) }?;
+
+        unsafe { Self::new_unchecked_inner_inner(allocator, allocation) }
+    }
+
+    unsafe fn new_unchecked_inner_inner(
+        allocator: Arc<dyn DescriptorSetAllocator>,
+        allocation: DescriptorSetAlloc,
+    ) -> Result<RawDescriptorSet, VulkanError> {
         Ok(RawDescriptorSet {
             allocation: ManuallyDrop::new(allocation),
             allocator,
@@ -81,6 +150,33 @@ impl RawDescriptorSet {
         self.allocation.inner.variable_descriptor_count()
     }
 
+    /// Updates the descriptor set with new values, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_update().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - The resources in `descriptor_writes` and `descriptor_copies` must be kept alive for as
+    ///   long as `self` is in use.
+    /// - The descriptor set must not be in use by the device, or be recorded to a command buffer
+    ///   as part of a bind command.
+    /// - Host access to the descriptor set must be externally synchronized.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_update`] returns a [`ValidationError`].
+    ///
+    /// [`try_update`]: Self::try_update
+    #[inline]
+    #[track_caller]
+    pub unsafe fn update(
+        &self,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+        descriptor_copies: &[CopyDescriptorSet<'_>],
+    ) {
+        unsafe { self.try_update(descriptor_writes, descriptor_copies) }.unwrap()
+    }
+
     /// Updates the descriptor set with new values.
     ///
     /// # Safety
@@ -91,7 +187,7 @@ impl RawDescriptorSet {
     ///   as part of a bind command.
     /// - Host access to the descriptor set must be externally synchronized.
     #[inline]
-    pub unsafe fn update(
+    pub unsafe fn try_update(
         &self,
         descriptor_writes: &[WriteDescriptorSet<'_>],
         descriptor_copies: &[CopyDescriptorSet<'_>],

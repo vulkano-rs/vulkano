@@ -108,10 +108,9 @@ fn main() {
     }
 
     let pipeline = {
-        let cs = cs::load(&device)
+        let cs = unsafe { cs::load(&device) }
             .unwrap()
             .specialize(&[(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())])
-            .unwrap()
             .entry_point("main")
             .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&cs);

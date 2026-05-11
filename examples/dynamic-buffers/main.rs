@@ -121,7 +121,10 @@ fn main() {
     }
 
     let pipeline = {
-        let cs = cs::load(&device).unwrap().entry_point("main").unwrap();
+        let cs = unsafe { cs::load(&device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&cs);
         let layout = PipelineLayout::new(
             &device,

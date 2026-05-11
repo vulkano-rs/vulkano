@@ -71,7 +71,7 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -96,7 +96,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -167,7 +167,7 @@ impl App {
                 &resources,
                 flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -313,8 +313,14 @@ impl App {
         let scene_node = task_graph.task_node_mut(scene_node_id).unwrap();
 
         let pipeline = {
-            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
-            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let vs = unsafe { vs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = unsafe { fs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
             let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&vs),
@@ -386,7 +392,7 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 let rcx = self.rcxs.remove(&window_id).unwrap();
 
-                self.resources.remove_swapchain(rcx.swapchain_id).unwrap();
+                self.resources.remove_swapchain(rcx.swapchain_id);
 
                 // Unfortunately, the only way to guarantee that a swapchain is no longer being used
                 // by the presentation engine is to do a device-wide wait for idle. Without this,
@@ -426,7 +432,7 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let flight = self.resources.flight(self.flight_id).unwrap();
+                let flight = self.resources.flight(self.flight_id);
 
                 if rcx.recreate_swapchain {
                     rcx.swapchain_id = self
@@ -494,11 +500,11 @@ impl Task for SceneTask {
         _tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }

@@ -123,7 +123,7 @@ macro_rules! ordered_passes_renderpass {
             $(layouts[$atch_name as usize].final_layout = Some($final_layout);)?
         })*
 
-        $crate::render_pass::RenderPass::new(
+        $crate::render_pass::RenderPass::try_new(
             $device,
             &$crate::render_pass::RenderPassCreateInfo {
                 attachments: &[$(

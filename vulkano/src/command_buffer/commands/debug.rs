@@ -7,7 +7,13 @@ use crate::{
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn begin_debug_utils_label(
+    #[track_caller]
+    pub unsafe fn begin_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
+        unsafe { self.try_begin_debug_utils_label(label_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_begin_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -68,7 +74,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
+    #[track_caller]
+    pub unsafe fn end_debug_utils_label(&mut self) -> &mut Self {
+        unsafe { self.try_end_debug_utils_label() }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
         Ok(unsafe { self.end_debug_utils_label_unchecked() })
@@ -115,7 +127,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn insert_debug_utils_label(
+    #[track_caller]
+    pub unsafe fn insert_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
+        unsafe { self.try_insert_debug_utils_label(label_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_insert_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> Result<&mut Self, Box<ValidationError>> {

@@ -76,9 +76,30 @@ pub struct RawImage {
 }
 
 impl RawImage {
+    /// Creates a new `RawImage`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &ImageCreateInfo<'_>,
+    ) -> Result<RawImage, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `RawImage`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &ImageCreateInfo<'_>,
     ) -> Result<RawImage, Validated<VulkanError>> {
@@ -489,6 +510,43 @@ impl RawImage {
         Ok(properties_vk.drm_format_modifier)
     }
 
+    /// Binds device memory to this image, panicking on a validation error.
+    ///
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
+    ///   contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::Linear` or `ImageTiling::Optimal`, then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
+    ///   `self.drm_format_modifier().unwrap().1` elements.
+    ///
+    /// This is a shortcut for `try_bind_memory().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_memory`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_memory`]: Self::try_bind_memory
+    #[track_caller]
+    pub fn bind_memory(
+        self,
+        allocations: impl IntoIterator<Item = ResourceMemory>,
+    ) -> Result<
+        Image,
+        (
+            VulkanError,
+            RawImage,
+            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
+            impl ExactSizeIterator<Item = ResourceMemory>,
+        ),
+    > {
+        match self.try_bind_memory(allocations) {
+            Ok(res) => Ok(res),
+            Err((err, raw_image, allocations)) => Err((err.unwrap(), raw_image, allocations)),
+        }
+    }
+
     /// Binds device memory to this image.
     ///
     /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
@@ -499,7 +557,7 @@ impl RawImage {
     /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
     ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
     ///   `self.drm_format_modifier().unwrap().1` elements.
-    pub fn bind_memory(
+    pub fn try_bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
@@ -1192,6 +1250,36 @@ impl RawImage {
         }
     }
 
+    /// Queries the memory layout of a single subresource of the image, panicking on a validation
+    /// error.
+    ///
+    /// Only images with linear tiling are supported, if they do not have a format with both a
+    /// depth and a stencil format. Images with optimal tiling have an opaque image layout that is
+    /// not suitable for direct memory accesses, and likewise for combined depth/stencil formats.
+    /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
+    /// not [`ImageAspect::COLOR`].
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_subresource_layout().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_subresource_layout`] returns a [`ValidationError`].
+    ///
+    /// [`try_subresource_layout`]: Self::try_subresource_layout
+    #[track_caller]
+    pub fn subresource_layout(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> SubresourceLayout {
+        self.try_subresource_layout(aspect, mip_level, array_layer)
+            .unwrap()
+    }
+
     /// Queries the memory layout of a single subresource of the image.
     ///
     /// Only images with linear tiling are supported, if they do not have a format with both a
@@ -1202,7 +1290,7 @@ impl RawImage {
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
-    pub fn subresource_layout(
+    pub fn try_subresource_layout(
         &self,
         aspect: ImageAspect,
         mip_level: u32,
@@ -3175,7 +3263,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert!(matches!(
-            RawImage::new(
+            RawImage::try_new(
                 &device,
                 &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
@@ -3194,7 +3282,7 @@ mod tests {
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = RawImage::new(
+        let res = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
@@ -3216,7 +3304,7 @@ mod tests {
     fn shader_storage_image_multisample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = RawImage::new(
+        let res = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
@@ -3248,7 +3336,7 @@ mod tests {
     fn compressed_not_color_attachment() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = RawImage::new(
+        let res = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
@@ -3270,7 +3358,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert!(matches!(
-            RawImage::new(
+            RawImage::try_new(
                 &device,
                 &ImageCreateInfo {
                     image_type: ImageType::Dim2d,
@@ -3288,7 +3376,7 @@ mod tests {
     fn cubecompatible_dims_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = RawImage::new(
+        let res = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 flags: ImageCreateFlags::CUBE_COMPATIBLE,

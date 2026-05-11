@@ -22,8 +22,28 @@ use vulkano::{
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
 impl RecordingCommandBuffer<'_> {
-    /// Binds an index buffer for future indexed draw calls.
+    /// Binds an index buffer for future indexed draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_index_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_index_buffer`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_index_buffer`]: Self::try_bind_index_buffer
+    #[track_caller]
     pub unsafe fn bind_index_buffer(
+        &mut self,
+        buffer: Id<Buffer>,
+        offset: DeviceSize,
+        size: Option<DeviceSize>,
+        index_type: IndexType,
+    ) -> &mut Self {
+        unsafe { self.try_bind_index_buffer(buffer, offset, size, index_type) }.unwrap()
+    }
+
+    /// Binds an index buffer for future indexed draw calls.
+    pub unsafe fn try_bind_index_buffer(
         &mut self,
         buffer: Id<Buffer>,
         offset: DeviceSize,
@@ -68,8 +88,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Binds a compute pipeline for future dispatch calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_pipeline_compute().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_pipeline_compute`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_pipeline_compute`]: Self::try_bind_pipeline_compute
+    #[track_caller]
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &Arc<ComputePipeline>) -> &mut Self {
+        unsafe { self.try_bind_pipeline_compute(pipeline) }.unwrap()
+    }
+
     /// Binds a compute pipeline for future dispatch calls.
-    pub unsafe fn bind_pipeline_compute(
+    pub unsafe fn try_bind_pipeline_compute(
         &mut self,
         pipeline: &Arc<ComputePipeline>,
     ) -> Result<&mut Self> {
@@ -104,8 +138,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Binds a graphics pipeline for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_pipeline_graphics().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_pipeline_graphics`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_pipeline_graphics`]: Self::try_bind_pipeline_graphics
+    #[track_caller]
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &Arc<GraphicsPipeline>) -> &mut Self {
+        unsafe { self.try_bind_pipeline_graphics(pipeline) }.unwrap()
+    }
+
     /// Binds a graphics pipeline for future draw calls.
-    pub unsafe fn bind_pipeline_graphics(
+    pub unsafe fn try_bind_pipeline_graphics(
         &mut self,
         pipeline: &Arc<GraphicsPipeline>,
     ) -> Result<&mut Self> {
@@ -140,8 +188,25 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Binds a ray tracing pipeline for future ray tracing calls.
+    /// Binds a ray tracing pipeline for future ray tracing calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_pipeline_ray_tracing().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_pipeline_ray_tracing`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_pipeline_ray_tracing`]: Self::try_bind_pipeline_ray_tracing
+    #[track_caller]
     pub unsafe fn bind_pipeline_ray_tracing(
+        &mut self,
+        pipeline: &Arc<RayTracingPipeline>,
+    ) -> &mut Self {
+        unsafe { self.try_bind_pipeline_ray_tracing(pipeline) }.unwrap()
+    }
+
+    /// Binds a ray tracing pipeline for future ray tracing calls.
+    pub unsafe fn try_bind_pipeline_ray_tracing(
         &mut self,
         pipeline: &Arc<RayTracingPipeline>,
     ) -> Result<&mut Self> {
@@ -180,8 +245,30 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Binds vertex buffers for future draw calls.
+    /// Binds vertex buffers for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_vertex_buffers().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_vertex_buffers`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_vertex_buffers`]: Self::try_bind_vertex_buffers
+    #[track_caller]
     pub unsafe fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        buffers: &[Id<Buffer>],
+        offsets: &[DeviceSize],
+        sizes: &[DeviceSize],
+        strides: &[DeviceSize],
+    ) -> &mut Self {
+        unsafe { self.try_bind_vertex_buffers(first_binding, buffers, offsets, sizes, strides) }
+            .unwrap()
+    }
+
+    /// Binds vertex buffers for future draw calls.
+    pub unsafe fn try_bind_vertex_buffers(
         &mut self,
         first_binding: u32,
         buffers: &[Id<Buffer>],
@@ -260,8 +347,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets push constants for future dispatch or draw calls.
+    /// Sets push constants for future dispatch or draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_push_constants().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_push_constants`] returns a [`ValidationError`].
+    ///
+    /// [`try_push_constants`]: Self::try_push_constants
+    #[track_caller]
     pub unsafe fn push_constants(
+        &mut self,
+        layout: &Arc<PipelineLayout>,
+        offset: u32,
+        values: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe { self.try_push_constants(layout, offset, values) }.unwrap()
+    }
+
+    /// Sets push constants for future dispatch or draw calls.
+    pub unsafe fn try_push_constants(
         &mut self,
         layout: &Arc<PipelineLayout>,
         offset: u32,

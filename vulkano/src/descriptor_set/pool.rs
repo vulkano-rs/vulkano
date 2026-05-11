@@ -33,9 +33,30 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
+    /// Creates a new `DescriptorPool`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &DescriptorPoolCreateInfo<'_>,
+    ) -> Result<DescriptorPool, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `DescriptorPool`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &DescriptorPoolCreateInfo<'_>,
     ) -> Result<DescriptorPool, Validated<VulkanError>> {
@@ -157,6 +178,42 @@ impl DescriptorPool {
         self.max_inline_uniform_block_bindings
     }
 
+    /// Allocates descriptor sets from the pool, one for each element in `allocate_info`, panicking
+    /// on a validation error. Returns an iterator to the allocated sets, or an error.
+    ///
+    /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
+    /// you should just create a new pool.
+    ///
+    /// This is a shortcut for `try_allocate_descriptor_sets().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - When the pool is dropped, the returned descriptor sets must not be in use by either the
+    ///   host or device.
+    /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
+    ///   enabled on the device, then the length of `allocate_infos` must not be greater than the
+    ///   number of descriptor sets remaining in the pool, and the total number of descriptors of
+    ///   each type being allocated must not be greater than the number of descriptors of that type
+    ///   remaining in the pool.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_allocate_descriptor_sets`] returns a [`ValidationError`].
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    /// [`try_allocate_descriptor_sets`]: Self::try_allocate_descriptor_sets
+    #[inline]
+    #[track_caller]
+    pub unsafe fn allocate_descriptor_sets(
+        &self,
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, VulkanError> {
+        match unsafe { self.try_allocate_descriptor_sets(allocate_infos) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Allocates descriptor sets from the pool, one for each element in `allocate_info`.
     /// Returns an iterator to the allocated sets, or an error.
     ///
@@ -175,7 +232,7 @@ impl DescriptorPool {
     ///
     /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
     #[inline]
-    pub unsafe fn allocate_descriptor_sets(
+    pub unsafe fn try_allocate_descriptor_sets(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
     ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, Validated<VulkanError>>
@@ -305,6 +362,36 @@ impl DescriptorPool {
             ))
     }
 
+    /// Frees some descriptor sets, panicking on a validation error.
+    ///
+    /// Note that it is not mandatory to free sets. Destroying or resetting the pool destroys all
+    /// the descriptor sets.
+    ///
+    /// This is a shortcut for `try_free_descriptor_sets().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - All elements of `descriptor_sets` must have been allocated from `self`, and not freed
+    ///   previously.
+    /// - All elements of `descriptor_sets` must not be in use by the host or device.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_free_descriptor_sets`] returns a [`ValidationError`].
+    ///
+    /// [`try_free_descriptor_sets`]: Self::try_free_descriptor_sets
+    #[inline]
+    #[track_caller]
+    pub unsafe fn free_descriptor_sets(
+        &self,
+        descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_free_descriptor_sets(descriptor_sets) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Frees some descriptor sets.
     ///
     /// Note that it is not mandatory to free sets. Destroying or resetting the pool destroys all
@@ -316,7 +403,7 @@ impl DescriptorPool {
     ///   previously.
     /// - All elements of `descriptor_sets` must not be in use by the host or device.
     #[inline]
-    pub unsafe fn free_descriptor_sets(
+    pub unsafe fn try_free_descriptor_sets(
         &self,
         descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -364,6 +451,31 @@ impl DescriptorPool {
         Ok(())
     }
 
+    /// Resets the pool, panicking on a validation error.
+    ///
+    /// This destroys all descriptor sets and empties the pool.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - All descriptor sets that were previously allocated from `self` must not be in use by the
+    ///   host or device.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub unsafe fn reset(&self) -> Result<(), VulkanError> {
+        match unsafe { self.try_reset() } {
+            Ok(()) => Ok(()),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Resets the pool.
     ///
     /// This destroys all descriptor sets and empties the pool.
@@ -373,7 +485,18 @@ impl DescriptorPool {
     /// - All descriptor sets that were previously allocated from `self` must not be in use by the
     ///   host or device.
     #[inline]
-    pub unsafe fn reset(&self) -> Result<(), VulkanError> {
+    pub unsafe fn try_reset(&self) -> Result<(), Validated<VulkanError>> {
+        self.validate_reset()?;
+
+        Ok(unsafe { self.reset_unchecked() }?)
+    }
+
+    fn validate_reset(&self) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
         unsafe {
             (fns.v1_0.reset_descriptor_pool)(
@@ -773,7 +896,7 @@ mod tests {
     fn zero_max_set() {
         let (device, _) = gfx_dev_and_queue!();
 
-        DescriptorPool::new(
+        DescriptorPool::try_new(
             &device,
             &DescriptorPoolCreateInfo {
                 max_sets: 0,

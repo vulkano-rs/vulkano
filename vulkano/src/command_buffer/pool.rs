@@ -39,8 +39,28 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    /// Creates a new `CommandPool`.
+    /// Creates a new `CommandPool`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
+        device: &Arc<Device>,
+        create_info: &CommandPoolCreateInfo<'_>,
+    ) -> Result<CommandPool, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `CommandPool`.
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &CommandPoolCreateInfo<'_>,
     ) -> Result<CommandPool, Validated<VulkanError>> {
@@ -128,13 +148,39 @@ impl CommandPool {
         self.queue_family_index
     }
 
+    /// Resets the pool, which resets all the command buffers that were allocated from it,
+    /// panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_reset().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The command buffers allocated from this pool must not be in the pending state.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_reset`] returns a [`ValidationError`].
+    ///
+    /// [`try_reset`]: Self::try_reset
+    #[inline]
+    #[track_caller]
+    pub unsafe fn reset(&self, flags: CommandPoolResetFlags) -> Result<(), VulkanError> {
+        match unsafe { self.try_reset(flags) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Resets the pool, which resets all the command buffers that were allocated from it.
     ///
     /// # Safety
     ///
     /// - The command buffers allocated from this pool must not be in the pending state.
     #[inline]
-    pub unsafe fn reset(&self, flags: CommandPoolResetFlags) -> Result<(), Validated<VulkanError>> {
+    pub unsafe fn try_reset(
+        &self,
+        flags: CommandPoolResetFlags,
+    ) -> Result<(), Validated<VulkanError>> {
         self.validate_reset(flags)?;
 
         Ok(unsafe { self.reset_unchecked(flags) }?)
@@ -159,9 +205,48 @@ impl CommandPool {
         Ok(())
     }
 
+    /// Allocates command buffers, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_allocate_command_buffers().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_allocate_command_buffers`] returns a [`ValidationError`].
+    ///
+    /// [`try_allocate_command_buffers`]: Self::try_allocate_command_buffers
+    #[inline]
+    #[track_caller]
+    pub fn allocate_command_buffers(
+        &self,
+        allocate_info: &CommandBufferAllocateInfo<'_>,
+    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, VulkanError> {
+        match self.try_allocate_command_buffers(allocate_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Allocates command buffers.
     #[inline]
-    pub fn allocate_command_buffers(
+    pub fn try_allocate_command_buffers(
+        &self,
+        allocate_info: &CommandBufferAllocateInfo<'_>,
+    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, Validated<VulkanError>>
+    {
+        self.validate_allocate_command_buffers(allocate_info)?;
+
+        Ok(unsafe { self.allocate_command_buffers_unchecked(allocate_info) }?)
+    }
+
+    fn validate_allocate_command_buffers(
+        &self,
+        _allocate_info: &CommandBufferAllocateInfo<'_>,
+    ) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_command_buffers_unchecked(
         &self,
         allocate_info: &CommandBufferAllocateInfo<'_>,
     ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, VulkanError> {
@@ -205,13 +290,35 @@ impl CommandPool {
         }))
     }
 
+    /// Frees individual command buffers, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_free_command_buffers().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - The `command_buffers` must have been allocated from this pool.
+    /// - The `command_buffers` must not be in the pending state.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_free_command_buffers`] returns a [`ValidationError`].
+    ///
+    /// [`try_free_command_buffers`]: Self::try_free_command_buffers
+    #[track_caller]
+    pub unsafe fn free_command_buffers(
+        &self,
+        command_buffers: impl IntoIterator<Item = CommandPoolAlloc>,
+    ) {
+        unsafe { self.try_free_command_buffers(command_buffers) }.unwrap()
+    }
+
     /// Frees individual command buffers.
     ///
     /// # Safety
     ///
     /// - The `command_buffers` must have been allocated from this pool.
     /// - The `command_buffers` must not be in the pending state.
-    pub unsafe fn free_command_buffers(
+    pub unsafe fn try_free_command_buffers(
         &self,
         command_buffers: impl IntoIterator<Item = CommandPoolAlloc>,
     ) -> Result<(), Box<ValidationError>> {
@@ -219,6 +326,7 @@ impl CommandPool {
         self.validate_free_command_buffers(&command_buffers)?;
 
         unsafe { self.free_command_buffers_unchecked(command_buffers) };
+
         Ok(())
     }
 
@@ -253,20 +361,44 @@ impl CommandPool {
     }
 
     /// Trims a command pool, which recycles unused internal memory from the command pool back to
+    /// the system, panicking on a validation error.
+    ///
+    /// Command buffers allocated from the pool are not affected by trimming.
+    ///
+    /// This function is supported only if the [`khr_maintenance1`] extension is enabled on the
+    /// device. Otherwise an error is returned. Since this operation is purely an optimization it
+    /// is legitimate to call this function and simply ignore any possible error.
+    ///
+    /// This is a shortcut for `try_trim().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_trim`] returns a [`ValidationError`].
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    /// [`try_trim`]: Self::try_trim
+    #[inline]
+    #[track_caller]
+    pub fn trim(&self) {
+        self.try_trim().unwrap()
+    }
+
+    /// Trims a command pool, which recycles unused internal memory from the command pool back to
     /// the system.
     ///
     /// Command buffers allocated from the pool are not affected by trimming.
     ///
-    /// This function is supported only if the
-    /// [`khr_maintenance1`](crate::device::DeviceExtensions::khr_maintenance1) extension is
-    /// enabled on the device. Otherwise an error is returned.
-    /// Since this operation is purely an optimization it is legitimate to call this function and
-    /// simply ignore any possible error.
+    /// This function is supported only if the [`khr_maintenance1`] extension is enabled on the
+    /// device. Otherwise an error is returned. Since this operation is purely an optimization it
+    /// is legitimate to call this function and simply ignore any possible error.
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
     #[inline]
-    pub fn trim(&self) -> Result<(), Box<ValidationError>> {
+    pub fn try_trim(&self) -> Result<(), Box<ValidationError>> {
         self.validate_trim()?;
 
-        unsafe { self.trim_unchecked() }
+        unsafe { self.trim_unchecked() };
+
         Ok(())
     }
 
@@ -383,11 +515,13 @@ impl CommandPoolCreateInfo<'_> {
                 .set_vuids(&["VUID-VkCommandPoolCreateInfo-flags-parameter"])
         })?;
 
-        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
+        if !device
+            .active_queue_family_indices()
+            .contains(&queue_family_index)
+        {
             return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
-                problem: "is not less than the number of queue families in the physical device"
-                    .into(),
+                problem: "is not active on the device".into(),
                 vuids: &["VUID-vkCreateCommandPool-queueFamilyIndex-01937"],
                 ..Default::default()
             }));
@@ -566,7 +700,7 @@ mod tests {
     fn check_queue_family_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        match CommandPool::new(
+        match CommandPool::try_new(
             &device,
             &CommandPoolCreateInfo {
                 ..Default::default()

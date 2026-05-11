@@ -57,11 +57,37 @@ const MAX_POOLS: usize = 32;
 /// different thread than it was allocated from.
 pub unsafe trait CommandBufferAllocator: DeviceOwned + Send + Sync + 'static {
     /// Allocates a command buffer.
-    fn allocate(
+    fn try_allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>>;
+
+    /// Allocates a command buffer without doing any checks.
+    ///
+    /// <div class="vulkano-alert-caution">
+    ///
+    /// > Caution
+    /// >
+    /// > You should only call this when necessary. Humans are famously bad at guessing what needs
+    /// > to be optimized, so **the only way** to know is by profiling. Have you profiled to make
+    /// > sure that this actually makes a difference? In 99% of cases (not an exaggeration),
+    /// > calling the unchecked version of one of our functions/methods makes absolutely no
+    /// > difference, so make sure first.
+    ///
+    /// </div>
+    ///
+    /// # Safety
+    ///
+    /// - If calling [`try_allocate`] with the same arguments would return a [`ValidationError`],
+    ///   calling this method is *undefined behavior*!
+    ///
+    /// [`try_allocate`]: Self::try_allocate
+    unsafe fn allocate_unchecked(
+        &self,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+    ) -> Result<CommandBufferAlloc, VulkanError>;
 
     /// Deallocates the given `allocation`.
     ///
@@ -258,29 +284,16 @@ impl StandardCommandBufferAllocator {
 
 unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
     #[inline]
-    fn allocate(
+    fn try_allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
-        if !self
-            .device
-            .active_queue_family_indices()
-            .contains(&queue_family_index)
-        {
-            Err(Box::new(ValidationError {
-                context: "queue_family_index".into(),
-                problem: "is not active on the device".into(),
-                vuids: &["VUID-vkCreateCommandPool-queueFamilyIndex-01937"],
-                ..Default::default()
-            }))?;
-        }
-
         let entry_ptr = self.entry(queue_family_index);
         let entry = unsafe { &mut *entry_ptr };
 
         if entry.is_none() {
-            *entry = Some(Entry::new(
+            *entry = Some(Entry::try_new(
                 &self.device,
                 queue_family_index,
                 &self.buffer_count,
@@ -290,7 +303,34 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
         let entry = entry.as_mut().unwrap();
 
-        Ok(entry.allocate(queue_family_index, level, &self.buffer_count)?)
+        entry.try_allocate(queue_family_index, level, &self.buffer_count)
+    }
+
+    #[inline]
+    unsafe fn allocate_unchecked(
+        &self,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+    ) -> Result<CommandBufferAlloc, VulkanError> {
+        let entry_ptr = self.entry(queue_family_index);
+        let entry = unsafe { &mut *entry_ptr };
+
+        if entry.is_none() {
+            // SAFETY: Enforced by the caller.
+            *entry = Some(unsafe {
+                Entry::new_unchecked(
+                    &self.device,
+                    queue_family_index,
+                    &self.buffer_count,
+                    Arc::new(ArrayQueue::new(MAX_POOLS)),
+                )
+            }?);
+        }
+
+        let entry = entry.as_mut().unwrap();
+
+        // SAFETY: Enforced by the caller.
+        unsafe { entry.allocate_unchecked(queue_family_index, level, &self.buffer_count) }
     }
 
     #[inline]
@@ -340,12 +380,21 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
 unsafe impl<T: CommandBufferAllocator + ?Sized> CommandBufferAllocator for Arc<T> {
     #[inline]
-    fn allocate(
+    fn try_allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
-        (**self).allocate(queue_family_index, level)
+        (**self).try_allocate(queue_family_index, level)
+    }
+
+    #[inline]
+    unsafe fn allocate_unchecked(
+        &self,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+    ) -> Result<CommandBufferAlloc, VulkanError> {
+        unsafe { (**self).allocate_unchecked(queue_family_index, level) }
     }
 
     #[inline]
@@ -382,20 +431,100 @@ struct Entry {
 unsafe impl Send for Entry {}
 
 impl Entry {
-    fn new(
+    fn try_new(
+        device: &Arc<Device>,
+        queue_family_index: u32,
+        buffer_count: &[usize; 2],
+        pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Ok(Entry {
+            pool: Pool::try_new(device, queue_family_index, buffer_count, &pool_reserve)?,
+            allocations: [0; 2],
+            pool_reserve,
+        })
+    }
+
+    unsafe fn new_unchecked(
         device: &Arc<Device>,
         queue_family_index: u32,
         buffer_count: &[usize; 2],
         pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
     ) -> Result<Self, VulkanError> {
         Ok(Entry {
-            pool: Pool::new(device, queue_family_index, buffer_count, &pool_reserve)?,
+            // SAFETY: Enforced by the caller.
+            pool: unsafe {
+                Pool::new_unchecked(device, queue_family_index, buffer_count, &pool_reserve)
+            }?,
             allocations: [0; 2],
             pool_reserve,
         })
     }
 
-    fn allocate(
+    fn try_allocate(
+        &mut self,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        buffer_count: &[usize; 2],
+    ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
+        if self.allocations[level as usize] >= buffer_count[level as usize] {
+            // This can happen if there's only ever one allocation alive at any point in time. In
+            // that case, when deallocating the last command buffer before reaching `buffer_count`,
+            // there will be 2 references to the pool (one here and one in the allocation) and so
+            // the pool won't be returned to the reserve when deallocating. However, since there
+            // are no other allocations alive, there would be no other allocations that could
+            // return it to the reserve. To avoid dropping the pool unnecessarily, we simply
+            // continue using it. In the case where there are other references, we drop ours, at
+            // which point an allocation still holding a reference will be able to put the pool
+            // into the reserve when deallocated.
+            //
+            // TODO: This can still run into the A/B/A problem causing the pool to be dropped.
+            if Arc::strong_count(&self.pool) == 1 {
+                // SAFETY: We checked that the pool has a single strong reference above, meaning
+                // that all the allocations we gave out must have been deallocated.
+                unsafe { self.pool.inner.try_reset(CommandPoolResetFlags::empty()) }?;
+
+                self.allocations = [0; 2];
+            } else {
+                if let Some(pool) = self.pool_reserve.pop() {
+                    // SAFETY: We checked that the pool has a single strong reference when
+                    // deallocating, meaning that all the allocations we gave out must have been
+                    // deallocated.
+                    unsafe { pool.inner.try_reset(CommandPoolResetFlags::empty()) }?;
+
+                    self.pool = pool;
+                    self.allocations = [0; 2];
+                } else {
+                    *self = Entry::try_new(
+                        self.pool.inner.device(),
+                        queue_family_index,
+                        buffer_count,
+                        self.pool_reserve.clone(),
+                    )?;
+                }
+            }
+        }
+
+        let Some(buffer_reserve) = self.pool.buffer_reserve[level as usize].as_ref() else {
+            return Err(Validated::ValidationError(Box::new(ValidationError {
+                problem: format!(
+                    "attempted to allocate a command buffer with level `{level:?}`, but the \
+                    command buffer pool for that level was configured to be empty",
+                )
+                .into(),
+                ..Default::default()
+            })));
+        };
+
+        self.allocations[level as usize] += 1;
+
+        Ok(CommandBufferAlloc {
+            inner: buffer_reserve.pop().unwrap(),
+            pool: self.pool.inner.clone(),
+            handle: AllocationHandle::from_ptr(Arc::into_raw(self.pool.clone()) as _),
+        })
+    }
+
+    unsafe fn allocate_unchecked(
         &mut self,
         queue_family_index: u32,
         level: CommandBufferLevel,
@@ -433,24 +562,23 @@ impl Entry {
                     self.pool = pool;
                     self.allocations = [0; 2];
                 } else {
-                    *self = Entry::new(
-                        self.pool.inner.device(),
-                        queue_family_index,
-                        buffer_count,
-                        self.pool_reserve.clone(),
-                    )?;
+                    // SAFETY: Enforced by the caller.
+                    *self = unsafe {
+                        Entry::new_unchecked(
+                            self.pool.inner.device(),
+                            queue_family_index,
+                            buffer_count,
+                            self.pool_reserve.clone(),
+                        )
+                    }?;
                 }
             }
         }
 
-        let buffer_reserve = self.pool.buffer_reserve[level as usize]
-            .as_ref()
-            .unwrap_or_else(|| {
-                panic!(
-                    "attempted to allocate a command buffer with level `{level:?}`, but the \
-                    command buffer pool for that level was configured to be empty",
-                )
-            });
+        let buffer_reserve = self.pool.buffer_reserve[level as usize].as_ref();
+
+        // SAFETY: Enforced by the caller.
+        let buffer_reserve = unsafe { buffer_reserve.unwrap_unchecked() };
 
         self.allocations[level as usize] += 1;
 
@@ -466,10 +594,8 @@ impl Entry {
         flags: CommandPoolResetFlags,
     ) -> Result<(), Validated<ResetCommandPoolError>> {
         if let Some(pool) = Arc::get_mut(&mut self.pool) {
-            unsafe { pool.inner.reset(flags) }.map_err(|err| match err {
-                Validated::Error(err) => Validated::Error(ResetCommandPoolError::VulkanError(err)),
-                Validated::ValidationError(err) => err.into(),
-            })?;
+            unsafe { pool.inner.try_reset(flags) }
+                .map_err(|err| err.map(ResetCommandPoolError::VulkanError))?;
 
             self.allocations = [0; 2];
 
@@ -491,20 +617,19 @@ struct Pool {
 }
 
 impl Pool {
-    fn new(
+    fn try_new(
         device: &Arc<Device>,
         queue_family_index: u32,
         buffer_counts: &[usize; 2],
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
-    ) -> Result<Arc<Self>, VulkanError> {
-        let inner = CommandPool::new(
+    ) -> Result<Arc<Self>, Validated<VulkanError>> {
+        let inner = CommandPool::try_new(
             device,
             &CommandPoolCreateInfo {
                 queue_family_index,
                 ..Default::default()
             },
-        )
-        .map_err(Validated::unwrap)?;
+        )?;
 
         let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
         let mut buffer_reserve = [None, None];
@@ -516,11 +641,60 @@ impl Pool {
 
             let pool = ArrayQueue::new(buffer_count);
 
-            for allocation in inner.allocate_command_buffers(&CommandBufferAllocateInfo {
+            let allocate_info = CommandBufferAllocateInfo {
                 level,
                 command_buffer_count: buffer_count.try_into().unwrap(),
                 ..Default::default()
-            })? {
+            };
+
+            for allocation in inner.try_allocate_command_buffers(&allocate_info)? {
+                let _ = pool.push(allocation);
+            }
+
+            buffer_reserve[level as usize] = Some(pool);
+        }
+
+        Ok(Arc::new(Pool {
+            inner: Arc::new(inner),
+            buffer_reserve,
+            pool_reserve: Arc::downgrade(pool_reserve),
+        }))
+    }
+
+    unsafe fn new_unchecked(
+        device: &Arc<Device>,
+        queue_family_index: u32,
+        buffer_counts: &[usize; 2],
+        pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        // SAFETY: Enforced by the caller.
+        let inner = unsafe {
+            CommandPool::new_unchecked(
+                device,
+                &CommandPoolCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                },
+            )
+        }?;
+
+        let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
+        let mut buffer_reserve = [None, None];
+
+        for (level, &buffer_count) in levels.into_iter().zip(buffer_counts) {
+            if buffer_count == 0 {
+                continue;
+            }
+
+            let pool = ArrayQueue::new(buffer_count);
+
+            let allocate_info = CommandBufferAllocateInfo {
+                level,
+                command_buffer_count: buffer_count.try_into().unwrap(),
+                ..Default::default()
+            };
+
+            for allocation in unsafe { inner.allocate_command_buffers_unchecked(&allocate_info) }? {
                 let _ = pool.push(allocation);
             }
 

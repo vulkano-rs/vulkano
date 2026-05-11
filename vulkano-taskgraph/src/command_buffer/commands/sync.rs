@@ -14,7 +14,12 @@ use vulkano::{
 
 /// # Commands to synchronize resource accesses
 impl RecordingCommandBuffer<'_> {
-    pub unsafe fn pipeline_barrier(
+    #[track_caller]
+    pub unsafe fn pipeline_barrier(&mut self, dependency_info: &DependencyInfo<'_>) -> &mut Self {
+        unsafe { self.try_pipeline_barrier(dependency_info) }.unwrap()
+    }
+
+    pub unsafe fn try_pipeline_barrier(
         &mut self,
         dependency_info: &DependencyInfo<'_>,
     ) -> Result<&mut Self> {

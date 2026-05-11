@@ -57,15 +57,15 @@ impl Scene {
         command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
     ) -> Self {
         let pipeline = {
-            let raygen = raygen::load(&app.device)
+            let raygen = unsafe { raygen::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let closest_hit = closest_hit::load(&app.device)
+            let closest_hit = unsafe { closest_hit::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let miss = miss::load(&app.device)
+            let miss = unsafe { miss::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -333,13 +333,11 @@ unsafe fn build_acceleration_structure_common(
         ..AccelerationStructureBuildGeometryInfo::new(geometries)
     };
 
-    let as_build_sizes_info = device
-        .acceleration_structure_build_sizes(
-            AccelerationStructureBuildType::Device,
-            &as_build_geometry_info,
-            &[primitive_count],
-        )
-        .unwrap();
+    let as_build_sizes_info = device.acceleration_structure_build_sizes(
+        AccelerationStructureBuildType::Device,
+        &as_build_geometry_info,
+        &[primitive_count],
+    );
 
     // We create a new scratch buffer for each acceleration structure for simplicity. You may want
     // to reuse scratch buffers if you need to build many acceleration structures.
