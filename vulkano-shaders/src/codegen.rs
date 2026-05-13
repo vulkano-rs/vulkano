@@ -5,6 +5,14 @@ use crate::{
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use std::{
+    fs,
+    iter::Iterator,
+    path::{Path, PathBuf},
+};
+use syn::{Error, LitStr};
+use vulkano::shader::spirv::Spirv;
+
 pub enum IncludeType {
     Relative,
     Standard,
@@ -14,13 +22,6 @@ pub struct ResolvedInclude {
     pub resolved_name: String,
     pub content: String,
 }
-use std::{
-    fs,
-    iter::Iterator,
-    path::{Path, PathBuf},
-};
-use syn::{Error, LitStr};
-use vulkano::shader::spirv::Spirv;
 
 pub struct Shader {
     pub source: LitStr,
@@ -211,68 +212,7 @@ fn preprocess_includes(
     Ok(result)
 }
 
-#[derive(Debug, Copy, Clone)]
-#[allow(dead_code)]
-pub(crate) enum EnvVersion {
-    Vulkan1_0,
-    Vulkan1_1,
-    Vulkan1_2,
-    Vulkan1_3,
-    Vulkan1_4,
-    OpenGL4_5,
-    WebGPU,
-}
-
-impl std::fmt::Display for EnvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
-
-impl From<EnvVersion> for &str {
-    fn from(version: EnvVersion) -> Self {
-        match version {
-            EnvVersion::Vulkan1_0 => "vulkan1.0",
-            EnvVersion::Vulkan1_1 => "vulkan1.1",
-            EnvVersion::Vulkan1_2 => "vulkan1.2",
-            EnvVersion::Vulkan1_3 => "vulkan1.3",
-            EnvVersion::Vulkan1_4 => "vulkan1.4",
-            EnvVersion::OpenGL4_5 => "opengl4.5",
-            EnvVersion::WebGPU => "webgpu",
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum SpirvVersion {
-    V1_0,
-    V1_1,
-    V1_2,
-    V1_3,
-    V1_4,
-    V1_5,
-    V1_6,
-}
-
-impl std::fmt::Display for SpirvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
-
-impl From<SpirvVersion> for &str {
-    fn from(version: SpirvVersion) -> Self {
-        match version {
-            SpirvVersion::V1_0 => "spv1.0",
-            SpirvVersion::V1_1 => "spv1.1",
-            SpirvVersion::V1_2 => "spv1.2",
-            SpirvVersion::V1_3 => "spv1.3",
-            SpirvVersion::V1_4 => "spv1.4",
-            SpirvVersion::V1_5 => "spv1.5",
-            SpirvVersion::V1_6 => "spv1.6",
-        }
-    }
-}
+use crate::{EnvVersion, SpirvVersion};
 
 struct CompileOptions {
     source_language: SourceLanguage,
@@ -286,7 +226,7 @@ struct CompileOptions {
 impl CompileOptions {
     pub fn new() -> Self {
         CompileOptions {
-            source_language: SourceLanguage::GLSL,
+            source_language: SourceLanguage::Glsl,
             target_env: EnvVersion::Vulkan1_0,
             target_spirv: None,
             macro_definitions: Vec::new(),
@@ -296,82 +236,67 @@ impl CompileOptions {
     }
 }
 
-fn spv_to_words(data: &[u8]) -> Vec<u32> {
-    data.chunks(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
-}
+fn compile_into_spirv(
+    shader_kind: ShaderKind,
+    source: &str,
+    entry_point_name: &str,
+    options: &CompileOptions,
+) -> Result<Vec<u32>, String> {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
 
-struct Compiler {
-    command: std::process::Command,
-}
+    let mut cmd = Command::new("glslc");
 
-impl Compiler {
-    fn new() -> Self {
-        Compiler {
-            command: std::process::Command::new("glslc"),
-        }
+    cmd.arg("-x")
+        .arg(options.source_language.to_string())
+        .arg(format!("--target-env={}", options.target_env));
+
+    if let Some(spirv) = options.target_spirv {
+        cmd.arg(format!("--target-spv={}", spirv));
     }
 
-    fn compile_into_spirv(
-        &mut self,
-        shader_kind: ShaderKind,
-        source: &str,
-        entry_point_name: &str,
-        options: &CompileOptions,
-    ) -> Result<Vec<u32>, String> {
-        use std::{io::Write, process::Stdio};
+    cmd.arg("-g");
 
-        self.command
-            .arg("-x")
-            .arg(options.source_language.to_string())
-            .arg(format!("--target-env={}", options.target_env));
-
-        if let Some(spirv) = options.target_spirv {
-            self.command.arg(format!("--target-spv={}", spirv));
-        }
-
-        self.command.arg("-g");
-
-        for (macro_name, macro_value) in &options.macro_definitions {
-            self.command.arg(format!("-D{macro_name}={macro_value}"));
-        }
-
-        self.command
-            .arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
-            .arg(format!("-fentry-point={}", entry_point_name))
-            .arg("-o")
-            .arg("-")
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let mut child = self
-            .command
-            .spawn()
-            .map_err(|e| format!("Failed to call glslc: {e}"))?;
-
-        child
-            .stdin
-            .take()
-            .ok_or("Failed to open glslc stdin")?
-            .write_all(source.as_bytes())
-            .map_err(|e| format!("Failed to write to glslc stdin: {e}"))?;
-
-        let output = child
-            .wait_with_output()
-            .map_err(|e| format!("Failed to wait for glslc: {e}"))?;
-
-        if !output.status.success() {
-            return Err(format!(
-                "glslc failed:\n{}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        Ok(spv_to_words(&output.stdout))
+    for (macro_name, macro_value) in &options.macro_definitions {
+        cmd.arg(format!("-D{macro_name}={macro_value}"));
     }
+
+    cmd.arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
+        .arg(format!("-fentry-point={}", entry_point_name))
+        .arg("-o")
+        .arg("-")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to call glslc: {e}"))?;
+
+    child
+        .stdin
+        .take()
+        .ok_or("Failed to open glslc stdin")?
+        .write_all(source.as_bytes())
+        .map_err(|e| format!("Failed to write to glslc stdin: {e}"))?;
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for glslc: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "glslc failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    vulkano::shader::spirv::bytes_to_words(&output.stdout)
+        .map(|w| w.into_owned())
+        .map_err(|e| format!("Malformed SPIR-V: {e}"))
 }
 
 pub(super) fn compile(
@@ -381,10 +306,9 @@ pub(super) fn compile(
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    let mut compiler = Compiler::new();
     let mut compile_options = CompileOptions::new();
 
-    compile_options.source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
+    compile_options.source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
     compile_options.target_env = input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
     compile_options.target_spirv = input.spirv_version;
     compile_options.macro_definitions = input
@@ -411,8 +335,7 @@ pub(super) fn compile(
     )
     .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
-    let spirv = compiler
-        .compile_into_spirv(shader_kind, &preprocessed, "main", &compile_options)
+    let spirv = compile_into_spirv(shader_kind, &preprocessed, "main", &compile_options)
         .map_err(|e| e.replace("(s): ", "(s):\n"))?;
 
     Ok((spirv, includes))
@@ -513,13 +436,15 @@ mod tests {
 
     #[test]
     fn spirv_parse() {
-        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
+        let insts =
+            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
         Spirv::new(&insts).unwrap();
     }
 
     #[test]
     fn spirv_reflect() {
-        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
+        let insts =
+            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
@@ -792,7 +717,10 @@ mod tests {
     /// ```
     #[test]
     fn descriptor_calculation_with_multiple_entrypoints() {
-        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/multiple_entrypoints.spv"
+        ))
+        .unwrap();
         let spirv = Spirv::new(&insts).unwrap();
 
         let mut descriptors = Vec::new();
@@ -829,7 +757,10 @@ mod tests {
 
     #[test]
     fn reflect_descriptor_calculation_with_multiple_entrypoints() {
-        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/multiple_entrypoints.spv"
+        ))
+        .unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(

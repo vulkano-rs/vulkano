@@ -414,24 +414,77 @@ enum SourceKind {
 }
 
 #[derive(Copy, Clone)]
-#[allow(dead_code, clippy::upper_case_acronyms)]
 enum SourceLanguage {
-    GLSL,
-    HLSL,
-    Slang,
+    Glsl,
+    Hlsl,
 }
 
 impl From<SourceLanguage> for &str {
     fn from(lang: SourceLanguage) -> Self {
         match lang {
-            SourceLanguage::GLSL => "glsl",
-            SourceLanguage::HLSL => "hlsl",
-            SourceLanguage::Slang => "slang",
+            SourceLanguage::Glsl => "glsl",
+            SourceLanguage::Hlsl => "hlsl",
         }
     }
 }
 
 impl std::fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum EnvVersion {
+    Vulkan1_0,
+    Vulkan1_1,
+    Vulkan1_2,
+    Vulkan1_3,
+}
+
+impl From<EnvVersion> for &str {
+    fn from(version: EnvVersion) -> Self {
+        match version {
+            EnvVersion::Vulkan1_0 => "vulkan1.0",
+            EnvVersion::Vulkan1_1 => "vulkan1.1",
+            EnvVersion::Vulkan1_2 => "vulkan1.2",
+            EnvVersion::Vulkan1_3 => "vulkan1.3",
+        }
+    }
+}
+
+impl std::fmt::Display for EnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum SpirvVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+    V1_4,
+    V1_5,
+    V1_6,
+}
+
+impl From<SpirvVersion> for &str {
+    fn from(version: SpirvVersion) -> Self {
+        match version {
+            SpirvVersion::V1_0 => "spv1.0",
+            SpirvVersion::V1_1 => "spv1.1",
+            SpirvVersion::V1_2 => "spv1.2",
+            SpirvVersion::V1_3 => "spv1.3",
+            SpirvVersion::V1_4 => "spv1.4",
+            SpirvVersion::V1_5 => "spv1.5",
+            SpirvVersion::V1_6 => "spv1.6",
+        }
+    }
+}
+
+impl std::fmt::Display for SpirvVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(<&str>::from(*self))
     }
@@ -496,9 +549,9 @@ impl TryFrom<&str> for ShaderKind {
             "intersection" => Ok(ShaderKind::Intersection),
             "callable" => Ok(ShaderKind::Callable),
             _ => Err(format!(
-                "unknown shader kind: {}. Expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, \
-                `mesh`, `fragment`, `compute`, `raygen`, `anyhit`, `closesthit`, \
-                `miss`, `intersection` or `callable`", s
+                "unknown shader kind: {s}; expected `vertex`, `tess_ctrl`, `tess_eval`, \
+                `geometry`, `task`, `mesh`, `fragment`, `compute`, `raygen`, `anyhit`, \
+                `closesthit`, `miss`, `intersection` or `callable`",
             )),
         }
     }
@@ -510,8 +563,8 @@ struct MacroInput {
     global_macro_defines: Vec<(String, String)>,
     shaders: HashMap<String, ShaderFields>,
     source_language: Option<SourceLanguage>,
-    spirv_version: Option<codegen::SpirvVersion>,
-    vulkan_version: Option<codegen::EnvVersion>,
+    spirv_version: Option<SpirvVersion>,
+    vulkan_version: Option<EnvVersion>,
     generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
@@ -775,8 +828,8 @@ impl Parse for MacroInput {
                     }
 
                     source_language = Some(match lit.value().as_str() {
-                        "glsl" => SourceLanguage::GLSL,
-                        "hlsl" => SourceLanguage::HLSL,
+                        "glsl" => SourceLanguage::Glsl,
+                        "hlsl" => SourceLanguage::Hlsl,
                         lang => bail!(lit, "expected `glsl` or `hlsl`, found `{lang}`"),
                     })
                 }
@@ -787,10 +840,10 @@ impl Parse for MacroInput {
                     }
 
                     vulkan_version = Some(match lit.value().as_str() {
-                        "1.0" => codegen::EnvVersion::Vulkan1_0,
-                        "1.1" => codegen::EnvVersion::Vulkan1_1,
-                        "1.2" => codegen::EnvVersion::Vulkan1_2,
-                        "1.3" => codegen::EnvVersion::Vulkan1_3,
+                        "1.0" => EnvVersion::Vulkan1_0,
+                        "1.1" => EnvVersion::Vulkan1_1,
+                        "1.2" => EnvVersion::Vulkan1_2,
+                        "1.3" => EnvVersion::Vulkan1_3,
                         ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
                     });
                 }
@@ -801,13 +854,13 @@ impl Parse for MacroInput {
                     }
 
                     spirv_version = Some(match lit.value().as_str() {
-                        "1.0" => codegen::SpirvVersion::V1_0,
-                        "1.1" => codegen::SpirvVersion::V1_1,
-                        "1.2" => codegen::SpirvVersion::V1_2,
-                        "1.3" => codegen::SpirvVersion::V1_3,
-                        "1.4" => codegen::SpirvVersion::V1_4,
-                        "1.5" => codegen::SpirvVersion::V1_5,
-                        "1.6" => codegen::SpirvVersion::V1_6,
+                        "1.0" => SpirvVersion::V1_0,
+                        "1.1" => SpirvVersion::V1_1,
+                        "1.2" => SpirvVersion::V1_2,
+                        "1.3" => SpirvVersion::V1_3,
+                        "1.4" => SpirvVersion::V1_4,
+                        "1.5" => SpirvVersion::V1_5,
+                        "1.6" => SpirvVersion::V1_6,
                         ver => bail!(
                             lit,
                             "expected `1.0`, `1.1`, `1.2`, `1.3`, `1.4`, `1.5` or `1.6`, found \
