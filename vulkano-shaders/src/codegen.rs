@@ -1,17 +1,17 @@
 use crate::{
     structs::{self, TypeRegistry},
-    MacroInput, SourceLanguage,
+    EnvVersion, MacroInput, ShaderKind, SourceLanguage, SpirvVersion,
 };
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
-use shaderc::{CompileOptions, Compiler, EnvVersion, TargetEnv};
 use std::{
-    cell::RefCell,
     fs,
+    io::Write,
     iter::Iterator,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::atomic::{AtomicU32, Ordering},
 };
 use syn::{Error, LitStr};
 use vulkano::shader::spirv::Spirv;
@@ -22,197 +22,193 @@ pub struct Shader {
     pub spirv: Spirv,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn include_callback(
-    requested_source_path_raw: &str,
-    directive_type: IncludeType,
-    contained_within_path_raw: &str,
-    recursion_depth: usize,
-    include_directories: &[PathBuf],
-    root_source_has_path: bool,
-    base_path: &Path,
-    includes: &mut Vec<String>,
-) -> Result<ResolvedInclude, String> {
-    if requested_source_path_raw == "vulkano.glsl" {
-        return Ok(ResolvedInclude {
-            resolved_name: "vulkano.glsl".to_owned(),
-            content: include_str!("../include/vulkano.glsl").to_owned(),
-        });
+struct CompileOptions {
+    source_language: SourceLanguage,
+    target_env: EnvVersion,
+    target_spirv: Option<SpirvVersion>,
+    macro_definitions: Vec<(String, String)>,
+    include_directories: Vec<PathBuf>,
+    debug: bool,
+}
+
+impl CompileOptions {
+    pub fn new() -> Self {
+        CompileOptions {
+            source_language: SourceLanguage::Glsl,
+            target_env: EnvVersion::Vulkan1_0,
+            target_spirv: None,
+            macro_definitions: Vec::new(),
+            include_directories: Vec::new(),
+            debug: false,
+        }
+    }
+}
+
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn compile_into_spirv(
+    shader_kind: ShaderKind,
+    source: &str,
+    entry_point_name: &str,
+    working_dir: &Path,
+    options: &CompileOptions,
+) -> Result<(Vec<u32>, Vec<String>), String> {
+    // A guard against concurrent compilations using the same temp directory.
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let vulkano_dir = TempDir(std::env::temp_dir().join(format!(
+        "vulkano_shaders_{}_{}",
+        std::process::id(),
+        id,
+    )));
+    let vulkano_dir = &vulkano_dir.0;
+
+    // Write vulkano.glsl to a temp directory and prepend it as the first include path so glslc
+    // can resolve `#include "vulkano.glsl"` or `#include <vulkano.glsl>`.
+    fs::create_dir_all(vulkano_dir)
+        .map_err(|e| format!("failed to create vulkano include dir: {e}"))?;
+    fs::write(
+        vulkano_dir.join("vulkano.glsl"),
+        include_str!("../include/vulkano.glsl"),
+    )
+    .map_err(|e| format!("failed to write vulkano.glsl: {e}"))?;
+
+    let dependencies_file = vulkano_dir.join("deps.d");
+
+    let mut cmd = Command::new("glslc");
+
+    cmd.current_dir(working_dir)
+        .arg("-x")
+        .arg(options.source_language.to_string())
+        .arg(format!("--target-env={}", options.target_env));
+
+    if let Some(spirv) = options.target_spirv {
+        cmd.arg(format!("--target-spv={}", spirv));
     }
 
-    let file_to_include = match directive_type {
-        IncludeType::Relative => {
-            let requested_source_path = Path::new(requested_source_path_raw);
-            // If the shader source is embedded within the macro, abort unless we get an absolute
-            // path.
-            if !root_source_has_path && recursion_depth == 1 && !requested_source_path.is_absolute()
-            {
-                let requested_source_name = requested_source_path
-                    .file_name()
-                    .expect("failed to get the name of the requested source file")
-                    .to_string_lossy();
-                let requested_source_directory = requested_source_path
-                    .parent()
-                    .expect("failed to get the directory of the requested source file")
-                    .to_string_lossy();
+    if options.debug {
+        cmd.arg("-g");
+    }
 
-                return Err(format!(
-                    "usage of relative paths in imports in embedded GLSL is not allowed, try \
-                    using `#include <{}>` and adding the directory `{}` to the `include` array in \
-                    your `shader!` macro call instead",
-                    requested_source_name, requested_source_directory,
-                ));
-            }
+    // vulkano.glsl dir first, then user include directories.
+    cmd.arg(format!("-I{}", vulkano_dir.display()));
+    for dir in &options.include_directories {
+        cmd.arg(format!("-I{}", dir.display()));
+    }
 
-            let mut resolved_path = if recursion_depth == 1 {
-                Path::new(contained_within_path_raw)
-                    .parent()
-                    .map(|parent| base_path.join(parent))
-            } else {
-                Path::new(contained_within_path_raw)
-                    .parent()
-                    .map(|parent| parent.to_owned())
-            }
-            .unwrap_or_else(|| {
-                panic!(
-                    "the file `{}` does not reside in a directory, this is an implementation \
-                    error",
-                    contained_within_path_raw,
-                )
-            });
-            resolved_path.push(requested_source_path);
+    for (macro_name, macro_value) in &options.macro_definitions {
+        cmd.arg(format!("-D{macro_name}={macro_value}"));
+    }
 
-            if !resolved_path.is_file() {
-                return Err(format!(
-                    "invalid inclusion path `{}`, the path does not point to a file",
-                    requested_source_path_raw,
-                ));
-            }
+    cmd.arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
+        .arg(format!("-fentry-point={}", entry_point_name))
+        .arg("-MD")
+        .arg("-MF")
+        .arg(&dependencies_file)
+        .arg("-o")
+        .arg("-")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-            resolved_path
-        }
-        IncludeType::Standard => {
-            let requested_source_path = Path::new(requested_source_path_raw);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to call glslc: {e}"))?;
 
-            if requested_source_path.is_absolute() {
-                // This message is printed either when using a missing file with an absolute path
-                // in the relative include directive or when using absolute paths in a standard
-                // include directive.
-                return Err(format!(
-                    "no such file found as specified by the absolute path; keep in mind that \
-                    absolute paths cannot be used with inclusion from standard directories \
-                    (`#include <...>`), try using `#include \"...\"` instead; requested path: {}",
-                    requested_source_path_raw,
-                ));
-            }
+    child
+        .stdin
+        .take()
+        .ok_or("failed to open glslc stdin")?
+        .write_all(source.as_bytes())
+        .map_err(|e| format!("failed to write to glslc stdin: {e}"))?;
 
-            let found_requested_source_path = include_directories
-                .iter()
-                .map(|include_directory| include_directory.join(requested_source_path))
-                .find(|resolved_requested_source_path| resolved_requested_source_path.is_file());
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("failed to wait for glslc: {e}"))?;
 
-            if let Some(found_requested_source_path) = found_requested_source_path {
-                found_requested_source_path
-            } else {
-                return Err(format!(
-                    "failed to include the file `{}` from any include directories",
-                    requested_source_path_raw,
-                ));
-            }
-        }
+    if !output.status.success() {
+        return Err(format!(
+            "glslc failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let includes = fs::read_to_string(&dependencies_file)
+        .ok()
+        .map(|content| parse_deps_file(&content, vulkano_dir))
+        .unwrap_or_default();
+
+    let words = vulkano::shader::spirv::bytes_to_words(&output.stdout)
+        .map(|w| w.into_owned())
+        .map_err(|e| format!("Malformed SPIR-V: {e}"))?;
+
+    Ok((words, includes))
+}
+
+/// Parses a Makefile-format dependency file produced by glslc `-MF`, returning the list of
+/// included file paths. The format is `target: source dep1 dep2 ...`.
+fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Vec<String> {
+    // Join continuation lines (lines ending with `\` followed by newline).
+    let joined = content.replace("\\\n", " ");
+
+    // Everything after the first `:` is in the format `source dep1 dep2 ...`.
+    let deps_str = match joined.find(':') {
+        Some(pos) => &joined[pos + 1..],
+        None => return Vec::new(),
     };
 
-    let content = fs::read_to_string(file_to_include.as_path()).map_err(|err| {
-        format!(
-            "failed to read the contents of file `{file_to_include:?}` to be included in the \
-            shader source: {err}",
-        )
-    })?;
-    let resolved_name = file_to_include
-        .into_os_string()
-        .into_string()
-        .map_err(|_| {
-            "failed to stringify the file to be included; make sure the path consists of valid \
-            unicode characters"
-        })?;
+    let mut tokens = deps_str.split_whitespace();
 
-    includes.push(resolved_name.clone());
+    // skip the source (printed as <stdin>)
+    tokens.next();
 
-    Ok(ResolvedInclude {
-        resolved_name,
-        content,
-    })
+    tokens
+        .map(|s| {
+            let normalized: PathBuf = Path::new(s).components().collect();
+            normalized
+                .into_os_string()
+                .into_string()
+                .unwrap_or_else(|_| s.to_owned())
+        })
+        .filter(|s| !Path::new(s).starts_with(vulkano_dir))
+        .collect()
 }
 
 pub(super) fn compile(
     input: &MacroInput,
-    path: Option<String>,
-    base_path: &Path,
-    code: &str,
+    source: &str,
+    path: &Path,
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
-) -> Result<(CompilationArtifact, Vec<String>), String> {
-    let includes = RefCell::new(Vec::new());
-    let compiler = Compiler::new().or(Err("failed to create shader compiler"))?;
-    let mut compile_options =
-        CompileOptions::new().or(Err("failed to initialize compile options"))?;
+) -> Result<(Vec<u32>, Vec<String>), String> {
+    let mut compile_options = CompileOptions::new();
 
-    let source_language = input.source_language.unwrap_or(SourceLanguage::GLSL);
-    compile_options.set_source_language(source_language);
+    compile_options.source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
+    compile_options.target_env = input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
+    compile_options.target_spirv = input.spirv_version;
+    compile_options.macro_definitions = input
+        .global_macro_defines
+        .iter()
+        .chain(macro_defines.iter())
+        .cloned()
+        .collect();
+    compile_options.include_directories = input.include_directories.clone();
+    compile_options.debug = cfg!(feature = "shaderc-debug");
 
-    compile_options.set_target_env(
-        TargetEnv::Vulkan,
-        input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0) as u32,
-    );
+    let working_dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
 
-    if let Some(spirv_version) = input.spirv_version {
-        compile_options.set_target_spirv(spirv_version);
-    }
-
-    let root_source_path = path.as_deref().unwrap_or(
-        // An arbitrary placeholder file name for embedded shaders.
-        match source_language {
-            SourceLanguage::GLSL => "shader.glsl",
-            SourceLanguage::HLSL => "shader.hlsl",
-        },
-    );
-
-    // Specify the file resolution callback for the `#include` directive.
-    compile_options.set_include_callback(
-        |requested_source_path, directive_type, contained_within_path, recursion_depth| {
-            include_callback(
-                requested_source_path,
-                directive_type,
-                contained_within_path,
-                recursion_depth,
-                &input.include_directories,
-                path.is_some(),
-                base_path,
-                &mut includes.borrow_mut(),
-            )
-        },
-    );
-
-    for (macro_name, macro_value) in input.global_macro_defines.iter().chain(macro_defines) {
-        compile_options.add_macro_definition(macro_name, Some(macro_value));
-    }
-
-    #[cfg(feature = "shaderc-debug")]
-    compile_options.set_generate_debug_info();
-
-    let content = compiler
-        .compile_into_spirv(
-            code,
-            shader_kind,
-            root_source_path,
-            "main",
-            Some(&compile_options),
-        )
-        .map_err(|e| e.to_string().replace("(s): ", "(s):\n"))?;
-
-    drop(compile_options);
-
-    Ok((content, includes.into_inner()))
+    compile_into_spirv(shader_kind, source, "main", working_dir, &compile_options)
+        .map_err(|e| e.replace("(s): ", "(s):\n"))
 }
 
 pub(super) fn reflect(
@@ -277,34 +273,48 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EnvVersion;
     use proc_macro2::Span;
     use quote::ToTokens;
-    use shaderc::SpirvVersion;
     use syn::{File, Item};
     use vulkano::shader::reflect;
 
-    fn spv_to_words(data: &[u8]) -> Vec<u32> {
-        data.chunks(4)
-            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect()
+    fn compile_inline(
+        input: &MacroInput,
+        source: &str,
+        shader_kind: ShaderKind,
+        macro_defines: &[(String, String)],
+    ) -> Result<(Vec<u32>, Vec<String>), String> {
+        compile(
+            input,
+            source,
+            Path::new("shader.glsl"),
+            shader_kind,
+            macro_defines,
+        )
     }
 
-    fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
+    fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> std::collections::HashSet<String> {
         paths
             .iter()
-            .map(|p| root_path.join(p).into_os_string().into_string().unwrap())
+            .map(|p| {
+                let normalized: PathBuf = root_path.join(p).components().collect();
+                normalized.into_os_string().into_string().unwrap()
+            })
             .collect()
     }
 
     #[test]
     fn spirv_parse() {
-        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
+        let insts =
+            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
         Spirv::new(&insts).unwrap();
     }
 
     #[test]
     fn spirv_reflect() {
-        let insts = spv_to_words(include_bytes!("../tests/frag.spv"));
+        let insts =
+            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
@@ -324,22 +334,18 @@ mod tests {
     fn include_resolution() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
+        let include_test_path = root_path.join("tests").join("include_test.glsl");
+        let include_test_source = std::fs::read_to_string(&include_test_path).unwrap();
         let (_compile_relative, _) = compile(
             &MacroInput::empty(),
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
-            r#"
-                #version 450
-                #include "include_dir_a/target_a.glsl"
-                #include "include_dir_b/target_b.glsl"
-                void main() {}
-            "#,
+            &include_test_source,
+            &include_test_path,
             ShaderKind::Vertex,
             &[],
         )
         .expect("cannot resolve include files");
 
-        let (_compile_include_paths, includes) = compile(
+        let (_compile_include_paths, includes) = compile_inline(
             &MacroInput {
                 include_directories: vec![
                     root_path.join("tests").join("include_dir_a"),
@@ -347,8 +353,6 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_a.glsl>
@@ -361,7 +365,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            includes,
+            std::collections::HashSet::from_iter(includes),
             convert_paths(
                 &root_path,
                 &[
@@ -375,13 +379,11 @@ mod tests {
             ),
         );
 
-        let (_compile_include_paths_with_relative, includes_with_relative) = compile(
+        let (_compile_include_paths_with_relative, includes_with_relative) = compile_inline(
             &MacroInput {
                 include_directories: vec![root_path.join("tests").join("include_dir_a")],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_a.glsl>
@@ -394,7 +396,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            includes_with_relative,
+            std::collections::HashSet::from_iter(includes_with_relative),
             convert_paths(
                 &root_path,
                 &[
@@ -414,11 +416,10 @@ mod tests {
             .join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
-            .expect("cannot run tests in a folder with non unicode characters");
-        let (_compile_absolute_path, includes_absolute_path) = compile(
+            .expect("cannot run tests in a folder with non unicode characters")
+            .replace('\\', "/");
+        let (_compile_absolute_path, includes_absolute_path) = compile_inline(
             &MacroInput::empty(),
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             &format!(
                 r#"
                     #version 450
@@ -432,7 +433,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            includes_absolute_path,
+            std::collections::HashSet::from_iter(includes_absolute_path),
             convert_paths(
                 &root_path,
                 &[["tests", "include_dir_a", "target_a.glsl"]
@@ -441,7 +442,7 @@ mod tests {
             ),
         );
 
-        let (_compile_recursive_, includes_recursive) = compile(
+        let (_compile_recursive_, includes_recursive) = compile_inline(
             &MacroInput {
                 include_directories: vec![
                     root_path.join("tests").join("include_dir_b"),
@@ -449,8 +450,6 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            Some(String::from("tests/include_test.glsl")),
-            &root_path,
             r#"
                 #version 450
                 #include <target_c.glsl>
@@ -462,7 +461,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            includes_recursive,
+            std::collections::HashSet::from_iter(includes_recursive),
             convert_paths(
                 &root_path,
                 &[
@@ -484,22 +483,20 @@ mod tests {
     fn macros() {
         let need_defines = r#"
             #version 450
-            #if defined(NAME1) && NAME2 > 29
-            void main() {}
+            #ifndef NAME1
+            #error NAME1 must be defined
             #endif
+            #if NAME2 <= 29
+            #error NAME2 must be greater than 29
+            #endif
+            void main() {}
         "#;
 
-        let compile_no_defines = compile(
-            &MacroInput::empty(),
-            None,
-            Path::new(""),
-            need_defines,
-            ShaderKind::Vertex,
-            &[],
-        );
+        let compile_no_defines =
+            compile_inline(&MacroInput::empty(), need_defines, ShaderKind::Vertex, &[]);
         assert!(compile_no_defines.is_err());
 
-        compile(
+        compile_inline(
             &MacroInput {
                 global_macro_defines: vec![
                     ("NAME1".into(), "".into()),
@@ -507,21 +504,17 @@ mod tests {
                 ],
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
             &[],
         )
         .expect("setting global shader macros did not work");
 
-        compile(
+        compile_inline(
             &MacroInput {
                 global_macro_defines: vec![("NAME1".into(), "".into())],
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
             &[("NAME2".into(), "58".into())],
@@ -594,7 +587,10 @@ mod tests {
     /// ```
     #[test]
     fn descriptor_calculation_with_multiple_entrypoints() {
-        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/multiple_entrypoints.spv"
+        ))
+        .unwrap();
         let spirv = Spirv::new(&insts).unwrap();
 
         let mut descriptors = Vec::new();
@@ -631,7 +627,10 @@ mod tests {
 
     #[test]
     fn reflect_descriptor_calculation_with_multiple_entrypoints() {
-        let insts = spv_to_words(include_bytes!("../tests/multiple_entrypoints.spv"));
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/multiple_entrypoints.spv"
+        ))
+        .unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
@@ -673,16 +672,13 @@ mod tests {
         );
     }
 
-    fn descriptor_calculation_with_multiple_functions_shader() -> (CompilationArtifact, Vec<String>)
-    {
-        compile(
+    fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>) {
+        compile_inline(
             &MacroInput {
                 spirv_version: Some(SpirvVersion::V1_6),
                 vulkan_version: Some(EnvVersion::Vulkan1_3),
                 ..MacroInput::empty()
             },
-            None,
-            Path::new(""),
             r#"
                 #version 460
 
@@ -718,7 +714,7 @@ mod tests {
     #[test]
     fn descriptor_calculation_with_multiple_functions() {
         let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
-        let spirv = Spirv::new(artifact.as_binary()).unwrap();
+        let spirv = Spirv::new(&artifact).unwrap();
 
         if let Some((_, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
@@ -749,7 +745,7 @@ mod tests {
                 Span::call_site(),
             ),
             String::new(),
-            artifact.as_binary(),
+            &artifact,
             Vec::new(),
             &mut type_registry,
         )

@@ -2,6 +2,14 @@
 //! Manages the compile-time compilation of shader code into SPIR-V and generation of associated
 //! Rust code.
 //!
+//! # Requirements
+//!
+//! This crate invokes [`glslc`] at compile time to compile shaders. `glslc` must be installed and
+//! available on your `PATH`. It is included in the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
+//! or can be installed separately via your package manager.
+//!
+//! [`glslc`]: https://github.com/google/shaderc/tree/main/glslc
+//!
 //! # Basic usage
 //!
 //! ```
@@ -220,27 +228,22 @@
 //!
 //! # Cargo features
 //!
-//! | Feature                     | Description                                             |
-//! |-----------------------------|---------------------------------------------------------|
-//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
-//! | `shaderc-debug`             | Compile shaders with debug information included.        |
+//! | Feature         | Description                                      |
+//! |-----------------|--------------------------------------------------|
+//! | `shaderc-debug` | Compile shaders with debug information included. |
 //!
 //! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule`]: vulkano::shader::ShaderModule
 //! [pipeline]: vulkano::pipeline
-//! [`set_target_env`]: shaderc::CompileOptions::set_target_env
-//! [`set_target_spirv`]: shaderc::CompileOptions::set_target_spirv
 //! [`BufferContents`]: vulkano::buffer::BufferContents
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
 
-use crate::codegen::ShaderKind;
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use shaderc::{EnvVersion, SourceLanguage, SpirvVersion};
 use std::{
     env, fs, mem,
     path::{Path, PathBuf},
@@ -317,17 +320,21 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
             SourceKind::Src(source) => {
                 let (artifact, includes) = codegen::compile(
                     &input,
-                    None,
-                    root_path,
                     &source.value(),
+                    Path::new("shader.glsl"),
                     shader_kind.unwrap(),
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
-                let words = artifact.as_binary();
-
-                codegen::reflect(&input, source, name, words, includes, &mut type_registry)?
+                codegen::reflect(
+                    &input,
+                    source,
+                    name,
+                    &artifact,
+                    includes,
+                    &mut type_registry,
+                )?
             }
             SourceKind::Path(path) => {
                 let full_path = root_path.join(path.value());
@@ -340,24 +347,25 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     );
                 }
 
-                let source_code = fs::read_to_string(&full_path)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
+                let source = fs::read_to_string(&full_path).map_err(|err| {
+                    Error::new_spanned(
+                        &path,
+                        format!("failed to read shader source `{full_path:?}`: {err}"),
+                    )
+                })?;
 
                 let (artifact, mut includes) = codegen::compile(
                     &input,
-                    Some(path.value()),
-                    root_path,
-                    &source_code,
+                    &source,
+                    &full_path,
                     shader_kind.unwrap(),
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
-                let words = artifact.as_binary();
-
                 includes.push(full_path.into_os_string().into_string().unwrap());
 
-                codegen::reflect(&input, path, name, words, includes, &mut type_registry)?
+                codegen::reflect(&input, path, name, &artifact, includes, &mut type_registry)?
             }
             SourceKind::Bytes(path) => {
                 let full_path = root_path.join(path.value());
@@ -403,6 +411,150 @@ enum SourceKind {
     Src(LitStr),
     Path(LitStr),
     Bytes(LitStr),
+}
+
+#[derive(Copy, Clone)]
+enum SourceLanguage {
+    Glsl,
+    Hlsl,
+}
+
+impl From<SourceLanguage> for &str {
+    fn from(lang: SourceLanguage) -> Self {
+        match lang {
+            SourceLanguage::Glsl => "glsl",
+            SourceLanguage::Hlsl => "hlsl",
+        }
+    }
+}
+
+impl std::fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum EnvVersion {
+    Vulkan1_0,
+    Vulkan1_1,
+    Vulkan1_2,
+    Vulkan1_3,
+}
+
+impl From<EnvVersion> for &str {
+    fn from(version: EnvVersion) -> Self {
+        match version {
+            EnvVersion::Vulkan1_0 => "vulkan1.0",
+            EnvVersion::Vulkan1_1 => "vulkan1.1",
+            EnvVersion::Vulkan1_2 => "vulkan1.2",
+            EnvVersion::Vulkan1_3 => "vulkan1.3",
+        }
+    }
+}
+
+impl std::fmt::Display for EnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum SpirvVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+    V1_4,
+    V1_5,
+    V1_6,
+}
+
+impl From<SpirvVersion> for &str {
+    fn from(version: SpirvVersion) -> Self {
+        match version {
+            SpirvVersion::V1_0 => "spv1.0",
+            SpirvVersion::V1_1 => "spv1.1",
+            SpirvVersion::V1_2 => "spv1.2",
+            SpirvVersion::V1_3 => "spv1.3",
+            SpirvVersion::V1_4 => "spv1.4",
+            SpirvVersion::V1_5 => "spv1.5",
+            SpirvVersion::V1_6 => "spv1.6",
+        }
+    }
+}
+
+impl std::fmt::Display for SpirvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum ShaderKind {
+    Vertex,
+    TessControl,
+    TessEvaluation,
+    Geometry,
+    Task,
+    Mesh,
+    Fragment,
+    Compute,
+    RayGeneration,
+    AnyHit,
+    ClosestHit,
+    Miss,
+    Intersection,
+    Callable,
+}
+
+impl ShaderKind {
+    fn as_glslc_stage(self) -> &'static str {
+        match self {
+            ShaderKind::Vertex => "vert",
+            ShaderKind::TessControl => "tesc",
+            ShaderKind::TessEvaluation => "tese",
+            ShaderKind::Geometry => "geom",
+            ShaderKind::Task => "task",
+            ShaderKind::Mesh => "mesh",
+            ShaderKind::Fragment => "frag",
+            ShaderKind::Compute => "comp",
+            ShaderKind::RayGeneration => "rgen",
+            ShaderKind::AnyHit => "rahit",
+            ShaderKind::ClosestHit => "rchit",
+            ShaderKind::Miss => "rmiss",
+            ShaderKind::Intersection => "rint",
+            ShaderKind::Callable => "rcall",
+        }
+    }
+}
+
+impl TryFrom<&str> for ShaderKind {
+    type Error = String;
+
+    fn try_from(s: &str) -> std::result::Result<Self, Self::Error> {
+        match s {
+            "vertex" => Ok(ShaderKind::Vertex),
+            "tess_ctrl" => Ok(ShaderKind::TessControl),
+            "tess_eval" => Ok(ShaderKind::TessEvaluation),
+            "geometry" => Ok(ShaderKind::Geometry),
+            "task" => Ok(ShaderKind::Task),
+            "mesh" => Ok(ShaderKind::Mesh),
+            "fragment" => Ok(ShaderKind::Fragment),
+            "compute" => Ok(ShaderKind::Compute),
+            "raygen" => Ok(ShaderKind::RayGeneration),
+            "anyhit" => Ok(ShaderKind::AnyHit),
+            "closesthit" => Ok(ShaderKind::ClosestHit),
+            "miss" => Ok(ShaderKind::Miss),
+            "intersection" => Ok(ShaderKind::Intersection),
+            "callable" => Ok(ShaderKind::Callable),
+            _ => Err(format!(
+                "unknown shader kind: {s}; expected `vertex`, `tess_ctrl`, `tess_eval`, \
+                `geometry`, `task`, `mesh`, `fragment`, `compute`, `raygen`, `anyhit`, \
+                `closesthit`, `miss`, `intersection` or `callable`",
+            )),
+        }
+    }
 }
 
 struct MacroInput {
@@ -479,27 +631,9 @@ impl Parse for MacroInput {
                         bail!(lit, "field `ty` is already defined");
                     }
 
-                    output.shader_kind = Some(match lit.value().as_str() {
-                        "vertex" => ShaderKind::Vertex,
-                        "tess_ctrl" => ShaderKind::TessControl,
-                        "tess_eval" => ShaderKind::TessEvaluation,
-                        "geometry" => ShaderKind::Geometry,
-                        "task" => ShaderKind::Task,
-                        "mesh" => ShaderKind::Mesh,
-                        "fragment" => ShaderKind::Fragment,
-                        "compute" => ShaderKind::Compute,
-                        "raygen" => ShaderKind::RayGeneration,
-                        "anyhit" => ShaderKind::AnyHit,
-                        "closesthit" => ShaderKind::ClosestHit,
-                        "miss" => ShaderKind::Miss,
-                        "intersection" => ShaderKind::Intersection,
-                        "callable" => ShaderKind::Callable,
-                        ty => bail!(
-                            lit,
-                            "expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, \
-                            `mesh`, `fragment` `compute`, `raygen`, `anyhit`, `closesthit`, \
-                            `miss`, `intersection` or `callable`, found `{ty}`",
-                        ),
+                    output.shader_kind = Some(match ShaderKind::try_from(lit.value().as_str()) {
+                        Ok(shader_kind) => shader_kind,
+                        Err(msg) => bail!(lit, "{msg}"),
                     });
                 }
                 "bytes" => {
@@ -694,8 +828,8 @@ impl Parse for MacroInput {
                     }
 
                     source_language = Some(match lit.value().as_str() {
-                        "glsl" => SourceLanguage::GLSL,
-                        "hlsl" => SourceLanguage::HLSL,
+                        "glsl" => SourceLanguage::Glsl,
+                        "hlsl" => SourceLanguage::Hlsl,
                         lang => bail!(lit, "expected `glsl` or `hlsl`, found `{lang}`"),
                     })
                 }
