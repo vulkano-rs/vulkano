@@ -773,21 +773,42 @@ impl RawImage {
                 }
             }
 
-            if memory_type
-                .property_flags
-                .intersects(MemoryPropertyFlags::PROTECTED)
-            {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "the `property_flags` of the memory type of \
-                        `allocations[{}].device_memory()` contains \
-                        `MemoryPropertyFlags::PROTECTED`",
-                        index
-                    )
-                    .into(),
-                    vuids: &["VUID-VkBindImageMemoryInfo-None-01901"],
-                    ..Default::default()
-                }));
+            if self.flags.intersects(ImageCreateFlags::PROTECTED) {
+                if !memory_type
+                    .property_flags
+                    .intersects(MemoryPropertyFlags::PROTECTED)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the image was created with `ImageCreateFlags::PROTECTED`, \
+                            but the `property_flags` of the memory type of \
+                            `allocations[{}].device_memory()` does not contain \
+                            `MemoryPropertyFlags::PROTECTED`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBindImageMemoryInfo-None-01901"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if memory_type
+                    .property_flags
+                    .intersects(MemoryPropertyFlags::PROTECTED)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the image was not created with `ImageCreateFlags::PROTECTED`, \
+                            but the `property_flags` of the memory type of \
+                            `allocations[{}].device_memory()` contains \
+                            `MemoryPropertyFlags::PROTECTED`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBindImageMemoryInfo-None-01902"],
+                        ..Default::default()
+                    }));
+                }
             }
 
             if !memory.export_handle_types().is_empty() {
@@ -3220,9 +3241,11 @@ mod tests {
             ImageAspect, ImageAspects, ImageCreateFlags, ImageSubresourceRange, ImageType,
             SampleCount, SubresourceRangeIterator,
         },
-        DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+        memory::{DeviceMemory, MemoryAllocateInfo, MemoryPropertyFlags, ResourceMemory},
+        DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
     };
     use smallvec::SmallVec;
+    use std::iter;
 
     #[test]
     fn create_sampled() {
@@ -3260,22 +3283,165 @@ mod tests {
 
     #[test]
     fn create_protected() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!(protected_memory);
 
-        if device.api_version() >= Version::V1_1 {
-            let image = RawImage::new(
-                &device,
-                &ImageCreateInfo {
-                    flags: ImageCreateFlags::PROTECTED,
-                    image_type: ImageType::Dim2d,
-                    format: Format::R8G8B8A8_UNORM,
-                    extent: [32, 32, 1],
-                    usage: ImageUsage::SAMPLED,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            assert_eq!(image.flags(), ImageCreateFlags::PROTECTED);
+        let image = RawImage::new(
+            &device,
+            &ImageCreateInfo {
+                flags: ImageCreateFlags::PROTECTED,
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_UNORM,
+                extent: [32, 32, 1],
+                usage: ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(image.flags(), ImageCreateFlags::PROTECTED);
+
+        let requirements = image.memory_requirements()[0];
+
+        let memory_type_index = device
+            .physical_device()
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, ty)| {
+                (requirements.memory_type_bits & (1 << id)) != 0
+                    && ty.property_flags.contains(MemoryPropertyFlags::PROTECTED)
+            })
+            .expect("Failed to find suitable memory type") as u32;
+
+        let memory = DeviceMemory::allocate(
+            &device,
+            &MemoryAllocateInfo {
+                allocation_size: requirements.layout.size(),
+                memory_type_index,
+                ..Default::default()
+            },
+        )
+        .expect("Failed to allocate memory");
+
+        let resource_memory = ResourceMemory::new_dedicated(memory);
+
+        let result = image.bind_memory(iter::once(resource_memory));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn create_unprotected_image_bind_protected_memory() {
+        let (device, _) = gfx_dev_and_queue!(protected_memory);
+
+        let image = RawImage::new(
+            &device,
+            &ImageCreateInfo {
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_UNORM,
+                extent: [32, 32, 1],
+                usage: ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let requirements = image.memory_requirements()[0];
+
+        let memory_type_index = device
+            .physical_device()
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, ty)| {
+                (requirements.memory_type_bits & (1 << id)) == 0
+                    && ty.property_flags.contains(MemoryPropertyFlags::PROTECTED)
+            })
+            .expect("Failed to find suitable memory type") as u32;
+
+        let memory = DeviceMemory::allocate(
+            &device,
+            &MemoryAllocateInfo {
+                allocation_size: requirements.layout.size(),
+                memory_type_index,
+                ..Default::default()
+            },
+        )
+        .expect("Failed to allocate memory");
+
+        let resource_memory = ResourceMemory::new_dedicated(memory);
+
+        let res = image.bind_memory(iter::once(resource_memory));
+        match res {
+            Err((Validated::ValidationError(_), _, _)) => {}
+            Ok(_) => {
+                panic!("bind_memory succeeded when it should have failed!");
+            }
+            Err((Validated::Error(err), _, _)) => {
+                panic!(
+                    "Expected a ValidationError, but got a runtime error: {:?}",
+                    err
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn create_protected_image_bind_unprotected_memory() {
+        let (device, _) = gfx_dev_and_queue!(protected_memory);
+
+        let image = RawImage::new(
+            &device,
+            &ImageCreateInfo {
+                flags: ImageCreateFlags::PROTECTED,
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_UNORM,
+                extent: [32, 32, 1],
+                usage: ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(image.flags(), ImageCreateFlags::PROTECTED);
+
+        let requirements = image.memory_requirements()[0];
+
+        let memory_type_index = device
+            .physical_device()
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, ty)| {
+                (requirements.memory_type_bits & (1 << id)) == 0
+                    && !ty.property_flags.contains(MemoryPropertyFlags::PROTECTED)
+            })
+            .expect("Failed to find suitable memory type") as u32;
+
+        let memory = DeviceMemory::allocate(
+            &device,
+            &MemoryAllocateInfo {
+                allocation_size: requirements.layout.size(),
+                memory_type_index,
+                ..Default::default()
+            },
+        )
+        .expect("Failed to allocate memory");
+
+        let resource_memory = ResourceMemory::new_dedicated(memory);
+
+        let res = image.bind_memory(iter::once(resource_memory));
+        match res {
+            Err((Validated::ValidationError(_), _, _)) => {}
+            Ok(_) => {
+                panic!("bind_memory succeeded when it should have failed!");
+            }
+            Err((Validated::Error(err), _, _)) => {
+                panic!(
+                    "Expected a ValidationError, but got a runtime error: {:?}",
+                    err
+                );
+            }
         }
     }
 
