@@ -10,7 +10,7 @@
 ### Public dependency updates
 
 - Rust version: 1.87
-- [shaderc](https://crates.io/crates/shaderc) 0.10.0
+- Removed the [`shaderc`](https://crates.io/crates/shaderc) dependency. `glslc` must now be installed and available on `PATH` (bundled with the Vulkan SDK).
 
 ### Breaking changes
 
@@ -67,6 +67,10 @@ Changes to descriptor sets:
   - `DescriptorImageViewInfo` was replaced with `DescriptorImageInfo`.
 - `WriteDescriptorSetElements` is now marked `#[non_exhaustive]`.
 - `DescriptorSetResources` and `DescriptorBindingResources` were removed.
+
+Changes to vulkano-shaders:
+- The `shaderc-build-from-source` Cargo feature has been removed.
+- Shader compilation now requires `glslc` to be present on `PATH` at build time instead of `libshaderc` having to be supplied via pkg-config, the `SHADERC_LIB_DIR` environment variable, or the `VULKAN_SDK` environment variable. This hopefully makes setup easier.
 
 ### Additions
 
