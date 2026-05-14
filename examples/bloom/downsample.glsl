@@ -1,6 +1,6 @@
 #version 450
 #include <vulkano.glsl>
-#include <shared_exponent.glsl>
+#include "shared_exponent.glsl"
 
 const float EPSILON = 1.19209290e-07;
 

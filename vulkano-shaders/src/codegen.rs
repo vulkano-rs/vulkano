@@ -184,7 +184,7 @@ fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Vec<String> {
 pub(super) fn compile(
     input: &MacroInput,
     source: &str,
-    path: &Path,
+    working_dir: &Path,
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
@@ -202,11 +202,6 @@ pub(super) fn compile(
     compile_options.include_directories = input.include_directories.clone();
     compile_options.debug = cfg!(feature = "shaderc-debug");
 
-    let working_dir = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-
     compile_into_spirv(shader_kind, source, "main", working_dir, &compile_options)
         .map_err(|e| e.replace("(s): ", "(s):\n"))
 }
@@ -220,7 +215,7 @@ pub(super) fn reflect(
     type_registry: &mut TypeRegistry,
 ) -> Result<(TokenStream, TokenStream), Error> {
     let spirv = Spirv::new(words).map_err(|err| {
-        Error::new_spanned(&source, format!("failed to parse SPIR-V words: {err}"))
+        Error::new_spanned(&source, format_args!("failed to parse SPIR-V words: {err}"))
     })?;
     let shader = Shader {
         source,
@@ -285,13 +280,7 @@ mod tests {
         shader_kind: ShaderKind,
         macro_defines: &[(String, String)],
     ) -> Result<(Vec<u32>, Vec<String>), String> {
-        compile(
-            input,
-            source,
-            Path::new("shader.glsl"),
-            shader_kind,
-            macro_defines,
-        )
+        compile(input, source, Path::new("."), shader_kind, macro_defines)
     }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> std::collections::HashSet<String> {
@@ -334,12 +323,13 @@ mod tests {
     fn include_resolution() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-        let include_test_path = root_path.join("tests").join("include_test.glsl");
+        let working_dir = root_path.join("tests");
+        let include_test_path = working_dir.join("include_test.glsl");
         let include_test_source = std::fs::read_to_string(&include_test_path).unwrap();
         let (_compile_relative, _) = compile(
             &MacroInput::empty(),
             &include_test_source,
-            &include_test_path,
+            &working_dir,
             ShaderKind::Vertex,
             &[],
         )
