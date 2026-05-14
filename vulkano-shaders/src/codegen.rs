@@ -72,12 +72,12 @@ fn compile_into_spirv(
     // Write vulkano.glsl to a temp directory and prepend it as the first include path so glslc
     // can resolve `#include "vulkano.glsl"` or `#include <vulkano.glsl>`.
     fs::create_dir_all(vulkano_dir)
-        .map_err(|e| format!("Failed to create vulkano include dir: {e}"))?;
+        .map_err(|e| format!("failed to create vulkano include dir: {e}"))?;
     fs::write(
         vulkano_dir.join("vulkano.glsl"),
         include_str!("../include/vulkano.glsl"),
     )
-    .map_err(|e| format!("Failed to write vulkano.glsl: {e}"))?;
+    .map_err(|e| format!("failed to write vulkano.glsl: {e}"))?;
 
     let dependencies_file = vulkano_dir.join("deps.d");
 
@@ -120,18 +120,18 @@ fn compile_into_spirv(
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Failed to call glslc: {e}"))?;
+        .map_err(|e| format!("failed to call glslc: {e}"))?;
 
     child
         .stdin
         .take()
-        .ok_or("Failed to open glslc stdin")?
+        .ok_or("failed to open glslc stdin")?
         .write_all(source.as_bytes())
-        .map_err(|e| format!("Failed to write to glslc stdin: {e}"))?;
+        .map_err(|e| format!("failed to write to glslc stdin: {e}"))?;
 
     let output = child
         .wait_with_output()
-        .map_err(|e| format!("Failed to wait for glslc: {e}"))?;
+        .map_err(|e| format!("failed to wait for glslc: {e}"))?;
 
     if !output.status.success() {
         return Err(format!(
