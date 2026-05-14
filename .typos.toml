@@ -12,5 +12,21 @@ ignore-hidden = false
 lod = "lod"
 uscaled = "uscaled"
 
+# glslc shader stage names
+"vert" = "vert"
+"tesc" = "tesc"
+"tese" = "tese"
+"geom" = "geom"
+"task" = "task"
+"mesh" = "mesh"
+"frag" = "frag"
+"comp" = "comp"
+"rgen" = "rgen"
+"rahit" = "rahit"
+"rchit" = "rchit"
+"rmiss" = "rmiss"
+"rint" = "rint"
+"rcall" = "rcall"
+
 [default.extend-identifiers]
 ANDed = "ANDed"
