@@ -829,6 +829,57 @@ impl<'a> BufferCreateInfo<'a> {
             }
         }
 
+        if flags.intersects(BufferCreateFlags::PROTECTED) {
+            if !device.enabled_features().protected_memory {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::PROTECTED`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "protected_memory",
+                    )])]),
+                    vuids: &["VUID-VkBufferCreateInfo-flags-01887"],
+                }));
+            }
+
+            // If VK_BUFFER_CREATE_SPARSE_ALIASED_BIT support is added, then it should be added to
+            // this validation.
+            if flags
+                .intersects(BufferCreateFlags::SPARSE_BINDING | BufferCreateFlags::SPARSE_RESIDENCY)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::PROTECTED`, but also \
+                        contains one of the sparse memory flags"
+                        .into(),
+                    vuids: &["VUID-VkBufferCreateInfo-None-01888"],
+                    ..Default::default()
+                }));
+            }
+
+            // If VK_BUFFER_USAGE_2_VIDEO_DECODE_SRC_BIT_KHR,
+            // VK_BUFFER_USAGE_2_VIDEO_ENCODE_DST_BIT_KHR,
+            // or VK_BUFFER_USAGE_2_DESCRIPTOR_HEAP_BIT_EXT get added, then they should be added to
+            // the allowed list.
+            if !(usage
+                - (BufferUsage::TRANSFER_SRC
+                    | BufferUsage::TRANSFER_DST
+                    | BufferUsage::UNIFORM_TEXEL_BUFFER
+                    | BufferUsage::STORAGE_TEXEL_BUFFER
+                    | BufferUsage::UNIFORM_BUFFER
+                    | BufferUsage::STORAGE_BUFFER
+                    | BufferUsage::SHADER_DEVICE_ADDRESS))
+                .is_empty()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "contains `BufferCreateFlags::PROTECTED`, but also contains \
+                        usages other than [allowed list]"
+                        .into(),
+                    vuids: &["VUID-VkBufferCreateInfo-flags-09641"],
+                    ..Default::default()
+                }));
+            }
+        }
+
         if flags.intersects(BufferCreateFlags::SPARSE_BINDING) {
             if !device.enabled_features().sparse_binding {
                 return Err(Box::new(ValidationError {
@@ -958,8 +1009,8 @@ pub(crate) struct BufferCreateInfoExtensionsVk {
 
 #[cfg(test)]
 mod tests {
-    use super::{BufferCreateInfo, BufferUsage, RawBuffer};
-    use crate::device::DeviceOwned;
+    use super::{BufferCreateFlags, BufferCreateInfo, BufferUsage, RawBuffer};
+    use crate::{device::DeviceOwned, Validated};
 
     #[test]
     fn create() {
@@ -978,6 +1029,56 @@ mod tests {
         assert!(reqs.layout.size() >= 128);
         assert_eq!(buf.size(), 128);
         assert_eq!(buf.device(), &device);
+    }
+
+    #[test]
+    fn validate_no_protected_sparse() {
+        let (device, _) = gfx_dev_and_queue!(protected_memory, sparse_binding);
+        match RawBuffer::new(
+            &device,
+            &BufferCreateInfo {
+                size: 128,
+                flags: (BufferCreateFlags::PROTECTED | BufferCreateFlags::SPARSE_BINDING),
+                usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+        ) {
+            Err(Validated::ValidationError(_)) => {}
+            Err(Validated::Error(err)) => {
+                panic!(
+                    "Expected a ValidationError, but got a runtime error: {:?}",
+                    err
+                );
+            }
+            Ok(_) => {
+                panic!("RawBuffer::new succeeded when it should have failed!");
+            }
+        };
+    }
+
+    #[test]
+    fn validate_invalid_protected_usage() {
+        let (device, _) = gfx_dev_and_queue!(protected_memory);
+        match RawBuffer::new(
+            &device,
+            &BufferCreateInfo {
+                size: 128,
+                flags: BufferCreateFlags::PROTECTED,
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+        ) {
+            Err(Validated::ValidationError(err)) => {}
+            Err(Validated::Error(err)) => {
+                panic!(
+                    "Expected a ValidationError, but got a runtime error: {:?}",
+                    err
+                );
+            }
+            Ok(_) => {
+                panic!("bind_memory succeeded when it should have failed!");
+            }
+        };
     }
 
     /* Re-enable when sparse binding is properly implemented
