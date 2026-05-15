@@ -1903,6 +1903,34 @@ impl<'a> ImageCreateInfo<'a> {
             }));
         }
 
+        if flags.intersects(ImageCreateFlags::PROTECTED) {
+            if !device.enabled_features().protected_memory {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::PROTECTED`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "protected_memory",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-flags-01890"],
+                }));
+            }
+
+            // If VK_IMAGE_CREATE_SPARSE_ALIASED_BIT support is added, then it should be added to
+            // this validation.
+            if flags
+                .intersects(ImageCreateFlags::SPARSE_BINDING | ImageCreateFlags::SPARSE_RESIDENCY)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::PROTECTED`, but also \
+                        contains one of the sparse memory flags"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-None-01891"],
+                    ..Default::default()
+                }));
+            }
+        }
+
         if !view_formats.is_empty() {
             if !(device.api_version() >= Version::V1_2
                 || device.enabled_extensions().khr_image_format_list)
@@ -3327,6 +3355,34 @@ mod tests {
 
         let result = image.bind_memory(iter::once(resource_memory));
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn create_protected_and_sparse_is_disallowed() {
+        let (device, _) = gfx_dev_and_queue!(protected_memory, sparse_binding);
+
+        match RawImage::new(
+            &device,
+            &ImageCreateInfo {
+                flags: (ImageCreateFlags::PROTECTED | ImageCreateFlags::SPARSE_BINDING),
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_UNORM,
+                extent: [32, 32, 1],
+                usage: ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+        ) {
+            Err(Validated::ValidationError(err)) => {}
+            Err(Validated::Error(err)) => {
+                panic!(
+                    "Expected a ValidationError, but got a runtime error: {:?}",
+                    err
+                );
+            }
+            Ok(_) => {
+                panic!("RawImage::new succeeded when it should have failed!");
+            }
+        }
     }
 
     #[test]
