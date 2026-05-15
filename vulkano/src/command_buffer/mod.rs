@@ -1021,9 +1021,7 @@ impl SubmitInfo<'_> {
                 .validate(device)
                 .map_err(|err| err.add_context(format!("command_buffers[{}]", index)))?;
 
-            if !protected_submit
-                && command_buffer_submit_info.command_buffer.is_protected()
-            {
+            if !protected_submit && command_buffer_submit_info.command_buffer.is_protected() {
                 return Err(Box::new(ValidationError {
                     context: format!("command_buffer[{}]", index).into(),
                     problem: "is a protected command_buffer, but the protected structure has protected_submit set to false.".into(),
@@ -1032,8 +1030,7 @@ impl SubmitInfo<'_> {
                 )])]),
                     vuids: &["VUID-VkSubmitInfo-pNext-04120"],
                 }));
-            } else if protected_submit
-                && !command_buffer_submit_info.command_buffer.is_protected()
+            } else if protected_submit && !command_buffer_submit_info.command_buffer.is_protected()
             {
                 return Err(Box::new(ValidationError {
                     context: format!("command_buffer[{}]", index).into(),
@@ -1185,8 +1182,8 @@ impl SubmitInfo<'_> {
                     .signal_semaphore_values(signal_semaphore_values_vk)
             });
 
-        let protected_vk = protected_submit
-            .then(|| vk::ProtectedSubmitInfo::default().protected_submit(true));
+        let protected_vk =
+            protected_submit.then(|| vk::ProtectedSubmitInfo::default().protected_submit(true));
 
         SubmitInfoExtensionsVk {
             timeline_semaphore_vk,
