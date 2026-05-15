@@ -140,45 +140,149 @@ fn compile_into_spirv(
         ));
     }
 
-    let includes = fs::read_to_string(&dependencies_file)
-        .ok()
-        .map(|content| parse_deps_file(&content, vulkano_dir))
-        .unwrap_or_default();
+    let content = &fs::read_to_string(&dependencies_file)
+        .map_err(|e| format!("failed to read dependencies file: {e}"))?;
+    let includes = parse_deps_file(content, vulkano_dir).map_err(|e| {
+        let content = content
+            .lines()
+            .flat_map(|line| ["    ", line])
+            .collect::<String>();
+
+        format!("failed to parse dependencies file: {e}\nfile content:\n{content}")
+    })?;
 
     let words = vulkano::shader::spirv::bytes_to_words(&output.stdout)
         .map(|w| w.into_owned())
-        .map_err(|e| format!("Malformed SPIR-V: {e}"))?;
+        .map_err(|e| format!("malformed SPIR-V: {e}"))?;
 
     Ok((words, includes))
 }
 
 /// Parses a Makefile-format dependency file produced by glslc `-MF`, returning the list of
 /// included file paths. The format is `target: source dep1 dep2 ...`.
-fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Vec<String> {
-    // Join continuation lines (lines ending with `\` followed by newline).
-    let joined = content.replace("\\\n", " ");
+fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Result<Vec<String>, String> {
+    fn take_while(input: &str, predicate: impl FnMut(char) -> bool) -> (&str, &str) {
+        let index = input.len() - input.trim_start_matches(predicate).len();
+
+        input.split_at(index)
+    }
+
+    fn take_until(input: &str, predicate: impl FnMut(char) -> bool) -> (&str, &str) {
+        let Some(index) = input.find(predicate) else {
+            return (input, "");
+        };
+
+        input.split_at(index)
+    }
+
+    fn is_space(c: char) -> bool {
+        c == ' '
+    }
+
+    fn is_space_or_eol(c: char) -> bool {
+        c == ' ' || c == '\n'
+    }
+
+    fn found(input: &str) -> String {
+        if let Some(c) = input.chars().next() {
+            format!("`{}`", c.escape_default())
+        } else {
+            "EOF".to_owned()
+        }
+    }
+
+    let column = |input: &str| content.len() - input.len() + 1;
 
     // Everything after the first `:` is in the format `source dep1 dep2 ...`.
-    let deps_str = match joined.find(':') {
-        Some(pos) => &joined[pos + 1..],
-        None => return Vec::new(),
+    let Some((start, input)) = content.split_once(':') else {
+        return Ok(Vec::new());
     };
 
-    let mut tokens = deps_str.split_whitespace();
+    if start.contains('\n') {
+        return Err("expected no new lines before the `:`".to_owned());
+    }
 
-    // skip the source (printed as <stdin>)
-    tokens.next();
+    // Skip the source.
+    let Some(input) = input.strip_prefix(" <stdin>") else {
+        let column = column(input);
+        let found = found(input);
+        return Err(format!("1:{column}: expected ` <stdin>`, found {found}"));
+    };
 
-    tokens
-        .map(|s| {
-            let normalized: PathBuf = Path::new(s).components().collect();
-            normalized
-                .into_os_string()
-                .into_string()
-                .unwrap_or_else(|_| s.to_owned())
-        })
-        .filter(|s| !Path::new(s).starts_with(vulkano_dir))
-        .collect()
+    if input.starts_with('\n') {
+        return Ok(Vec::new());
+    }
+
+    let Some(input) = input.strip_prefix(' ') else {
+        let column = column(input);
+        let found = found(input);
+        return Err(format!("1:{column}: expected `\\n` or ` `, found {found}"));
+    };
+
+    let (token, rest) = take_until(input, is_space_or_eol);
+
+    // The path at the start should be absolute, so without leading spaces.
+    if token.is_empty() {
+        let column = column(input);
+        let found = found(input);
+        return Err(format!(
+            "1:{column}: expected an absolute path, found {found}",
+        ));
+    }
+
+    let mut paths = Vec::new();
+    let mut path = token.to_owned();
+    let mut input = rest;
+
+    // HACK: The Makefile format doesn't support path quoting, and shaderc just outputs paths that
+    // contain spaces unquoted. Meaning that we don't know if a space is an actual delimiter or
+    // part of a path. What we do is that we treat a single space before absolute paths as an
+    // actual delimiter, and treat any other space as part of a path. This rules out a directory
+    // name that consists of a single space.
+    loop {
+        if input.starts_with('\n') {
+            let normalized = normalize_str(path);
+
+            if !Path::new(&normalized).starts_with(vulkano_dir) {
+                paths.push(normalized);
+            }
+
+            break;
+        }
+
+        let (spaces, rest) = take_while(input, is_space);
+        let (token, rest) = take_until(rest, is_space_or_eol);
+
+        debug_assert!(!spaces.is_empty());
+
+        if spaces.len() == 1 && Path::new(token).is_absolute() {
+            let normalized = normalize_str(path);
+            path = token.to_owned();
+
+            if !Path::new(&normalized).starts_with(vulkano_dir) {
+                paths.push(normalized);
+            }
+        } else {
+            path.push_str(spaces);
+            path.push_str(token);
+        }
+
+        input = rest;
+    }
+
+    Ok(paths)
+}
+
+fn normalize_str(path: impl AsRef<Path>) -> String {
+    fn inner(path: &Path) -> String {
+        path.components()
+            .collect::<PathBuf>()
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
+
+    inner(path.as_ref())
 }
 
 pub(super) fn compile(
@@ -276,6 +380,7 @@ mod tests {
     use crate::EnvVersion;
     use proc_macro2::Span;
     use quote::ToTokens;
+    use std::collections::HashSet;
     use syn::{File, Item};
     use vulkano::shader::reflect;
 
@@ -294,13 +399,10 @@ mod tests {
         )
     }
 
-    fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> std::collections::HashSet<String> {
+    fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> HashSet<String> {
         paths
             .iter()
-            .map(|p| {
-                let normalized: PathBuf = root_path.join(p).components().collect();
-                normalized.into_os_string().into_string().unwrap()
-            })
+            .map(|p| normalize_str(root_path.join(p)))
             .collect()
     }
 
@@ -365,7 +467,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            std::collections::HashSet::from_iter(includes),
+            HashSet::from_iter(includes),
             convert_paths(
                 &root_path,
                 &[
@@ -396,7 +498,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            std::collections::HashSet::from_iter(includes_with_relative),
+            HashSet::from_iter(includes_with_relative),
             convert_paths(
                 &root_path,
                 &[
@@ -433,7 +535,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            std::collections::HashSet::from_iter(includes_absolute_path),
+            HashSet::from_iter(includes_absolute_path),
             convert_paths(
                 &root_path,
                 &[["tests", "include_dir_a", "target_a.glsl"]
@@ -461,7 +563,7 @@ mod tests {
         .expect("cannot resolve include files");
 
         assert_eq!(
-            std::collections::HashSet::from_iter(includes_recursive),
+            HashSet::from_iter(includes_recursive),
             convert_paths(
                 &root_path,
                 &[
@@ -475,6 +577,97 @@ mod tests {
                         .into_iter()
                         .collect(),
                 ],
+            ),
+        );
+    }
+
+    #[test]
+    fn include_paths_with_spaces() {
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let (_compile_include_paths, includes) = compile_inline(
+            &MacroInput {
+                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                ..MacroInput::empty()
+            },
+            r#"
+                #version 450
+                #include <foo bar>
+                #include <foo bar.glsl>
+                #include <foo.glsl bar>
+                #include <foo.glsl bar.glsl>
+                void main() {}
+            "#,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes),
+            convert_paths(
+                &root_path,
+                &[
+                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo bar"]),
+                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo bar.glsl"]),
+                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo.glsl bar"]),
+                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo.glsl bar.glsl"]),
+                ],
+            ),
+        );
+    }
+
+    #[test]
+    fn include_many_paths() {
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let (_compile_include_paths, includes) = compile_inline(
+            &MacroInput {
+                include_directories: vec![root_path.join("tests").join("include_dir_many")],
+                ..MacroInput::empty()
+            },
+            r#"
+                #version 450
+                #include <very_long_file_name_01.glsl>
+                #include <very_long_file_name_02.glsl>
+                #include <very_long_file_name_03.glsl>
+                #include <very_long_file_name_04.glsl>
+                #include <very_long_file_name_05.glsl>
+                #include <very_long_file_name_06.glsl>
+                #include <very_long_file_name_07.glsl>
+                #include <very_long_file_name_08.glsl>
+                #include <very_long_file_name_09.glsl>
+                #include <very_long_file_name_10.glsl>
+                #include <very_long_file_name_11.glsl>
+                #include <very_long_file_name_12.glsl>
+                #include <very_long_file_name_13.glsl>
+                #include <very_long_file_name_14.glsl>
+                #include <very_long_file_name_15.glsl>
+                #include <very_long_file_name_16.glsl>
+                #include <very_long_file_name_17.glsl>
+                #include <very_long_file_name_18.glsl>
+                #include <very_long_file_name_19.glsl>
+                #include <very_long_file_name_20.glsl>
+                void main() {}
+            "#,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes),
+            convert_paths(
+                &root_path,
+                &(1..=20)
+                    .map(|i| {
+                        PathBuf::from_iter([
+                            "tests",
+                            "include_dir_many",
+                            &format!("very_long_file_name_{i:0>2}.glsl"),
+                        ])
+                    })
+                    .collect::<Vec<_>>(),
             ),
         );
     }
