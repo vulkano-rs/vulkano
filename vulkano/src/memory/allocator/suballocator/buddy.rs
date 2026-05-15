@@ -2,13 +2,11 @@ use super::{
     AllocationType, Region, Suballocation, SuballocationNode, Suballocator, SuballocatorError,
 };
 use crate::{
-    memory::{
-        allocator::{align_up, array_vec::ArrayVec, AllocationHandle, DeviceLayout},
-        is_aligned, DeviceAlignment,
-    },
-    DeviceSize,
+    DeviceSize, memory::{
+        DeviceAlignment, allocator::{AllocationHandle, DeviceLayout, align_up, array_vec::ArrayVec, suballocator::SuballocationType}, is_aligned
+    }
 };
-use std::{cmp, num::NonZero};
+use std::{cmp, iter::FusedIterator, marker::PhantomData, num::NonZero};
 
 /// A [suballocator] whose structure forms a binary tree of power-of-two-sized suballocations.
 ///
@@ -79,7 +77,7 @@ impl BuddyAllocator {
 }
 
 unsafe impl Suballocator for BuddyAllocator {
-    type Suballocations<'a> = std::iter::Empty<SuballocationNode>;
+    type Suballocations<'a> = Suballocations<'a>;
 
     /// Creates a new `BuddyAllocator` for the given [region].
     ///
@@ -269,8 +267,112 @@ unsafe impl Suballocator for BuddyAllocator {
         self.free_size
     }
 
+    /// Returns an iterator over the current suballocations.
+    /// 
+    /// # Efficiency
+    /// This allocates a `Vec` and sorts with *O*(*n* log (*n*)) where *n* is the size of the region.
     #[inline]
     fn suballocations(&self) -> Self::Suballocations<'_> {
-        todo!()
+        let free_count: usize = self.free_list.iter().map(Vec::len).sum();
+
+        // Flatten the per-order free-lists into a single sequence of `(offset, size)`
+        // pairs and sort it by offset.
+        let mut free_nodes: Vec<(DeviceSize, DeviceSize)> = Vec::with_capacity(free_count);
+        for (order, list) in self.free_list.iter().enumerate() {
+            // This can't discard any bits because `order` is confined to the
+            // range [0, log(region.size / BuddyAllocator::MIN_NODE_SIZE)].
+            let size = BuddyAllocator::MIN_NODE_SIZE << order;
+            free_nodes.extend(list.iter().map(|&offset| (offset, size)));
+        }
+        free_nodes.sort_unstable_by_key(|&(offset, _)| offset);
+
+        // Worst case: an `Unknown` node before the first free node, between
+        // each pair of free nodes, and after the last free node.
+        let mut nodes: Vec<SuballocationNode> = Vec::with_capacity(2 * free_count + 1);
+
+        // This can't overflow because the region's end is bounded by
+        // `DeviceLayout::MAX_SIZE`.
+        let region_end = self.region.offset() + self.region.size();
+        let mut cursor = self.region.offset();
+
+        for (offset, size) in free_nodes {
+            if cursor < offset {
+                // The allocator only tracks free nodes, so the `SuballocationType`
+                // is always `Unknown` for the gaps between them.
+                nodes.push(SuballocationNode {
+                    offset: cursor,
+                    size: offset - cursor,
+                    allocation_type: SuballocationType::Unknown,
+                });
+            }
+            nodes.push(SuballocationNode {
+                offset,
+                size,
+                allocation_type: SuballocationType::Free,
+            });
+            // Free nodes are non-overlapping and bounded by the region, so
+            // this can't overflow.
+            cursor = offset + size;
+        }
+
+        if cursor < region_end {
+            // Handle gap between last `Free` node and the end of the region.
+            nodes.push(SuballocationNode {
+                offset: cursor,
+                size: region_end - cursor,
+                allocation_type: SuballocationType::Unknown,
+            });
+        }
+
+        Suballocations {
+            inner: nodes.into_iter(),
+            marker: PhantomData,
+        }
     }
 }
+
+#[derive(Clone)]
+pub struct Suballocations<'a> {
+    inner: std::vec::IntoIter<SuballocationNode>,
+    marker: PhantomData<&'a BuddyAllocator>,
+}
+
+impl Iterator for Suballocations<'_> {
+    type Item = SuballocationNode;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+
+    #[inline]
+    fn last(self) -> Option<Self::Item> {
+        self.inner.last()
+    }
+
+    #[inline]
+    fn count(self) -> usize {
+        self.inner.count()
+    }
+}
+
+impl DoubleEndedIterator for Suballocations<'_> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back()
+    }
+}
+
+impl ExactSizeIterator for Suballocations<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl FusedIterator for Suballocations<'_> {}
