@@ -219,55 +219,50 @@ fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Result<Vec<String>, Str
         return Err(format!("1:{column}: expected `\\n` or ` `, found {found}"));
     };
 
-    let (token, rest) = take_until(input, is_space_or_eol);
-
-    // The path at the start should be absolute, so without leading spaces.
-    if token.is_empty() {
-        let column = column(input);
-        let found = found(input);
-        return Err(format!(
-            "1:{column}: expected an absolute path, found {found}",
-        ));
-    }
-
     let mut paths = Vec::new();
-    let mut path = token.to_owned();
-    let mut input = rest;
+    let mut path = String::new();
+    let mut input = input;
 
     // HACK: The Makefile format doesn't support path quoting, and shaderc just outputs paths that
     // contain spaces unquoted. Meaning that we don't know if a space is an actual delimiter or
-    // part of a path. What we do is that we treat a single space before absolute paths as an
-    // actual delimiter, and treat any other space as part of a path. This rules out a directory
-    // name that consists of a single space.
+    // part of a path. What we do is that we treat a file extension followed by a single space as
+    // an actual delimiter, and treat any other space as part of a path. This rules out file and/or
+    // directory names that contain an extension followed by space(s), as well as file names
+    // without an extension.
     loop {
-        if input.starts_with('\n') {
+        let (spaces, rest) = take_while(input, is_space);
+        let (token, rest) = take_until(rest, is_space_or_eol);
+        let has_extension = Path::new(token).extension().is_some();
+
+        path.push_str(spaces);
+        path.push_str(token);
+
+        if has_extension {
             let normalized = normalize_str(path);
 
             if !Path::new(&normalized).starts_with(vulkano_dir) {
                 paths.push(normalized);
+            }
+
+            path = String::new();
+        }
+
+        input = rest;
+
+        if input.starts_with('\n') {
+            if !path.is_empty() {
+                let column = column(input);
+                return Err(format!(
+                    "1:{column}: expected a file extension, found `\\n`",
+                ));
             }
 
             break;
         }
 
-        let (spaces, rest) = take_while(input, is_space);
-        let (token, rest) = take_until(rest, is_space_or_eol);
-
-        debug_assert!(!spaces.is_empty());
-
-        if spaces.len() == 1 && Path::new(token).is_absolute() {
-            let normalized = normalize_str(path);
-            path = token.to_owned();
-
-            if !Path::new(&normalized).starts_with(vulkano_dir) {
-                paths.push(normalized);
-            }
-        } else {
-            path.push_str(spaces);
-            path.push_str(token);
+        if has_extension {
+            input = input.strip_prefix(' ').unwrap();
         }
-
-        input = rest;
     }
 
     Ok(paths)
@@ -459,7 +454,7 @@ mod tests {
 
         let include_test_path = root_path.join("tests").join("include_test.glsl");
         let include_test_source = std::fs::read_to_string(&include_test_path).unwrap();
-        let (_compile_relative, _) = compile(
+        let (_compile_relative, relative_includes) = compile(
             &MacroInput::empty(),
             &include_test_source,
             &include_test_path,
@@ -467,6 +462,17 @@ mod tests {
             &[],
         )
         .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(relative_includes),
+            convert_paths(
+                Path::new(""),
+                &[
+                    PathBuf::from_iter(["include_dir_a", "target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_b", "target_b.glsl"]),
+                ],
+            ),
+        );
 
         let (_compile_include_paths, includes) = compile_inline(
             &MacroInput {
@@ -613,9 +619,7 @@ mod tests {
             },
             r#"
                 #version 450
-                #include <foo bar>
                 #include <foo bar.glsl>
-                #include <foo.glsl bar>
                 #include <foo.glsl bar.glsl>
                 void main() {}
             "#,
@@ -629,13 +633,48 @@ mod tests {
             convert_paths(
                 &root_path,
                 &[
-                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo bar"]),
                     PathBuf::from_iter(["tests", "include_dir_spaces", "foo bar.glsl"]),
-                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo.glsl bar"]),
-                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo.glsl bar.glsl"]),
+                    PathBuf::from_iter(["tests", "include_dir_spaces", "foo.glsl"]),
                 ],
-            ),
+            )
+            .into_iter()
+            .chain([String::from("bar.glsl")])
+            .collect::<HashSet<_>>(),
         );
+
+        let err = compile_inline(
+            &MacroInput {
+                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                ..MacroInput::empty()
+            },
+            r#"
+                #version 450
+                #include <foo bar>
+                void main() {}
+            "#,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("expected a file extension"));
+
+        let err = compile_inline(
+            &MacroInput {
+                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                ..MacroInput::empty()
+            },
+            r#"
+                #version 450
+                #include <foo.glsl bar>
+                void main() {}
+            "#,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("expected a file extension"));
     }
 
     #[test]
