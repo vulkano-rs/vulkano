@@ -45,6 +45,8 @@ Changes to samplers:
 Changes to memory allocation:
 - `StandardMemoryAllocator::new_default` was removed in favor of `StandardMemoryAllocator::new(&device, &Default::default())` fulfilling the same function instead.
 - `MemoryRequirements` is now marked `#[non_exhaustive]`.
+- `MemoryAllocator`'s `allocate_from_type`, `allocate` and `allocate_dedicated` methods were renamed to `try_allocate_from_type`, `try_allocate` and `try_allocate_dedicated`, respectively, for consistency with the new inherent methods and associated functions.
+- `MemoryAllocator` has the new required methods `allocate_from_type_unchecked`, `allocate_unchecked` and `allocated_dedicated_unchecked` to fix the issue that `Buffer::new` and `Image::new` would have had of returning a `Validated<VulkanError>` despite being unchecked.
 
 Changes to pipelines:
 - `ColorBlendState::new` and `ViewportState::new` (previously deprecated, now undeprecated) now return the same as `Default::default()`.
@@ -71,6 +73,20 @@ Changes to descriptor sets:
 Changes to vulkano-shaders:
 - The `shaderc-build-from-source` Cargo feature has been removed.
 - Shader compilation now requires `glslc` to be present on `PATH` at build time instead of `libshaderc` having to be supplied via pkg-config, the `SHADERC_LIB_DIR` environment variable, or the `VULKAN_SDK` environment variable. This hopefully makes setup easier.
+
+Changes to errors:
+- Functions that used to return anything other than `VulkanError` on error now unwrap everything except a `VulkanError`. The old behavior is preserved with the same function name prefixed with `try_` for those that truly need it. This fixes the sea of `.unwrap()`s, or even worse `.map_err(Validated::unwrap)`, that more often than not litter a vulkano application.
+
+Changes to command buffer allocation:
+- `CommandBufferAllocator`'s `allocate` method was renamed to `try_allocate` for consistency with the new inherent methods and associated functions.
+- `CommandBufferAllocator` has the new required method `allocate_unchecked` to fix the issue of `RecordingCommandBuffer::new_unchecked` returning a `Validated<VulkanError>` despite being unchecked.
+
+Changes to descriptor set allocation:
+- `DescriptorSetAllocator`'s `allocate` method was renamed to `try_allocate` for consistency with the new inherent methods and associated functions.
+- `DescriptorSetAllocator` has the new required method `allocate_unchecked` to fix the issue that `RawDescriptorSet::new_unchecked` would have had of returning a `Validated<VulkanError>` despite being unchecked.
+
+Changes to vulkano-shaders:
+- The `shader!` macro now generates unsafe functions. These have always been unsafe because they delegate to the unsafe `ShaderModule::new`, but marked incorrectly. This fixes a long-standing soundness issue.
 
 ### Additions
 
