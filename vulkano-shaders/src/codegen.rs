@@ -142,7 +142,7 @@ fn compile_into_spirv(
 
     let content = &fs::read_to_string(&dependencies_file)
         .map_err(|e| format!("failed to read dependencies file: {e}"))?;
-    let includes = parse_deps_file(content, vulkano_dir).map_err(|e| {
+    let includes = parse_deps_file(content, vulkano_dir, working_dir).map_err(|e| {
         let content = content
             .lines()
             .flat_map(|line| ["    ", line])
@@ -160,7 +160,11 @@ fn compile_into_spirv(
 
 /// Parses a Makefile-format dependency file produced by glslc `-MF`, returning the list of
 /// included file paths. The format is `target: source dep1 dep2 ...`.
-fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Result<Vec<String>, String> {
+fn parse_deps_file(
+    content: &str,
+    vulkano_dir: &Path,
+    working_dir: &Path,
+) -> Result<Vec<String>, String> {
     fn take_while(input: &str, predicate: impl FnMut(char) -> bool) -> (&str, &str) {
         let index = input.len() - input.trim_start_matches(predicate).len();
 
@@ -238,7 +242,11 @@ fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Result<Vec<String>, Str
         path.push_str(token);
 
         if has_extension {
-            let normalized = normalize_str(path);
+            let normalized = if Path::new(&path).is_absolute() {
+                normalize_str(path)
+            } else {
+                normalize_str(PathBuf::from_iter([working_dir, &PathBuf::from(path)]))
+            };
 
             if !Path::new(&normalized).starts_with(vulkano_dir) {
                 if !Path::new(&normalized).is_file() {
