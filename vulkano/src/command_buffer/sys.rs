@@ -30,17 +30,75 @@ pub struct RecordingCommandBuffer {
 }
 
 impl RecordingCommandBuffer {
-    /// Allocates and begins recording a new command buffer.
+    /// Allocates and begins recording a new command buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
     #[inline]
+    #[track_caller]
     pub fn new(
         allocator: &Arc<impl CommandBufferAllocator + ?Sized>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        Self::new_inner(
+            allocator.clone().as_dyn(),
+            queue_family_index,
+            level,
+            begin_info,
+        )
+    }
+
+    #[inline]
+    #[track_caller]
+    fn new_inner(
+        allocator: Arc<dyn CommandBufferAllocator>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_new_inner(allocator, queue_family_index, level, begin_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Allocates and begins recording a new command buffer.
+    #[inline]
+    pub fn try_new(
+        allocator: &Arc<impl CommandBufferAllocator + ?Sized>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo<'_>,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::try_new_inner(
+            allocator.clone().as_dyn(),
+            queue_family_index,
+            level,
+            begin_info,
+        )
+    }
+
+    #[inline]
+    fn try_new_inner(
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(allocator.device(), queue_family_index, level, begin_info)?;
 
-        unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
+        let allocation = allocator.try_allocate(queue_family_index, level)?;
+
+        Ok(unsafe {
+            Self::new_unchecked_inner_inner(allocator, allocation, queue_family_index, begin_info)
+        }?)
     }
 
     pub(super) fn validate_new(
@@ -75,7 +133,7 @@ impl RecordingCommandBuffer {
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo<'_>,
-    ) -> Result<Self, Validated<VulkanError>> {
+    ) -> Result<Self, VulkanError> {
         unsafe {
             Self::new_unchecked_inner(
                 allocator.clone().as_dyn(),
@@ -91,9 +149,20 @@ impl RecordingCommandBuffer {
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo<'_>,
-    ) -> Result<Self, Validated<VulkanError>> {
-        let allocation = allocator.allocate(queue_family_index, level)?;
+    ) -> Result<Self, VulkanError> {
+        let allocation = unsafe { allocator.allocate_unchecked(queue_family_index, level) }?;
 
+        unsafe {
+            Self::new_unchecked_inner_inner(allocator, allocation, queue_family_index, begin_info)
+        }
+    }
+
+    unsafe fn new_unchecked_inner_inner(
+        allocator: Arc<dyn CommandBufferAllocator>,
+        allocation: CommandBufferAlloc,
+        queue_family_index: u32,
+        begin_info: &CommandBufferBeginInfo<'_>,
+    ) -> Result<Self, VulkanError> {
         {
             let begin_info_fields2_vk = begin_info.to_vk_fields2();
             let mut begin_info_fields1_extensions_vk =

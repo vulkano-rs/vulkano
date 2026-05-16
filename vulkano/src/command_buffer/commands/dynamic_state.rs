@@ -17,7 +17,13 @@ use smallvec::SmallVec;
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn set_blend_constants(
+    #[track_caller]
+    pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
+        unsafe { self.try_set_blend_constants(constants) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_blend_constants(
         &mut self,
         constants: [f32; 4],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -56,7 +62,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_color_write_enable(
+    #[track_caller]
+    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> &mut Self {
+        unsafe { self.try_set_color_write_enable(enables) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_color_write_enable(
         &mut self,
         enables: &[bool],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -121,7 +133,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_cull_mode(
+    #[track_caller]
+    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
+        unsafe { self.try_set_cull_mode(cull_mode) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_cull_mode(
         &mut self,
         cull_mode: CullMode,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -188,7 +206,18 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_depth_bias(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> &mut Self {
+        unsafe { self.try_set_depth_bias(constant_factor, clamp, slope_factor) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_bias(
         &mut self,
         constant_factor: f32,
         clamp: f32,
@@ -249,7 +278,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_depth_bias_enable(
+    #[track_caller]
+    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_bias_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_bias_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -309,7 +344,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_depth_bounds(
+        &mut self,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
+    ) -> &mut Self {
+        unsafe { self.try_set_depth_bounds(min_depth_bounds, max_depth_bounds) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_bounds(
         &mut self,
         min_depth_bounds: f32,
         max_depth_bounds: f32,
@@ -384,7 +429,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_depth_bounds_test_enable(
+    #[track_caller]
+    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_bounds_test_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_bounds_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -446,7 +497,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_depth_compare_op(
+    #[track_caller]
+    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
+        unsafe { self.try_set_depth_compare_op(compare_op) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_compare_op(
         &mut self,
         compare_op: CompareOp,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -513,7 +570,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_depth_test_enable(
+    #[track_caller]
+    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_test_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -575,7 +638,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_depth_write_enable(
+    #[track_caller]
+    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_write_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_depth_write_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -635,7 +704,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: &[Scissor],
+    ) -> &mut Self {
+        unsafe { self.try_set_discard_rectangle(first_rectangle, rectangles) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
         rectangles: &[Scissor],
@@ -716,7 +795,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_front_face(
+    #[track_caller]
+    pub unsafe fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
+        unsafe { self.try_set_front_face(face) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_front_face(
         &mut self,
         face: FrontFace,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -780,7 +865,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_line_stipple(
+    #[track_caller]
+    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
+        unsafe { self.try_set_line_stipple(factor, pattern) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_line_stipple(
         &mut self,
         factor: u32,
         pattern: u16,
@@ -841,7 +932,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_line_width(
+    #[track_caller]
+    pub unsafe fn set_line_width(&mut self, line_width: f32) -> &mut Self {
+        unsafe { self.try_set_line_width(line_width) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_line_width(
         &mut self,
         line_width: f32,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -891,7 +988,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_logic_op(
+    #[track_caller]
+    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
+        unsafe { self.try_set_logic_op(logic_op) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_logic_op(
         &mut self,
         logic_op: LogicOp,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -951,7 +1054,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_patch_control_points(
+    #[track_caller]
+    pub unsafe fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
+        unsafe { self.try_set_patch_control_points(num) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_patch_control_points(
         &mut self,
         num: u32,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1027,7 +1136,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_primitive_restart_enable(
+    #[track_caller]
+    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_primitive_restart_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_primitive_restart_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1089,7 +1204,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_primitive_topology(
+    #[track_caller]
+    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
+        unsafe { self.try_set_primitive_topology(topology) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_primitive_topology(
         &mut self,
         topology: PrimitiveTopology,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1204,7 +1325,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_rasterizer_discard_enable(
+    #[track_caller]
+    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_rasterizer_discard_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_rasterizer_discard_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1266,7 +1393,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_scissor(
+    #[track_caller]
+    pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
+        unsafe { self.try_set_scissor(first_scissor, scissors) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_scissor(
         &mut self,
         first_scissor: u32,
         scissors: &[Scissor],
@@ -1361,7 +1494,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_scissor_with_count(
+    #[track_caller]
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
+        unsafe { self.try_set_scissor_with_count(scissors) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_scissor_with_count(
         &mut self,
         scissors: &[Scissor],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1460,7 +1599,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_stencil_compare_mask(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_compare_mask(faces, compare_mask) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
         compare_mask: u32,
@@ -1512,7 +1661,21 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_stencil_op(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op) }
+            .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_stencil_op(
         &mut self,
         faces: StencilFaces,
         fail_op: StencilOp,
@@ -1631,7 +1794,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_stencil_reference(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_reference(faces, reference) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_stencil_reference(
         &mut self,
         faces: StencilFaces,
         reference: u32,
@@ -1681,7 +1854,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_stencil_test_enable(
+    #[track_caller]
+    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_stencil_test_enable(enable) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_stencil_test_enable(
         &mut self,
         enable: bool,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1741,7 +1920,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_stencil_write_mask(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_write_mask(faces, write_mask) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_stencil_write_mask(
         &mut self,
         faces: StencilFaces,
         write_mask: u32,
@@ -1791,7 +1980,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_vertex_input(
+    #[track_caller]
+    pub unsafe fn set_vertex_input(&mut self, vertex_input_state: &VertexInputState) -> &mut Self {
+        unsafe { self.try_set_vertex_input(vertex_input_state) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_vertex_input(
         &mut self,
         vertex_input_state: &VertexInputState,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1879,7 +2074,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: &[Viewport],
+    ) -> &mut Self {
+        unsafe { self.try_set_viewport(first_viewport, viewports) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_viewport(
         &mut self,
         first_viewport: u32,
         viewports: &[Viewport],
@@ -1974,7 +2179,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_viewport_with_count(
+    #[track_caller]
+    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
+        unsafe { self.try_set_viewport_with_count(viewports) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_viewport_with_count(
         &mut self,
         viewports: &[Viewport],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -2076,7 +2287,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+        unsafe { self.try_set_conservative_rasterization_mode(conservative_rasterization_mode) }
+            .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_conservative_rasterization_mode(
         &mut self,
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -2142,7 +2363,19 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_extra_primitive_overestimation_size(
         &mut self,
         extra_primitive_overestimation_size: f32,
     ) -> Result<&mut Self, Box<ValidationError>> {

@@ -296,9 +296,30 @@ impl UnwindSafe for Instance {}
 impl RefUnwindSafe for Instance {}
 
 impl Instance {
+    /// Creates a new `Instance`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+    ) -> Result<Arc<Instance>, VulkanError> {
+        match Self::try_new(library, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Instance`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
     ) -> Result<Arc<Instance>, Validated<VulkanError>> {
@@ -578,6 +599,41 @@ impl Instance {
         Ok(physical_devices.into_iter())
     }
 
+    /// Returns an iterator that enumerates the groups of physical devices available, panicking on
+    /// a validation error. All physical devices in a group can be used to create a single logical
+    /// device. They are guaranteed have the same [properties], and support the same [extensions]
+    /// and [features].
+    ///
+    /// Every physical device will be returned exactly once;
+    /// physical devices that are not part of any group will be returned as a group of size 1.
+    ///
+    /// The instance API version must be at least 1.1, or the [`khr_device_group_creation`]
+    /// extension must be enabled on the instance.
+    ///
+    /// This is a shortcut for `try_enumerate_physical_device_groups().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_enumerate_physical_device_groups`] returns a [`ValidationError`].
+    ///
+    /// [properties]: PhysicalDevice::properties
+    /// [extensions]: PhysicalDevice::supported_extensions
+    /// [features]: PhysicalDevice::supported_features
+    /// [`enumerate_physical_devices`]: Self::enumerate_physical_devices
+    /// [`khr_device_group_creation`]: crate::instance::InstanceExtensions::khr_device_group_creation
+    /// [`try_enumerate_physical_device_groups`]: Self::try_enumerate_physical_device_groups
+    #[inline]
+    #[track_caller]
+    pub fn enumerate_physical_device_groups(
+        self: &Arc<Self>,
+    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>, VulkanError>
+    {
+        match self.try_enumerate_physical_device_groups() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns an iterator that enumerates the groups of physical devices available. All
     /// physical devices in a group can be used to create a single logical device. They are
     /// guaranteed have the same [properties], and support the same [extensions] and [features].
@@ -594,7 +650,7 @@ impl Instance {
     /// [`enumerate_physical_devices`]: Self::enumerate_physical_devices
     /// [`khr_device_group_creation`]: crate::instance::InstanceExtensions::khr_device_group_creation
     #[inline]
-    pub fn enumerate_physical_device_groups(
+    pub fn try_enumerate_physical_device_groups(
         self: &Arc<Self>,
     ) -> Result<
         impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>,

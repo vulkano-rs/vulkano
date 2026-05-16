@@ -62,6 +62,32 @@ pub struct DeviceMemory {
 }
 
 impl DeviceMemory {
+    /// Allocates a block of memory from the device, panicking on a validation error.
+    ///
+    /// Some platforms may have a limit on the maximum size of a single allocation. For example,
+    /// certain systems may fail to create allocations with a size greater than or equal to 4GB.
+    ///
+    /// This is a shortcut for `try_allocate().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
+    ///   image does not belong to `device`.
+    /// - Panics if [`try_allocate`] returns a [`ValidationError`].
+    ///
+    /// [`try_allocate`]: Self::try_allocate
+    #[inline]
+    #[track_caller]
+    pub fn allocate(
+        device: &Arc<Device>,
+        allocate_info: &MemoryAllocateInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_allocate(device, allocate_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Allocates a block of memory from the device.
     ///
     /// Some platforms may have a limit on the maximum size of a single allocation. For example,
@@ -72,13 +98,41 @@ impl DeviceMemory {
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
     #[inline]
-    pub fn allocate(
+    pub fn try_allocate(
         device: &Arc<Device>,
         allocate_info: &MemoryAllocateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_allocate(device, allocate_info, None)?;
 
         Ok(unsafe { Self::allocate_unchecked(device, allocate_info, None) }?)
+    }
+
+    /// Imports a block of memory from an external source, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_import().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - See the documentation of the variants of [`MemoryImportInfo`].
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
+    ///   image does not belong to `device`.
+    /// - Panics if [`try_import`] returns a [`ValidationError`].
+    ///
+    /// [`try_import`]: Self::try_import
+    #[inline]
+    #[track_caller]
+    pub unsafe fn import(
+        device: &Arc<Device>,
+        allocate_info: &MemoryAllocateInfo<'_>,
+        import_info: &MemoryImportInfo,
+    ) -> Result<Self, VulkanError> {
+        match unsafe { Self::try_import(device, allocate_info, import_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
     }
 
     /// Imports a block of memory from an external source.
@@ -92,7 +146,7 @@ impl DeviceMemory {
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
     #[inline]
-    pub unsafe fn import(
+    pub unsafe fn try_import(
         device: &Arc<Device>,
         allocate_info: &MemoryAllocateInfo<'_>,
         import_info: &MemoryImportInfo,
@@ -302,11 +356,31 @@ impl DeviceMemory {
         self.is_coherent
     }
 
+    /// Maps a range of memory to be accessed by the host, panicking on a validation error.
+    ///
+    /// `self` must not be host-mapped already and must be allocated from host-visible memory.
+    ///
+    /// This is a shortcut for `try_map().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_map`] returns a [`ValidationError`].
+    ///
+    /// [`try_map`]: Self::try_map
+    #[inline]
+    #[track_caller]
+    pub fn map(&mut self, map_info: &MemoryMapInfo<'_>) -> Result<(), VulkanError> {
+        match self.try_map(map_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Maps a range of memory to be accessed by the host.
     ///
     /// `self` must not be host-mapped already and must be allocated from host-visible memory.
     #[inline]
-    pub fn map(&mut self, map_info: &MemoryMapInfo<'_>) -> Result<(), Validated<VulkanError>> {
+    pub fn try_map(&mut self, map_info: &MemoryMapInfo<'_>) -> Result<(), Validated<VulkanError>> {
         self.validate_map(map_info, None)?;
 
         Ok(unsafe { self.map_unchecked(map_info) }?)
@@ -319,6 +393,45 @@ impl DeviceMemory {
         map_info: &MemoryMapInfo<'_>,
     ) -> Result<(), VulkanError> {
         unsafe { self.map_unchecked_inner(map_info, None) }
+    }
+
+    /// Maps a range of memory to be accessed by the host at the specified `placed_address`,
+    /// panicking on a validation error.
+    ///
+    /// Requires the [`memory_map_placed`] feature to be enabled on the device.
+    ///
+    /// `placed_address` must be aligned to the [`min_placed_memory_map_alignment`] device
+    /// property.
+    ///
+    /// `self` must not be host-mapped already and must be allocated from host-visible memory.
+    ///
+    /// This is a shortcut for `try_map_placed().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The memory mapping specified by `placed_address` and `map_info.size` will be replaced,
+    ///   including mappings made by the Rust allocator, a library, or your application itself.
+    /// - The memory mapping specified by `placed_address` and `map_info.size` must not overlap any
+    ///   existing Vulkan memory mapping.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_map_placed`] returns a [`ValidationError`].
+    ///
+    /// [`memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
+    /// [`min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
+    /// [`try_map_placed`]: Self::try_map_placed
+    #[inline]
+    #[track_caller]
+    pub unsafe fn map_placed(
+        &mut self,
+        map_info: &MemoryMapInfo<'_>,
+        placed_address: NonNull<c_void>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_map_placed(map_info, placed_address) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
     }
 
     /// Maps a range of memory to be accessed by the host at the specified `placed_address`.
@@ -340,7 +453,7 @@ impl DeviceMemory {
     /// [`memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
     /// [`min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
     #[inline]
-    pub unsafe fn map_placed(
+    pub unsafe fn try_map_placed(
         &mut self,
         map_info: &MemoryMapInfo<'_>,
         placed_address: NonNull<c_void>,
@@ -462,6 +575,27 @@ impl DeviceMemory {
         Ok(())
     }
 
+    /// Unmaps the memory, panicking on a validation error. It will no longer be accessible from
+    /// the host.
+    ///
+    /// `self` must be currently host-mapped.
+    ///
+    /// This is a shortcut for `try_unmap().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_unmap`] returns a [`ValidationError`].
+    ///
+    /// [`try_unmap`]: Self::try_unmap
+    #[inline]
+    #[track_caller]
+    pub fn unmap(&mut self, unmap_info: &MemoryUnmapInfo<'_>) -> Result<(), VulkanError> {
+        match self.try_unmap(unmap_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Unmaps the memory. It will no longer be accessible from the host.
     ///
     /// `self` must be currently host-mapped.
@@ -472,7 +606,7 @@ impl DeviceMemory {
     // that's currently being read or written by the host elsewhere, requiring even more locking on
     // each host access.
     #[inline]
-    pub fn unmap(
+    pub fn try_unmap(
         &mut self,
         unmap_info: &MemoryUnmapInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -522,6 +656,40 @@ impl DeviceMemory {
         Ok(())
     }
 
+    /// Invalidates the host cache for a range of mapped memory, panicking on a validation error.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function before the memory
+    /// is read by the host, if the device previously wrote to the memory. It has no effect if the
+    /// memory is host-coherent.
+    ///
+    /// This is a shortcut for `try_invalidate_range().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - If there are memory writes by the device that have not been propagated into the host
+    ///   cache, then there must not be any references in Rust code to any portion of the specified
+    ///   `memory_range`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_invalidate_range`] returns a [`ValidationError`].
+    ///
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`map`]: Self::map
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
+    /// [`try_invalidate_range`]: Self::try_invalidate_range
+    #[inline]
+    #[track_caller]
+    pub unsafe fn invalidate_range(
+        &self,
+        memory_range: &MappedMemoryRange<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_invalidate_range(memory_range) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Invalidates the host cache for a range of mapped memory.
     ///
     /// If the device memory is not [host-coherent], you must call this function before the memory
@@ -538,7 +706,7 @@ impl DeviceMemory {
     /// [`map`]: Self::map
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn invalidate_range(
+    pub unsafe fn try_invalidate_range(
         &self,
         memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -569,6 +737,39 @@ impl DeviceMemory {
         Ok(())
     }
 
+    /// Flushes the host cache for a range of mapped memory, panicking on a validation error.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function after writing to
+    /// the memory, if the device is going to read the memory. It has no effect if the memory is
+    /// host-coherent.
+    ///
+    /// This is a shortcut for `try_flush_range().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no operations pending or executing in a device queue, that access the
+    ///   specified `memory_range`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_flush_range`] returns a [`ValidationError`].
+    ///
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`map`]: Self::map
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
+    /// [`try_flush_range`]: Self::try_flush_range
+    #[inline]
+    #[track_caller]
+    pub unsafe fn flush_range(
+        &self,
+        memory_range: &MappedMemoryRange<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_flush_range(memory_range) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Flushes the host cache for a range of mapped memory.
     ///
     /// If the device memory is not [host-coherent], you must call this function after writing to
@@ -584,7 +785,7 @@ impl DeviceMemory {
     /// [`map`]: Self::map
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn flush_range(
+    pub unsafe fn try_flush_range(
         &self,
         memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -630,6 +831,29 @@ impl DeviceMemory {
     }
 
     /// Retrieves the amount of lazily-allocated memory that is currently committed to this
+    /// memory object, panicking on a validation error.
+    ///
+    /// The device may change this value at any time, and the returned value may be
+    /// already out-of-date.
+    ///
+    /// `self` must have been allocated from a memory type that has the [`LAZILY_ALLOCATED`] flag
+    /// set.
+    ///
+    /// This is a shortcut for `try_commitment().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_commitment`] returns a [`ValidationError`].
+    ///
+    /// [`LAZILY_ALLOCATED`]: MemoryPropertyFlags::LAZILY_ALLOCATED
+    /// [`try_commitment`]: Self::try_commitment
+    #[inline]
+    #[track_caller]
+    pub fn commitment(&self) -> DeviceSize {
+        self.try_commitment().unwrap()
+    }
+
+    /// Retrieves the amount of lazily-allocated memory that is currently committed to this
     /// memory object.
     ///
     /// The device may change this value at any time, and the returned value may be
@@ -640,7 +864,7 @@ impl DeviceMemory {
     ///
     /// [`LAZILY_ALLOCATED`]: MemoryPropertyFlags::LAZILY_ALLOCATED
     #[inline]
-    pub fn commitment(&self) -> Result<DeviceSize, Box<ValidationError>> {
+    pub fn try_commitment(&self) -> Result<DeviceSize, Box<ValidationError>> {
         self.validate_commitment()?;
 
         Ok(unsafe { self.commitment_unchecked() })
@@ -682,6 +906,26 @@ impl DeviceMemory {
         output
     }
 
+    /// Exports the device memory into a Unix file descriptor, panicking on a validation error. The
+    /// caller owns the returned file descriptor.
+    ///
+    /// This is a shortcut for `try_export_fd().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_fd`] returns a [`ValidationError`].
+    /// - Panics if the user requests an invalid handle type for this device memory object.
+    ///
+    /// [`try_export_fd`]: Self::try_export_fd
+    #[inline]
+    #[track_caller]
+    pub fn export_fd(&self, handle_type: ExternalMemoryHandleType) -> Result<RawFd, VulkanError> {
+        match self.try_export_fd(handle_type) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Exports the device memory into a Unix file descriptor. The caller owns the returned file
     /// descriptor.
     ///
@@ -689,7 +933,7 @@ impl DeviceMemory {
     ///
     /// - Panics if the user requests an invalid handle type for this device memory object.
     #[inline]
-    pub fn export_fd(
+    pub fn try_export_fd(
         &self,
         handle_type: ExternalMemoryHandleType,
     ) -> Result<RawFd, Validated<VulkanError>> {
@@ -2535,7 +2779,7 @@ mod tests {
             })
             .unwrap();
 
-        DeviceMemory::allocate(
+        DeviceMemory::try_allocate(
             &device,
             &MemoryAllocateInfo {
                 allocation_size: 0xffffffffffffffff,

@@ -15,7 +15,13 @@ use smallvec::SmallVec;
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn pipeline_barrier(
+    #[track_caller]
+    pub unsafe fn pipeline_barrier(&mut self, dependency_info: &DependencyInfo<'_>) -> &mut Self {
+        unsafe { self.try_pipeline_barrier(dependency_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_pipeline_barrier(
         &mut self,
         dependency_info: &DependencyInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -256,7 +262,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn set_event(
+        &mut self,
+        event: &Event,
+        dependency_info: &DependencyInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_set_event(event, dependency_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_set_event(
         &mut self,
         event: &Event,
         dependency_info: &DependencyInfo<'_>,
@@ -492,7 +508,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn wait_events(
+    #[track_caller]
+    pub unsafe fn wait_events(&mut self, events: &[(&Event, &DependencyInfo<'_>)]) -> &mut Self {
+        unsafe { self.try_wait_events(events) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_wait_events(
         &mut self,
         events: &[(&Event, &DependencyInfo<'_>)],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -764,7 +786,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn reset_event(
+    #[track_caller]
+    pub unsafe fn reset_event(&mut self, event: &Event, stages: PipelineStages) -> &mut Self {
+        unsafe { self.try_reset_event(event, stages) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_reset_event(
         &mut self,
         event: &Event,
         stages: PipelineStages,

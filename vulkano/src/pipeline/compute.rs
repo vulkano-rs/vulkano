@@ -51,9 +51,31 @@ pub struct ComputePipeline {
 }
 
 impl ComputePipeline {
+    /// Creates a new `ComputePipeline`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &ComputePipelineCreateInfo<'_>,
+    ) -> Result<Arc<ComputePipeline>, VulkanError> {
+        match Self::try_new(device, cache, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `ComputePipeline`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         cache: Option<&Arc<PipelineCache>>,
         create_info: &ComputePipelineCreateInfo<'_>,
@@ -495,7 +517,6 @@ mod tests {
                     .unwrap();
             module
                 .specialize(&[(83, 0x12345678i32.into())])
-                .unwrap()
                 .entry_point("main")
                 .unwrap()
         };

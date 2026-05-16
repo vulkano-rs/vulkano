@@ -61,7 +61,7 @@ pub struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -106,7 +106,7 @@ impl App {
                     .position(|(i, q)| {
                         q.queue_flags
                             .contains(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })

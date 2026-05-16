@@ -241,12 +241,33 @@ pub(super) fn reflect(
     } else {
         format_ident!("load_{}", shader.name.to_snake_case())
     };
+    let try_load_name = format_ident!("try_{load_name}");
 
     let shader_code = quote! {
+        /// Loads the shader as a `ShaderModule`, panicking on a validation error.
+        #[allow(unsafe_code)]
+        #[inline]
+        #[track_caller]
+        pub unsafe fn #load_name(
+            device: &::std::sync::Arc<::vulkano::device::Device>,
+        ) -> ::std::result::Result<
+            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
+            ::vulkano::VulkanError,
+        > {
+            match unsafe { #try_load_name(device) } {
+                ::std::result::Result::Ok(shader_module) => {
+                    ::std::result::Result::Ok(shader_module)
+                }
+                ::std::result::Result::Err(err) => {
+                    ::std::result::Result::Err(::vulkano::Validated::unwrap(err))
+                }
+            }
+        }
+
         /// Loads the shader as a `ShaderModule`.
         #[allow(unsafe_code)]
         #[inline]
-        pub fn #load_name(
+        pub unsafe fn #try_load_name(
             device: &::std::sync::Arc<::vulkano::device::Device>,
         ) -> ::std::result::Result<
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
@@ -257,7 +278,7 @@ pub(super) fn reflect(
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                ::vulkano::shader::ShaderModule::new(
+                ::vulkano::shader::ShaderModule::try_new(
                     device,
                     &::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
                 )

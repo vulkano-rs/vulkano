@@ -141,16 +141,46 @@ pub enum ImageMemory {
 }
 
 impl Image {
-    /// Creates a new uninitialized `Image`.
+    /// Creates a new uninitialized `Image`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
         allocator: &Arc<impl MemoryAllocator + ?Sized>,
         create_info: &ImageCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
-    ) -> Result<Arc<Self>, Validated<AllocateImageError>> {
+    ) -> Result<Arc<Self>, AllocateImageError> {
         Self::new_inner(allocator.clone().as_dyn(), create_info, allocation_info)
     }
 
+    #[track_caller]
     fn new_inner(
+        allocator: Arc<dyn MemoryAllocator>,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Arc<Self>, AllocateImageError> {
+        match Self::try_new_inner(allocator, create_info, allocation_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new uninitialized `Image`.
+    pub fn try_new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Arc<Self>, Validated<AllocateImageError>> {
+        Self::try_new_inner(allocator.clone().as_dyn(), create_info, allocation_info)
+    }
+
+    fn try_new_inner(
         allocator: Arc<dyn MemoryAllocator>,
         create_info: &ImageCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
@@ -159,28 +189,70 @@ impl Image {
         assert!(!create_info.flags.intersects(ImageCreateFlags::DISJOINT));
 
         let allocation_type = create_info.tiling.into();
-        let raw_image =
-            RawImage::new(allocator.device(), create_info).map_err(|err| match err {
-                Validated::Error(err) => Validated::Error(AllocateImageError::CreateImage(err)),
-                Validated::ValidationError(err) => err.into(),
-            })?;
+        let raw_image = RawImage::try_new(allocator.device(), create_info)
+            .map_err(|err| err.map(AllocateImageError::CreateImage))?;
         let requirements = raw_image.memory_requirements()[0];
 
         let allocation = allocator
-            .allocate(
+            .try_allocate(
                 &requirements,
                 allocation_type,
                 allocation_info,
                 Some(DedicatedAllocation::Image(&raw_image)),
             )
-            .map_err(AllocateImageError::AllocateMemory)?;
+            .map_err(|err| err.map(AllocateImageError::AllocateMemory))?;
         let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
 
-        // SAFETY: we just created this raw image and hasn't bound any memory to it.
-        let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
-            err.map(AllocateImageError::BindMemory)
-                .map_validation(|err| err.add_context("RawImage::bind_memory"))
-        })?;
+        let image = raw_image
+            .try_bind_memory([allocation])
+            .map_err(|(err, _, _)| {
+                err.map(AllocateImageError::BindMemory)
+                    .map_validation(|err| err.add_context("RawImage::bind_memory"))
+            })?;
+
+        Ok(Arc::new(image))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Arc<Self>, AllocateImageError> {
+        unsafe {
+            Self::new_unchecked_inner(allocator.clone().as_dyn(), create_info, allocation_info)
+        }
+    }
+
+    unsafe fn new_unchecked_inner(
+        allocator: Arc<dyn MemoryAllocator>,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Arc<Self>, AllocateImageError> {
+        // TODO: adjust the code below to make this safe
+        assert!(!create_info.flags.intersects(ImageCreateFlags::DISJOINT));
+
+        let allocation_type = create_info.tiling.into();
+        // SAFETY: Enforced by the caller.
+        let raw_image = unsafe { RawImage::new_unchecked(allocator.device(), create_info) }
+            .map_err(AllocateImageError::CreateImage)?;
+        let requirements = raw_image.memory_requirements()[0];
+
+        // SAFETY: Enforced by the caller.
+        let allocation = unsafe {
+            allocator.allocate_unchecked(
+                &requirements,
+                allocation_type,
+                allocation_info,
+                Some(DedicatedAllocation::Image(&raw_image)),
+            )
+        }
+        .map_err(AllocateImageError::AllocateMemory)?;
+        let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
+
+        // SAFETY: Enforced by the caller.
+        let image = unsafe { raw_image.bind_memory_unchecked([allocation]) }
+            .map_err(|(err, _, _)| AllocateImageError::BindMemory(err))?;
 
         Ok(Arc::new(image))
     }
@@ -390,6 +462,39 @@ impl Image {
         self.inner.subresource_range()
     }
 
+    /// Queries the memory layout of a single subresource of the image, panicking on a validation
+    /// error.
+    ///
+    /// Only images with linear tiling are supported, if they do not have a format with both a
+    /// depth and a stencil format. Images with optimal tiling have an opaque image layout that is
+    /// not suitable for direct memory accesses, and likewise for combined depth/stencil formats.
+    /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
+    /// not [`ImageAspect::Color`].
+    ///
+    /// The layout is invariant for each image. However it is not cached, as this would waste
+    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
+    /// somewhere in order to avoid calling this semi-expensive function at every single memory
+    /// access.
+    ///
+    /// This is a shortcut for `try_subresource_layout().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_subresource_layout`] returns a [`ValidationError`].
+    ///
+    /// [`try_subresource_layout`]: Self::try_subresource_layout
+    #[inline]
+    #[track_caller]
+    pub fn subresource_layout(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> SubresourceLayout {
+        self.inner
+            .subresource_layout(aspect, mip_level, array_layer)
+    }
+
     /// Queries the memory layout of a single subresource of the image.
     ///
     /// Only images with linear tiling are supported, if they do not have a format with both a
@@ -403,14 +508,14 @@ impl Image {
     /// somewhere in order to avoid calling this semi-expensive function at every single memory
     /// access.
     #[inline]
-    pub fn subresource_layout(
+    pub fn try_subresource_layout(
         &self,
         aspect: ImageAspect,
         mip_level: u32,
         array_layer: u32,
     ) -> Result<SubresourceLayout, Box<ValidationError>> {
         self.inner
-            .subresource_layout(aspect, mip_level, array_layer)
+            .try_subresource_layout(aspect, mip_level, array_layer)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]

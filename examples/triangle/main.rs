@@ -85,7 +85,7 @@ impl App {
         // All the window-drawing functionalities are part of non-core extensions that we need to
         // enable manually. To do so, we ask `Surface` for the list of extensions required to draw
         // to a window.
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
 
         // Now creating the instance.
         let instance = Instance::new(
@@ -142,7 +142,7 @@ impl App {
                         // that queues in this queue family are capable of presenting images to the
                         // surface.
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     // The code here searches for the first queue family that is suitable. If none
                     // is found, `None` is returned to `filter_map`, which
@@ -433,8 +433,14 @@ impl ApplicationHandler for App {
             //
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
             // which one.
-            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
-            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let vs = unsafe { vs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = unsafe { fs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
 
             // Automatically generate a vertex input state from the vertex shader's input
             // interface, that takes a single vertex buffer containing `Vertex` structs.

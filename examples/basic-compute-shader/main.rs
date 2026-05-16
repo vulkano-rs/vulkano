@@ -165,7 +165,7 @@ fn main() {
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
     let pipeline = {
-        let module = compute_shader::load(&device)
+        let module = unsafe { compute_shader::load(&device) }
             .unwrap()
             .entry_point("main")
             .unwrap();
@@ -225,11 +225,11 @@ fn main() {
             flight_id,
             |cbf, tcx| {
                 // Initialize the buffer with our data.
-                for (i, value) in (0..).zip(tcx.write_buffer::<[u32]>(buffer_id, ..)?) {
+                for (i, value) in (0..).zip(tcx.write_buffer::<[u32]>(buffer_id, ..)) {
                     *value = i;
                 }
 
-                cbf.bind_pipeline_compute(&pipeline)?;
+                cbf.bind_pipeline_compute(&pipeline);
                 cbf.push_constants(
                     pipeline.layout(),
                     0,
@@ -237,12 +237,12 @@ fn main() {
                         buffer_id: buffer_bindless_id,
                         buffer_len: BUFFER_LEN,
                     },
-                )?;
+                );
 
                 // We have set the local size of the shader to (64, 1, 1). Each thread processes
                 // one item in the buffer, so ceil(n / 64) groups are required.
                 let groups_x = BUFFER_LEN.div_ceil(64);
-                cbf.dispatch([groups_x, 1, 1])?;
+                cbf.dispatch([groups_x, 1, 1]);
 
                 Ok(())
             },
@@ -258,7 +258,7 @@ fn main() {
     .unwrap();
 
     // Wait for the compute work to finish on the GPU before proceeding.
-    resources.flight(flight_id).unwrap().wait_idle().unwrap();
+    resources.flight(flight_id).wait_idle().unwrap();
 
     // Read our data back from the GPU and verify the result.
     let mut data_buffer_content: Vec<u32> = Vec::new();
@@ -268,7 +268,8 @@ fn main() {
             &resources,
             flight_id,
             |_cbf, tcx| {
-                data_buffer_content = tcx.read_buffer::<[u32]>(buffer_id, ..)?.to_vec();
+                data_buffer_content = tcx.read_buffer::<[u32]>(buffer_id, ..).to_vec();
+
                 Ok(())
             },
             [(buffer_id, HostAccessType::Read)],

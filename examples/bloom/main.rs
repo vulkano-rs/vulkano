@@ -77,7 +77,7 @@ pub struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -110,7 +110,7 @@ impl App {
                     .position(|(i, q)| {
                         q.queue_flags
                             .contains(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -374,7 +374,7 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let flight = self.resources.flight(self.flight_id).unwrap();
+                let flight = self.resources.flight(self.flight_id);
 
                 if rcx.recreate_swapchain {
                     rcx.swapchain_id = self
@@ -452,7 +452,7 @@ fn window_size_dependent_setup(
 ) {
     let device = resources.device();
     let bcx = resources.bindless_context().unwrap();
-    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
+    let swapchain_state = resources.swapchain(swapchain_id);
     let images = swapchain_state.images();
     let extent = images[0].extent();
 
@@ -487,7 +487,7 @@ fn window_size_dependent_setup(
             .unwrap()
     };
 
-    let bloom_image_state = resources.image(bloom_image_id).unwrap();
+    let bloom_image_state = resources.image(bloom_image_id);
     let bloom_image = bloom_image_state.image();
 
     let bloom_sampled_image_id = bcx

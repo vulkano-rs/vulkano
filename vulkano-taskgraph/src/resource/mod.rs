@@ -87,12 +87,33 @@ struct SwapchainGarbage {
 }
 
 impl Resources {
+    /// Creates a new `Resources` collection, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    /// - Panics if `device` already has a `Resources` collection associated with it.
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &ResourcesCreateInfo<'_>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Resources` collection.
     ///
     /// # Panics
     ///
     /// - Panics if `device` already has a `Resources` collection associated with it.
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &ResourcesCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -155,7 +176,7 @@ impl Resources {
             hyaline_collector,
         });
         let bindless_context = bindless_context
-            .map(|bindless_info| BindlessContext::new(&storage, bindless_info))
+            .map(|bindless_info| BindlessContext::try_new(&storage, bindless_info))
             .transpose()?;
 
         Ok(Arc::new(Resources {
@@ -192,6 +213,33 @@ impl Resources {
         self.bindless_context.as_ref()
     }
 
+    /// Creates a new buffer and adds it to the collection, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_create_buffer().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_create_buffer`] returns a [`ValidationError`].
+    /// - Panics if `create_info.size` is not zero.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error when [`try_create_buffer`] returns a [`VulkanError`].
+    ///
+    /// [`try_create_buffer`]: Self::try_create_buffer
+    #[track_caller]
+    pub fn create_buffer(
+        &self,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Id<Buffer>, AllocateBufferError> {
+        match self.try_create_buffer(create_info, allocation_info, layout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new buffer and adds it to the collection.
     ///
     /// # Panics
@@ -200,14 +248,14 @@ impl Resources {
     ///
     /// # Errors
     ///
-    /// - Returns an error when [`Buffer::new`] returns an error.
-    pub fn create_buffer(
+    /// - Returns an error when [`Buffer::try_new`] returns an error.
+    pub fn try_create_buffer(
         &self,
         create_info: &BufferCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
         layout: DeviceLayout,
     ) -> Result<Id<Buffer>, Validated<AllocateBufferError>> {
-        let buffer = Buffer::new(
+        let buffer = Buffer::try_new(
             &self.storage.memory_allocator,
             create_info,
             allocation_info,
@@ -218,20 +266,73 @@ impl Resources {
         Ok(unsafe { self.add_buffer_unchecked(buffer) })
     }
 
-    /// Creates a new image and adds it to the collection.
+    /// Creates a new image and adds it to the collection, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_create_image().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_create_image`] returns a [`ValidationError`].
     ///
     /// # Errors
     ///
-    /// - Returns an error when [`Image::new`] returns an error.
+    /// - Returns an error when [`try_create_image`] returns a [`VulkanError`].
+    ///
+    /// [`try_create_image`]: Self::try_create_image
+    #[track_caller]
     pub fn create_image(
         &self,
         create_info: &ImageCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
+    ) -> Result<Id<Image>, AllocateImageError> {
+        match self.try_create_image(create_info, allocation_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new image and adds it to the collection.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error when [`Image::try_new`] returns an error.
+    pub fn try_create_image(
+        &self,
+        create_info: &ImageCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
     ) -> Result<Id<Image>, Validated<AllocateImageError>> {
-        let image = Image::new(&self.storage.memory_allocator, create_info, allocation_info)?;
+        let image = Image::try_new(&self.storage.memory_allocator, create_info, allocation_info)?;
 
         // SAFETY: We just created the image.
         Ok(unsafe { self.add_image_unchecked(image) })
+    }
+
+    /// Creates a swapchain and adds it to the collection, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_create_swapchain().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_create_swapchain`] returns a [`ValidationError`].
+    /// - Panics if the instance of `surface` is not the same as that of `self.device()`.
+    /// - Panics if `create_info.min_image_count` is not greater than or equal to the number of
+    ///   [frames] of the flight corresponding to `flight_id`.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error when [`try_create_swapchain`] returns a [`VulkanError`].
+    ///
+    /// [`try_create_swapchain`]: Self::try_create_swapchain
+    #[track_caller]
+    pub fn create_swapchain(
+        self: &Arc<Self>,
+        surface: &Arc<Surface>,
+        create_info: &SwapchainCreateInfo<'_>,
+    ) -> Result<Id<Swapchain>, VulkanError> {
+        match self.try_create_swapchain(surface, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
     }
 
     /// Creates a swapchain and adds it to the collection.
@@ -244,8 +345,8 @@ impl Resources {
     ///
     /// # Errors
     ///
-    /// - Returns an error when [`Swapchain::new`] returns an error.
-    pub fn create_swapchain(
+    /// - Returns an error when [`Swapchain::try_new`] returns an error.
+    pub fn try_create_swapchain(
         self: &Arc<Self>,
         surface: &Arc<Surface>,
         create_info: &SwapchainCreateInfo<'_>,
@@ -414,6 +515,34 @@ impl Resources {
     }
 
     /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
+    /// swapchain to the collection, panicking on a validation error. The old swapchain will be
+    /// cleaned up as soon as possible.
+    ///
+    /// This is a shortcut for `try_recreate_swapchain().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_recreate_swapchain`] returns a [`ValidationError`].
+    /// - Panics if [`try_recreate_swapchain`] panics.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error when [`try_recreate_swapchain`] returns a [`VulkanError`].
+    ///
+    /// [`try_recreate_swapchain`]: Self::try_recreate_swapchain
+    #[track_caller]
+    pub fn recreate_swapchain(
+        &self,
+        id: Id<Swapchain>,
+        f: impl for<'a> FnOnce(&SwapchainCreateInfo<'a>) -> SwapchainCreateInfo<'a>,
+    ) -> Result<Id<Swapchain>, VulkanError> {
+        match self.try_recreate_swapchain(id, f) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
     /// swapchain to the collection. The old swapchain will be cleaned up as soon as possible.
     ///
     /// # Panics
@@ -427,7 +556,7 @@ impl Resources {
     ///
     /// - Returns an error when [`Swapchain::recreate`] returns an error.
     #[track_caller]
-    pub fn recreate_swapchain(
+    pub fn try_recreate_swapchain(
         &self,
         id: Id<Swapchain>,
         f: impl for<'a> FnOnce(&SwapchainCreateInfo<'a>) -> SwapchainCreateInfo<'a>,
@@ -455,7 +584,7 @@ impl Resources {
         Ok(unsafe { new_id.parametrize() })
     }
 
-    pub(crate) fn invalidate_buffer<'a>(
+    pub(crate) fn try_invalidate_buffer<'a>(
         &'a self,
         id: Id<Buffer>,
         guard: &'a hyaline::Guard<'_>,
@@ -469,7 +598,7 @@ impl Resources {
         Ok(state)
     }
 
-    pub(crate) fn invalidate_image<'a>(
+    pub(crate) fn try_invalidate_image<'a>(
         &'a self,
         id: Id<Image>,
         guard: &'a hyaline::Guard<'_>,
@@ -483,7 +612,7 @@ impl Resources {
         Ok(state)
     }
 
-    pub(crate) fn invalidate_swapchain<'a>(
+    pub(crate) fn try_invalidate_swapchain<'a>(
         &'a self,
         id: Id<Swapchain>,
         guard: &'a hyaline::Guard<'_>,
@@ -520,6 +649,29 @@ impl Resources {
         };
     }
 
+    /// Removes the swapchain corresponding to `id` from the collection, panicking on an invalid
+    /// slot error.
+    ///
+    /// Note that if there are any pending present operations then the swapchain cannot be
+    /// collected until it's certain that the presentation engine is no longer using the swapchain
+    /// or any of its old swapchains. The only way to guarantee that is by calling [`wait_idle`]
+    /// after removing the swapchain.
+    ///
+    /// This is a shortcut for `try_remove_swapchain().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_remove_swapchain`] returns an [`InvalidSlotError`].
+    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if the swapchain has already been recreated or removed.
+    ///
+    /// [`wait_idle`]: Self::wait_idle
+    /// [`try_remove_swapchain`]: Self::try_remove_swapchain
+    #[track_caller]
+    pub fn remove_swapchain(&self, id: Id<Swapchain>) -> Ref<'_, SwapchainState> {
+        self.try_remove_swapchain(id).unwrap()
+    }
+
     /// Removes the swapchain corresponding to `id` from the collection.
     ///
     /// Note that if there are any pending present operations then the swapchain cannot be
@@ -534,7 +686,7 @@ impl Resources {
     ///
     /// [`wait_idle`]: Self::wait_idle
     #[track_caller]
-    pub fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
+    pub fn try_remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
         let guard = self.storage.pin();
 
         let state = self
@@ -551,13 +703,28 @@ impl Resources {
         Ok(Ref::new(state, guard))
     }
 
+    /// Returns the buffer corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_buffer`] returns an [`InvalidSlotError`].
+    ///
+    /// [`try_buffer`]: Self::try_buffer
+    #[inline]
+    #[track_caller]
+    pub fn buffer(&self, id: Id<Buffer>) -> Ref<'_, BufferState> {
+        self.try_buffer(id).unwrap()
+    }
+
     /// Returns the buffer corresponding to `id`.
     #[inline]
-    pub fn buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
+    pub fn try_buffer(&self, id: Id<Buffer>) -> Result<Ref<'_, BufferState>> {
         self.storage.buffer(id)
     }
 
-    pub(crate) fn buffer_protected<'a>(
+    pub(crate) fn try_buffer_protected<'a>(
         &'a self,
         id: Id<Buffer>,
         guard: &'a hyaline::Guard<'a>,
@@ -574,13 +741,28 @@ impl Resources {
         unsafe { self.storage.buffer_unchecked_protected(id, guard) }
     }
 
+    /// Returns the image corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_image`] returns an [`InvalidSlotError`].
+    ///
+    /// [`try_image`]: Self::try_image
+    #[inline]
+    #[track_caller]
+    pub fn image(&self, id: Id<Image>) -> Ref<'_, ImageState> {
+        self.try_image(id).unwrap()
+    }
+
     /// Returns the image corresponding to `id`.
     #[inline]
-    pub fn image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
+    pub fn try_image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
         self.storage.image(id)
     }
 
-    pub(crate) fn image_protected<'a>(
+    pub(crate) fn try_image_protected<'a>(
         &'a self,
         id: Id<Image>,
         guard: &'a hyaline::Guard<'a>,
@@ -597,13 +779,28 @@ impl Resources {
         unsafe { self.storage.image_unchecked_protected(id, guard) }
     }
 
+    /// Returns the swapchain corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_swapchain().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_swapchain`] returns an [`InvalidSlotError`].
+    ///
+    /// [`try_swapchain`]: Self::try_swapchain
+    #[inline]
+    #[track_caller]
+    pub fn swapchain(&self, id: Id<Swapchain>) -> Ref<'_, SwapchainState> {
+        self.try_swapchain(id).unwrap()
+    }
+
     /// Returns the swapchain corresponding to `id`.
     #[inline]
-    pub fn swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
+    pub fn try_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
         self.storage.swapchain(id)
     }
 
-    pub(crate) fn swapchain_protected<'a>(
+    pub(crate) fn try_swapchain_protected<'a>(
         &'a self,
         id: Id<Swapchain>,
         guard: &'a hyaline::Guard<'a>,
@@ -622,11 +819,17 @@ impl Resources {
 
     /// Returns the [flight] corresponding to `id`.
     #[inline]
-    pub fn flight(&self, id: Id<Flight>) -> Result<Ref<'_, Flight>> {
+    pub fn flight(&self, id: Id<Flight>) -> Ref<'_, Flight> {
+        self.try_flight(id).unwrap()
+    }
+
+    /// Returns the [flight] corresponding to `id`.
+    #[inline]
+    pub fn try_flight(&self, id: Id<Flight>) -> Result<Ref<'_, Flight>> {
         self.storage.flight(id)
     }
 
-    pub(crate) fn flight_protected<'a>(
+    pub(crate) fn try_flight_protected<'a>(
         &'a self,
         id: Id<Flight>,
         guard: &'a hyaline::Guard<'a>,

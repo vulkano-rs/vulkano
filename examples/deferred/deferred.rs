@@ -64,7 +64,7 @@ impl Task for DeferredTask {
         _tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
 
         let world_to_screen = Mat4::IDENTITY;
         let screen_to_world = world_to_screen.inverse();
@@ -141,11 +141,7 @@ impl AmbientLightingPipeline {
             .unwrap();
 
         // FIXME(taskgraph): sane initialization
-        app.resources
-            .flight(app.flight_id)
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        app.resources.flight(app.flight_id).wait(None).unwrap();
 
         unsafe {
             vulkano_taskgraph::execute(
@@ -153,7 +149,7 @@ impl AmbientLightingPipeline {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -175,11 +171,11 @@ impl AmbientLightingPipeline {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = ambient_lighting_vs::load(&app.device)
+            let vs = unsafe { ambient_lighting_vs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = ambient_lighting_fs::load(&app.device)
+            let fs = unsafe { ambient_lighting_fs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -245,17 +241,17 @@ impl AmbientLightingPipeline {
         cbf: &mut RecordingCommandBuffer<'_>,
         ambient_color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
             &ambient_lighting_fs::PushConstants {
                 color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
             },
-        )?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        );
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }
@@ -339,11 +335,7 @@ impl DirectionalLightingPipeline {
             .unwrap();
 
         // FIXME(taskgraph): sane initialization
-        app.resources
-            .flight(app.flight_id)
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        app.resources.flight(app.flight_id).wait(None).unwrap();
 
         unsafe {
             vulkano_taskgraph::execute(
@@ -351,7 +343,7 @@ impl DirectionalLightingPipeline {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -373,11 +365,11 @@ impl DirectionalLightingPipeline {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = directional_lighting_vs::load(&app.device)
+            let vs = unsafe { directional_lighting_vs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = directional_lighting_fs::load(&app.device)
+            let fs = unsafe { directional_lighting_fs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -446,7 +438,7 @@ impl DirectionalLightingPipeline {
         direction: Vec3,
         color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
@@ -454,10 +446,10 @@ impl DirectionalLightingPipeline {
                 color: [color[0], color[1], color[2], 1.0],
                 direction: direction.extend(0.0).into(),
             },
-        )?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        );
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }
@@ -554,11 +546,7 @@ impl PointLightingPipeline {
             .unwrap();
 
         // FIXME(taskgraph): sane initialization
-        app.resources
-            .flight(app.flight_id)
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        app.resources.flight(app.flight_id).wait(None).unwrap();
 
         unsafe {
             vulkano_taskgraph::execute(
@@ -566,7 +554,7 @@ impl PointLightingPipeline {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[LightingVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -588,11 +576,11 @@ impl PointLightingPipeline {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = point_lighting_vs::load(&app.device)
+            let vs = unsafe { point_lighting_vs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = point_lighting_fs::load(&app.device)
+            let fs = unsafe { point_lighting_fs::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -670,7 +658,7 @@ impl PointLightingPipeline {
         position: Vec3,
         color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
@@ -679,10 +667,10 @@ impl PointLightingPipeline {
                 color: [color[0], color[1], color[2], 1.0],
                 position: position.extend(0.0).into(),
             },
-        )?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        );
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }

@@ -94,9 +94,30 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
+    /// Creates a new `Semaphore`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &SemaphoreCreateInfo<'_>,
+    ) -> Result<Semaphore, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Semaphore`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &SemaphoreCreateInfo<'_>,
     ) -> Result<Semaphore, Validated<VulkanError>> {
@@ -218,12 +239,34 @@ impl Semaphore {
         self.export_handle_types
     }
 
+    /// If `self` is a timeline semaphore, returns the current counter value of the semaphore,
+    /// panicking on a validation error.
+    ///
+    /// The returned value may be immediately out of date, if a signal operation on the semaphore
+    /// is pending on the device.
+    ///
+    /// This is a shortcut for `try_counter_value().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_counter_value`] returns a [`ValidationError`].
+    ///
+    /// [`try_counter_value`]: Self::try_counter_value
+    #[inline]
+    #[track_caller]
+    pub fn counter_value(&self) -> Result<u64, VulkanError> {
+        match self.try_counter_value() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// If `self` is a timeline semaphore, returns the current counter value of the semaphore.
     ///
     /// The returned value may be immediately out of date, if a signal operation on the semaphore
     /// is pending on the device.
     #[inline]
-    pub fn counter_value(&self) -> Result<u64, Validated<VulkanError>> {
+    pub fn try_counter_value(&self) -> Result<u64, Validated<VulkanError>> {
         self.validate_counter_value()?;
 
         Ok(unsafe { self.counter_value_unchecked() }?)
@@ -275,6 +318,30 @@ impl Semaphore {
     }
 
     /// If `self` is a timeline semaphore, performs a signal operation on the semaphore, setting
+    /// the new counter value to `value`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_signal().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The safety requirements for semaphores, as detailed in the module documentation, must be
+    ///   followed.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_signal`] returns a [`ValidationError`].
+    ///
+    /// [`try_signal`]: Self::try_signal
+    #[inline]
+    #[track_caller]
+    pub unsafe fn signal(&self, signal_info: &SemaphoreSignalInfo<'_>) -> Result<(), VulkanError> {
+        match unsafe { self.try_signal(signal_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// If `self` is a timeline semaphore, performs a signal operation on the semaphore, setting
     /// the new counter value to `value`.
     ///
     /// # Safety
@@ -282,7 +349,7 @@ impl Semaphore {
     /// - The safety requirements for semaphores, as detailed in the module documentation, must be
     ///   followed.
     #[inline]
-    pub unsafe fn signal(
+    pub unsafe fn try_signal(
         &self,
         signal_info: &SemaphoreSignalInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -338,9 +405,33 @@ impl Semaphore {
     }
 
     /// If `self` is a timeline semaphore, performs a wait operation on the semaphore, blocking
+    /// until the counter value is equal to or greater than `wait_info.value`, panicking on
+    /// a validation error.
+    ///
+    /// This is a shortcut for `try_wait().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wait`] returns a [`ValidationError`].
+    ///
+    /// [`try_wait`]: Self::try_wait
+    #[inline]
+    #[track_caller]
+    pub fn wait(
+        &self,
+        wait_info: &SemaphoreWaitInfo<'_>,
+        timeout: Option<Duration>,
+    ) -> Result<(), VulkanError> {
+        match self.try_wait(wait_info, timeout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// If `self` is a timeline semaphore, performs a wait operation on the semaphore, blocking
     /// until the counter value is equal to or greater than `wait_info.value`.
     #[inline]
-    pub fn wait(
+    pub fn try_wait(
         &self,
         wait_info: &SemaphoreWaitInfo<'_>,
         timeout: Option<Duration>,
@@ -416,23 +507,45 @@ impl Semaphore {
         .map_err(VulkanError::from)
     }
 
-    /// Waits for multiple timeline semaphores at once.
+    /// Waits for many timeline semaphores at once, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_wait_many().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wait_many`] returns a [`ValidationError`].
+    /// - Panics if not all semaphores belong to the same device.
+    ///
+    /// [`try_wait_many`]: Self::try_wait_many
+    #[inline]
+    #[track_caller]
+    pub fn wait_many(
+        wait_info: &SemaphoreWaitManyInfo<'_>,
+        timeout: Option<Duration>,
+    ) -> Result<(), VulkanError> {
+        match Self::try_wait_many(wait_info, timeout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Waits for many timeline semaphores at once.
     ///
     /// # Panics
     ///
     /// - Panics if not all semaphores belong to the same device.
     #[inline]
-    pub fn wait_multiple(
-        wait_info: &SemaphoreWaitMultipleInfo<'_>,
+    pub fn try_wait_many(
+        wait_info: &SemaphoreWaitManyInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Validated<VulkanError>> {
-        Self::validate_wait_multiple(wait_info, timeout)?;
+        Self::validate_wait_many(wait_info, timeout)?;
 
-        Ok(unsafe { Self::wait_multiple_unchecked(wait_info, timeout) }?)
+        Ok(unsafe { Self::wait_many_unchecked(wait_info, timeout) }?)
     }
 
-    fn validate_wait_multiple(
-        wait_info: &SemaphoreWaitMultipleInfo<'_>,
+    fn validate_wait_many(
+        wait_info: &SemaphoreWaitManyInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), Box<ValidationError>> {
         if let Some(timeout) = timeout {
@@ -458,8 +571,8 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn wait_multiple_unchecked(
-        wait_info: &SemaphoreWaitMultipleInfo<'_>,
+    pub unsafe fn wait_many_unchecked(
+        wait_info: &SemaphoreWaitManyInfo<'_>,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
         if wait_info.semaphores.is_empty() {
@@ -497,6 +610,37 @@ impl Semaphore {
         .map_err(VulkanError::from)
     }
 
+    /// Exports the semaphore into a POSIX file descriptor, panicking on a validation error. The
+    /// caller owns the returned file descriptor.
+    ///
+    /// This is a shortcut for `try_export_fd().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_fd`] returns a [`ValidationError`].
+    ///
+    /// [`try_export_fd`]: Self::try_export_fd
+    #[inline]
+    #[track_caller]
+    pub unsafe fn export_fd(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<RawFd, VulkanError> {
+        match unsafe { self.try_export_fd(handle_type) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned file
     /// descriptor.
     ///
@@ -509,7 +653,7 @@ impl Semaphore {
     /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
     ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
     #[inline]
-    pub unsafe fn export_fd(
+    pub unsafe fn try_export_fd(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<RawFd, Validated<VulkanError>> {
@@ -599,10 +743,11 @@ impl Semaphore {
         Ok(fd)
     }
 
-    /// Exports the semaphore into a Win32 handle.
+    /// Exports the semaphore into a Win32 handle, panicking on a validation error.
     ///
-    /// The [`khr_external_semaphore_win32`](crate::device::DeviceExtensions::khr_external_semaphore_win32)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_semaphore_win32`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_export_win32_handle().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -615,8 +760,44 @@ impl Semaphore {
     /// - If `handle_type` is `ExternalSemaphoreHandleType::OpaqueWin32` or
     ///   `ExternalSemaphoreHandleType::D3D12Fence`, then a handle of this type must not have been
     ///   already exported from this semaphore.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_win32_handle`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_semaphore_win32`]: crate::device::DeviceExtensions::khr_external_semaphore_win32
+    /// [`try_export_win32_handle`]: Self::try_export_win32_handle
     #[inline]
+    #[track_caller]
     pub fn export_win32_handle(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<vk::HANDLE, VulkanError> {
+        match self.try_export_win32_handle(handle_type) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Exports the semaphore into a Win32 handle.
+    ///
+    /// The [`khr_external_semaphore_win32`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
+    /// - If `handle_type` is `ExternalSemaphoreHandleType::OpaqueWin32` or
+    ///   `ExternalSemaphoreHandleType::D3D12Fence`, then a handle of this type must not have been
+    ///   already exported from this semaphore.
+    ///
+    /// [`khr_external_semaphore_win32`]: crate::device::DeviceExtensions::khr_external_semaphore_win32
+    #[inline]
+    pub fn try_export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<vk::HANDLE, Validated<VulkanError>> {
@@ -703,6 +884,36 @@ impl Semaphore {
         Ok(handle)
     }
 
+    /// Exports the semaphore into a Zircon event handle, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_export_zircon_handle().map_error(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_zircon_handle`] returns a [`ValidationError`].
+    ///
+    /// [`try_export_zircon_handle`]: Self::try_export_zircon_handle
+    #[inline]
+    #[track_caller]
+    pub unsafe fn export_zircon_handle(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<vk::zx_handle_t, VulkanError> {
+        match unsafe { self.try_export_zircon_handle(handle_type) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Exports the semaphore into a Zircon event handle.
     ///
     /// # Safety
@@ -714,7 +925,7 @@ impl Semaphore {
     /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
     ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
     #[inline]
-    pub unsafe fn export_zircon_handle(
+    pub unsafe fn try_export_zircon_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<vk::zx_handle_t, Validated<VulkanError>> {
@@ -798,10 +1009,11 @@ impl Semaphore {
         Ok(handle)
     }
 
-    /// Imports a semaphore from a POSIX file descriptor.
+    /// Imports a semaphore from a POSIX file descriptor, panicking on a validation error.
     ///
-    /// The [`khr_external_semaphore_fd`](crate::device::DeviceExtensions::khr_external_semaphore_fd)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_semaphore_fd`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_import_fd().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -809,8 +1021,39 @@ impl Semaphore {
     /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then
     ///   `fd` must represent a binary semaphore that was exported from Vulkan or a compatible API,
     ///   with a driver and device UUID equal to those of the device that owns `self`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_import_fd`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_semaphore_fd`]: crate::device::DeviceExtensions::khr_external_semaphore_fd
+    /// [`try_import_fd`]: Self::try_import_fd
     #[inline]
+    #[track_caller]
     pub unsafe fn import_fd(
+        &self,
+        import_semaphore_fd_info: &ImportSemaphoreFdInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_import_fd(import_semaphore_fd_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Imports a semaphore from a POSIX file descriptor.
+    ///
+    /// The [`khr_external_semaphore_fd`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - The semaphore must not be in use by the device.
+    /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then
+    ///   `fd` must represent a binary semaphore that was exported from Vulkan or a compatible API,
+    ///   with a driver and device UUID equal to those of the device that owns `self`.
+    ///
+    /// [`khr_external_semaphore_fd`]: crate::device::DeviceExtensions::khr_external_semaphore_fd
+    #[inline]
+    pub unsafe fn try_import_fd(
         &self,
         import_semaphore_fd_info: &ImportSemaphoreFdInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -876,10 +1119,11 @@ impl Semaphore {
         Ok(())
     }
 
-    /// Imports a semaphore from a Win32 handle.
+    /// Imports a semaphore from a Win32 handle, panicking on a validation error.
     ///
-    /// The [`khr_external_semaphore_win32`](crate::device::DeviceExtensions::khr_external_semaphore_win32)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_semaphore_win32`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_import_win32_handle().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -887,8 +1131,39 @@ impl Semaphore {
     /// - In `import_semaphore_win32_handle_info`, `handle` must represent a binary semaphore that
     ///   was exported from Vulkan or a compatible API, with a driver and device UUID equal to
     ///   those of the device that owns `self`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_import_win32_handle`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_semaphore_win32`]: crate::device::DeviceExtensions::khr_external_semaphore_win32
+    /// [`try_import_win32_handle`]: Self::try_import_win32_handle
     #[inline]
+    #[track_caller]
     pub unsafe fn import_win32_handle(
+        &self,
+        import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_import_win32_handle(import_semaphore_win32_handle_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Imports a semaphore from a Win32 handle.
+    ///
+    /// The [`khr_external_semaphore_win32`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - The semaphore must not be in use by the device.
+    /// - In `import_semaphore_win32_handle_info`, `handle` must represent a binary semaphore that
+    ///   was exported from Vulkan or a compatible API, with a driver and device UUID equal to
+    ///   those of the device that owns `self`.
+    ///
+    /// [`khr_external_semaphore_win32`]: crate::device::DeviceExtensions::khr_external_semaphore_win32
+    #[inline]
+    pub unsafe fn try_import_win32_handle(
         &self,
         import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -959,18 +1234,49 @@ impl Semaphore {
         Ok(())
     }
 
-    /// Imports a semaphore from a Zircon event handle.
+    /// Imports a semaphore from a Zircon event handle, panicking on a validation error.
     ///
-    /// The [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
-    /// extension must be enabled on the device.
+    /// The [`fuchsia_external_semaphore`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_import_zircon_handle().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
     /// - The semaphore must not be in use by the device.
     /// - In `import_semaphore_zircon_handle_info`, `zircon_handle` must have `ZX_RIGHTS_BASIC` and
     ///   `ZX_RIGHTS_SIGNAL`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_import_zircon_handle`] returns a [`ValidationError`].
+    ///
+    /// [`fuchsia_external_semaphore`]: crate::device::DeviceExtensions::fuchsia_external_semaphore
+    /// [`try_import_zircon_handle`]: Self::try_import_zircon_handle
     #[inline]
+    #[track_caller]
     pub unsafe fn import_zircon_handle(
+        &self,
+        import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_import_zircon_handle(import_semaphore_zircon_handle_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Imports a semaphore from a Zircon event handle.
+    ///
+    /// The [`fuchsia_external_semaphore`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - The semaphore must not be in use by the device.
+    /// - In `import_semaphore_zircon_handle_info`, `zircon_handle` must have `ZX_RIGHTS_BASIC` and
+    ///   `ZX_RIGHTS_SIGNAL`.
+    ///
+    /// [`fuchsia_external_semaphore`]: crate::device::DeviceExtensions::fuchsia_external_semaphore
+    #[inline]
+    pub unsafe fn try_import_zircon_handle(
         &self,
         import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -1454,9 +1760,9 @@ impl<'a> SemaphoreWaitInfo<'a> {
     }
 }
 
-/// Parameters to wait for multiple timeline semaphores.
+/// Parameters to wait for many timeline semaphores.
 #[derive(Clone, Debug)]
-pub struct SemaphoreWaitMultipleInfo<'a> {
+pub struct SemaphoreWaitManyInfo<'a> {
     /// Additional properties of the wait operation.
     ///
     /// The default value is empty.
@@ -1470,15 +1776,15 @@ pub struct SemaphoreWaitMultipleInfo<'a> {
     pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for SemaphoreWaitMultipleInfo<'_> {
+impl Default for SemaphoreWaitManyInfo<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> SemaphoreWaitMultipleInfo<'a> {
-    /// Returns a default `SemaphoreWaitMultipleInfo`.
+impl<'a> SemaphoreWaitManyInfo<'a> {
+    /// Returns a default `SemaphoreWaitManyInfo`.
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -1515,14 +1821,14 @@ impl<'a> SemaphoreWaitMultipleInfo<'a> {
 
     pub(crate) fn to_vk(
         &self,
-        fields1_vk: &'a SemaphoreWaitMultipleInfoFields1Vk,
+        fields1_vk: &'a SemaphoreWaitManyInfoFields1Vk,
     ) -> vk::SemaphoreWaitInfo<'a> {
         let &Self {
             flags,
             semaphores: _,
             _ne: _,
         } = self;
-        let SemaphoreWaitMultipleInfoFields1Vk {
+        let SemaphoreWaitManyInfoFields1Vk {
             semaphores_vk,
             values_vk,
         } = fields1_vk;
@@ -1533,8 +1839,8 @@ impl<'a> SemaphoreWaitMultipleInfo<'a> {
             .values(values_vk)
     }
 
-    pub(crate) fn to_vk_fields1(&self) -> SemaphoreWaitMultipleInfoFields1Vk {
-        let &SemaphoreWaitMultipleInfo { semaphores, .. } = self;
+    pub(crate) fn to_vk_fields1(&self) -> SemaphoreWaitManyInfoFields1Vk {
+        let &SemaphoreWaitManyInfo { semaphores, .. } = self;
 
         let mut semaphores_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
         let mut values_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
@@ -1550,14 +1856,14 @@ impl<'a> SemaphoreWaitMultipleInfo<'a> {
             values_vk.push(value);
         }
 
-        SemaphoreWaitMultipleInfoFields1Vk {
+        SemaphoreWaitManyInfoFields1Vk {
             semaphores_vk,
             values_vk,
         }
     }
 }
 
-pub(crate) struct SemaphoreWaitMultipleInfoFields1Vk {
+pub(crate) struct SemaphoreWaitManyInfoFields1Vk {
     semaphores_vk: SmallVec<[vk::Semaphore; 8]>,
     values_vk: SmallVec<[u64; 8]>,
 }
@@ -2219,7 +2525,7 @@ mod tests {
             Err(_) => return,
         };
 
-        let (device, _) = match Device::new(
+        let (device, _) = match Device::try_new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {

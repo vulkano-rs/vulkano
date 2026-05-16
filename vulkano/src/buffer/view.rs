@@ -65,9 +65,30 @@ pub struct BufferView {
 }
 
 impl BufferView {
-    /// Creates a new `BufferView`.
+    /// Creates a new `BufferView`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns an error.
+    ///
+    /// [`try_new`]: Self::try_new
     #[inline]
+    #[track_caller]
     pub fn new(
+        subbuffer: &Subbuffer<impl ?Sized>,
+        create_info: &BufferViewCreateInfo<'_>,
+    ) -> Result<Arc<BufferView>, VulkanError> {
+        match Self::try_new(subbuffer, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `BufferView`, returning an error on failure.
+    #[inline]
+    pub fn try_new(
         subbuffer: &Subbuffer<impl ?Sized>,
         create_info: &BufferViewCreateInfo<'_>,
     ) -> Result<Arc<BufferView>, Validated<VulkanError>> {
@@ -554,7 +575,7 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::new(
+        match BufferView::try_new(
             &buffer,
             &BufferViewCreateInfo {
                 format: Format::R8G8B8A8_UNORM,
@@ -583,7 +604,7 @@ mod tests {
         .unwrap();
 
         // TODO: what if R64G64B64A64_SFLOAT is supported?
-        match BufferView::new(
+        match BufferView::try_new(
             &buffer,
             &BufferViewCreateInfo {
                 format: Format::R64G64B64A64_SFLOAT,
