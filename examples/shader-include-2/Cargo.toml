@@ -1,0 +1,9 @@
+[package]
+name = "shader-include-2"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+vulkano = { workspace = true, default-features = true }
+vulkano-shaders = { workspace = true }
