@@ -241,6 +241,12 @@ fn parse_deps_file(content: &str, vulkano_dir: &Path) -> Result<Vec<String>, Str
             let normalized = normalize_str(path);
 
             if !Path::new(&normalized).starts_with(vulkano_dir) {
+                if !Path::new(&normalized).is_file() {
+                    return Err(format!(
+                        "expected `{normalized}` to be a file existing on the file system",
+                    ));
+                }
+
                 paths.push(normalized);
             }
 
