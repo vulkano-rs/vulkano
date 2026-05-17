@@ -47,11 +47,11 @@ impl PixelsDrawPipeline {
     ) -> PixelsDrawPipeline {
         let pipeline = {
             let device = gfx_queue.device();
-            let vs = vs::load(device)
+            let vs = unsafe { vs::load(device) }
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let fs = fs::load(device)
+            let fs = unsafe { fs::load(device) }
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");

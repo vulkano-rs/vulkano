@@ -232,11 +232,11 @@ impl ApplicationHandler for App {
             //
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
             // which one.
-            let vs = vs::load(self.context.device())
+            let vs = unsafe { vs::load(self.context.device()) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = fs::load(self.context.device())
+            let fs = unsafe { fs::load(self.context.device()) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();

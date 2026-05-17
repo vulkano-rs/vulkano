@@ -98,9 +98,31 @@ self_referential! {
 }
 
 impl RayTracingPipeline {
+    /// Creates a new `RayTracingPipeline`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        cache: Option<&Arc<PipelineCache>>,
+        create_info: &RayTracingPipelineCreateInfo<'_>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_new(device, cache, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `RayTracingPipeline`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         cache: Option<&Arc<PipelineCache>>,
         create_info: &RayTracingPipelineCreateInfo<'_>,
@@ -114,7 +136,7 @@ impl RayTracingPipeline {
         device: &Arc<Device>,
         cache: Option<&PipelineCache>,
         create_info: &RayTracingPipelineCreateInfo<'_>,
-    ) -> Result<(), Validated<VulkanError>> {
+    ) -> Result<(), Box<ValidationError>> {
         if let Some(cache) = cache {
             assert_eq!(device, cache.device());
         }
@@ -271,13 +293,39 @@ impl RayTracingPipeline {
         self.flags
     }
 
+    /// Retrieves the opaque handles of shaders in the ray tracing pipeline, panicking on a
+    /// validation error.
+    ///
+    /// Handles for `group_count` groups are retrieved, starting at `first_group`. The group
+    /// indices correspond to the [`groups`] the pipeline was created with.
+    ///
+    /// This is a shortcut for `try_group_handles().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_group_handles`] returns a [`ValidationError`].
+    ///
+    /// [`groups`]: Self::groups
+    /// [`try_group_handles`]: Self::try_group_handles
+    #[track_caller]
+    pub fn group_handles(
+        &self,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<ShaderGroupHandlesData, VulkanError> {
+        match self.try_group_handles(first_group, group_count) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Retrieves the opaque handles of shaders in the ray tracing pipeline.
     ///
     /// Handles for `group_count` groups are retrieved, starting at `first_group`. The group
     /// indices correspond to the [`groups`] the pipeline was created with.
     ///
     /// [`groups`]: Self::groups
-    pub fn group_handles(
+    pub fn try_group_handles(
         &self,
         first_group: u32,
         group_count: u32,
@@ -976,15 +1024,44 @@ pub struct ShaderBindingTable {
 }
 
 impl ShaderBindingTable {
-    /// Automatically creates a shader binding table from a ray tracing pipeline.
+    /// Automatically creates a shader binding table from a ray tracing pipeline, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
         allocator: &Arc<impl MemoryAllocator + ?Sized>,
         ray_tracing_pipeline: &RayTracingPipeline,
-    ) -> Result<Self, Validated<VulkanError>> {
+    ) -> Result<Self, VulkanError> {
         Self::new_inner(allocator.clone().as_dyn(), ray_tracing_pipeline)
     }
 
+    #[track_caller]
     fn new_inner(
+        allocator: Arc<dyn MemoryAllocator>,
+        ray_tracing_pipeline: &RayTracingPipeline,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_new_inner(allocator, ray_tracing_pipeline) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Automatically creates a shader binding table from a ray tracing pipeline.
+    pub fn try_new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        ray_tracing_pipeline: &RayTracingPipeline,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::try_new_inner(allocator.clone().as_dyn(), ray_tracing_pipeline)
+    }
+
+    fn try_new_inner(
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -1090,7 +1167,7 @@ impl ShaderBindingTable {
         )
         .expect("todo: raytracing: better error type for buffer errors");
 
-        raygen.device_address = sbt_buffer.buffer().device_address().unwrap().get();
+        raygen.device_address = sbt_buffer.buffer().device_address().get();
         miss.device_address = raygen.device_address + raygen.size;
         hit.device_address = miss.device_address + miss.size;
         callable.device_address = hit.device_address + hit.size;
@@ -1143,7 +1220,7 @@ fn new_bytes_buffer_with_alignment(
     alignment: DeviceAlignment,
 ) -> Result<Subbuffer<[u8]>, Validated<AllocateBufferError>> {
     let layout = DeviceLayout::from_size_alignment(size, alignment.as_devicesize()).unwrap();
-    let buffer = Subbuffer::new(Buffer::new_inner(
+    let buffer = Subbuffer::new(Buffer::try_new_inner(
         allocator,
         create_info,
         allocation_info,

@@ -10,7 +10,18 @@ use ash::vk;
 
 impl RecordingCommandBuffer {
     #[inline]
+    #[track_caller]
     pub unsafe fn begin_query(
+        &mut self,
+        query_pool: &QueryPool,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> &mut Self {
+        unsafe { self.try_begin_query(query_pool, query, flags) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_begin_query(
         &mut self,
         query_pool: &QueryPool,
         query: u32,
@@ -187,7 +198,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn end_query(
+    #[track_caller]
+    pub unsafe fn end_query(&mut self, query_pool: &QueryPool, query: u32) -> &mut Self {
+        unsafe { self.try_end_query(query_pool, query) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_end_query(
         &mut self,
         query_pool: &QueryPool,
         query: u32,
@@ -244,7 +261,18 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: &QueryPool,
+        query: u32,
+        stage: PipelineStage,
+    ) -> &mut Self {
+        unsafe { self.try_write_timestamp(query_pool, query, stage) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_write_timestamp(
         &mut self,
         query_pool: &QueryPool,
         query: u32,
@@ -517,7 +545,32 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_query_pool_results<T>(
+        &mut self,
+        query_pool: &QueryPool,
+        first_query: u32,
+        query_count: u32,
+        destination: &Subbuffer<[T]>,
+        flags: QueryResultFlags,
+    ) -> &mut Self
+    where
+        T: QueryResultElement,
+    {
+        unsafe {
+            self.try_copy_query_pool_results(
+                query_pool,
+                first_query,
+                query_count,
+                destination,
+                flags,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_query_pool_results<T>(
         &mut self,
         query_pool: &QueryPool,
         first_query: u32,
@@ -672,7 +725,18 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: &QueryPool,
+        first_query: u32,
+        query_count: u32,
+    ) -> &mut Self {
+        unsafe { self.try_reset_query_pool(query_pool, first_query, query_count) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_reset_query_pool(
         &mut self,
         query_pool: &QueryPool,
         first_query: u32,

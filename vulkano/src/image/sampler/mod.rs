@@ -112,9 +112,30 @@ pub struct Sampler {
 }
 
 impl Sampler {
+    /// Creates a new `Sampler`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &SamplerCreateInfo<'_>,
+    ) -> Result<Arc<Sampler>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Sampler`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &SamplerCreateInfo<'_>,
     ) -> Result<Arc<Sampler>, Validated<VulkanError>> {
@@ -1602,7 +1623,7 @@ mod tests {
     fn min_lod_inferior() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        Sampler::new(
+        Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1621,7 +1642,7 @@ mod tests {
     fn max_anisotropy() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        Sampler::new(
+        Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1640,7 +1661,7 @@ mod tests {
     fn anisotropy_feature() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::new(
+        let r = Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1660,7 +1681,7 @@ mod tests {
     fn anisotropy_limit() {
         let (device, _queue) = gfx_dev_and_queue!(sampler_anisotropy);
 
-        let r = Sampler::new(
+        let r = Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1680,7 +1701,7 @@ mod tests {
     fn mip_lod_bias_limit() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::new(
+        let r = Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1699,7 +1720,7 @@ mod tests {
     fn sampler_mirror_clamp_to_edge_extension() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::new(
+        let r = Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,
@@ -1734,7 +1755,7 @@ mod tests {
     fn sampler_filter_minmax_extension() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::new(
+        let r = Sampler::try_new(
             &device,
             &SamplerCreateInfo {
                 mag_filter: Filter::Linear,

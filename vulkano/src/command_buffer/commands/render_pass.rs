@@ -15,7 +15,17 @@ use smallvec::SmallVec;
 
 impl RecordingCommandBuffer {
     #[inline]
+    #[track_caller]
     pub unsafe fn begin_render_pass(
+        &mut self,
+        render_pass_begin_info: &RenderPassBeginInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_begin_render_pass(render_pass_begin_info, subpass_begin_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_begin_render_pass(
         &mut self,
         render_pass_begin_info: &RenderPassBeginInfo<'_>,
         subpass_begin_info: &SubpassBeginInfo<'_>,
@@ -412,7 +422,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn next_subpass(
+        &mut self,
+        subpass_end_info: &SubpassEndInfo<'_>,
+        subpass_begin_info: &SubpassBeginInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_next_subpass(subpass_end_info, subpass_begin_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_next_subpass(
         &mut self,
         subpass_end_info: &SubpassEndInfo<'_>,
         subpass_begin_info: &SubpassBeginInfo<'_>,
@@ -502,7 +522,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn end_render_pass(
+    #[track_caller]
+    pub unsafe fn end_render_pass(&mut self, subpass_end_info: &SubpassEndInfo<'_>) -> &mut Self {
+        unsafe { self.try_end_render_pass(subpass_end_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_end_render_pass(
         &mut self,
         subpass_end_info: &SubpassEndInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -576,7 +602,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn begin_rendering(
+    #[track_caller]
+    pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo<'_>) -> &mut Self {
+        unsafe { self.try_begin_rendering(rendering_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_begin_rendering(
         &mut self,
         rendering_info: &RenderingInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -676,7 +708,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
+    #[track_caller]
+    pub unsafe fn end_rendering(&mut self) -> &mut Self {
+        unsafe { self.try_end_rendering() }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_rendering()?;
 
         Ok(unsafe { self.end_rendering_unchecked() })
@@ -714,7 +752,17 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn clear_attachments(
+        &mut self,
+        attachments: &[ClearAttachment],
+        rects: &[ClearRect],
+    ) -> &mut Self {
+        unsafe { self.try_clear_attachments(attachments, rects) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_clear_attachments(
         &mut self,
         attachments: &[ClearAttachment],
         rects: &[ClearRect],

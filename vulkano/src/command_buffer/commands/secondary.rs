@@ -11,7 +11,13 @@ use std::cmp::min;
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn execute_commands(
+    #[track_caller]
+    pub unsafe fn execute_commands(&mut self, command_buffers: &[&CommandBuffer]) -> &mut Self {
+        unsafe { self.try_execute_commands(command_buffers) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_execute_commands(
         &mut self,
         command_buffers: &[&CommandBuffer],
     ) -> Result<&mut Self, Box<ValidationError>> {

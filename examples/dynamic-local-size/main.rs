@@ -169,7 +169,7 @@ fn main() {
     println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
     let pipeline = {
-        let cs = cs::load(&device)
+        let cs = unsafe { cs::load(&device) }
             .unwrap()
             .specialize(&[
                 (0, 0.2f32.into()),
@@ -178,7 +178,6 @@ fn main() {
                 (3, 0.5f32.into()),
                 (4, 1.0f32.into()),
             ])
-            .unwrap()
             .entry_point("main")
             .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&cs);

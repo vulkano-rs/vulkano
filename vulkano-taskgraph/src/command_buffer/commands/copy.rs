@@ -15,8 +15,22 @@ use vulkano::{
 
 /// # Commands to transfer data between resources
 impl RecordingCommandBuffer<'_> {
+    /// Copies data from a buffer to another buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_copy_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_copy_buffer`] returns a [`ValidationError`].
+    ///
+    /// [`try_copy_buffer`]: Self::try_copy_buffer
+    #[track_caller]
+    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo<'_>) -> &mut Self {
+        unsafe { self.try_copy_buffer(copy_buffer_info) }.unwrap()
+    }
+
     /// Copies data from a buffer to another buffer.
-    pub unsafe fn copy_buffer(
+    pub unsafe fn try_copy_buffer(
         &mut self,
         copy_buffer_info: &CopyBufferInfo<'_>,
     ) -> Result<&mut Self> {
@@ -138,6 +152,34 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Copies data from an image to another image, panicking on a validation error.
+    ///
+    /// There are several restrictions:
+    ///
+    /// - The number of samples in the source and destination images must be equal.
+    /// - The size of the uncompressed element format of the source image must be equal to the
+    ///   compressed element format of the destination.
+    /// - If you copy between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the image offsets and 1 for
+    ///   the extent. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// This is a shortcut for `try_copy_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_copy_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_copy_image`]: Self::try_copy_image
+    #[track_caller]
+    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_copy_image(copy_image_info) }.unwrap()
+    }
+
     /// Copies data from an image to another image.
     ///
     /// There are several restrictions:
@@ -153,7 +195,10 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
     /// if they were separate images.
-    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo<'_>) -> Result<&mut Self> {
+    pub unsafe fn try_copy_image(
+        &mut self,
+        copy_image_info: &CopyImageInfo<'_>,
+    ) -> Result<&mut Self> {
         Ok(unsafe { self.copy_image_unchecked(copy_image_info) })
     }
 
@@ -330,8 +375,25 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Copies from a buffer to an image.
+    /// Copies from a buffer to an image, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_copy_buffer_to_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_copy_buffer_to_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_copy_buffer_to_image`]: Self::try_copy_buffer_to_image
+    #[track_caller]
     pub unsafe fn copy_buffer_to_image(
+        &mut self,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_copy_buffer_to_image(copy_buffer_to_image_info) }.unwrap()
+    }
+
+    /// Copies from a buffer to an image.
+    pub unsafe fn try_copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
     ) -> Result<&mut Self> {
@@ -485,8 +547,25 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Copies from an image to a buffer.
+    /// Copies from an image to a buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_copy_image_to_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_copy_image_to_buffer`] returns a [`ValidationError`].
+    ///
+    /// [`try_copy_image_to_buffer`]: Self::try_copy_image_to_buffer
+    #[track_caller]
     pub unsafe fn copy_image_to_buffer(
+        &mut self,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_copy_image_to_buffer(copy_image_to_buffer_info) }.unwrap()
+    }
+
+    /// Copies from an image to a buffer.
+    pub unsafe fn try_copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
     ) -> Result<&mut Self> {
@@ -640,6 +719,45 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Blits an image to another, panicking on a validation error.
+    ///
+    /// A *blit* is similar to an image copy operation, except that the portion of the image that
+    /// is transferred can be resized. You choose an area of the source and an area of the
+    /// destination, and the implementation will resize the area of the source so that it matches
+    /// the size of the area of the destination before writing it.
+    ///
+    /// Blit operations have several restrictions:
+    ///
+    /// - Blit operations are only allowed on queue families that support graphics operations.
+    /// - The format of the source and destination images must support blit operations, which
+    ///   depends on the Vulkan implementation. Vulkan guarantees that some specific formats must
+    ///   always be supported. See tables 52 to 61 of the specifications.
+    /// - Only single-sampled images are allowed.
+    /// - You can only blit between two images whose formats belong to the same type. The types
+    ///   are: floating-point, signed integers, unsigned integers, depth-stencil.
+    /// - If you blit between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - If you blit between depth, stencil or depth-stencil images, only the `Nearest` filter is
+    ///   allowed.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the top-left offset and 1 for
+    ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// This is a shortcut for `try_blit_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_blit_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_blit_image`]: Self::try_blit_image
+    #[track_caller]
+    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_blit_image(blit_image_info) }.unwrap()
+    }
+
     /// Blits an image to another.
     ///
     /// A *blit* is similar to an image copy operation, except that the portion of the image that
@@ -666,7 +784,10 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
     /// if they were separate images.
-    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo<'_>) -> Result<&mut Self> {
+    pub unsafe fn try_blit_image(
+        &mut self,
+        blit_image_info: &BlitImageInfo<'_>,
+    ) -> Result<&mut Self> {
         Ok(unsafe { self.blit_image_unchecked(blit_image_info) })
     }
 
@@ -830,8 +951,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Resolves a multisampled image into a single-sampled image, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_resolve_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_resolve_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_resolve_image`]: Self::try_resolve_image
+    #[track_caller]
+    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_resolve_image(resolve_image_info) }.unwrap()
+    }
+
     /// Resolves a multisampled image into a single-sampled image.
-    pub unsafe fn resolve_image(
+    pub unsafe fn try_resolve_image(
         &mut self,
         resolve_image_info: &ResolveImageInfo<'_>,
     ) -> Result<&mut Self> {

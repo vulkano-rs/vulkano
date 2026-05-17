@@ -458,13 +458,38 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
+    /// Creates a new shader module, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The SPIR-V code in `create_info.code` must be valid.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new(
+        device: &Arc<Device>,
+        create_info: &ShaderModuleCreateInfo<'_>,
+    ) -> Result<Arc<ShaderModule>, VulkanError> {
+        match unsafe { Self::try_new(device, create_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new shader module.
     ///
     /// # Safety
     ///
     /// - The SPIR-V code in `create_info.code` must be valid.
     #[inline]
-    pub unsafe fn new(
+    pub unsafe fn try_new(
         device: &Arc<Device>,
         create_info: &ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
@@ -576,7 +601,7 @@ impl ShaderModule {
         device: Arc<Device>,
         words: &[u32],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        unsafe { Self::new(&device, &ShaderModuleCreateInfo::new(words)) }
+        unsafe { Self::try_new(&device, &ShaderModuleCreateInfo::new(words)) }
     }
 
     /// As `from_words`, but takes a slice of bytes.
@@ -596,7 +621,7 @@ impl ShaderModule {
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let words = spirv::bytes_to_words(bytes).unwrap();
 
-        unsafe { Self::new(&device, &ShaderModuleCreateInfo::new(&words)) }
+        unsafe { Self::try_new(&device, &ShaderModuleCreateInfo::new(&words)) }
     }
 
     /// Returns the specialization constants that are defined in the module,
@@ -609,8 +634,33 @@ impl ShaderModule {
         &self.specialization_constants
     }
 
-    /// Applies the specialization constants to the shader module,
-    /// and returns a specialized version of the module.
+    /// Applies the specialization constants to the shader module, and returns a specialized
+    /// version of the module, panicking on a validation error.
+    ///
+    /// Constants that are not given a value here will have the default value that was specified
+    /// for them in the shader code.
+    /// When provided, they must have the same type as defined in the shader (as returned by
+    /// [`specialization_constants`]).
+    ///
+    /// This is a shortcut for `try_specialize().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_specialize`] returns a [`ValidationError`].
+    ///
+    /// [`specialization_constants`]: Self::specialization_constants
+    /// [`try_specialize`]: Self::try_specialize
+    #[inline]
+    #[track_caller]
+    pub fn specialize(
+        self: &Arc<Self>,
+        specialization_info: &[(u32, SpecializationConstant)],
+    ) -> Arc<SpecializedShaderModule> {
+        self.try_specialize(specialization_info).unwrap()
+    }
+
+    /// Applies the specialization constants to the shader module, and returns a specialized
+    /// version of the module.
     ///
     /// Constants that are not given a value here will have the default value that was specified
     /// for them in the shader code.
@@ -619,11 +669,11 @@ impl ShaderModule {
     ///
     /// [`specialization_constants`]: Self::specialization_constants
     #[inline]
-    pub fn specialize(
+    pub fn try_specialize(
         self: &Arc<Self>,
         specialization_info: &[(u32, SpecializationConstant)],
     ) -> Result<Arc<SpecializedShaderModule>, Box<ValidationError>> {
-        SpecializedShaderModule::new(self, specialization_info)
+        SpecializedShaderModule::try_new(self, specialization_info)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -975,9 +1025,28 @@ pub struct SpecializedShaderModule {
 }
 
 impl SpecializedShaderModule {
+    /// Returns `base_module` specialized with `specialization_info`, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_new().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        base_module: &Arc<ShaderModule>,
+        specialization_info: &[(u32, SpecializationConstant)],
+    ) -> Arc<Self> {
+        Self::try_new(base_module, specialization_info).unwrap()
+    }
+
     /// Returns `base_module` specialized with `specialization_info`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         base_module: &Arc<ShaderModule>,
         specialization_info: &[(u32, SpecializationConstant)],
     ) -> Result<Arc<Self>, Box<ValidationError>> {

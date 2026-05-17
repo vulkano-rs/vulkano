@@ -30,11 +30,35 @@ pub struct PrivateDataSlot {
 }
 
 impl PrivateDataSlot {
+    /// Creates a new `PrivateDataSlot`, panicking on a validation error.
+    ///
+    /// The [`private_data`] feature must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`private_data`]: crate::device::DeviceFeatures::private_data
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &PrivateDataSlotCreateInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `PrivateDataSlot`.
     ///
     /// The `private_data` feature must be enabled on the device.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &PrivateDataSlotCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -121,11 +145,36 @@ impl PrivateDataSlot {
         }
     }
 
+    /// Sets the private data that is associated with `object` to `data`, panicking on a validation
+    /// error.
+    ///
+    /// If `self` already has data for `object`, that data is replaced with the new value.
+    ///
+    /// This is a shortcut for `try_set_private_data().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_private_data`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_private_data`]: Self::try_set_private_data
+    #[inline]
+    #[track_caller]
+    pub fn set_private_data<T: VulkanObject + DeviceOwned>(
+        &self,
+        object: &T,
+        data: u64,
+    ) -> Result<(), VulkanError> {
+        match self.try_set_private_data(object, data) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Sets the private data that is associated with `object` to `data`.
     ///
     /// If `self` already has data for `object`, that data is replaced with the new value.
     #[inline]
-    pub fn set_private_data<T: VulkanObject + DeviceOwned>(
+    pub fn try_set_private_data<T: VulkanObject + DeviceOwned>(
         &self,
         object: &T,
         data: u64,

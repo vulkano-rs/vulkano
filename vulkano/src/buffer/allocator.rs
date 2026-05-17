@@ -92,7 +92,7 @@ impl<S> BufferAllocator<S> {
     }
 
     fn allocate_buffer(&self) -> Result<Arc<Buffer>, MemoryAllocatorError> {
-        Buffer::new(
+        Buffer::try_new(
             &self.memory_allocator,
             &BufferCreateInfo {
                 usage: self.buffer_usage,
@@ -698,7 +698,7 @@ where
     }
 
     fn create_arena(&self) -> Result<Arc<Buffer>, MemoryAllocatorError> {
-        Buffer::new(
+        Buffer::try_new(
             &self.memory_allocator,
             &BufferCreateInfo {
                 usage: self.buffer_usage,

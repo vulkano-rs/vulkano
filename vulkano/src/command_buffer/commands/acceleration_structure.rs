@@ -20,7 +20,17 @@ use std::sync::Arc;
 
 impl RecordingCommandBuffer {
     #[inline]
+    #[track_caller]
     pub unsafe fn build_acceleration_structure(
+        &mut self,
+        info: &AccelerationStructureBuildGeometryInfo,
+        build_range_infos: &[AccelerationStructureBuildRangeInfo],
+    ) -> &mut Self {
+        unsafe { self.try_build_acceleration_structure(info, build_range_infos) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_build_acceleration_structure(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
         build_range_infos: &[AccelerationStructureBuildRangeInfo],
@@ -795,7 +805,27 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn build_acceleration_structure_indirect(
+        &mut self,
+        info: &AccelerationStructureBuildGeometryInfo,
+        indirect_buffer: &Subbuffer<[u8]>,
+        stride: u32,
+        max_primitive_counts: &[u32],
+    ) -> &mut Self {
+        unsafe {
+            self.try_build_acceleration_structure_indirect(
+                info,
+                indirect_buffer,
+                stride,
+                max_primitive_counts,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
         indirect_buffer: &Subbuffer<[u8]>,
@@ -1422,7 +1452,16 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_acceleration_structure(
+        &mut self,
+        info: &CopyAccelerationStructureInfo,
+    ) -> &mut Self {
+        unsafe { self.try_copy_acceleration_structure(info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_acceleration_structure(
         &mut self,
         info: &CopyAccelerationStructureInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1472,7 +1511,16 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_acceleration_structure_to_memory(
+        &mut self,
+        info: &CopyAccelerationStructureToMemoryInfo,
+    ) -> &mut Self {
+        unsafe { self.try_copy_acceleration_structure_to_memory(info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_acceleration_structure_to_memory(
         &mut self,
         info: &CopyAccelerationStructureToMemoryInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1531,7 +1579,16 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_memory_to_acceleration_structure(
+        &mut self,
+        info: &CopyMemoryToAccelerationStructureInfo,
+    ) -> &mut Self {
+        unsafe { self.try_copy_memory_to_acceleration_structure(info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_memory_to_acceleration_structure(
         &mut self,
         info: &CopyMemoryToAccelerationStructureInfo,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1590,7 +1647,25 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn write_acceleration_structures_properties(
+        &mut self,
+        acceleration_structures: &[Arc<AccelerationStructure>],
+        query_pool: &QueryPool,
+        first_query: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_write_acceleration_structures_properties(
+                acceleration_structures,
+                query_pool,
+                first_query,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_write_acceleration_structures_properties(
         &mut self,
         acceleration_structures: &[Arc<AccelerationStructure>],
         query_pool: &QueryPool,

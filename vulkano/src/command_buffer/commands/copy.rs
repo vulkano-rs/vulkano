@@ -15,7 +15,13 @@ use std::cmp::{max, min};
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn copy_buffer(
+    #[track_caller]
+    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo<'_>) -> &mut Self {
+        unsafe { self.try_copy_buffer(copy_buffer_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_buffer(
         &mut self,
         copy_buffer_info: &CopyBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -94,7 +100,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn copy_image(
+    #[track_caller]
+    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_copy_image(copy_image_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_image(
         &mut self,
         copy_image_info: &CopyImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -447,6 +459,14 @@ impl RecordingCommandBuffer {
     pub unsafe fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_copy_buffer_to_image(copy_buffer_to_image_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_buffer_to_image(
+        &mut self,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer_to_image(copy_buffer_to_image_info)?;
 
@@ -720,7 +740,16 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_image_to_buffer(
+        &mut self,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_copy_image_to_buffer(copy_image_to_buffer_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -975,7 +1004,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn blit_image(
+    #[track_caller]
+    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_blit_image(blit_image_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_blit_image(
         &mut self,
         blit_image_info: &BlitImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1057,7 +1092,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn resolve_image(
+    #[track_caller]
+    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_resolve_image(resolve_image_info) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_resolve_image(
         &mut self,
         resolve_image_info: &ResolveImageInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {

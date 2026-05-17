@@ -141,12 +141,37 @@ pub struct SamplerYcbcrConversion {
 }
 
 impl SamplerYcbcrConversion {
+    /// Creates a new `SamplerYcbcrConversion`, panicking on a validation error.
+    ///
+    /// The [`sampler_ycbcr_conversion`] feature must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`sampler_ycbcr_conversion`]: crate::device::DeviceFeatures::sampler_ycbcr_conversion
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &SamplerYcbcrConversionCreateInfo<'_>,
+    ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `SamplerYcbcrConversion`.
     ///
-    /// The [`sampler_ycbcr_conversion`](crate::device::DeviceFeatures::sampler_ycbcr_conversion)
-    /// feature must be enabled on the device.
+    /// The [`sampler_ycbcr_conversion`] feature must be enabled on the device.
+    ///
+    /// [`sampler_ycbcr_conversion`]: crate::device::DeviceFeatures::sampler_ycbcr_conversion
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &SamplerYcbcrConversionCreateInfo<'_>,
     ) -> Result<Arc<SamplerYcbcrConversion>, Validated<VulkanError>> {
@@ -909,7 +934,7 @@ mod tests {
     fn feature_not_enabled() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let r = SamplerYcbcrConversion::new(&device, &Default::default());
+        let r = SamplerYcbcrConversion::try_new(&device, &Default::default());
 
         assert!(matches!(
             r,

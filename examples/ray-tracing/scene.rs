@@ -59,15 +59,15 @@ impl SceneTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let raygen = raygen::load(&app.device)
+            let raygen = unsafe { raygen::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let closest_hit = closest_hit::load(&app.device)
+            let closest_hit = unsafe { closest_hit::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let miss = miss::load(&app.device)
+            let miss = unsafe { miss::load(&app.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -189,7 +189,7 @@ impl SceneTask {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    *tcx.write_buffer(camera_buffer_id, ..)? = raygen::Camera {
+                    *tcx.write_buffer(camera_buffer_id, ..) = raygen::Camera {
                         view_proj: (proj * view).to_cols_array_2d(),
                         view_inverse: view.inverse().to_cols_array_2d(),
                         proj_inverse: proj.inverse().to_cols_array_2d(),
@@ -233,7 +233,7 @@ impl Task for SceneTask {
         tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        let swapchain_state = tcx.swapchain(self.swapchain_id)?;
+        let swapchain_state = tcx.swapchain(self.swapchain_id);
         let image_index = swapchain_state.current_image_index().unwrap();
         let extent = swapchain_state.images()[0].extent();
 
@@ -245,10 +245,10 @@ impl Task for SceneTask {
                 acceleration_structure_id: self.acceleration_structure_id,
                 camera_buffer_id: self.camera_storage_buffer_id,
             },
-        )?;
-        cbf.bind_pipeline_ray_tracing(&self.pipeline)?;
+        );
+        cbf.bind_pipeline_ray_tracing(&self.pipeline);
 
-        unsafe { cbf.trace_rays(self.shader_binding_table.addresses(), extent) }?;
+        unsafe { cbf.trace_rays(self.shader_binding_table.addresses(), extent) };
 
         Ok(())
     }
@@ -306,13 +306,11 @@ unsafe fn build_acceleration_structure_common(
         ..AccelerationStructureBuildGeometryInfo::new(geometries)
     };
 
-    let as_build_sizes_info = device
-        .acceleration_structure_build_sizes(
-            AccelerationStructureBuildType::Device,
-            &as_build_geometry_info,
-            &[primitive_count],
-        )
-        .unwrap();
+    let as_build_sizes_info = device.acceleration_structure_build_sizes(
+        AccelerationStructureBuildType::Device,
+        &as_build_geometry_info,
+        &[primitive_count],
+    );
 
     // We create a new scratch buffer for each acceleration structure for simplicity. You may want
     // to reuse scratch buffers if you need to build many acceleration structures.

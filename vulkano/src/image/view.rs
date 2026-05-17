@@ -48,9 +48,30 @@ pub struct ImageView {
 }
 
 impl ImageView {
+    /// Creates a new `ImageView`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        image: &Arc<Image>,
+        create_info: &ImageViewCreateInfo<'_>,
+    ) -> Result<Arc<ImageView>, VulkanError> {
+        match Self::try_new(image, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `ImageView`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         image: &Arc<Image>,
         create_info: &ImageViewCreateInfo<'_>,
     ) -> Result<Arc<ImageView>, Validated<VulkanError>> {
@@ -633,12 +654,17 @@ impl ImageView {
         unsafe { Self::from_handle(image, handle, create_info) }
     }
 
-    /// Creates a default `ImageView`. Equivalent to
-    /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
-    pub fn new_default(image: &Arc<Image>) -> Result<Arc<ImageView>, Validated<VulkanError>> {
-        let create_info = ImageViewCreateInfo::from_image(image);
-
-        Self::new(image, &create_info)
+    /// Creates a default `ImageView`, panicking on a validation error. Equivalent to
+    /// `ImageView::new(image, &ImageViewCreateInfo::from_image(image))`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`ImageView::new`] panics.
+    ///
+    /// [`ImageView::new`]: Self::new
+    #[track_caller]
+    pub fn new_default(image: &Arc<Image>) -> Result<Arc<ImageView>, VulkanError> {
+        Self::new(image, &ImageViewCreateInfo::from_image(image))
     }
 
     /// Creates a new `ImageView` from a raw object handle.

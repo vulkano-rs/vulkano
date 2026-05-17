@@ -257,10 +257,9 @@ fn main() {
 
     // Load the first shader, and create a pipeline for the shader.
     let mult_pipeline = {
-        let cs = shaders::load_mult(&device)
+        let cs = unsafe { shaders::load_mult(&device) }
             .unwrap()
             .specialize(&[(0, true.into())])
-            .unwrap()
             .entry_point("main")
             .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&cs);
@@ -276,10 +275,9 @@ fn main() {
 
     // Load the second shader, and create a pipeline for the shader.
     let add_pipeline = {
-        let cs = shaders::load_add(&device)
+        let cs = unsafe { shaders::load_add(&device) }
             .unwrap()
             .specialize(&[(0, true.into())])
-            .unwrap()
             .entry_point("main")
             .unwrap();
         let stage = PipelineShaderStageCreateInfo::new(&cs);

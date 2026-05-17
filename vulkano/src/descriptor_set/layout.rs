@@ -48,9 +48,30 @@ self_referential! {
 }
 
 impl DescriptorSetLayout {
+    /// Creates a new `DescriptorSetLayout`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &DescriptorSetLayoutCreateInfo<'_>,
+    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `DescriptorSetLayout`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &DescriptorSetLayoutCreateInfo<'_>,
     ) -> Result<Arc<DescriptorSetLayout>, Validated<VulkanError>> {

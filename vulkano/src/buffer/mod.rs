@@ -324,7 +324,7 @@ impl Buffer {
         T: BufferContents,
     {
         let layout = T::LAYOUT.unwrap_sized();
-        let buffer = Subbuffer::new(Buffer::new(
+        let buffer = Subbuffer::new(Buffer::try_new(
             allocator,
             create_info,
             allocation_info,
@@ -370,7 +370,7 @@ impl Buffer {
         T: BufferContents + ?Sized,
     {
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
-        let buffer = Subbuffer::new(Buffer::new(
+        let buffer = Subbuffer::new(Buffer::try_new(
             allocator,
             create_info,
             allocation_info,
@@ -380,17 +380,24 @@ impl Buffer {
         Ok(unsafe { buffer.reinterpret_unchecked() })
     }
 
-    /// Creates a new uninitialized `Buffer` with the given `layout`.
+    /// Creates a new uninitialized `Buffer` with the given `layout`, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
     ///
     /// # Panics
     ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
     /// - Panics if `create_info.size` is not zero.
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
         allocator: &Arc<impl MemoryAllocator + ?Sized>,
         create_info: &BufferCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
         layout: DeviceLayout,
-    ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
+    ) -> Result<Arc<Self>, AllocateBufferError> {
         Self::new_inner(
             allocator.clone().as_dyn(),
             create_info,
@@ -399,7 +406,38 @@ impl Buffer {
         )
     }
 
-    pub(crate) fn new_inner(
+    fn new_inner(
+        allocator: Arc<dyn MemoryAllocator>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Arc<Self>, AllocateBufferError> {
+        match Self::try_new_inner(allocator, create_info, allocation_info, layout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new uninitialized `Buffer` with the given `layout`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.size` is not zero.
+    pub fn try_new(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
+        Self::try_new_inner(
+            allocator.clone().as_dyn(),
+            create_info,
+            allocation_info,
+            layout,
+        )
+    }
+
+    pub(crate) fn try_new_inner(
         allocator: Arc<dyn MemoryAllocator>,
         create_info: &BufferCreateInfo<'_>,
         allocation_info: &AllocationCreateInfo<'_>,
@@ -420,28 +458,90 @@ impl Buffer {
             ..*create_info
         };
 
-        let raw_buffer =
-            RawBuffer::new(allocator.device(), &create_info).map_err(|err| match err {
-                Validated::Error(err) => Validated::Error(AllocateBufferError::CreateBuffer(err)),
-                Validated::ValidationError(err) => err.into(),
-            })?;
+        let raw_buffer = RawBuffer::try_new(allocator.device(), &create_info)
+            .map_err(|err| err.map(AllocateBufferError::CreateBuffer))?;
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
         let allocation = allocator
-            .allocate(
+            .try_allocate(
                 &requirements,
                 AllocationType::Linear,
                 allocation_info,
                 Some(DedicatedAllocation::Buffer(&raw_buffer)),
             )
-            .map_err(AllocateBufferError::AllocateMemory)?;
+            .map_err(|err| err.map(AllocateBufferError::AllocateMemory))?;
         let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
 
-        let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
-            err.map(AllocateBufferError::BindMemory)
-                .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
-        })?;
+        let buffer = raw_buffer
+            .try_bind_memory(allocation)
+            .map_err(|(err, _, _)| {
+                err.map(AllocateBufferError::BindMemory)
+                    .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
+            })?;
+
+        Ok(Arc::new(buffer))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        allocator: &Arc<impl MemoryAllocator + ?Sized>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Arc<Self>, AllocateBufferError> {
+        unsafe {
+            Self::new_unchecked_inner(
+                allocator.clone().as_dyn(),
+                create_info,
+                allocation_info,
+                layout,
+            )
+        }
+    }
+
+    unsafe fn new_unchecked_inner(
+        allocator: Arc<dyn MemoryAllocator>,
+        create_info: &BufferCreateInfo<'_>,
+        allocation_info: &AllocationCreateInfo<'_>,
+        layout: DeviceLayout,
+    ) -> Result<Arc<Self>, AllocateBufferError> {
+        assert!(!create_info
+            .flags
+            .contains(BufferCreateFlags::SPARSE_BINDING));
+
+        assert_eq!(
+            create_info.size, 0,
+            "`Buffer::new*` functions set the `create_info.size` field themselves, you should not \
+             set it yourself"
+        );
+
+        let create_info = BufferCreateInfo {
+            size: layout.size(),
+            ..*create_info
+        };
+
+        // SAFETY: Enforced by the caller.
+        let raw_buffer = unsafe { RawBuffer::new_unchecked(allocator.device(), &create_info) }
+            .map_err(AllocateBufferError::CreateBuffer)?;
+        let mut requirements = *raw_buffer.memory_requirements();
+        requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
+
+        // SAFETY: Enforced by the caller.
+        let allocation = unsafe {
+            allocator.allocate_unchecked(
+                &requirements,
+                AllocationType::Linear,
+                allocation_info,
+                Some(DedicatedAllocation::Buffer(&raw_buffer)),
+            )
+        }
+        .map_err(AllocateBufferError::AllocateMemory)?;
+        let allocation = unsafe { ResourceMemory::from_allocation_inner(allocator, allocation) };
+
+        // SAFETY: Enforced by the caller.
+        let buffer = unsafe { raw_buffer.bind_memory_unchecked(allocation) }
+            .map_err(|(err, _, _)| AllocateBufferError::BindMemory(err))?;
 
         Ok(Arc::new(buffer))
     }
@@ -498,9 +598,23 @@ impl Buffer {
         self.inner.external_memory_handle_types()
     }
 
+    /// Returns the device address for this buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_device_address().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_device_address`] returns a [`ValidationError`].
+    ///
+    /// [`try_device_address`]: Self::try_device_address
+    #[track_caller]
+    pub fn device_address(&self) -> NonZero<DeviceAddress> {
+        self.try_device_address().unwrap()
+    }
+
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
+    pub fn try_device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
         self.validate_device_address()?;
 
         Ok(unsafe { self.device_address_unchecked() })

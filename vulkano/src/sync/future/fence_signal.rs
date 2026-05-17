@@ -136,7 +136,7 @@ where
         match &*state {
             FenceSignalFutureState::Pending(_, fence)
             | FenceSignalFutureState::PartiallyFlushed(_, fence)
-            | FenceSignalFutureState::Flushed(_, fence) => fence.is_signaled(),
+            | FenceSignalFutureState::Flushed(_, fence) => unsafe { fence.is_signaled_unchecked() },
             FenceSignalFutureState::Cleaned => Ok(true),
             FenceSignalFutureState::Poisoned => unreachable!(),
         }
@@ -157,7 +157,7 @@ where
 
         match replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
-                fence.wait(timeout)?;
+                unsafe { fence.wait_unchecked(timeout) }?;
                 unsafe { previous.signal_finished() };
                 Ok(())
             }
@@ -178,7 +178,7 @@ where
 
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
-                if fence.wait(Some(Duration::from_secs(0))).is_ok() {
+                if unsafe { fence.wait_unchecked(Some(Duration::from_secs(0))) }.is_ok() {
                     unsafe { prev.signal_finished() };
                     *state = FenceSignalFutureState::Cleaned;
                 } else {
@@ -397,7 +397,7 @@ where
         match &*state {
             FenceSignalFutureState::Flushed(_, fence) => match self.behavior {
                 FenceSignalFutureBehavior::Block { timeout } => {
-                    fence.wait(timeout)?;
+                    unsafe { fence.wait_unchecked(timeout) }?;
                 }
                 FenceSignalFutureBehavior::Continue => (),
             },

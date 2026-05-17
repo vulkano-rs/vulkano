@@ -68,7 +68,7 @@ impl<'a> DeferredBatch<'a> {
     #[track_caller]
     pub fn destroy_buffer(&mut self, id: Id<Buffer>) -> &mut Self {
         self.resources
-            .invalidate_buffer(id, &self.guard)
+            .try_invalidate_buffer(id, &self.guard)
             .expect("invalid buffer ID");
 
         self.defer(move |resources| {
@@ -88,7 +88,7 @@ impl<'a> DeferredBatch<'a> {
     #[track_caller]
     pub fn destroy_image(&mut self, id: Id<Image>) -> &mut Self {
         self.resources
-            .invalidate_image(id, &self.guard)
+            .try_invalidate_image(id, &self.guard)
             .expect("invalid image ID");
 
         self.defer(move |resources| {
@@ -305,7 +305,7 @@ impl<'a> DeferredBatch<'a> {
         let biased_frames = flight_ids.into_iter().flat_map(|flight_id| {
             let flight = self
                 .resources
-                .flight_protected(flight_id, &guard)
+                .try_flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
             let biased_frame = flight.biased_started_frame();
 
@@ -355,7 +355,7 @@ impl<'a> DeferredBatch<'a> {
         let biased_frames = frames.into_iter().flat_map(|(flight_id, frame)| {
             let flight = self
                 .resources
-                .flight_protected(flight_id, &guard)
+                .try_flight_protected(flight_id, &guard)
                 .expect("invalid flight ID");
             let biased_frame = frame + u64::from(flight.frame_count()) + 1;
 
@@ -609,7 +609,7 @@ impl GlobalQueue {
     pub(crate) unsafe fn collect(&self, resources: &Resources, guard: &hyaline::Guard<'_>) {
         let predicate = |biased_frames: &[(Id<Flight>, u64)]| {
             for &(flight_id, biased_frame) in biased_frames {
-                let Ok(flight) = resources.flight_protected(flight_id, guard) else {
+                let Ok(flight) = resources.try_flight_protected(flight_id, guard) else {
                     continue;
                 };
 

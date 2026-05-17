@@ -131,7 +131,7 @@ impl<T: ?Sized> Subbuffer<T> {
 
     /// Returns the device address for this subbuffer.
     pub fn device_address(&self) -> Result<NonZero<DeviceAddress>, Box<ValidationError>> {
-        self.buffer().device_address().map(|ptr| {
+        self.buffer().try_device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
             // in range.
@@ -1281,7 +1281,7 @@ mod tests {
 
         // Allocate some junk in the same block as the buffer.
         let _junk = allocator
-            .allocate(
+            .try_allocate(
                 &MemoryRequirements {
                     layout: DeviceLayout::from_size_alignment(17, 1).unwrap(),
                     ..requirements
@@ -1293,7 +1293,7 @@ mod tests {
             .unwrap();
 
         let allocation = allocator
-            .allocate(
+            .try_allocate(
                 &requirements,
                 AllocationType::Linear,
                 &AllocationCreateInfo::default(),

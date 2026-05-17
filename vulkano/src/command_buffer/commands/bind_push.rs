@@ -20,7 +20,29 @@ use std::{cmp::min, ffi::c_void, ptr};
 
 impl RecordingCommandBuffer {
     #[inline]
+    #[track_caller]
     pub unsafe fn bind_descriptor_sets(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[&RawDescriptorSet],
+        dynamic_offsets: &[u32],
+    ) -> &mut Self {
+        unsafe {
+            self.try_bind_descriptor_sets(
+                pipeline_bind_point,
+                layout,
+                first_set,
+                descriptor_sets,
+                dynamic_offsets,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         layout: &PipelineLayout,
@@ -306,7 +328,19 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn bind_index_buffer(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        size: Option<DeviceSize>,
+        index_type: IndexType,
+    ) -> &mut Self {
+        unsafe { self.try_bind_index_buffer(buffer, offset, size, index_type) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_bind_index_buffer(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -431,7 +465,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn bind_pipeline_compute(
+    #[track_caller]
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) -> &mut Self {
+        unsafe { self.try_bind_pipeline_compute(pipeline) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_bind_pipeline_compute(
         &mut self,
         pipeline: &ComputePipeline,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -482,7 +522,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn bind_pipeline_graphics(
+    #[track_caller]
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) -> &mut Self {
+        unsafe { self.try_bind_pipeline_graphics(pipeline) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_bind_pipeline_graphics(
         &mut self,
         pipeline: &GraphicsPipeline,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -532,11 +578,17 @@ impl RecordingCommandBuffer {
         self
     }
 
-    pub unsafe fn bind_pipeline_ray_tracing(
+    #[track_caller]
+    pub unsafe fn bind_pipeline_ray_tracing(&mut self, pipeline: &RayTracingPipeline) -> &mut Self {
+        unsafe { self.try_bind_pipeline_ray_tracing(pipeline) }.unwrap()
+    }
+
+    pub unsafe fn try_bind_pipeline_ray_tracing(
         &mut self,
         pipeline: &RayTracingPipeline,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_ray_tracing(pipeline)?;
+
         Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
     }
 
@@ -584,7 +636,21 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        buffers: &[&Buffer],
+        offsets: &[DeviceSize],
+        sizes: &[DeviceSize],
+        strides: &[DeviceSize],
+    ) -> &mut Self {
+        unsafe { self.try_bind_vertex_buffers(first_binding, buffers, offsets, sizes, strides) }
+            .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_bind_vertex_buffers(
         &mut self,
         first_binding: u32,
         buffers: &[&Buffer],
@@ -783,7 +849,18 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn push_constants(
+        &mut self,
+        layout: &PipelineLayout,
+        offset: u32,
+        values: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe { self.try_push_constants(layout, offset, values) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_push_constants(
         &mut self,
         layout: &PipelineLayout,
         offset: u32,
@@ -955,7 +1032,22 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline: &PipelineLayout,
+        set: u32,
+        descriptor_writes: &[WriteDescriptorSet<'_>],
+    ) -> &mut Self {
+        unsafe {
+            self.try_push_descriptor_set(pipeline_bind_point, pipeline, set, descriptor_writes)
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline: &PipelineLayout,

@@ -49,8 +49,28 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    /// Creates a new `Framebuffer`.
+    /// Creates a new `Framebuffer`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
+        render_pass: &Arc<RenderPass>,
+        create_info: &FramebufferCreateInfo<'_>,
+    ) -> Result<Arc<Framebuffer>, VulkanError> {
+        match Self::try_new(render_pass, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `Framebuffer`.
+    pub fn try_new(
         render_pass: &Arc<RenderPass>,
         create_info: &FramebufferCreateInfo<'_>,
     ) -> Result<Arc<Framebuffer>, Validated<VulkanError>> {
@@ -751,7 +771,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 extent: [0xffffffff, 0xffffffff],
@@ -761,7 +781,7 @@ mod tests {
         )
         .is_err());
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 extent: [1, 1],
@@ -810,7 +830,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 attachments: &[&view],
@@ -910,7 +930,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 attachments: &[&view],
@@ -981,7 +1001,7 @@ mod tests {
         )
         .unwrap();
 
-        let framebuffer = Framebuffer::new(
+        let framebuffer = Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 attachments: &[&a, &b],
@@ -1040,7 +1060,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 attachments: &[&view],
@@ -1103,7 +1123,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(
+        assert!(Framebuffer::try_new(
             &render_pass,
             &FramebufferCreateInfo {
                 attachments: &[&a, &b],
@@ -1149,6 +1169,6 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Framebuffer::new(&render_pass, &FramebufferCreateInfo::default()).is_err());
+        assert!(Framebuffer::try_new(&render_pass, &FramebufferCreateInfo::default()).is_err());
     }
 }

@@ -21,8 +21,22 @@ use vulkano::{
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
 impl RecordingCommandBuffer<'_> {
+    /// Sets the dynamic blend constants for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_blend_constants().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_blend_constants`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_blend_constants`]: Self::try_set_blend_constants
+    #[track_caller]
+    pub unsafe fn set_blend_constants(&mut self, constants: &[f32; 4]) -> &mut Self {
+        unsafe { self.try_set_blend_constants(constants) }.unwrap()
+    }
+
     /// Sets the dynamic blend constants for future draw calls.
-    pub unsafe fn set_blend_constants(&mut self, constants: &[f32; 4]) -> Result<&mut Self> {
+    pub unsafe fn try_set_blend_constants(&mut self, constants: &[f32; 4]) -> Result<&mut Self> {
         Ok(unsafe { self.set_blend_constants_unchecked(constants) })
     }
 
@@ -33,8 +47,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic color writes should be enabled for each attachment in the framebuffer,
+    /// panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_color_write_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_color_write_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_color_write_enable`]: Self::try_set_color_write_enable
+    #[track_caller]
+    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> &mut Self {
+        unsafe { self.try_set_color_write_enable(enables) }.unwrap()
+    }
+
     /// Sets whether dynamic color writes should be enabled for each attachment in the framebuffer.
-    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> Result<&mut Self> {
+    pub unsafe fn try_set_color_write_enable(&mut self, enables: &[bool]) -> Result<&mut Self> {
         Ok(unsafe { self.set_color_write_enable_unchecked(enables) })
     }
 
@@ -61,8 +90,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic cull mode for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_cull_mode().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_cull_mode`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_cull_mode`]: Self::try_set_cull_mode
+    #[track_caller]
+    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
+        unsafe { self.try_set_cull_mode(cull_mode) }.unwrap()
+    }
+
     /// Sets the dynamic cull mode for future draw calls.
-    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) -> Result<&mut Self> {
+    pub unsafe fn try_set_cull_mode(&mut self, cull_mode: CullMode) -> Result<&mut Self> {
         Ok(unsafe { self.set_cull_mode_unchecked(cull_mode) })
     }
 
@@ -79,8 +122,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic depth bias values for future draw calls.
+    /// Sets the dynamic depth bias values for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_bias().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_bias`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_bias`]: Self::try_set_depth_bias
+    #[track_caller]
     pub unsafe fn set_depth_bias(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> &mut Self {
+        unsafe { self.try_set_depth_bias(constant_factor, clamp, slope_factor) }.unwrap()
+    }
+
+    /// Sets the dynamic depth bias values for future draw calls.
+    pub unsafe fn try_set_depth_bias(
         &mut self,
         constant_factor: f32,
         clamp: f32,
@@ -103,8 +165,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic depth bias is enabled for future draw calls, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_set_depth_bias_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_bias_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_bias_enable`]: Self::try_set_depth_bias_enable
+    #[track_caller]
+    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_bias_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic depth bias is enabled for future draw calls.
-    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_depth_bias_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_depth_bias_enable_unchecked(enable) })
     }
 
@@ -122,8 +199,26 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic depth bounds for future draw calls.
+    /// Sets the dynamic depth bounds for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_bounds().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_bounds`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_bounds`]: Self::try_set_depth_bounds
+    #[track_caller]
     pub unsafe fn set_depth_bounds(
+        &mut self,
+        min_depth_bounds: f32,
+        max_depth_bounds: f32,
+    ) -> &mut Self {
+        unsafe { self.try_set_depth_bounds(min_depth_bounds, max_depth_bounds) }.unwrap()
+    }
+
+    /// Sets the dynamic depth bounds for future draw calls.
+    pub unsafe fn try_set_depth_bounds(
         &mut self,
         min_depth_bounds: f32,
         max_depth_bounds: f32,
@@ -144,8 +239,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic depth bounds testing is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_bounds_test_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_bounds_test_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_bounds_test_enable`]: Self::try_set_depth_bounds_test_enable
+    #[track_caller]
+    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_bounds_test_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic depth bounds testing is enabled for future draw calls.
-    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_depth_bounds_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_depth_bounds_test_enable_unchecked(enable) })
     }
 
@@ -163,8 +273,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic depth compare op for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_compare_op().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_compare_op`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_compare_op`]: Self::try_set_depth_compare_op
+    #[track_caller]
+    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
+        unsafe { self.try_set_depth_compare_op(compare_op) }.unwrap()
+    }
+
     /// Sets the dynamic depth compare op for future draw calls.
-    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> Result<&mut Self> {
+    pub unsafe fn try_set_depth_compare_op(&mut self, compare_op: CompareOp) -> Result<&mut Self> {
         Ok(unsafe { self.set_depth_compare_op_unchecked(compare_op) })
     }
 
@@ -181,8 +305,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic depth testing is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_test_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_test_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_test_enable`]: Self::try_set_depth_test_enable
+    #[track_caller]
+    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_test_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic depth testing is enabled for future draw calls.
-    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_depth_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_depth_test_enable_unchecked(enable) })
     }
 
@@ -199,8 +338,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic depth write is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_depth_write_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_depth_write_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_depth_write_enable`]: Self::try_set_depth_write_enable
+    #[track_caller]
+    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_depth_write_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic depth write is enabled for future draw calls.
-    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_depth_write_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_depth_write_enable_unchecked(enable) })
     }
 
@@ -218,8 +372,26 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic discard rectangles for future draw calls.
+    /// Sets the dynamic discard rectangles for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_discard_rectangle().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_discard_rectangle`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_discard_rectangle`]: Self::try_set_discard_rectangle
+    #[track_caller]
     pub unsafe fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: &[Scissor],
+    ) -> &mut Self {
+        unsafe { self.try_set_discard_rectangle(first_rectangle, rectangles) }.unwrap()
+    }
+
+    /// Sets the dynamic discard rectangles for future draw calls.
+    pub unsafe fn try_set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
         rectangles: &[Scissor],
@@ -254,8 +426,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic front face for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_front_face().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_front_face`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_front_face`]: Self::try_set_front_face
+    #[track_caller]
+    pub unsafe fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
+        unsafe { self.try_set_front_face(face) }.unwrap()
+    }
+
     /// Sets the dynamic front face for future draw calls.
-    pub unsafe fn set_front_face(&mut self, face: FrontFace) -> Result<&mut Self> {
+    pub unsafe fn try_set_front_face(&mut self, face: FrontFace) -> Result<&mut Self> {
         Ok(unsafe { self.set_front_face_unchecked(face) })
     }
 
@@ -272,8 +458,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic line stipple values for future draw calls, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_set_line_stipple().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_line_stipple`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_line_stipple`]: Self::try_set_line_stipple
+    #[track_caller]
+    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
+        unsafe { self.try_set_line_stipple(factor, pattern) }.unwrap()
+    }
+
     /// Sets the dynamic line stipple values for future draw calls.
-    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> Result<&mut Self> {
+    pub unsafe fn try_set_line_stipple(&mut self, factor: u32, pattern: u16) -> Result<&mut Self> {
         Ok(unsafe { self.set_line_stipple_unchecked(factor, pattern) })
     }
 
@@ -286,8 +487,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic line width for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_line_width().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_line_width`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_line_width`]: Self::try_set_line_width
+    #[track_caller]
+    pub unsafe fn set_line_width(&mut self, line_width: f32) -> &mut Self {
+        unsafe { self.try_set_line_width(line_width) }.unwrap()
+    }
+
     /// Sets the dynamic line width for future draw calls.
-    pub unsafe fn set_line_width(&mut self, line_width: f32) -> Result<&mut Self> {
+    pub unsafe fn try_set_line_width(&mut self, line_width: f32) -> Result<&mut Self> {
         Ok(unsafe { self.set_line_width_unchecked(line_width) })
     }
 
@@ -298,8 +513,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic logic op for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_logic_op().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_logic_op`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_logic_op`]: Self::try_set_logic_op
+    #[track_caller]
+    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
+        unsafe { self.try_set_logic_op(logic_op) }.unwrap()
+    }
+
     /// Sets the dynamic logic op for future draw calls.
-    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) -> Result<&mut Self> {
+    pub unsafe fn try_set_logic_op(&mut self, logic_op: LogicOp) -> Result<&mut Self> {
         Ok(unsafe { self.set_logic_op_unchecked(logic_op) })
     }
 
@@ -312,8 +541,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic number of patch control points for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_patch_control_points().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_patch_control_points`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_patch_control_points`]: Self::try_set_patch_control_points
+    #[track_caller]
+    pub unsafe fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
+        unsafe { self.try_set_patch_control_points(num) }.unwrap()
+    }
+
     /// Sets the dynamic number of patch control points for future draw calls.
-    pub unsafe fn set_patch_control_points(&mut self, num: u32) -> Result<&mut Self> {
+    pub unsafe fn try_set_patch_control_points(&mut self, num: u32) -> Result<&mut Self> {
         Ok(unsafe { self.set_patch_control_points_unchecked(num) })
     }
 
@@ -327,8 +571,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic primitive restart is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_primitive_restart_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_primitive_restart_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_primitive_restart_enable`]: Self::try_set_primitive_restart_enable
+    #[track_caller]
+    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_primitive_restart_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic primitive restart is enabled for future draw calls.
-    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_primitive_restart_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_primitive_restart_enable_unchecked(enable) })
     }
 
@@ -346,8 +605,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic primitive topology for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_primitive_topology().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_primitive_topology`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_primitive_topology`]: Self::try_set_primitive_topology
+    #[track_caller]
+    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
+        unsafe { self.try_set_primitive_topology(topology) }.unwrap()
+    }
+
     /// Sets the dynamic primitive topology for future draw calls.
-    pub unsafe fn set_primitive_topology(
+    pub unsafe fn try_set_primitive_topology(
         &mut self,
         topology: PrimitiveTopology,
     ) -> Result<&mut Self> {
@@ -371,8 +644,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic rasterizer discard is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_rasterizer_discard_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_rasterizer_discard_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_rasterizer_discard_enable`]: Self::try_set_rasterizer_discard_enable
+    #[track_caller]
+    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_rasterizer_discard_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic rasterizer discard is enabled for future draw calls.
-    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_rasterizer_discard_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_rasterizer_discard_enable_unchecked(enable) })
     }
 
@@ -390,8 +678,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic scissors for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_scissor().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_scissor`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_scissor`]: Self::try_set_scissor
+    #[track_caller]
+    pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
+        unsafe { self.try_set_scissor(first_scissor, scissors) }.unwrap()
+    }
+
     /// Sets the dynamic scissors for future draw calls.
-    pub unsafe fn set_scissor(
+    pub unsafe fn try_set_scissor(
         &mut self,
         first_scissor: u32,
         scissors: &[Scissor],
@@ -426,8 +728,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic scissors with count for future draw calls, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_set_scissor_with_count().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_scissor_with_count`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_scissor_with_count`]: Self::try_set_scissor_with_count
+    #[track_caller]
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
+        unsafe { self.try_set_scissor_with_count(scissors) }.unwrap()
+    }
+
     /// Sets the dynamic scissors with count for future draw calls.
-    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> Result<&mut Self> {
+    pub unsafe fn try_set_scissor_with_count(&mut self, scissors: &[Scissor]) -> Result<&mut Self> {
         Ok(unsafe { self.set_scissor_with_count_unchecked(scissors) })
     }
 
@@ -460,8 +777,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
+    /// Sets the dynamic stencil compare mask on one or both faces for future draw calls, panicking
+    /// on a validation error.
+    ///
+    /// This is a shortcut for `try_set_stencil_compare_mask().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_stencil_compare_mask`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_stencil_compare_mask`]: Self::try_set_stencil_compare_mask
+    #[track_caller]
     pub unsafe fn set_stencil_compare_mask(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_compare_mask(faces, compare_mask) }.unwrap()
+    }
+
+    /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
+    pub unsafe fn try_set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
         compare_mask: u32,
@@ -482,8 +818,31 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic stencil ops on one or both faces for future draw calls.
+    /// Sets the dynamic stencil ops on one or both faces for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_stencil_op().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_stencil_op`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_stencil_op`]: Self::try_set_stencil_op
+    #[track_caller]
     pub unsafe fn set_stencil_op(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op) }
+            .unwrap()
+    }
+
+    /// Sets the dynamic stencil ops on one or both faces for future draw calls.
+    pub unsafe fn try_set_stencil_op(
         &mut self,
         faces: StencilFaces,
         fail_op: StencilOp,
@@ -525,8 +884,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic stencil reference on one or both faces for future draw calls.
+    /// Sets the dynamic stencil reference on one or both faces for future draw calls, panicking on
+    /// a validation error.
+    ///
+    /// This is a shortcut for `try_set_stencil_reference().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_stencil_reference`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_stencil_reference`]: Self::try_set_stencil_reference
+    #[track_caller]
     pub unsafe fn set_stencil_reference(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_reference(faces, reference) }.unwrap()
+    }
+
+    /// Sets the dynamic stencil reference on one or both faces for future draw calls.
+    pub unsafe fn try_set_stencil_reference(
         &mut self,
         faces: StencilFaces,
         reference: u32,
@@ -545,8 +923,23 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets whether dynamic stencil testing is enabled for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_set_stencil_test_enable().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_stencil_test_enable`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_stencil_test_enable`]: Self::try_set_stencil_test_enable
+    #[track_caller]
+    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
+        unsafe { self.try_set_stencil_test_enable(enable) }.unwrap()
+    }
+
     /// Sets whether dynamic stencil testing is enabled for future draw calls.
-    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
+    pub unsafe fn try_set_stencil_test_enable(&mut self, enable: bool) -> Result<&mut Self> {
         Ok(unsafe { self.set_stencil_test_enable_unchecked(enable) })
     }
 
@@ -564,8 +957,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
+    /// Sets the dynamic stencil write mask on one or both faces for future draw calls, panicking
+    /// on a validation error.
+    ///
+    /// This is a shortcut for `try_set_stencil_write_mask().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_stencil_write_mask`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_stencil_write_mask`]: Self::try_set_stencil_write_mask
+    #[track_caller]
     pub unsafe fn set_stencil_write_mask(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> &mut Self {
+        unsafe { self.try_set_stencil_write_mask(faces, write_mask) }.unwrap()
+    }
+
+    /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
+    pub unsafe fn try_set_stencil_write_mask(
         &mut self,
         faces: StencilFaces,
         write_mask: u32,
@@ -584,8 +996,22 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic vertex input for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_vertex_input().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_vertex_input`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_vertex_input`]: Self::try_set_vertex_input
+    #[track_caller]
+    pub unsafe fn set_vertex_input(&mut self, vertex_input_state: &VertexInputState) -> &mut Self {
+        unsafe { self.try_set_vertex_input(vertex_input_state) }.unwrap()
+    }
+
     /// Sets the dynamic vertex input for future draw calls.
-    pub unsafe fn set_vertex_input(
+    pub unsafe fn try_set_vertex_input(
         &mut self,
         vertex_input_state: &VertexInputState,
     ) -> Result<&mut Self> {
@@ -656,8 +1082,26 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic viewports for future draw calls.
+    /// Sets the dynamic viewports for future draw calls, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_set_viewport().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_viewport`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_viewport`]: Self::try_set_viewport
+    #[track_caller]
     pub unsafe fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: &[Viewport],
+    ) -> &mut Self {
+        unsafe { self.try_set_viewport(first_viewport, viewports) }.unwrap()
+    }
+
+    /// Sets the dynamic viewports for future draw calls.
+    pub unsafe fn try_set_viewport(
         &mut self,
         first_viewport: u32,
         viewports: &[Viewport],
@@ -692,8 +1136,26 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Sets the dynamic viewports with count for future draw calls, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_set_viewport_with_count().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_viewport_with_count`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_viewport_with_count`]: Self::try_set_viewport_with_count
+    #[track_caller]
+    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
+        unsafe { self.try_set_viewport_with_count(viewports) }.unwrap()
+    }
+
     /// Sets the dynamic viewports with count for future draw calls.
-    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> Result<&mut Self> {
+    pub unsafe fn try_set_viewport_with_count(
+        &mut self,
+        viewports: &[Viewport],
+    ) -> Result<&mut Self> {
         Ok(unsafe { self.set_viewport_with_count_unchecked(viewports) })
     }
 
@@ -729,8 +1191,28 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic conservative rasterization mode for future draw calls.
+    /// Sets the dynamic conservative rasterization mode for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for
+    /// `try_set_conservative_rasterization_mode().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_conservative_rasterization_mode`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_conservative_rasterization_mode`]: Self::try_set_conservative_rasterization_mode
+    #[track_caller]
     pub unsafe fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+        unsafe { self.try_set_conservative_rasterization_mode(conservative_rasterization_mode) }
+            .unwrap()
+    }
+
+    /// Sets the dynamic conservative rasterization mode for future draw calls.
+    pub unsafe fn try_set_conservative_rasterization_mode(
         &mut self,
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> Result<&mut Self> {
@@ -755,8 +1237,30 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic extra primitive overestimation size for future draw calls.
+    /// Sets the dynamic extra primitive overestimation size for future draw calls, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for
+    /// `try_set_extra_primitive_overestimation_size().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_extra_primitive_overestimation_size`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_extra_primitive_overestimation_size`]: Self::try_set_extra_primitive_overestimation_size
+    #[track_caller]
     pub unsafe fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)
+        }
+        .unwrap()
+    }
+
+    /// Sets the dynamic extra primitive overestimation size for future draw calls.
+    pub unsafe fn try_set_extra_primitive_overestimation_size(
         &mut self,
         extra_primitive_overestimation_size: f32,
     ) -> Result<&mut Self> {
@@ -783,8 +1287,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Sets the dynamic fragment shading rate for future draw calls.
+    /// Sets the dynamic fragment shading rate for future draw calls, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_set_fragment_shading_rate().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_fragment_shading_rate`] returns a [`ValidationError`].
+    ///
+    /// [`try_set_fragment_shading_rate`]: Self::try_set_fragment_shading_rate
+    #[track_caller]
     pub unsafe fn set_fragment_shading_rate(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        unsafe { self.try_set_fragment_shading_rate(fragment_size, combiner_ops) }.unwrap()
+    }
+
+    /// Sets the dynamic fragment shading rate for future draw calls.
+    pub unsafe fn try_set_fragment_shading_rate(
         &mut self,
         fragment_size: [u32; 2],
         combiner_ops: [FragmentShadingRateCombinerOp; 2],
