@@ -2,9 +2,14 @@ use super::{
     AllocationType, Region, Suballocation, SuballocationNode, Suballocator, SuballocatorError,
 };
 use crate::{
-    DeviceSize, memory::{
-        DeviceAlignment, allocator::{AllocationHandle, DeviceLayout, align_up, array_vec::ArrayVec, suballocator::SuballocationType}, is_aligned
-    }
+    memory::{
+        allocator::{
+            align_up, array_vec::ArrayVec, suballocator::SuballocationType, AllocationHandle,
+            DeviceLayout,
+        },
+        is_aligned, DeviceAlignment,
+    },
+    DeviceSize,
 };
 use std::{cmp, iter::FusedIterator, marker::PhantomData, num::NonZero};
 
@@ -268,9 +273,10 @@ unsafe impl Suballocator for BuddyAllocator {
     }
 
     /// Returns an iterator over the current suballocations.
-    /// 
+    ///
     /// # Efficiency
-    /// This allocates a `Vec` and sorts with *O*(*n* log (*n*)) where *n* is the size of the region.
+    /// This allocates a `Vec` and sorts with *O*(*n* log (*n*)) where *n* is the size of the
+    /// region.
     #[inline]
     fn suballocations(&self) -> Self::Suballocations<'_> {
         let free_count: usize = self.free_list.iter().map(Vec::len).sum();
