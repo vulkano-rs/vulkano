@@ -453,36 +453,13 @@ mod tests {
 
     #[test]
     fn include_resolution() {
-        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-        let working_dir = root_path.join("tests");
-        let include_test_path = working_dir.join("include_test.glsl");
-        let include_test_source = std::fs::read_to_string(&include_test_path).unwrap();
-        let (_compile_relative, relative_includes) = compile(
-            &MacroInput::empty(),
-            &include_test_source,
-            &working_dir,
-            ShaderKind::Vertex,
-            &[],
-        )
-        .expect("cannot resolve include files");
-
-        assert_eq!(
-            HashSet::from_iter(relative_includes),
-            convert_paths(
-                &root_path,
-                &[
-                    PathBuf::from_iter(["tests", "include_dir_a", "target_a.glsl"]),
-                    PathBuf::from_iter(["tests", "include_dir_b", "target_b.glsl"]),
-                ],
-            ),
-        );
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_compile_include_paths, includes) = compile_inline(
             &MacroInput {
                 include_directories: vec![
-                    root_path.join("tests").join("include_dir_a"),
-                    root_path.join("tests").join("include_dir_b"),
+                    root_path.join("include_dir_a"),
+                    root_path.join("include_dir_b"),
                 ],
                 ..MacroInput::empty()
             },
@@ -502,19 +479,15 @@ mod tests {
             convert_paths(
                 &root_path,
                 &[
-                    ["tests", "include_dir_a", "target_a.glsl"]
-                        .into_iter()
-                        .collect(),
-                    ["tests", "include_dir_b", "target_b.glsl"]
-                        .into_iter()
-                        .collect(),
+                    PathBuf::from_iter(["include_dir_a", "target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_b", "target_b.glsl"]),
                 ],
             ),
         );
 
         let (_compile_include_paths_with_relative, includes_with_relative) = compile_inline(
             &MacroInput {
-                include_directories: vec![root_path.join("tests").join("include_dir_a")],
+                include_directories: vec![root_path.join("include_dir_a")],
                 ..MacroInput::empty()
             },
             r#"
@@ -533,20 +506,13 @@ mod tests {
             convert_paths(
                 &root_path,
                 &[
-                    ["tests", "include_dir_a", "target_a.glsl"]
-                        .into_iter()
-                        .collect(),
-                    ["tests", "include_dir_a", "../include_dir_b/target_b.glsl"]
-                        .into_iter()
-                        .collect(),
+                    PathBuf::from_iter(["include_dir_a", "target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_a", "../include_dir_b/target_b.glsl"]),
                 ],
             ),
         );
 
-        let absolute_path = root_path
-            .join("tests")
-            .join("include_dir_a")
-            .join("target_a.glsl");
+        let absolute_path = root_path.join("include_dir_a").join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
             .expect("cannot run tests in a folder with non unicode characters")
@@ -569,17 +535,15 @@ mod tests {
             HashSet::from_iter(includes_absolute_path),
             convert_paths(
                 &root_path,
-                &[["tests", "include_dir_a", "target_a.glsl"]
-                    .into_iter()
-                    .collect()],
+                &[PathBuf::from_iter(["include_dir_a", "target_a.glsl"])],
             ),
         );
 
         let (_compile_recursive_, includes_recursive) = compile_inline(
             &MacroInput {
                 include_directories: vec![
-                    root_path.join("tests").join("include_dir_b"),
-                    root_path.join("tests").join("include_dir_c"),
+                    root_path.join("include_dir_b"),
+                    root_path.join("include_dir_c"),
                 ],
                 ..MacroInput::empty()
             },
@@ -598,15 +562,92 @@ mod tests {
             convert_paths(
                 &root_path,
                 &[
-                    ["tests", "include_dir_c", "target_c.glsl"]
-                        .into_iter()
-                        .collect(),
-                    ["tests", "include_dir_c", "../include_dir_a/target_a.glsl"]
-                        .into_iter()
-                        .collect(),
-                    ["tests", "include_dir_b", "target_b.glsl"]
-                        .into_iter()
-                        .collect(),
+                    PathBuf::from_iter(["include_dir_c", "target_c.glsl"]),
+                    PathBuf::from_iter(["include_dir_c", "../include_dir_a/target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_b", "target_b.glsl"]),
+                ],
+            ),
+        );
+    }
+
+    #[test]
+    fn include_inline_relative() {
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+
+        let (_compile_include_paths, includes) = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "include_dir_a/target_a.glsl"
+                #include "include_dir_b/target_b.glsl"
+                void main() {}
+            "#,
+            &root_path,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes),
+            convert_paths(
+                &root_path,
+                &[
+                    PathBuf::from_iter(["include_dir_a", "target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_b", "target_b.glsl"]),
+                ],
+            ),
+        );
+
+        let (_compile_include_paths_with_relative, includes_with_relative) = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "target_a.glsl"
+                #include "../include_dir_b/target_b.glsl"
+                void main() {}
+            "#,
+            &root_path.join("include_dir_a"),
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes_with_relative),
+            convert_paths(
+                &root_path,
+                &[
+                    PathBuf::from_iter(["include_dir_a", "target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_a", "../include_dir_b/target_b.glsl"]),
+                ],
+            ),
+        );
+
+        let (_compile_recursive_, includes_recursive) = compile(
+            &MacroInput {
+                include_directories: vec![root_path.join("include_dir_b")],
+                ..MacroInput::empty()
+            },
+            r#"
+                #version 450
+                #include "include_dir_c/target_c.glsl"
+                void main() {}
+            "#,
+            &root_path,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes_recursive),
+            convert_paths(
+                &root_path,
+                &[
+                    PathBuf::from_iter(["include_dir_c", "target_c.glsl"]),
+                    PathBuf::from_iter(["include_dir_c", "../include_dir_a/target_a.glsl"]),
+                    PathBuf::from_iter(["include_dir_b", "target_b.glsl"]),
                 ],
             ),
         );
@@ -614,11 +655,11 @@ mod tests {
 
     #[test]
     fn include_paths_with_spaces() {
-        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let err = compile_inline(
             &MacroInput {
-                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroInput::empty()
             },
             r#"
@@ -635,7 +676,7 @@ mod tests {
 
         let (_compile_include_paths, includes) = compile_inline(
             &MacroInput {
-                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroInput::empty()
             },
             r#"
@@ -652,17 +693,13 @@ mod tests {
             HashSet::from_iter(includes),
             convert_paths(
                 &root_path,
-                &[PathBuf::from_iter([
-                    "tests",
-                    "include_dir_spaces",
-                    "foo bar.glsl"
-                ])],
+                &[PathBuf::from_iter(["include_dir_spaces", "foo bar.glsl"])],
             ),
         );
 
         let err = compile_inline(
             &MacroInput {
-                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroInput::empty()
             },
             r#"
@@ -675,12 +712,11 @@ mod tests {
         )
         .unwrap_err();
 
-        dbg!(&err);
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
         let err = compile_inline(
             &MacroInput {
-                include_directories: vec![root_path.join("tests").join("include_dir_spaces")],
+                include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroInput::empty()
             },
             r#"
@@ -688,6 +724,72 @@ mod tests {
                 #include <foo.glsl bar.glsl>
                 void main() {}
             "#,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("foo.glsl` to be a file existing on the file system"));
+
+        let err = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "include_dir_spaces/foo bar"
+                void main() {}
+            "#,
+            &root_path,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("expected a file extension"));
+
+        let (_compile_include_paths, includes) = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "include_dir_spaces/foo bar.glsl"
+                void main() {}
+            "#,
+            &root_path,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .expect("cannot resolve include files");
+
+        assert_eq!(
+            HashSet::from_iter(includes),
+            convert_paths(
+                &root_path,
+                &[PathBuf::from_iter(["include_dir_spaces", "foo bar.glsl"])],
+            ),
+        );
+
+        let err = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "include_dir_spaces/foo.glsl bar"
+                void main() {}
+            "#,
+            &root_path,
+            ShaderKind::Vertex,
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("foo.glsl` to be a file existing on the file system"));
+
+        let err = compile(
+            &MacroInput::empty(),
+            r#"
+                #version 450
+                #include "include_dir_spaces/foo.glsl bar.glsl"
+                void main() {}
+            "#,
+            &root_path,
             ShaderKind::Vertex,
             &[],
         )
