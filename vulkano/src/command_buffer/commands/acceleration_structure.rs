@@ -9,7 +9,7 @@ use crate::{
         CopyAccelerationStructureToMemoryInfo, CopyMemoryToAccelerationStructureInfo,
         TransformMatrix,
     },
-    buffer::{BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferUsage},
     command_buffer::sys::RecordingCommandBuffer,
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
@@ -809,7 +809,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_buffer: &Arc<Buffer>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
@@ -828,7 +828,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn try_build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_buffer: &Arc<Buffer>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -852,7 +852,7 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_build_acceleration_structure_indirect(
         &self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_buffer: &Arc<Buffer>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
@@ -1380,7 +1380,6 @@ impl RecordingCommandBuffer {
         }
 
         if !indirect_buffer
-            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
@@ -1392,12 +1391,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !indirect_buffer
-            .device_address()
-            .unwrap()
-            .get()
-            .is_multiple_of(4)
-        {
+        if !indirect_buffer.device_address().get().is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer's device address is not a multiple of 4".into(),
@@ -1428,7 +1422,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect_unchecked(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_buffer: &Arc<Buffer>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
@@ -1442,7 +1436,7 @@ impl RecordingCommandBuffer {
                 self.handle(),
                 1,
                 &info_vk,
-                &indirect_buffer.device_address().unwrap().get(),
+                &indirect_buffer.device_address().get(),
                 &stride,
                 &max_primitive_counts.as_ptr(),
             )

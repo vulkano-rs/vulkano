@@ -214,7 +214,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_build_acceleration_structure_indirect(
             info,
-            indirect_buffer,
+            indirect_buffer.buffer(),
             stride,
             max_primitive_counts,
         )?;
@@ -250,7 +250,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 unsafe {
                     out.build_acceleration_structure_indirect_unchecked(
                         &info,
-                        &indirect_buffer,
+                        indirect_buffer.buffer(),
                         stride,
                         &max_primitive_counts,
                     )
