@@ -277,11 +277,12 @@ impl<L> AutoCommandBufferBuilder<L> {
     where
         T: QueryResultElement,
     {
-        self.inner.validate_copy_query_pool_results(
+        self.inner.validate_copy_query_pool_results::<T>(
             query_pool,
             queries.start,
             queries.end - queries.start,
-            destination,
+            destination.buffer(),
+            destination.offset(),
             flags,
         )?;
 
@@ -321,11 +322,12 @@ impl<L> AutoCommandBufferBuilder<L> {
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
                 unsafe {
-                    out.copy_query_pool_results_unchecked(
+                    out.copy_query_pool_results_unchecked::<T>(
                         &query_pool,
                         queries.start,
                         queries.end - queries.start,
-                        &destination,
+                        destination.buffer(),
+                        destination.offset(),
                         flags,
                     )
                 };
