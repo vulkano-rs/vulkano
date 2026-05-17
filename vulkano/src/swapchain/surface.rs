@@ -15,7 +15,8 @@ use crate::{
 use ash::vk;
 #[cfg(feature = "raw_window_handle")]
 use raw_window_handle::{
-    HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle, WindowHandle,
 };
 use smallvec::SmallVec;
 use std::{
@@ -52,16 +53,47 @@ pub struct Surface {
 
 impl Surface {
     /// Returns the instance extensions required to create a surface from a window of the given
+    /// event loop, panicking on a handle error.
+    ///
+    /// This is a shortcut for `try_required_extensions().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_required_extensions`] returns a [`HandleError`].
+    ///
+    /// [`try_required_extensions`]: Self::try_required_extensions
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    pub fn required_extensions(event_loop: &impl HasDisplayHandle) -> InstanceExtensions {
+        Self::required_extensions_inner(event_loop.display_handle())
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    fn required_extensions_inner(
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
+    ) -> InstanceExtensions {
+        Self::try_required_extensions_inner(display_handle).unwrap()
+    }
+
+    /// Returns the instance extensions required to create a surface from a window of the given
     /// event loop.
     #[cfg(feature = "raw_window_handle")]
-    pub fn required_extensions(
+    pub fn try_required_extensions(
         event_loop: &impl HasDisplayHandle,
+    ) -> Result<InstanceExtensions, HandleError> {
+        Self::try_required_extensions_inner(event_loop.display_handle())
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    fn try_required_extensions_inner(
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
     ) -> Result<InstanceExtensions, HandleError> {
         let mut extensions = InstanceExtensions {
             khr_surface: true,
             ..InstanceExtensions::empty()
         };
-        match event_loop.display_handle()?.as_raw() {
+        match display_handle?.as_raw() {
             RawDisplayHandle::Android(_) => extensions.khr_android_surface = true,
             RawDisplayHandle::AppKit(_) => extensions.ext_metal_surface = true,
             RawDisplayHandle::UiKit(_) => extensions.ext_metal_surface = true,
@@ -75,16 +107,109 @@ impl Surface {
         Ok(extensions)
     }
 
-    /// Creates a new `Surface` from the given `window`.
+    /// Creates a new `Surface` from the given `window`, panicking on a validation error or handle
+    /// error.
+    ///
+    /// This is a shortcut for
+    /// `try_from_window().map_err(Validated::unwrap).map_err(FromWindowError::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_window`] returns a [`ValidationError`] or [`HandleError`].
+    ///
+    /// [`try_from_window`]: Self::try_from_window
     #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
     pub fn from_window(
         instance: &Arc<Instance>,
         window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
-    ) -> Result<Arc<Self>, FromWindowError> {
-        let mut surface = unsafe { Self::from_window_ref(instance, window) }?;
-        Arc::get_mut(&mut surface).unwrap().object = Some(window.clone());
+    ) -> Result<Arc<Self>, VulkanError> {
+        Self::from_window_inner(
+            instance,
+            window.clone(),
+            window.window_handle(),
+            window.display_handle(),
+        )
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    fn from_window_inner(
+        instance: &Arc<Instance>,
+        window: Arc<dyn Any + Send + Sync>,
+        window_handle: Result<WindowHandle<'_>, HandleError>,
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_from_window_inner(instance, window, window_handle, display_handle) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap().unwrap()),
+        }
+    }
+
+    /// Creates a new `Surface` from the given `window`.
+    #[cfg(feature = "raw_window_handle")]
+    pub fn try_from_window(
+        instance: &Arc<Instance>,
+        window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
+    ) -> Result<Arc<Self>, Validated<FromWindowError>> {
+        let window_handle = window.window_handle();
+        let display_handle = window.display_handle();
+
+        Self::try_from_window_inner(instance, window.clone(), window_handle, display_handle)
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    fn try_from_window_inner(
+        instance: &Arc<Instance>,
+        window: Arc<dyn Any + Send + Sync>,
+        window_handle: Result<WindowHandle<'_>, HandleError>,
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
+    ) -> Result<Arc<Self>, Validated<FromWindowError>> {
+        let mut surface =
+            unsafe { Self::try_from_window_ref_inner(instance, window_handle, display_handle) }?;
+        Arc::get_mut(&mut surface).unwrap().object = Some(window);
 
         Ok(surface)
+    }
+
+    /// Creates a new `Surface` from the given `window` without ensuring that the window outlives
+    /// the surface, panicking on a validation error or handle error.
+    ///
+    /// This is a shortcut for
+    /// `try_from_window_ref().map_err(Validated::unwrap).map_err(FromHandleError::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The given `window` must outlive the created surface.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_window_ref`] returns a [`ValidationError`] or [`HandleError`].
+    ///
+    /// [`try_from_window_ref`]: Self::try_from_window_ref
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    pub unsafe fn from_window_ref(
+        instance: &Arc<Instance>,
+        window: &(impl HasWindowHandle + HasDisplayHandle),
+    ) -> Result<Arc<Self>, VulkanError> {
+        let window_handle = window.window_handle();
+        let display_handle = window.display_handle();
+
+        unsafe { Self::from_window_ref_inner(instance, window_handle, display_handle) }
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    unsafe fn from_window_ref_inner(
+        instance: &Arc<Instance>,
+        window_handle: Result<WindowHandle<'_>, HandleError>,
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_window_ref_inner(instance, window_handle, display_handle) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap().unwrap()),
+        }
     }
 
     /// Creates a new `Surface` from the given `window` without ensuring that the window outlives
@@ -94,37 +219,49 @@ impl Surface {
     ///
     /// - The given `window` must outlive the created surface.
     #[cfg(feature = "raw_window_handle")]
-    pub unsafe fn from_window_ref(
+    pub unsafe fn try_from_window_ref(
         instance: &Arc<Instance>,
         window: &(impl HasWindowHandle + HasDisplayHandle),
-    ) -> Result<Arc<Self>, FromWindowError> {
-        let window_handle = window
-            .window_handle()
-            .map_err(FromWindowError::RetrieveHandle)?;
-        let display_handle = window
-            .display_handle()
-            .map_err(FromWindowError::RetrieveHandle)?;
+    ) -> Result<Arc<Self>, Validated<FromWindowError>> {
+        let window_handle = window.window_handle();
+        let display_handle = window.display_handle();
+
+        unsafe { Self::try_from_window_ref_inner(instance, window_handle, display_handle) }
+    }
+
+    #[cfg(feature = "raw_window_handle")]
+    unsafe fn try_from_window_ref_inner(
+        instance: &Arc<Instance>,
+        window_handle: Result<WindowHandle<'_>, HandleError>,
+        display_handle: Result<DisplayHandle<'_>, HandleError>,
+    ) -> Result<Arc<Self>, Validated<FromWindowError>> {
+        let window_handle = window_handle
+            .map_err(FromWindowError::RetrieveHandle)
+            .map_err(Validated::Error)?;
+        let display_handle = display_handle
+            .map_err(FromWindowError::RetrieveHandle)
+            .map_err(Validated::Error)?;
 
         match (window_handle.as_raw(), display_handle.as_raw()) {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => unsafe {
-                Self::from_android(instance, window.a_native_window.as_ptr().cast(), None)
+                Self::try_from_android(instance, window.a_native_window.as_ptr().cast(), None)
             },
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::AppKit(handle), _) => {
                 let layer = unsafe { raw_window_metal::Layer::from_ns_view(handle.ns_view) };
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
-                unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }
+                unsafe { Self::try_from_metal(instance, layer.as_ptr().as_ptr(), None) }
             }
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::UiKit(handle), _) => {
                 let layer = unsafe { raw_window_metal::Layer::from_ui_view(handle.ui_view) };
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
-                unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }
+                unsafe { Self::try_from_metal(instance, layer.as_ptr().as_ptr(), None) }
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => unsafe {
-                Self::from_wayland(
+                Self::try_from_wayland(
                     instance,
                     display.display.as_ptr().cast(),
                     window.surface.as_ptr().cast(),
@@ -132,7 +269,7 @@ impl Surface {
                 )
             },
             (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => unsafe {
-                Self::from_win32(
+                Self::try_from_win32(
                     instance,
                     window.hinstance.unwrap().get() as vk::HINSTANCE,
                     window.hwnd.get() as vk::HWND,
@@ -140,7 +277,7 @@ impl Surface {
                 )
             },
             (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => unsafe {
-                Self::from_xcb(
+                Self::try_from_xcb(
                     instance,
                     display.connection.unwrap().as_ptr().cast(),
                     window.window.get() as vk::xcb_window_t,
@@ -148,7 +285,7 @@ impl Surface {
                 )
             },
             (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => unsafe {
-                Self::from_xlib(
+                Self::try_from_xlib(
                     instance,
                     display.display.unwrap().as_ptr().cast(),
                     window.window as vk::Window,
@@ -156,11 +293,11 @@ impl Surface {
                 )
             },
             _ => unimplemented!(
-                "the window was created with a windowing API that is not supported \
-                by Vulkan/Vulkano"
+                "the window was created with a windowing API that is not supported by \
+                Vulkan/vulkano",
             ),
         }
-        .map_err(FromWindowError::CreateSurface)
+        .map_err(|err| err.map(FromWindowError::CreateSurface))
     }
 
     /// Creates a `Surface` from a raw handle.
@@ -189,12 +326,36 @@ impl Surface {
         }
     }
 
+    /// Creates a `Surface` with no backing window or display, panicking on a validation error.
+    ///
+    /// Presenting to a headless surface does nothing, so this is mostly useless in itself.
+    /// However, it may be useful for testing, and it is available for future extensions to layer
+    /// on top of.
+    ///
+    /// This is a shortcut for `try_headless().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_headless`] returns a [`ValidationError`].
+    ///
+    /// [`try_headless`]: Self::try_headless
+    #[track_caller]
+    pub fn headless(
+        instance: &Arc<Instance>,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_headless(instance, object) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` with no backing window or display.
     ///
     /// Presenting to a headless surface does nothing, so this is mostly useless in itself.
-    /// However, it may be useful for testing, and it is available for future extensions to
-    /// layer on top of.
-    pub fn headless(
+    /// However, it may be useful for testing, and it is available for future extensions to layer
+    /// on top of.
+    pub fn try_headless(
         instance: &Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -245,9 +406,31 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a `DisplayMode` and display plane, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_from_display_plane().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_display_plane`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_display_plane`]: Self::try_from_display_plane
+    #[inline]
+    #[track_caller]
+    pub fn from_display_plane(
+        display_mode: &Arc<DisplayMode>,
+        create_info: &DisplaySurfaceCreateInfo<'_>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_from_display_plane(display_mode, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a `DisplayMode` and display plane.
     #[inline]
-    pub fn from_display_plane(
+    pub fn try_from_display_plane(
         display_mode: &Arc<DisplayMode>,
         create_info: &DisplaySurfaceCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -396,6 +579,33 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an Android window, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_android().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid Android `ANativeWindow` handle.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_android`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_android`]: Self::try_from_android
+    #[track_caller]
+    pub unsafe fn from_android(
+        instance: &Arc<Instance>,
+        window: *mut vk::ANativeWindow,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_android(instance, window, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from an Android window.
     ///
     /// # Safety
@@ -403,7 +613,7 @@ impl Surface {
     /// - `window` must be a valid Android `ANativeWindow` handle.
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
-    pub unsafe fn from_android(
+    pub unsafe fn try_from_android(
         instance: &Arc<Instance>,
         window: *mut vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -463,6 +673,35 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a DirectFB surface, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_directfb().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
+    /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_directfb`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_directfb`]: Self::try_from_directfb
+    #[track_caller]
+    pub unsafe fn from_directfb(
+        instance: &Arc<Instance>,
+        dfb: *mut vk::IDirectFB,
+        surface: *mut vk::IDirectFBSurface,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_directfb(instance, dfb, surface, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a DirectFB surface.
     ///
     /// # Safety
@@ -471,7 +710,7 @@ impl Surface {
     /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
     /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
-    pub unsafe fn from_directfb(
+    pub unsafe fn try_from_directfb(
         instance: &Arc<Instance>,
         dfb: *mut vk::IDirectFB,
         surface: *mut vk::IDirectFBSurface,
@@ -538,6 +777,33 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an Fuchsia ImagePipe, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_fuchsia_image_pipe().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
+    /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_fuchsia_image_pipe`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_fuchsia_image_pipe`]: Self::try_from_fuchsia_image_pipe
+    #[track_caller]
+    pub unsafe fn from_fuchsia_image_pipe(
+        instance: &Arc<Instance>,
+        image_pipe_handle: vk::zx_handle_t,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_fuchsia_image_pipe(instance, image_pipe_handle, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from an Fuchsia ImagePipe.
     ///
     /// # Safety
@@ -545,7 +811,7 @@ impl Surface {
     /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
     /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
-    pub unsafe fn from_fuchsia_image_pipe(
+    pub unsafe fn try_from_fuchsia_image_pipe(
         instance: &Arc<Instance>,
         image_pipe_handle: vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -610,6 +876,34 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a Google Games Platform stream descriptor, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_from_ggp_stream_descriptor().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
+    /// - The object referred to by `stream_descriptor` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_ggp_stream_descriptor`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_ggp_stream_descriptor`]: Self::try_from_ggp_stream_descriptor
+    #[track_caller]
+    pub unsafe fn from_ggp_stream_descriptor(
+        instance: &Arc<Instance>,
+        stream_descriptor: vk::GgpStreamDescriptor,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_ggp_stream_descriptor(instance, stream_descriptor, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a Google Games Platform stream descriptor.
     ///
     /// # Safety
@@ -617,7 +911,7 @@ impl Surface {
     /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
     /// - The object referred to by `stream_descriptor` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
-    pub unsafe fn from_ggp_stream_descriptor(
+    pub unsafe fn try_from_ggp_stream_descriptor(
         instance: &Arc<Instance>,
         stream_descriptor: vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -680,6 +974,34 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an iOS `UIView`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_ios().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `metal_layer` must be a valid `IOSMetalLayer` handle.
+    /// - The object referred to by `metal_layer` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
+    /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_ios`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_ios`]: Self::try_from_ios
+    #[track_caller]
+    pub unsafe fn from_ios(
+        instance: &Arc<Instance>,
+        view: *const c_void,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_ios(instance, view, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from an iOS `UIView`.
     ///
     /// # Safety
@@ -688,7 +1010,7 @@ impl Surface {
     /// - The object referred to by `metal_layer` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_ios(
+    pub unsafe fn try_from_ios(
         instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -751,6 +1073,34 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a MacOS `NSView`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_mac_os().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `view` must be a valid `CAMetalLayer` or `NSView` handle.
+    /// - The object referred to by `view` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
+    /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_mac_os`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_mac_os`]: Self::try_from_mac_os
+    #[track_caller]
+    pub unsafe fn from_mac_os(
+        instance: &Arc<Instance>,
+        view: *const c_void,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_mac_os(instance, view, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a MacOS `NSView`.
     ///
     /// # Safety
@@ -759,7 +1109,7 @@ impl Surface {
     /// - The object referred to by `view` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_mac_os(
+    pub unsafe fn try_from_mac_os(
         instance: &Arc<Instance>,
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -822,6 +1172,37 @@ impl Surface {
         }))
     }
 
+    /// Create a `Surface` from a [`CAMetalLayer`], panicking on a validation error.
+    ///
+    /// If you want to create this from a `NSView` or `UIView`, it is recommended that you use the
+    /// `raw-window-metal` crate to get access to a layer without overwriting the view's layer.
+    ///
+    /// This is a shortcut for `try_from_metal().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `layer` must point to a valid, initialized, non-NULL `CAMetalLayer`.
+    /// - The surface will retain the layer internally, so you do not need to keep the source from
+    ///   where this came from alive.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_metal`] returns a [`ValidationError`].
+    ///
+    /// [`CAMetalLayer`]: https://developer.apple.com/documentation/quartzcore/cametallayer
+    /// [`try_from_metal`]: Self::try_from_metal
+    #[track_caller]
+    pub unsafe fn from_metal(
+        instance: &Arc<Instance>,
+        layer: *const vk::CAMetalLayer,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_metal(instance, layer, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Create a `Surface` from a [`CAMetalLayer`].
     ///
     /// If you want to create this from a `NSView` or `UIView`, it is
@@ -836,7 +1217,7 @@ impl Surface {
     ///
     /// The surface will retain the layer internally, so you do not need to
     /// keep the source from where this came from alive.
-    pub unsafe fn from_metal(
+    pub unsafe fn try_from_metal(
         instance: &Arc<Instance>,
         layer: *const vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -895,6 +1276,35 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a QNX Screen window, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_qnx_screen().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `context` must be a valid QNX Screen `_screen_context` handle.
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_qnx_screen`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_qnx_screen`]: Self::try_from_qnx_screen
+    #[track_caller]
+    pub unsafe fn from_qnx_screen(
+        instance: &Arc<Instance>,
+        context: *mut vk::_screen_context,
+        window: *mut vk::_screen_window,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_qnx_screen(instance, context, window, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a QNX Screen window.
     ///
     /// # Safety
@@ -903,7 +1313,7 @@ impl Surface {
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
-    pub unsafe fn from_qnx_screen(
+    pub unsafe fn try_from_qnx_screen(
         instance: &Arc<Instance>,
         context: *mut vk::_screen_context,
         window: *mut vk::_screen_window,
@@ -972,14 +1382,41 @@ impl Surface {
         }))
     }
 
-    /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
+    /// Creates a `Surface` from a `nn::vi::Layer`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_from_vi().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
     /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
     /// - The object referred to by `window` must outlive the created `Surface`. The `object`
     ///   parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_vi`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_vi`]: Self::try_from_vi
+    #[track_caller]
     pub unsafe fn from_vi(
+        instance: &Arc<Instance>,
+        window: *mut c_void,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_vi(instance, window, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a `Surface` from a `nn::vi::Layer`.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
+    pub unsafe fn try_from_vi(
         instance: &Arc<Instance>,
         window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -1039,6 +1476,37 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a Wayland window, panicking on a validation error.
+    ///
+    /// The window's dimensions will be set to the size of the swapchain.
+    ///
+    /// This is a shortcut for `try_from_wayland().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    /// - `surface` must be a valid Wayland `wl_surface` handle.
+    /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
+    ///   The `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_wayland`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_wayland`]: Self::try_from_wayland
+    #[track_caller]
+    pub unsafe fn from_wayland(
+        instance: &Arc<Instance>,
+        display: *mut vk::wl_display,
+        surface: *mut vk::wl_surface,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_wayland(instance, display, surface, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a Wayland window.
     ///
     /// The window's dimensions will be set to the size of the swapchain.
@@ -1049,7 +1517,7 @@ impl Surface {
     /// - `surface` must be a valid Wayland `wl_surface` handle.
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_wayland(
+    pub unsafe fn try_from_wayland(
         instance: &Arc<Instance>,
         display: *mut vk::wl_display,
         surface: *mut vk::wl_surface,
@@ -1116,6 +1584,37 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a Win32 window, panicking on a validation error.
+    ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
+    /// This is a shortcut for `try_from_win32().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `hinstance` must be a valid Win32 `HINSTANCE` handle.
+    /// - `hwnd` must be a valid Win32 `HWND` handle.
+    /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_win32`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_win32`]: Self::try_from_win32
+    #[track_caller]
+    pub unsafe fn from_win32(
+        instance: &Arc<Instance>,
+        hinstance: vk::HINSTANCE,
+        hwnd: vk::HWND,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_win32(instance, hinstance, hwnd, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from a Win32 window.
     ///
     /// The surface's min, max and current extent will always match the window's dimensions.
@@ -1126,7 +1625,7 @@ impl Surface {
     /// - `hwnd` must be a valid Win32 `HWND` handle.
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
-    pub unsafe fn from_win32(
+    pub unsafe fn try_from_win32(
         instance: &Arc<Instance>,
         hinstance: vk::HINSTANCE,
         hwnd: vk::HWND,
@@ -1193,6 +1692,37 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an XCB window, panicking on a validation error.
+    ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
+    /// This is a shortcut for `try_from_xcb().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    /// - `window` must be a valid X11 `xcb_window_t` handle.
+    /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
+    ///   The `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_xcb`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_xcb`]: Self::try_from_xcb
+    #[track_caller]
+    pub unsafe fn from_xcb(
+        instance: &Arc<Instance>,
+        connection: *mut vk::xcb_connection_t,
+        window: vk::xcb_window_t,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_xcb(instance, connection, window, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from an XCB window.
     ///
     /// The surface's min, max and current extent will always match the window's dimensions.
@@ -1203,7 +1733,7 @@ impl Surface {
     /// - `window` must be a valid X11 `xcb_window_t` handle.
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_xcb(
+    pub unsafe fn try_from_xcb(
         instance: &Arc<Instance>,
         connection: *mut vk::xcb_connection_t,
         window: vk::xcb_window_t,
@@ -1270,6 +1800,37 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an Xlib window, panicking on a validation error.
+    ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
+    /// This is a shortcut for `try_from_xlib().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Xlib `Display` handle.
+    /// - `window` must be a valid Xlib `Window` handle.
+    /// - The objects referred to by `display` and `window` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_xlib`] returns a [`ValidationError`].
+    ///
+    /// [`try_from_xlib`]: Self::try_from_xlib
+    #[track_caller]
+    pub unsafe fn from_xlib(
+        instance: &Arc<Instance>,
+        display: *mut vk::Display,
+        window: vk::Window,
+        object: Option<Arc<dyn Any + Send + Sync>>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match unsafe { Self::try_from_xlib(instance, display, window, object) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a `Surface` from an Xlib window.
     ///
     /// The surface's min, max and current extent will always match the window's dimensions.
@@ -1280,7 +1841,7 @@ impl Surface {
     /// - `window` must be a valid Xlib `Window` handle.
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`. The
     ///   `object` parameter can be used to ensure this.
-    pub unsafe fn from_xlib(
+    pub unsafe fn try_from_xlib(
         instance: &Arc<Instance>,
         display: *mut vk::Display,
         window: vk::Window,
@@ -2568,7 +3129,22 @@ pub enum FromWindowError {
     /// Retrieving the window or display handle failed.
     RetrieveHandle(HandleError),
     /// Creating the surface failed.
-    CreateSurface(Validated<VulkanError>),
+    CreateSurface(VulkanError),
+}
+
+#[cfg(feature = "raw_window_handle")]
+impl FromWindowError {
+    /// Returns the inner `CreateSurface` value, or panics if it contains `RetrieveHandle`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn unwrap(self) -> VulkanError {
+        match self {
+            Self::RetrieveHandle(err) => {
+                panic!("called `FromWindowError::unwrap` on a `RetrieveHandle` value: {err:?}");
+            }
+            Self::CreateSurface(err) => err,
+        }
+    }
 }
 
 #[cfg(feature = "raw_window_handle")]
@@ -2603,7 +3179,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_win32(&instance, 0, 0, None) } {
+        match unsafe { Surface::try_from_win32(&instance, 0, 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2621,7 +3197,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(&instance, ptr::null_mut(), 0, None) } {
+        match unsafe { Surface::try_from_xcb(&instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2639,7 +3215,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(&instance, ptr::null_mut(), 0, None) } {
+        match unsafe { Surface::try_from_xlib(&instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2657,7 +3233,9 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(&instance, ptr::null_mut(), ptr::null_mut(), None) } {
+        match unsafe {
+            Surface::try_from_wayland(&instance, ptr::null_mut(), ptr::null_mut(), None)
+        } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2675,7 +3253,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_android(&instance, ptr::null_mut(), None) } {
+        match unsafe { Surface::try_from_android(&instance, ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,

@@ -16,8 +16,22 @@ use vulkano::{
 
 /// # Commands to fill resources with new data
 impl RecordingCommandBuffer<'_> {
+    /// Clears a color image with a specific value, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_clear_color_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_clear_color_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_clear_color_image`]: Self::try_clear_color_image
+    #[track_caller]
+    pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo<'_>) -> &mut Self {
+        unsafe { self.try_clear_color_image(clear_info) }.unwrap()
+    }
+
     /// Clears a color image with a specific value.
-    pub unsafe fn clear_color_image(
+    pub unsafe fn try_clear_color_image(
         &mut self,
         clear_info: &ClearColorImageInfo<'_>,
     ) -> Result<&mut Self> {
@@ -76,8 +90,25 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Clears a depth/stencil image with a specific value.
+    /// Clears a depth/stencil image with a specific value, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_clear_depth_stencil_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_clear_depth_stencil_image`] returns a [`ValidationError`].
+    ///
+    /// [`try_clear_depth_stencil_image`]: Self::try_clear_depth_stencil_image
+    #[track_caller]
     pub unsafe fn clear_depth_stencil_image(
+        &mut self,
+        clear_info: &ClearDepthStencilImageInfo<'_>,
+    ) -> &mut Self {
+        unsafe { self.try_clear_depth_stencil_image(clear_info) }.unwrap()
+    }
+
+    /// Clears a depth/stencil image with a specific value.
+    pub unsafe fn try_clear_depth_stencil_image(
         &mut self,
         clear_info: &ClearDepthStencilImageInfo<'_>,
     ) -> Result<&mut Self> {
@@ -136,11 +167,29 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Fills a region of a buffer with repeated copies of a value, panicking on a validation
+    /// error.
+    ///
+    /// This function is similar to the `memset` function in C. The `data` parameter is a number
+    /// that will be repeatedly written through the entire buffer.
+    ///
+    /// This is a shortcut for `try_fill_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_fill_buffer`] returns a [`ValidationError`].
+    ///
+    /// [`try_fill_buffer`]: Self::try_fill_buffer
+    #[track_caller]
+    pub unsafe fn fill_buffer(&mut self, fill_info: &FillBufferInfo<'_>) -> &mut Self {
+        unsafe { self.try_fill_buffer(fill_info) }.unwrap()
+    }
+
     /// Fills a region of a buffer with repeated copies of a value.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
     /// that will be repeatedly written through the entire buffer.
-    pub unsafe fn fill_buffer(&mut self, fill_info: &FillBufferInfo<'_>) -> Result<&mut Self> {
+    pub unsafe fn try_fill_buffer(&mut self, fill_info: &FillBufferInfo<'_>) -> Result<&mut Self> {
         Ok(unsafe { self.fill_buffer_unchecked(fill_info) })
     }
 
@@ -170,8 +219,27 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Writes data to a region of a buffer.
+    /// Writes data to a region of a buffer, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_update_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_update_buffer`] returns a [`ValidationError`].
+    ///
+    /// [`try_update_buffer`]: Self::try_update_buffer
+    #[track_caller]
     pub unsafe fn update_buffer(
+        &mut self,
+        dst_buffer: Id<Buffer>,
+        dst_offset: DeviceSize,
+        data: &(impl BufferContents + ?Sized),
+    ) -> &mut Self {
+        unsafe { self.try_update_buffer(dst_buffer, dst_offset, data) }.unwrap()
+    }
+
+    /// Writes data to a region of a buffer.
+    pub unsafe fn try_update_buffer(
         &mut self,
         dst_buffer: Id<Buffer>,
         dst_offset: DeviceSize,

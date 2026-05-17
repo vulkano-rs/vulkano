@@ -32,8 +32,14 @@ impl TonemapTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = vs::load(&app.device).unwrap().entry_point("main").unwrap();
-            let fs = fs::load(&app.device).unwrap().entry_point("main").unwrap();
+            let vs = unsafe { vs::load(&app.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = unsafe { fs::load(&app.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&vs),
                 PipelineShaderStageCreateInfo::new(&fs),
@@ -75,8 +81,8 @@ impl Task for TonemapTask {
         _tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
@@ -85,9 +91,9 @@ impl Task for TonemapTask {
                 texture_id: rcx.bloom_sampled_image_id,
                 exposure: EXPOSURE,
             },
-        )?;
+        );
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }

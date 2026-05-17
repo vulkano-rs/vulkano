@@ -90,8 +90,28 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    /// Creates a new `PipelineLayout`.
+    /// Creates a new `PipelineLayout`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
     pub fn new(
+        device: &Arc<Device>,
+        create_info: &PipelineLayoutCreateInfo<'_>,
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `PipelineLayout`.
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &PipelineLayoutCreateInfo<'_>,
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
@@ -140,6 +160,53 @@ impl PipelineLayout {
     }
 
     /// Creates a new `PipelineLayout` from the union of the requirements of each shader stage in
+    /// `stages`, panicking on a validation error.
+    ///
+    /// This is intended for quick prototyping or for single use layouts that do not have any
+    /// bindings in common with other shaders. For the general case, it is strongly recommended to
+    /// create pipeline layouts manually:
+    /// - When multiple pipelines share the same layout object, it is faster than if they have
+    ///   different objects, even if the objects both contain identical bindings. It is also faster
+    ///   (though a little bit less), if multiple pipeline layout objects share common descriptor
+    ///   set objects.
+    /// - Pipeline layouts only need to be a superset of what the shaders use; they don't have to
+    ///   match exactly. Creating a manual pipeline layout therefore allows you to specify layouts
+    ///   that are applicable for many shaders, as long as each one uses a subset. This allows
+    ///   further sharing.
+    /// - Creating a manual pipeline layout makes your code more robust against changes in the
+    ///   shader, in particular regarding whether a particular binding in the shader is used or not
+    ///   (see also the limitations below).
+    ///
+    /// This is a shortcut for `try_from_stages().map_err(Validated::unwrap)`.
+    ///
+    /// # Limitations
+    ///
+    /// Only bindings that are [statically used] are included in the descriptor binding
+    /// requirements, and therefore are included in the descriptor set layout. If the use of a
+    /// binding depends on input variables to the shader (buffers, images, push constants etc.)
+    /// then the shader reflection is unable to know that the binding is in use, and it will not be
+    /// included in the pipeline layout.
+    ///
+    /// Note that this corresponds to the `shader_*_array_dynamic_indexing` device features.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_from_stages`] returns a [`ValidationError`].
+    ///
+    /// [statically used]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#shaders-staticuse
+    /// [`try_from_stages`]: Self::try_from_stages
+    #[track_caller]
+    pub fn from_stages(
+        device: &Arc<Device>,
+        stages: &[PipelineShaderStageCreateInfo<'_>],
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+        match Self::try_from_stages(device, stages) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `PipelineLayout` from the union of the requirements of each shader stage in
     /// `stages`.
     ///
     /// This is intended for quick prototyping or for single use layouts that do not have any
@@ -168,7 +235,7 @@ impl PipelineLayout {
     /// Note that this corresponds to the `shader_*_array_dynamic_indexing` device features.
     ///
     /// [statically used]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#shaders-staticuse
-    pub fn from_stages(
+    pub fn try_from_stages(
         device: &Arc<Device>,
         stages: &[PipelineShaderStageCreateInfo<'_>],
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
@@ -236,7 +303,7 @@ impl PipelineLayout {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Self::new(
+        Self::try_new(
             device,
             &PipelineLayoutCreateInfo {
                 set_layouts: &set_layouts.iter().collect::<Vec<_>>(),

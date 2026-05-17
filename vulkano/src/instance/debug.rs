@@ -61,9 +61,30 @@ pub struct DebugUtilsMessenger {
 }
 
 impl DebugUtilsMessenger {
+    /// Initializes a debug callback, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        instance: &Arc<Instance>,
+        create_info: &DebugUtilsMessengerCreateInfo<'_>,
+    ) -> Result<Self, VulkanError> {
+        match Self::try_new(instance, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Initializes a debug callback.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         instance: &Arc<Instance>,
         create_info: &DebugUtilsMessengerCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {

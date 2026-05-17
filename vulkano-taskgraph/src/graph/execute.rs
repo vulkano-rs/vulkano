@@ -44,6 +44,43 @@ use vulkano::{
 };
 
 impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
+    /// Executes the next frame of the [flight] given by `flight_id`, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_execute().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no other task graphs executing that access any of the same subresources as
+    ///   `self`.
+    /// - A subresource in flight must not be accessed in more than one frame in flight.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_execute`] returns a [`ValidationError`].
+    /// - Panics if `resource_map` doesn't map the virtual resources of `self` exhaustively.
+    /// - Panics if `self.flight_id()` is invalid.
+    /// - Panics if another thread is already executing a task graph using the flight.
+    /// - Panics if another thread is already executing a task graph using any of the swapchains
+    ///   used by the task graph.
+    /// - Panics if any swapchain used by the task graph has already been recreated or removed.
+    /// - Panics if the oldest frame of the flight wasn't [waited] on.
+    ///
+    /// [`try_execute`]: Self::try_execute
+    /// [waited]: crate::resource::Flight::wait
+    #[track_caller]
+    pub unsafe fn execute(
+        &self,
+        resource_map: ResourceMap<'_>,
+        world: &W,
+        pre_present_notify: impl FnOnce(),
+    ) -> Result<(), ExecuteError> {
+        match unsafe { self.try_execute(resource_map, world, pre_present_notify) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Executes the next frame of the [flight] given by `flight_id`.
     ///
     /// # Safety
@@ -64,12 +101,12 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     ///
     /// [waited]: crate::resource::Flight::wait
     #[track_caller]
-    pub unsafe fn execute(
+    pub unsafe fn try_execute(
         &self,
         resource_map: ResourceMap<'_>,
         world: &W,
         pre_present_notify: impl FnOnce(),
-    ) -> Result {
+    ) -> Result<(), Validated<ExecuteError>> {
         assert!(ptr::eq(
             resource_map.virtual_resources,
             &self.graph.resources,
@@ -80,7 +117,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         let flight = resource_map
             .physical_resources
-            .flight_protected(flight_id, &resource_map.guard)
+            .try_flight_protected(flight_id, &resource_map.guard)
             .expect("invalid flight ID");
 
         let _flight_lock_guard = flight.try_lock().unwrap_or_else(|| {
@@ -105,7 +142,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut current_fence = flight.current_fence().write();
 
         // SAFETY: We checked that the fence has been signaled.
-        unsafe { current_fence.reset_unchecked() }?;
+        unsafe { current_fence.reset_unchecked() }.map_err(ExecuteError::VulkanError)?;
 
         unsafe { self.invalidate_mapped_memory_ranges(&resource_map) }?;
 
@@ -192,7 +229,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     unsafe fn collect_swapchains(&self, resource_map: &ResourceMap<'_>) -> Result {
         for &swapchain_id in &self.swapchains {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
-            unsafe { swapchain_state.collect() }?;
+            unsafe { swapchain_state.collect() }.map_err(ExecuteError::VulkanError)?;
         }
 
         Ok(())
@@ -210,10 +247,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             }
 
             if let Err(error) = unsafe { swapchain_state.acquire_next_image() } {
-                return Err(ExecuteError::Swapchain {
+                return Err(Validated::Error(ExecuteError::Swapchain {
                     swapchain_id,
                     error,
-                });
+                }));
             }
         }
 
@@ -261,7 +298,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(VulkanError::from)
+            .map_err(ExecuteError::VulkanError)?;
         }
 
         Ok(())
@@ -589,7 +627,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(VulkanError::from)
+            .map_err(ExecuteError::VulkanError)?;
         }
 
         Ok(())
@@ -654,7 +693,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             }
         }
 
-        res
+        res.map_err(Validated::Error)
     }
 
     unsafe fn update_resource_state(
@@ -774,7 +813,7 @@ unsafe fn create_framebuffers(
                     _ => unreachable!(),
                 };
 
-                ImageView::new(
+                ImageView::try_new(
                     image,
                     &ImageViewCreateInfo {
                         format: attachment.format,
@@ -793,9 +832,10 @@ unsafe fn create_framebuffers(
                 // FIXME:
                 .map_err(Validated::unwrap)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ExecuteError::VulkanError)?;
 
-        let framebuffer = Framebuffer::new(
+        let framebuffer = Framebuffer::try_new(
             render_pass,
             &FramebufferCreateInfo {
                 attachments: &attachments.iter().collect::<Vec<_>>(),
@@ -803,7 +843,8 @@ unsafe fn create_framebuffers(
             },
         )
         // FIXME:
-        .map_err(Validated::unwrap)?;
+        .map_err(Validated::unwrap)
+        .map_err(ExecuteError::VulkanError)?;
 
         framebuffers.push(framebuffer);
 
@@ -1092,7 +1133,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         };
 
         unsafe { task.execute(&mut current_command_buffer, &mut context, self.world) }
-            .map_err(|error| ExecuteError::Task { node_index, error })?;
+            .map_err(|err| err.map(|error| ExecuteError::Task { node_index, error }))?;
 
         if !self.command_buffers.is_empty() {
             unsafe { self.flush_current_command_buffer() }?;
@@ -1201,7 +1242,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 framebuffer,
                 0,
             )
-        }?;
+        }
+        .map_err(ExecuteError::VulkanError)?;
 
         // FIXME:
         let mut render_area_vk = vk::Rect2D::default();
@@ -1250,7 +1292,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 framebuffer,
                 self.current_subpass_index,
             )
-        }?;
+        }
+        .map_err(ExecuteError::VulkanError)?;
 
         let fns = self.executable.device().fns();
         unsafe {
@@ -1317,7 +1360,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         stage_mask: PipelineStages,
     ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }?;
+        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }
+            .map_err(ExecuteError::VulkanError)?;
 
         self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
@@ -1345,7 +1389,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         stage_mask: PipelineStages,
     ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }?;
+        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }
+            .map_err(ExecuteError::VulkanError)?;
 
         self.current_per_submit.signal_semaphore_infos_vk.push(
             vk::SemaphoreSubmitInfo::default()
@@ -1404,18 +1449,21 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             vk::Fence::null()
         };
 
-        submission.queue.with(|_guard| {
-            unsafe {
-                (self.queue_submit2)(
-                    submission.queue.handle(),
-                    submit_infos_vk.len() as u32,
-                    submit_infos_vk.as_ptr(),
-                    fence_handle,
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)
-        })?;
+        submission
+            .queue
+            .with(|_guard| {
+                unsafe {
+                    (self.queue_submit2)(
+                        submission.queue.handle(),
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence_handle,
+                    )
+                }
+                .result()
+                .map_err(VulkanError::from)
+            })
+            .map_err(ExecuteError::VulkanError)?;
 
         drop(submit_infos_vk);
         self.per_submits.clear();
@@ -1427,7 +1475,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
     unsafe fn flush_current_command_buffer(&mut self) -> Result {
         let current_command_buffer = self.current_command_buffer.take().unwrap();
-        let command_buffer = unsafe { current_command_buffer.end() }?;
+        let command_buffer =
+            unsafe { current_command_buffer.end() }.map_err(ExecuteError::VulkanError)?;
         self.current_per_submit
             .command_buffer_infos_vk
             .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
@@ -1705,7 +1754,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         };
 
         unsafe { task.execute(&mut current_command_buffer, &mut context, self.world) }
-            .map_err(|error| ExecuteError::Task { node_index, error })?;
+            .map_err(|err| err.map(|error| ExecuteError::Task { node_index, error }))?;
 
         if !self.command_buffers.is_empty() {
             unsafe { self.flush_current_command_buffer() }?;
@@ -1817,7 +1866,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 framebuffer,
                 0,
             )
-        }?;
+        }
+        .map_err(ExecuteError::VulkanError)?;
 
         // FIXME:
         let mut render_area_vk = vk::Rect2D::default();
@@ -1866,7 +1916,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 framebuffer,
                 self.current_subpass_index,
             )
-        }?;
+        }
+        .map_err(ExecuteError::VulkanError)?;
 
         let fns = self.executable.device().fns();
         unsafe {
@@ -1931,7 +1982,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         _stage_mask: PipelineStages,
     ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }?;
+        let semaphore_vk = unsafe { swapchain_state.init_pre_present_semaphore() }
+            .map_err(ExecuteError::VulkanError)?;
 
         self.current_per_submit
             .signal_semaphores_vk
@@ -1958,7 +2010,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         _stage_mask: PipelineStages,
     ) -> Result {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
-        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }?;
+        let semaphore_vk = unsafe { swapchain_state.init_present_semaphore() }
+            .map_err(ExecuteError::VulkanError)?;
 
         self.current_per_submit
             .signal_semaphores_vk
@@ -2032,18 +2085,21 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             vk::Fence::null()
         };
 
-        submission.queue.with(|_guard| {
-            unsafe {
-                (self.queue_submit)(
-                    submission.queue.handle(),
-                    submit_infos_vk.len() as u32,
-                    submit_infos_vk.as_ptr(),
-                    fence_vk,
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)
-        })?;
+        submission
+            .queue
+            .with(|_guard| {
+                unsafe {
+                    (self.queue_submit)(
+                        submission.queue.handle(),
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence_vk,
+                    )
+                }
+                .result()
+                .map_err(VulkanError::from)
+            })
+            .map_err(ExecuteError::VulkanError)?;
 
         drop(submit_infos_vk);
         self.per_submits.clear();
@@ -2055,7 +2111,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
     unsafe fn flush_current_command_buffer(&mut self) -> Result {
         let current_command_buffer = self.current_command_buffer.take().unwrap();
-        let command_buffer = unsafe { current_command_buffer.end() }?;
+        let command_buffer =
+            unsafe { current_command_buffer.end() }.map_err(ExecuteError::VulkanError)?;
         self.current_per_submit
             .command_buffers_vk
             .push(command_buffer.handle());
@@ -2076,10 +2133,10 @@ use current_submission;
 macro_rules! current_command_buffer {
     ($state:expr) => {{
         if $state.current_command_buffer.is_none() {
-            $state.current_command_buffer = Some(create_command_buffer(
-                $state.resource_map,
-                &current_submission!($state).queue,
-            )?);
+            $state.current_command_buffer = Some(
+                create_command_buffer($state.resource_map, &current_submission!($state).queue)
+                    .map_err(ExecuteError::VulkanError)?,
+            );
         }
 
         $state.current_command_buffer.as_mut().unwrap()
@@ -2106,9 +2163,6 @@ fn create_command_buffer(
             },
         )
     }
-    // This can't panic because we know that the queue family index is active on the device,
-    // otherwise we wouldn't have a reference to the `Queue`.
-    .map_err(Validated::unwrap)
 }
 
 unsafe fn framebuffer_index(resource_map: &ResourceMap<'_>, swapchains: &[Id<Swapchain>]) -> usize {
@@ -2448,17 +2502,19 @@ impl<'a> ResourceMap<'a> {
                 ObjectType::Buffer => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    <*const _>::cast(physical_resources.buffer_protected(physical_id, &guard)?)
+                    <*const _>::cast(physical_resources.try_buffer_protected(physical_id, &guard)?)
                 }
                 ObjectType::Image => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    <*const _>::cast(physical_resources.image_protected(physical_id, &guard)?)
+                    <*const _>::cast(physical_resources.try_image_protected(physical_id, &guard)?)
                 }
                 ObjectType::Swapchain => {
                     let physical_id = unsafe { physical_id.parametrize() };
 
-                    <*const _>::cast(physical_resources.swapchain_protected(physical_id, &guard)?)
+                    <*const _>::cast(
+                        physical_resources.try_swapchain_protected(physical_id, &guard)?,
+                    )
                 }
                 _ => unreachable!(),
             };
@@ -2502,7 +2558,7 @@ impl<'a> ResourceMap<'a> {
 
         let state = self
             .physical_resources
-            .buffer_protected(physical_id, &self.guard)?;
+            .try_buffer_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.buffer().sharing().is_exclusive(),
@@ -2583,7 +2639,7 @@ impl<'a> ResourceMap<'a> {
 
         let state = self
             .physical_resources
-            .image_protected(physical_id, &self.guard)?;
+            .try_image_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.image().sharing().is_exclusive(),
@@ -2657,7 +2713,7 @@ impl<'a> ResourceMap<'a> {
 
         let state = self
             .physical_resources
-            .swapchain_protected(physical_id, &self.guard)?;
+            .try_swapchain_protected(physical_id, &self.guard)?;
 
         assert_eq!(
             state.swapchain().image_sharing().is_exclusive(),
@@ -2876,7 +2932,7 @@ macro_rules! resource_map {
     };
 }
 
-type Result<T = (), E = ExecuteError> = ::std::result::Result<T, E>;
+type Result<T = (), E = Validated<ExecuteError>> = ::std::result::Result<T, E>;
 
 /// Error that can happen when [executing] an [`ExecutableTaskGraph`].
 ///
@@ -2894,9 +2950,9 @@ pub enum ExecuteError {
     VulkanError(VulkanError),
 }
 
-impl From<VulkanError> for ExecuteError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
+impl From<ExecuteError> for Validated<ExecuteError> {
+    fn from(err: ExecuteError) -> Self {
+        Self::Error(err)
     }
 }
 

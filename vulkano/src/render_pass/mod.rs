@@ -129,13 +129,35 @@ self_referential! {
 }
 
 impl RenderPass {
+    /// Creates a new `RenderPass`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    /// - Panics if `create_info.subpasses` is empty.
+    /// - Panics if any element of `create_info.attachments` has a `format` of `None`.
+    ///
+    /// [`try_new`]: Self::try_new
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &RenderPassCreateInfo<'_>,
+    ) -> Result<Arc<RenderPass>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `RenderPass`.
     ///
     /// # Panics
     ///
     /// - Panics if `create_info.subpasses` is empty.
     /// - Panics if any element of `create_info.attachments` has a `format` of `None`.
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &RenderPassCreateInfo<'_>,
     ) -> Result<Arc<RenderPass>, Validated<VulkanError>> {

@@ -31,7 +31,7 @@ use vulkano::{
     image::Image,
     render_pass::Framebuffer,
     swapchain::Swapchain,
-    DeviceSize, ValidationError,
+    DeviceSize, Validated, ValidationError,
 };
 
 pub mod collector;
@@ -256,9 +256,24 @@ pub struct TaskContext<'a> {
 }
 
 impl<'a> TaskContext<'a> {
-    /// Returns the buffer corresponding to `id`, or returns an error if it isn't present.
+    /// Returns the buffer corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_buffer`] returns an [`InvalidSlotError`].
+    ///
+    /// [`try_buffer`]: Self::try_buffer
     #[inline]
-    pub fn buffer(&self, id: Id<Buffer>) -> TaskResult<&'a BufferState> {
+    #[track_caller]
+    pub fn buffer(&self, id: Id<Buffer>) -> &'a BufferState {
+        self.try_buffer(id).unwrap()
+    }
+
+    /// Returns the buffer corresponding to `id`.
+    #[inline]
+    pub fn try_buffer(&self, id: Id<Buffer>) -> Result<&'a BufferState, InvalidSlotError> {
         if id.is_virtual() {
             // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
             // virtual IDs of the graph exhaustively.
@@ -267,17 +282,33 @@ impl<'a> TaskContext<'a> {
             let resources = self.resource_map.resources();
             let guard = self.resource_map.guard();
 
-            Ok(resources.buffer_protected(id, guard)?)
+            Ok(resources.try_buffer_protected(id, guard)?)
         }
     }
 
-    /// Returns the image corresponding to `id`, or returns an error if it isn't present.
+    /// Returns the image corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_image().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_image`] returns an [`InvalidSlotError`].
+    /// - Panics if `id` refers to a swapchain image.
+    ///
+    /// [`try_image`]: Self::try_image
+    #[inline]
+    #[track_caller]
+    pub fn image(&self, id: Id<Image>) -> &'a ImageState {
+        self.try_image(id).unwrap()
+    }
+
+    /// Returns the image corresponding to `id`.
     ///
     /// # Panics
     ///
     /// - Panics if `id` refers to a swapchain image.
     #[inline]
-    pub fn image(&self, id: Id<Image>) -> TaskResult<&'a ImageState> {
+    pub fn try_image(&self, id: Id<Image>) -> Result<&'a ImageState, InvalidSlotError> {
         assert_ne!(id.object_type(), ObjectType::Swapchain);
 
         if id.is_virtual() {
@@ -288,13 +319,28 @@ impl<'a> TaskContext<'a> {
             let resources = self.resource_map.resources();
             let guard = self.resource_map.guard();
 
-            Ok(resources.image_protected(id, guard)?)
+            Ok(resources.try_image_protected(id, guard)?)
         }
+    }
+
+    /// Returns the swapchain corresponding to `id`, panicking on an invalid slot error.
+    ///
+    /// This is a shortcut for `try_swapchain().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_swapchain`] returns an [`InvalidSlotError`].
+    ///
+    /// [`try_swapchain`]: Self::try_swapchain
+    #[inline]
+    #[track_caller]
+    pub fn swapchain(&self, id: Id<Swapchain>) -> &'a SwapchainState {
+        self.try_swapchain(id).unwrap()
     }
 
     /// Returns the swapchain corresponding to `id`, or returns an error if it isn't present.
     #[inline]
-    pub fn swapchain(&self, id: Id<Swapchain>) -> TaskResult<&'a SwapchainState> {
+    pub fn try_swapchain(&self, id: Id<Swapchain>) -> Result<&'a SwapchainState, InvalidSlotError> {
         if id.is_virtual() {
             // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
             // virtual IDs of the graph exhaustively.
@@ -303,7 +349,7 @@ impl<'a> TaskContext<'a> {
             let resources = self.resource_map.resources();
             let guard = self.resource_map.guard();
 
-            Ok(resources.swapchain_protected(id, guard)?)
+            Ok(resources.try_swapchain_protected(id, guard)?)
         }
     }
 
@@ -318,6 +364,36 @@ impl<'a> TaskContext<'a> {
     #[must_use]
     pub fn current_frame_index(&self) -> u32 {
         self.current_frame_index
+    }
+
+    /// Tries to get read access to a portion of the buffer corresponding to `id`, panicking on a
+    /// validation error or task error.
+    ///
+    /// If host read access for the buffer is not accounted for in the [task graph's host access
+    /// set], this method will return an error.
+    ///
+    /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
+    /// by [`RawBuffer::assume_bound`]), then it can't be read using this method and an error will
+    /// be returned.
+    ///
+    /// This is a shortcut for `try_read_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_read_buffer`] returns a [`ValidationError`] or [`TaskError`].
+    /// - Panics if the alignment of `T` is greater than 64.
+    /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
+    /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
+    ///
+    /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
+    /// [`try_read_buffer`]: Self::try_read_buffer
+    #[track_caller]
+    pub fn read_buffer<T: BufferContents + ?Sized>(
+        &self,
+        id: Id<Buffer>,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> &T {
+        self.try_read_buffer(id, range).unwrap()
     }
 
     /// Tries to get read access to a portion of the buffer corresponding to `id`.
@@ -336,18 +412,18 @@ impl<'a> TaskContext<'a> {
     /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
     ///
     /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
-    pub fn read_buffer<T: BufferContents + ?Sized>(
+    pub fn try_read_buffer<T: BufferContents + ?Sized>(
         &self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<&T> {
+    ) -> Result<&T, Validated<TaskError>> {
         self.validate_read_buffer(id)?;
 
         // SAFETY: We checked that the task has read access to the buffer above, which also
         // includes the guarantee that no other tasks can be writing the subbuffer on neither the
         // host nor the device. The same task cannot obtain another mutable reference to the buffer
         // because `TaskContext::write_buffer` requires a mutable reference.
-        unsafe { self.read_buffer_unchecked(id, range) }
+        Ok(unsafe { self.read_buffer_unchecked(id, range) }?)
     }
 
     fn validate_read_buffer(&self, id: Id<Buffer>) -> Result<(), Box<ValidationError>> {
@@ -390,10 +466,13 @@ impl<'a> TaskContext<'a> {
         &self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<&T> {
+    ) -> Result<&T, TaskError> {
         assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
 
-        let buffer = self.buffer(id)?.buffer();
+        let buffer = self
+            .try_buffer(id)
+            .map_err(TaskError::InvalidSlot)?
+            .buffer();
         let subbuffer = Subbuffer::from(buffer.clone())
             .slice(range)
             .reinterpret::<T>();
@@ -409,11 +488,16 @@ impl<'a> TaskContext<'a> {
             _ => unreachable!(),
         };
 
-        unsafe { allocation.mapped_slice_unchecked(..) }.map_err(|err| match err {
-            vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
-            vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
-            _ => unreachable!(),
-        })?;
+        match unsafe { allocation.mapped_slice_unchecked(..) } {
+            Ok(_) => {}
+            Err(vulkano::sync::HostAccessError::NotHostMapped) => {
+                return Err(TaskError::HostAccess(HostAccessError::NotHostMapped));
+            }
+            Err(vulkano::sync::HostAccessError::OutOfMappedRange) => {
+                return Err(TaskError::HostAccess(HostAccessError::OutOfMappedRange));
+            }
+            Err(_) => unreachable!(),
+        }
 
         let mapped_slice = subbuffer.mapped_slice().unwrap();
 
@@ -422,6 +506,36 @@ impl<'a> TaskContext<'a> {
         let data = unsafe { &*data_ptr };
 
         Ok(data)
+    }
+
+    /// Tries to get write access to a portion of the buffer corresponding to `id`, panicking on a
+    /// validation error or task error.
+    ///
+    /// If host write access for the buffer is not accounted for in the [task graph's host access
+    /// set], this method will return an error.
+    ///
+    /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
+    /// by [`RawBuffer::assume_bound`]), then it can't be written using this method and an error
+    /// will be returned.
+    ///
+    /// This is a shortcut for `try_write_buffer().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_write_buffer`] returns a [`ValidationError`] or [`TaskError`].
+    /// - Panics if the alignment of `T` is greater than 64.
+    /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
+    /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
+    ///
+    /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
+    /// [`try_write_buffer`]: Self::try_write_buffer
+    #[track_caller]
+    pub fn write_buffer<T: BufferContents + ?Sized>(
+        &mut self,
+        id: Id<Buffer>,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> &mut T {
+        self.try_write_buffer(id, range).unwrap()
     }
 
     /// Tries to get write access to a portion of the buffer corresponding to `id`.
@@ -440,18 +554,18 @@ impl<'a> TaskContext<'a> {
     /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
     ///
     /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
-    pub fn write_buffer<T: BufferContents + ?Sized>(
+    pub fn try_write_buffer<T: BufferContents + ?Sized>(
         &mut self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<&mut T> {
+    ) -> Result<&mut T, Validated<TaskError>> {
         self.validate_write_buffer(id)?;
 
         // SAFETY: We checked that the task has write access to the buffer above, which also
         // includes the guarantee that no other tasks can be accessing the buffer on neither the
         // host nor the device. The same task cannot obtain another mutable reference to the buffer
         // because `TaskContext::write_buffer` requires a mutable reference.
-        unsafe { self.write_buffer_unchecked(id, range) }
+        Ok(unsafe { self.write_buffer_unchecked(id, range) }?)
     }
 
     fn validate_write_buffer(&self, id: Id<Buffer>) -> Result<(), Box<ValidationError>> {
@@ -494,10 +608,13 @@ impl<'a> TaskContext<'a> {
         &mut self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<&mut T> {
+    ) -> Result<&mut T, TaskError> {
         assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
 
-        let buffer = self.buffer(id)?.buffer();
+        let buffer = self
+            .try_buffer(id)
+            .map_err(TaskError::InvalidSlot)?
+            .buffer();
         let subbuffer = Subbuffer::from(buffer.clone())
             .slice(range)
             .reinterpret::<T>();
@@ -513,11 +630,16 @@ impl<'a> TaskContext<'a> {
             _ => unreachable!(),
         };
 
-        unsafe { allocation.mapped_slice_unchecked(..) }.map_err(|err| match err {
-            vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
-            vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
-            _ => unreachable!(),
-        })?;
+        match unsafe { allocation.mapped_slice_unchecked(..) } {
+            Ok(_) => {}
+            Err(vulkano::sync::HostAccessError::NotHostMapped) => {
+                return Err(TaskError::HostAccess(HostAccessError::NotHostMapped));
+            }
+            Err(vulkano::sync::HostAccessError::OutOfMappedRange) => {
+                return Err(TaskError::HostAccess(HostAccessError::OutOfMappedRange));
+            }
+            Err(_) => unreachable!(),
+        }
 
         let mapped_slice = subbuffer.mapped_slice().unwrap();
 
@@ -604,31 +726,24 @@ impl ClearValues<'_> {
 }
 
 /// The type of result returned by a task.
-pub type TaskResult<T = (), E = TaskError> = ::std::result::Result<T, E>;
+pub type TaskResult<T = (), E = Validated<TaskError>> = ::std::result::Result<T, E>;
 
 /// Error that can happen inside a task.
 #[derive(Debug)]
 pub enum TaskError {
     InvalidSlot(InvalidSlotError),
     HostAccess(HostAccessError),
-    ValidationError(Box<ValidationError>),
 }
 
-impl From<InvalidSlotError> for TaskError {
+impl From<InvalidSlotError> for Validated<TaskError> {
     fn from(err: InvalidSlotError) -> Self {
-        Self::InvalidSlot(err)
+        Self::Error(TaskError::InvalidSlot(err))
     }
 }
 
-impl From<HostAccessError> for TaskError {
-    fn from(err: HostAccessError) -> Self {
-        Self::HostAccess(err)
-    }
-}
-
-impl From<Box<ValidationError>> for TaskError {
-    fn from(err: Box<ValidationError>) -> Self {
-        Self::ValidationError(err)
+impl From<TaskError> for Validated<TaskError> {
+    fn from(err: TaskError) -> Self {
+        Self::Error(err)
     }
 }
 
@@ -637,7 +752,6 @@ impl fmt::Display for TaskError {
         let msg = match self {
             Self::InvalidSlot(_) => "invalid slot",
             Self::HostAccess(_) => "a host access error occurred",
-            Self::ValidationError(_) => "a validation error occurred",
         };
 
         f.write_str(msg)
@@ -649,7 +763,6 @@ impl Error for TaskError {
         match self {
             Self::InvalidSlot(err) => Some(err),
             Self::HostAccess(err) => Some(err),
-            Self::ValidationError(err) => Some(err),
         }
     }
 }

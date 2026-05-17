@@ -36,12 +36,18 @@ pub struct PipelineCache {
 }
 
 impl PipelineCache {
-    /// Builds a new pipeline cache.
+    /// Builds a new pipeline cache, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
     ///
     /// # Examples
     ///
-    /// This example loads a cache from a file, if it exists.
-    /// See [`get_data`](#method.get_data) for how to store the data in a file.
+    /// This example loads a cache from a file, if it exists. See [`get_data`] for how to store the
+    /// data in a file.
     ///
     /// ```
     /// # use std::sync::Arc;
@@ -78,8 +84,24 @@ impl PipelineCache {
     /// )
     /// .unwrap();
     /// ```
+    ///
+    /// [`get_data`]: Self::get_data
+    /// [`try_new`]: Self::try_new
     #[inline]
+    #[track_caller]
     pub fn new(
+        device: &Arc<Device>,
+        create_info: &PipelineCacheCreateInfo<'_>,
+    ) -> Result<Arc<PipelineCache>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Builds a new pipeline cache.
+    #[inline]
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &PipelineCacheCreateInfo<'_>,
     ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
@@ -219,9 +241,15 @@ impl PipelineCache {
         Ok(data)
     }
 
-    /// Merges other pipeline caches into this one.
+    /// Merges other pipeline caches into this one, panicking on a validation error.
     ///
     /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
+    ///
+    /// This is a shortcut for `try_merge().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_merge`] returns a [`ValidationError`].
     ///
     /// # Examples
     ///
@@ -270,8 +298,25 @@ impl PipelineCache {
     /// // Now merge the new pipeline cache into the existing one
     /// current_cache.merge([new_cache.as_ref()]).unwrap();
     /// ```
-    // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
+    ///
+    /// [`try_merge`]: Self::try_merge
+    #[track_caller]
     pub fn merge<'a>(
+        &self,
+        src_caches: impl IntoIterator<Item = &'a PipelineCache>,
+    ) -> Result<(), VulkanError> {
+        match self.try_merge(src_caches) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Merges other pipeline caches into this one.
+    ///
+    /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
+    //
+    // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
+    pub fn try_merge<'a>(
         &self,
         src_caches: impl IntoIterator<Item = &'a PipelineCache>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -479,7 +524,7 @@ mod tests {
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
         let pipeline = PipelineCache::new(&device, &Default::default()).unwrap();
-        assert!(pipeline.merge([pipeline.as_ref()]).is_err());
+        assert!(pipeline.try_merge([pipeline.as_ref()]).is_err());
     }
 
     #[test]

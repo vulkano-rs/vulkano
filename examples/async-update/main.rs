@@ -115,7 +115,7 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -144,7 +144,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -323,14 +323,14 @@ impl App {
                 &resources,
                 graphics_flight_id,
                 |cbf, tcx| {
-                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     for &texture_id in &texture_ids {
                         cbf.clear_color_image(&ClearColorImageInfo {
                             image: texture_id,
                             ..Default::default()
-                        })?;
+                        });
                     }
 
                     Ok(())
@@ -430,8 +430,14 @@ impl ApplicationHandler for App {
                 .unwrap()
         };
 
-        let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
-        let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+        let vs = unsafe { vs::load(&self.device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = unsafe { fs::load(&self.device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
         let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(&vs),
@@ -451,7 +457,7 @@ impl ApplicationHandler for App {
             .create_sampler(&SamplerCreateInfo::simple_repeat_linear())
             .unwrap();
         let sampled_image_ids = self.texture_ids.map(|texture_id| {
-            let texture_state = self.resources.image(texture_id).unwrap();
+            let texture_state = self.resources.image(texture_id);
             let texture = texture_state.image();
 
             bcx.global_set()
@@ -600,7 +606,7 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let flight = self.resources.flight(self.graphics_flight_id).unwrap();
+                let flight = self.resources.flight(self.graphics_flight_id);
 
                 if rcx.recreate_swapchain {
                     rcx.swapchain_id = self
@@ -743,8 +749,8 @@ impl Task for RenderTask {
 
         let pipeline = self.pipeline.as_ref().unwrap();
 
-        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
-        cbf.bind_pipeline_graphics(pipeline)?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
+        cbf.bind_pipeline_graphics(pipeline);
         cbf.push_constants(
             pipeline.layout(),
             0,
@@ -755,10 +761,10 @@ impl Task for RenderTask {
                 texture_id: self.sampled_image_ids
                     [self.current_texture_index.load(Ordering::Relaxed) as usize],
             },
-        )?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        );
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(4, 1, 0, 0) }?;
+        unsafe { cbf.draw(4, 1, 0, 0) };
 
         Ok(())
     }
@@ -863,7 +869,7 @@ fn run_worker(
         // you would likely send some actual data over the channel, instructing the worker what to
         // do, but our work is hard-coded.
         while let Ok(()) = channel.recv() {
-            let graphics_flight = resources.flight(graphics_flight_id).unwrap();
+            let graphics_flight = resources.flight(graphics_flight_id);
 
             // We can't wait for a frame that hasn't been executed yet.
             while last_frame == graphics_flight.current_frame() {
@@ -904,11 +910,7 @@ fn run_worker(
             unsafe { task_graph.execute(resource_map, &current_corner, || {}) }.unwrap();
 
             // Block the thread until the transfer finishes.
-            resources
-                .flight(transfer_flight_id)
-                .unwrap()
-                .wait_idle()
-                .unwrap();
+            resources.flight(transfer_flight_id).wait_idle().unwrap();
 
             last_frame = graphics_flight.current_frame();
 
@@ -955,7 +957,7 @@ impl Task for UploadTask {
         // that the update is in fact asynchronous due to the latency of the updates while the
         // rendering continues without any.
         let color = [rng.gen(), rng.gen(), rng.gen(), u8::MAX];
-        tcx.write_buffer::<[_]>(self.front_staging_buffer_id, ..)?
+        tcx.write_buffer::<[_]>(self.front_staging_buffer_id, ..)
             .fill(color);
 
         cbf.copy_buffer_to_image(&CopyBufferToImageInfo {
@@ -971,7 +973,7 @@ impl Task for UploadTask {
                 ..Default::default()
             }],
             ..Default::default()
-        })?;
+        });
 
         if current_corner > 0 {
             cbf.copy_buffer_to_image(&CopyBufferToImageInfo {
@@ -987,7 +989,7 @@ impl Task for UploadTask {
                     ..Default::default()
                 }],
                 ..Default::default()
-            })?;
+            });
         }
 
         Ok(())

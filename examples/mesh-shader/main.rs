@@ -93,7 +93,7 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -119,7 +119,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -316,11 +316,14 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         let pipeline = {
-            let mesh = mesh::load(&self.device)
+            let mesh = unsafe { mesh::load(&self.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let fs = unsafe { fs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&mesh),
                 PipelineShaderStageCreateInfo::new(&fs),

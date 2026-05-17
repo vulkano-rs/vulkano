@@ -305,8 +305,14 @@ fn main() {
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(&device).unwrap().entry_point("main").unwrap();
-        let fs = fs::load(&device).unwrap().entry_point("main").unwrap();
+        let vs = unsafe { vs::load(&device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = unsafe { fs::load(&device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
         let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(&vs),

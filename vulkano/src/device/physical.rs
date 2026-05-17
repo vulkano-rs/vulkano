@@ -497,9 +497,28 @@ impl PhysicalDevice {
         &self.queue_family_properties
     }
 
+    /// Returns the properties of displays attached to the physical device, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_display_properties().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_display_properties`] returns a [`ValidationError`].
+    ///
+    /// [`try_display_properties`]: Self::try_display_properties
+    #[inline]
+    #[track_caller]
+    pub fn display_properties(self: &Arc<Self>) -> Result<Vec<Arc<Display>>, VulkanError> {
+        match self.try_display_properties() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the properties of displays attached to the physical device.
     #[inline]
-    pub fn display_properties(
+    pub fn try_display_properties(
         self: &Arc<Self>,
     ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
         self.validate_display_properties()?;
@@ -626,9 +645,30 @@ impl PhysicalDevice {
         }
     }
 
+    /// Returns the properties of the display planes of the physical device, panicking on a
+    /// validation error.
+    ///
+    /// This is a shortcut for `try_display_plane_properties().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_display_plane_properties`] returns a [`ValidationError`].
+    ///
+    /// [`try_display_plane_properties`]: Self::try_display_plane_properties
+    #[inline]
+    #[track_caller]
+    pub fn display_plane_properties(
+        self: &Arc<Self>,
+    ) -> Result<Vec<DisplayPlaneProperties>, VulkanError> {
+        match self.try_display_plane_properties() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the properties of the display planes of the physical device.
     #[inline]
-    pub fn display_plane_properties(
+    pub fn try_display_plane_properties(
         self: &Arc<Self>,
     ) -> Result<Vec<DisplayPlaneProperties>, Validated<VulkanError>> {
         self.validate_display_plane_properties()?;
@@ -792,12 +832,40 @@ impl PhysicalDevice {
         Ok(properties_raw)
     }
 
+    /// Returns the displays that are supported for the given plane index, panicking on a
+    /// validation error.
+    ///
+    /// The index must be less than the number of elements returned by
+    /// [`display_plane_properties`].
+    ///
+    /// This is a shortcut for `try_display_plane_supported_displays().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_display_plane_supported_displays`] returns a [`ValidationError`].
+    ///
+    /// [`display_plane_properties`]: Self::display_plane_properties
+    /// [`try_display_plane_supported_displays`]: Self::try_display_plane_supported_displays
+    #[inline]
+    #[track_caller]
+    pub fn display_plane_supported_displays(
+        self: &Arc<Self>,
+        plane_index: u32,
+    ) -> Result<Vec<Arc<Display>>, VulkanError> {
+        match self.try_display_plane_supported_displays(plane_index) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the displays that are supported for the given plane index.
     ///
     /// The index must be less than the number of elements returned by
-    /// [`display_plane_properties`](Self::display_plane_properties).
+    /// [`display_plane_properties`].
+    ///
+    /// [`display_plane_properties`]: Self::display_plane_properties
     #[inline]
-    pub fn display_plane_supported_displays(
+    pub fn try_display_plane_supported_displays(
         self: &Arc<Self>,
         plane_index: u32,
     ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
@@ -899,6 +967,32 @@ impl PhysicalDevice {
         Ok(displays)
     }
 
+    /// Retrieves the external memory properties supported for buffers with a given configuration,
+    /// panicking on a validation error.
+    ///
+    /// Instance API version must be at least 1.1, or the [`khr_external_memory_capabilities`]
+    /// extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_external_buffer_properties().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_external_buffer_properties`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_memory_capabilities`]: crate::instance::InstanceExtensions::khr_external_memory_capabilities
+    /// [`try_external_buffer_properties`]: Self::try_external_buffer_properties
+    #[inline]
+    #[track_caller]
+    pub fn external_buffer_properties(
+        &self,
+        info: &ExternalBufferInfo<'_>,
+    ) -> ExternalBufferProperties {
+        self.try_external_buffer_properties(info).unwrap()
+    }
+
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
     /// Instance API version must be at least 1.1, or the [`khr_external_memory_capabilities`]
@@ -909,7 +1003,7 @@ impl PhysicalDevice {
     ///
     /// [`khr_external_memory_capabilities`]: crate::instance::InstanceExtensions::khr_external_memory_capabilities
     #[inline]
-    pub fn external_buffer_properties(
+    pub fn try_external_buffer_properties(
         &self,
         info: &ExternalBufferInfo<'_>,
     ) -> Result<ExternalBufferProperties, Box<ValidationError>> {
@@ -991,6 +1085,32 @@ impl PhysicalDevice {
     }
 
     /// Retrieves the external handle properties supported for fences with a given
+    /// configuration, panicking on a validation error.
+    ///
+    /// The instance API version must be at least 1.1, or the [`khr_external_fence_capabilities`]
+    /// extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_external_fence_properties().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_external_fence_properties`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_fence_capabilities`]: crate::instance::InstanceExtensions::khr_external_fence_capabilities
+    /// [`try_external_fence_properties`]: Self::try_external_fence_properties
+    #[inline]
+    #[track_caller]
+    pub fn external_fence_properties(
+        &self,
+        info: &ExternalFenceInfo<'_>,
+    ) -> ExternalFenceProperties {
+        self.try_external_fence_properties(info).unwrap()
+    }
+
+    /// Retrieves the external handle properties supported for fences with a given
     /// configuration.
     ///
     /// The instance API version must be at least 1.1, or the [`khr_external_fence_capabilities`]
@@ -1001,7 +1121,7 @@ impl PhysicalDevice {
     ///
     /// [`khr_external_fence_capabilities`]: crate::instance::InstanceExtensions::khr_external_fence_capabilities
     #[inline]
-    pub fn external_fence_properties(
+    pub fn try_external_fence_properties(
         &self,
         info: &ExternalFenceInfo<'_>,
     ) -> Result<ExternalFenceProperties, Box<ValidationError>> {
@@ -1083,6 +1203,32 @@ impl PhysicalDevice {
     }
 
     /// Retrieves the external handle properties supported for semaphores with a given
+    /// configuration, panicking on a validation error
+    ///
+    /// The instance API version must be at least 1.1, or the
+    /// [`khr_external_semaphore_capabilities`] extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_external_semaphore_properties().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_external_semaphore_properties`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_semaphore_capabilities`]: crate::instance::InstanceExtensions::khr_external_semaphore_capabilities
+    /// [`try_external_semaphore_properties`]: Self::try_external_semaphore_properties
+    #[inline]
+    #[track_caller]
+    pub fn external_semaphore_properties(
+        &self,
+        info: &ExternalSemaphoreInfo<'_>,
+    ) -> ExternalSemaphoreProperties {
+        self.try_external_semaphore_properties(info).unwrap()
+    }
+
+    /// Retrieves the external handle properties supported for semaphores with a given
     /// configuration.
     ///
     /// The instance API version must be at least 1.1, or the
@@ -1093,7 +1239,7 @@ impl PhysicalDevice {
     ///
     /// [`khr_external_semaphore_capabilities`]: crate::instance::InstanceExtensions::khr_external_semaphore_capabilities
     #[inline]
-    pub fn external_semaphore_properties(
+    pub fn try_external_semaphore_properties(
         &self,
         info: &ExternalSemaphoreInfo<'_>,
     ) -> Result<ExternalSemaphoreProperties, Box<ValidationError>> {
@@ -1175,12 +1321,31 @@ impl PhysicalDevice {
             })
     }
 
+    /// Retrieves the properties of a format when used by this physical device, panicking on a
+    /// validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_format_properties().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_format_properties`] returns a [`ValidationError`].
+    ///
+    /// [`try_format_properties`]: Self::try_format_properties
+    #[inline]
+    #[track_caller]
+    pub fn format_properties(&self, format: Format) -> FormatProperties {
+        self.try_format_properties(format).unwrap()
+    }
+
     /// Retrieves the properties of a format when used by this physical device.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     #[inline]
-    pub fn format_properties(
+    pub fn try_format_properties(
         &self,
         format: Format,
     ) -> Result<FormatProperties, Box<ValidationError>> {
@@ -1273,6 +1438,34 @@ impl PhysicalDevice {
         })
     }
 
+    /// Returns the properties supported for images with a given image configuration, panicking on
+    /// a validation error.
+    ///
+    /// `Some` is returned if the configuration is supported, `None` if it is not.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_image_format_properties().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_image_format_properties`] returns a [`ValidationError`].
+    /// - Panics if `image_format_info.format` is `None`.
+    ///
+    /// [`try_image_format_properties`]: Self::try_image_format_properties
+    #[inline]
+    #[track_caller]
+    pub fn image_format_properties(
+        &self,
+        image_format_info: &ImageFormatInfo<'_>,
+    ) -> Result<Option<ImageFormatProperties>, VulkanError> {
+        match self.try_image_format_properties(image_format_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the properties supported for images with a given image configuration.
     ///
     /// `Some` is returned if the configuration is supported, `None` if it is not.
@@ -1284,7 +1477,7 @@ impl PhysicalDevice {
     ///
     /// - Panics if `image_format_info.format` is `None`.
     #[inline]
-    pub fn image_format_properties(
+    pub fn try_image_format_properties(
         &self,
         image_format_info: &ImageFormatInfo<'_>,
     ) -> Result<Option<ImageFormatProperties>, Validated<VulkanError>> {
@@ -1400,6 +1593,30 @@ impl PhysicalDevice {
             })
     }
 
+    /// Returns the properties of sparse images with a given image configuration, panicking on a
+    /// validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_sparse_image_format_properties().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_sparse_image_format_properties`] returns a [`ValidationError`].
+    /// - Panics if `format_info.format` is `None`.
+    ///
+    /// [`try_sparse_image_format_properties`]: Self::try_sparse_image_format_properties
+    #[inline]
+    #[track_caller]
+    pub fn sparse_image_format_properties(
+        &self,
+        format_info: &SparseImageFormatInfo<'_>,
+    ) -> Vec<SparseImageFormatProperties> {
+        self.try_sparse_image_format_properties(format_info)
+            .unwrap()
+    }
+
     /// Returns the properties of sparse images with a given image configuration.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
@@ -1409,7 +1626,7 @@ impl PhysicalDevice {
     ///
     /// - Panics if `format_info.format` is `None`.
     #[inline]
-    pub fn sparse_image_format_properties(
+    pub fn try_sparse_image_format_properties(
         &self,
         format_info: &SparseImageFormatInfo<'_>,
     ) -> Result<Vec<SparseImageFormatProperties>, Box<ValidationError>> {
@@ -1552,6 +1769,32 @@ impl PhysicalDevice {
             })
     }
 
+    /// Returns the capabilities that are supported by the physical device for the given surface,
+    /// panicking on a validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_surface_capabilities().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_surface_capabilities`] returns a [`ValidationError`].
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    ///
+    /// [`try_surface_capabilities`]: Self::try_surface_capabilities
+    #[track_caller]
+    pub fn surface_capabilities(
+        &self,
+        surface: &Surface,
+        surface_info: &SurfaceInfo<'_>,
+    ) -> Result<SurfaceCapabilities, VulkanError> {
+        match self.try_surface_capabilities(surface, surface_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the capabilities that are supported by the physical device for the given surface.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
@@ -1560,7 +1803,7 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_capabilities(
+    pub fn try_surface_capabilities(
         &self,
         surface: &Surface,
         surface_info: &SurfaceInfo<'_>,
@@ -1734,6 +1977,32 @@ impl PhysicalDevice {
     }
 
     /// Returns the combinations of format and color space that are supported by the physical
+    /// device for the given surface, panicking on a validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_surface_formats().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_surface_formats`] returns a [`ValidationError`].
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    ///
+    /// [`try_surface_formats`]: Self::try_surface_formats
+    #[track_caller]
+    pub fn surface_formats(
+        &self,
+        surface: &Surface,
+        surface_info: &SurfaceInfo<'_>,
+    ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
+        match self.try_surface_formats(surface, surface_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Returns the combinations of format and color space that are supported by the physical
     /// device for the given surface.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
@@ -1742,7 +2011,7 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_formats(
+    pub fn try_surface_formats(
         &self,
         surface: &Surface,
         surface_info: &SurfaceInfo<'_>,
@@ -1976,6 +2245,32 @@ impl PhysicalDevice {
             })
     }
 
+    /// Returns the present modes that are supported by the physical device for the given surface,
+    /// panicking on a validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// This is a shortcut for `try_surface_present_modes().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_surface_present_modes`] returns a [`ValidationError`].
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    ///
+    /// [`try_surface_present_modes`]: Self::try_surface_present_modes
+    #[track_caller]
+    pub fn surface_present_modes(
+        &self,
+        surface: &Surface,
+        surface_info: &SurfaceInfo<'_>,
+    ) -> Result<Vec<PresentMode>, VulkanError> {
+        match self.try_surface_present_modes(surface, surface_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the present modes that are supported by the physical device for the given surface.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
@@ -1984,7 +2279,7 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_present_modes(
+    pub fn try_surface_present_modes(
         &self,
         surface: &Surface,
         surface_info: &SurfaceInfo<'_>,
@@ -2177,6 +2472,37 @@ impl PhysicalDevice {
         )
     }
 
+    /// Returns whether queues of the given queue family support presentation to the given surface,
+    /// panicking on a validation error.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments do
+    /// not need to make a call to the Vulkan API again.
+    ///
+    /// See also [`presentation_support`] for determining if a queue family supports presentation
+    /// to the surface of any window of a given event loop, for instance in cases where you have no
+    /// window and hence no surface at hand to test with or when you could have multiple windows.
+    ///
+    /// This is a shortcut for `try_surface_support().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_surface_support`] returns a [`ValidationError`].
+    ///
+    /// [`presentation_support`]: Self::presentation_support
+    /// [`try_surface_support`]: Self::try_surface_support
+    #[inline]
+    #[track_caller]
+    pub fn surface_support(
+        &self,
+        queue_family_index: u32,
+        surface: &Surface,
+    ) -> Result<bool, VulkanError> {
+        match self.try_surface_support(queue_family_index, surface) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns whether queues of the given queue family support presentation to the given surface.
     ///
     /// The results of this function are cached, so that future calls with the same arguments do
@@ -2188,7 +2514,7 @@ impl PhysicalDevice {
     ///
     /// [`presentation_support`]: Self::presentation_support
     #[inline]
-    pub fn surface_support(
+    pub fn try_surface_support(
         &self,
         queue_family_index: u32,
         surface: &Surface,
@@ -2255,16 +2581,43 @@ impl PhysicalDevice {
             })
     }
 
+    /// Retrieves the properties of tools that are currently active on the physical device,
+    /// panicking on a validation error.
+    ///
+    /// These properties may change during runtime, so the result only reflects the current
+    /// situation and is not cached.
+    ///
+    /// The physical device API version must be at least 1.3, or the [`ext_tooling_info`]
+    /// extension must be supported by the physical device.
+    ///
+    /// This is a shortcut for `try_tool_properties().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_tool_properties`] returns a [`ValidationError`].
+    ///
+    /// [`ext_tooling_info`]: crate::device::DeviceExtensions::ext_tooling_info
+    /// [`try_tool_properties`]: Self::try_tool_properties
+    #[inline]
+    #[track_caller]
+    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, VulkanError> {
+        match self.try_tool_properties() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Retrieves the properties of tools that are currently active on the physical device.
     ///
     /// These properties may change during runtime, so the result only reflects the current
     /// situation and is not cached.
     ///
-    /// The physical device API version must be at least 1.3, or the
-    /// [`ext_tooling_info`](crate::device::DeviceExtensions::ext_tooling_info)
+    /// The physical device API version must be at least 1.3, or the [`ext_tooling_info`]
     /// extension must be supported by the physical device.
+    ///
+    /// [`ext_tooling_info`]: crate::device::DeviceExtensions::ext_tooling_info
     #[inline]
-    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, Validated<VulkanError>> {
+    pub fn try_tool_properties(&self) -> Result<Vec<ToolProperties>, Validated<VulkanError>> {
         self.validate_tool_properties()?;
 
         Ok(unsafe { self.tool_properties_unchecked() }?)
@@ -2347,6 +2700,40 @@ impl PhysicalDevice {
     }
 
     /// Returns whether queues of the given queue family support presentation to surfaces of
+    /// windows of the given event loop, panicking on a validation error.
+    ///
+    /// On the X11 platform, this checks if the given queue family supports presentation to
+    /// surfaces of windows created with the root visual. This means that if you create your
+    /// window(s) with a different visual, the result of this function doesn't guarantee support
+    /// for that window's surface, and you should use [`xcb_presentation_support`] or
+    /// [`xlib_presentation_support`] directly to determine support for presentation to such
+    /// surfaces.
+    ///
+    /// See also [`surface_support`] for determining if a queue family supports presentation to a
+    /// specific surface.
+    ///
+    /// This is a shortcut for `try_presentation_support().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`xcb_presentation_support`]: Self::xcb_presentation_support
+    /// [`xlib_presentation_support`]: Self::xlib_presentation_support
+    /// [`surface_support`]: Self::surface_support
+    /// [`try_presentation_support`]: Self::try_presentation_support
+    #[cfg(feature = "raw_window_handle")]
+    #[track_caller]
+    pub fn presentation_support(
+        &self,
+        queue_family_index: u32,
+        event_loop: &impl HasDisplayHandle,
+    ) -> bool {
+        self.try_presentation_support(queue_family_index, event_loop)
+            .unwrap()
+    }
+
+    /// Returns whether queues of the given queue family support presentation to surfaces of
     /// windows of the given event loop.
     ///
     /// On the X11 platform, this checks if the given queue family supports presentation to
@@ -2363,7 +2750,7 @@ impl PhysicalDevice {
     /// [`xlib_presentation_support`]: Self::xlib_presentation_support
     /// [`surface_support`]: Self::surface_support
     #[cfg(feature = "raw_window_handle")]
-    pub fn presentation_support(
+    pub fn try_presentation_support(
         &self,
         queue_family_index: u32,
         event_loop: &impl HasDisplayHandle,
@@ -2379,10 +2766,13 @@ impl PhysicalDevice {
             RawDisplayHandle::AppKit(_) => true,
             RawDisplayHandle::Wayland(display) => {
                 let display = display.display.as_ptr();
-                unsafe { self.wayland_presentation_support(queue_family_index, display.cast()) }?
+
+                unsafe {
+                    self.try_wayland_presentation_support(queue_family_index, display.cast())
+                }?
             }
             RawDisplayHandle::Windows(_display) => {
-                self.win32_presentation_support(queue_family_index)?
+                self.try_win32_presentation_support(queue_family_index)?
             }
             #[cfg(all(
                 any(
@@ -2403,7 +2793,11 @@ impl PhysicalDevice {
                 let visual_id = unsafe { get_xcb_root_visual_id(connection, screen) };
 
                 unsafe {
-                    self.xcb_presentation_support(queue_family_index, connection.cast(), visual_id)
+                    self.try_xcb_presentation_support(
+                        queue_family_index,
+                        connection.cast(),
+                        visual_id,
+                    )
                 }?
             }
             #[cfg(all(
@@ -2425,7 +2819,11 @@ impl PhysicalDevice {
                 let visual_id = unsafe { get_xlib_root_visual_id(display, screen) };
 
                 unsafe {
-                    self.xlib_presentation_support(queue_family_index, display.cast(), visual_id)
+                    self.try_xlib_presentation_support(
+                        queue_family_index,
+                        display.cast(),
+                        visual_id,
+                    )
                 }?
             }
             #[cfg(all(
@@ -2454,12 +2852,35 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to Wayland surfaces from queues of
+    /// the given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_wayland_presentation_support().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wayland_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_wayland_presentation_support`]: Self::try_wayland_presentation_support
+    #[track_caller]
+    pub unsafe fn wayland_presentation_support(
+        &self,
+        queue_family_index: u32,
+        display: *mut vk::wl_display,
+    ) -> bool {
+        unsafe { self.try_wayland_presentation_support(queue_family_index, display) }.unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of
     /// the given queue family.
     ///
     /// # Safety
     ///
     /// - `display` must be a valid Wayland `wl_display` handle.
-    pub unsafe fn wayland_presentation_support(
+    pub unsafe fn try_wayland_presentation_support(
         &self,
         queue_family_index: u32,
         display: *mut vk::wl_display,
@@ -2521,9 +2942,26 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to Win32 surfaces from queues of
+    /// the given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_win32_presentation_support().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_win32_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_win32_presentation_support`]: Self::try_win32_presentation_support
+    #[inline]
+    #[track_caller]
+    pub fn win32_presentation_support(&self, queue_family_index: u32) -> bool {
+        self.try_win32_presentation_support(queue_family_index)
+            .unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of
     /// the given queue family.
     #[inline]
-    pub fn win32_presentation_support(
+    pub fn try_win32_presentation_support(
         &self,
         queue_family_index: u32,
     ) -> Result<bool, Box<ValidationError>> {
@@ -2576,12 +3014,37 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
+    /// given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_xcb_presentation_support().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_xcb_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_xcb_presentation_support`]: Self::try_xcb_presentation_support
+    #[track_caller]
+    pub unsafe fn xcb_presentation_support(
+        &self,
+        queue_family_index: u32,
+        connection: *mut vk::xcb_connection_t,
+        visual_id: vk::xcb_visualid_t,
+    ) -> bool {
+        unsafe { self.try_xcb_presentation_support(queue_family_index, connection, visual_id) }
+            .unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
     /// given queue family.
     ///
     /// # Safety
     ///
     /// - `connection` must be a valid X11 `xcb_connection_t` handle.
-    pub unsafe fn xcb_presentation_support(
+    pub unsafe fn try_xcb_presentation_support(
         &self,
         queue_family_index: u32,
         connection: *mut vk::xcb_connection_t,
@@ -2649,12 +3112,37 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
+    /// given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_xlib_presentation_support().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Xlib `Display` handle.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_xlib_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_xlib_presentation_support`]: Self::try_xlib_presentation_support
+    #[track_caller]
+    pub unsafe fn xlib_presentation_support(
+        &self,
+        queue_family_index: u32,
+        display: *mut vk::Display,
+        visual_id: vk::VisualID,
+    ) -> bool {
+        unsafe { self.try_xlib_presentation_support(queue_family_index, display, visual_id) }
+            .unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
     /// given queue family.
     ///
     /// # Safety
     ///
     /// - `display` must be a valid Xlib `Display` handle.
-    pub unsafe fn xlib_presentation_support(
+    pub unsafe fn try_xlib_presentation_support(
         &self,
         queue_family_index: u32,
         display: *mut vk::Display,
@@ -2722,13 +3210,37 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
+    /// the given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_directfb_presentation_support().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_directfb_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_directfb_presentation_support`]: Self::try_directfb_presentation_support
+    #[inline]
+    #[track_caller]
+    pub unsafe fn directfb_presentation_support(
+        &self,
+        queue_family_index: u32,
+        dfb: *mut vk::IDirectFB,
+    ) -> bool {
+        unsafe { self.try_directfb_presentation_support(queue_family_index, dfb) }.unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
     /// the given queue family.
     ///
     /// # Safety
     ///
     /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
     #[inline]
-    pub unsafe fn directfb_presentation_support(
+    pub unsafe fn try_directfb_presentation_support(
         &self,
         queue_family_index: u32,
         dfb: *mut vk::IDirectFB,
@@ -2791,12 +3303,35 @@ impl PhysicalDevice {
     }
 
     /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
+    /// of the given queue family, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_qnx_screen_presentation_support().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_qnx_screen_presentation_support`] returns a [`ValidationError`].
+    ///
+    /// [`try_qnx_screen_presentation_support`]: Self::try_qnx_screen_presentation_support
+    #[track_caller]
+    pub unsafe fn qnx_screen_presentation_support(
+        &self,
+        queue_family_index: u32,
+        window: *mut vk::_screen_window,
+    ) -> bool {
+        unsafe { self.try_qnx_screen_presentation_support(queue_family_index, window) }.unwrap()
+    }
+
+    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
     /// of the given queue family.
     ///
     /// # Safety
     ///
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
-    pub unsafe fn qnx_screen_presentation_support(
+    pub unsafe fn try_qnx_screen_presentation_support(
         &self,
         queue_family_index: u32,
         window: *mut vk::_screen_window,

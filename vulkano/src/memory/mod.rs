@@ -341,6 +341,40 @@ impl ResourceMemory {
         (!memory.is_coherent()).then_some(memory.atom_size())
     }
 
+    /// Invalidates the host cache for a range of the `ResourceMemory`, panicking on a validation
+    /// error.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function before the memory
+    /// is read by the host, if the device previously wrote to the memory. It has no effect if the
+    /// memory is host-coherent.
+    ///
+    /// This is a shortcut for `try_invalidate_range().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - If there are memory writes by the device that have not been propagated into the host
+    ///   cache, then there must not be any references in Rust code to any portion of the specified
+    ///   `memory_range`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_invalidate_range`] returns a [`ValidationError`].
+    ///
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
+    /// [`try_invalidate_range`]: Self::try_invalidate_range
+    #[inline]
+    #[track_caller]
+    pub unsafe fn invalidate_range(
+        &self,
+        memory_range: &MappedMemoryRange<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_invalidate_range(memory_range) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Invalidates the host cache for a range of the `ResourceMemory`.
     ///
     /// If the device memory is not [host-coherent], you must call this function before the memory
@@ -356,7 +390,7 @@ impl ResourceMemory {
     /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn invalidate_range(
+    pub unsafe fn try_invalidate_range(
         &self,
         memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -364,7 +398,7 @@ impl ResourceMemory {
 
         unsafe {
             self.device_memory()
-                .invalidate_range(&self.create_memory_range(memory_range))
+                .try_invalidate_range(&self.create_memory_range(memory_range))
         }
     }
 
@@ -377,6 +411,39 @@ impl ResourceMemory {
         unsafe {
             self.device_memory()
                 .invalidate_range_unchecked(&self.create_memory_range(memory_range))
+        }
+    }
+
+    /// Flushes the host cache for a range of the `ResourceMemory`, panicking on a validation
+    /// error.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function after writing to
+    /// the memory, if the device is going to read the memory. It has no effect if the memory is
+    /// host-coherent.
+    ///
+    /// This is a shortcut for `try_flush_range().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no operations pending or executing in a device queue, that access any
+    ///   portion of the specified `memory_range`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_flush_range`] returns a [`ValidationError`].
+    ///
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
+    /// [`try_flush_range`]: Self::try_flush_range
+    #[inline]
+    #[track_caller]
+    pub unsafe fn flush_range(
+        &self,
+        memory_range: &MappedMemoryRange<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_flush_range(memory_range) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
         }
     }
 
@@ -394,7 +461,7 @@ impl ResourceMemory {
     /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn flush_range(
+    pub unsafe fn try_flush_range(
         &self,
         memory_range: &MappedMemoryRange<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -402,7 +469,7 @@ impl ResourceMemory {
 
         unsafe {
             self.device_memory()
-                .flush_range(&self.create_memory_range(memory_range))
+                .try_flush_range(&self.create_memory_range(memory_range))
         }
     }
 

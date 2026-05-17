@@ -83,7 +83,7 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -114,7 +114,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -272,16 +272,22 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         let pipeline = {
-            let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
-            let tcs = tcs::load(&self.device)
+            let vs = unsafe { vs::load(&self.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let tes = tes::load(&self.device)
+            let tcs = unsafe { tcs::load(&self.device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+            let tes = unsafe { tes::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = unsafe { fs::load(&self.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
             let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&vs),

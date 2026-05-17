@@ -62,7 +62,7 @@ impl GameOfLifeComputePipeline {
 
         let compute_life_pipeline = {
             let device = compute_queue.device();
-            let cs = compute_life_cs::load(device)
+            let cs = unsafe { compute_life_cs::load(device) }
                 .unwrap()
                 .entry_point("main")
                 .unwrap();

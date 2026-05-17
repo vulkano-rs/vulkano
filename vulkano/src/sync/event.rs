@@ -41,15 +41,39 @@ pub struct Event {
 }
 
 impl Event {
+    /// Creates a new `Event`, panicking on a validation error.
+    ///
+    /// On [portability subset] devices, the [`events`] feature must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
+    /// [`events`]: crate::device::DeviceFeatures::events
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &EventCreateInfo<'_>,
+    ) -> Result<Event, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Event`.
     ///
-    /// On [portability
-    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, the
-    /// [`events`](crate::device::DeviceFeatures::events)
-    /// feature must be enabled on the device.
+    /// On [portability subset] devices, the [`events`] feature must be enabled on the device.
+    ///
+    /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
+    /// [`events`]: crate::device::DeviceFeatures::events
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &EventCreateInfo<'_>,
     ) -> Result<Event, Validated<VulkanError>> {
@@ -174,9 +198,27 @@ impl Event {
         self.flags
     }
 
+    /// Returns true if the event is signaled, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_is_signaled().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_is_signaled`] returns a [`ValidationError`].
+    ///
+    /// [`try_is_signaled`]: Self::try_is_signaled
+    #[inline]
+    #[track_caller]
+    pub fn is_signaled(&self) -> Result<bool, VulkanError> {
+        match self.try_is_signaled() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns true if the event is signaled.
     #[inline]
-    pub fn is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
+    pub fn try_is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
         self.validate_is_signaled()?;
 
         Ok(unsafe { self.is_signaled_unchecked() }?)
@@ -198,10 +240,29 @@ impl Event {
         }
     }
 
+    /// Changes the `Event` to the signaled state, panicking on a validation error.
+    ///
+    /// If a command buffer is waiting on this event, it is then unblocked.
+    ///
+    /// This is a shortcut for `try_set().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set`] returns a [`ValidationError`].
+    ///
+    /// [`try_set`]: Self::try_set
+    #[track_caller]
+    pub fn set(&mut self) -> Result<(), VulkanError> {
+        match self.try_set() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Changes the `Event` to the signaled state.
     ///
     /// If a command buffer is waiting on this event, it is then unblocked.
-    pub fn set(&mut self) -> Result<(), Validated<VulkanError>> {
+    pub fn try_set(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_set()?;
 
         Ok(unsafe { self.set_unchecked() }?)
@@ -221,6 +282,30 @@ impl Event {
         Ok(())
     }
 
+    /// Changes the `Event` to the unsignaled state, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_reset().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - There must be an execution dependency between `reset` and the execution of any
+    ///   [`wait_events`] command that includes this event in its `events` parameter.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_reset`] returns a [`ValidationError`].
+    ///
+    /// [`try_reset`]: Self::try_reset
+    /// [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
+    #[inline]
+    #[track_caller]
+    pub unsafe fn reset(&mut self) -> Result<(), VulkanError> {
+        match unsafe { self.try_reset() } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Changes the `Event` to the unsignaled state.
     ///
     /// # Safety
@@ -230,7 +315,7 @@ impl Event {
     ///
     /// [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
     #[inline]
-    pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
+    pub unsafe fn try_reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
 
         Ok(unsafe { self.reset_unchecked() }?)

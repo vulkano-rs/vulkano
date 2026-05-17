@@ -26,13 +26,34 @@ pub struct DeferredOperation {
 }
 
 impl DeferredOperation {
+    /// Creates a new `DeferredOperation`, panicking on a validation error.
+    ///
+    /// The [`khr_deferred_host_operations`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`khr_deferred_host_operations`]: crate::device::DeviceExtensions::khr_deferred_host_operations
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(device: &Arc<Device>) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_new(device) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `DeferredOperation`.
     ///
     /// The [`khr_deferred_host_operations`] extension must be enabled on the device.
     ///
     /// [`khr_deferred_host_operations`]: crate::device::DeviceExtensions::khr_deferred_host_operations
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
+    pub fn try_new(device: &Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(device)?;
 
         Ok(unsafe { Self::new_unchecked(device) }?)

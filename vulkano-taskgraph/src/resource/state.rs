@@ -32,7 +32,7 @@ use vulkano::{
         fence::{Fence, FenceCreateFlags, FenceCreateInfo},
         semaphore::Semaphore,
     },
-    Validated, VulkanError, VulkanObject,
+    VulkanError, VulkanObject,
 };
 
 #[derive(Debug)]
@@ -232,6 +232,9 @@ impl SwapchainState {
         let semaphore = sync_state.allocate_semaphore()?;
         let fence = sync_state.allocate_fence()?;
 
+        // This should not panic because our swapchain lock prevents using a swapchain after it has
+        // been recreated. However, this will panic if the user circumvents that by calling
+        // `Swapchain::recreate` themself. The user is not supposed to do that.
         let res = unsafe {
             self.swapchain.acquire_next_image(&AcquireNextImageInfo {
                 semaphore: Some(&semaphore),
@@ -240,10 +243,7 @@ impl SwapchainState {
             })
         };
 
-        // This should not panic because our swapchain lock prevents using a swapchain after it has
-        // been recreated. However, this will panic if the user circumvents that by calling
-        // `Swapchain::recreate` themself. The user is not supposed to do that.
-        match res.map_err(Validated::unwrap) {
+        match res {
             Ok(AcquiredImage { image_index, .. }) => {
                 assert!(sync_state.current_acquire_semaphore.is_none());
                 assert!(sync_state.current_acquire_fence.is_none());
@@ -411,7 +411,7 @@ impl SwapchainState {
                 continue;
             };
 
-            if !fence.is_signaled()? {
+            if !unsafe { fence.is_signaled_unchecked() }? {
                 // We can't be certain that the present operation is done yet. Unlike when it comes
                 // to acquires, we do know the order of presents because we're in control of them.
                 // The order the Presentation Engine gets the presents is the same as that of our
@@ -595,7 +595,9 @@ impl SwapchainState {
         if has_present_operations {
             // We can't remove the old swapchain until we know that there are no pending present
             // operations, so we only invalidate it for now.
-            resources.invalidate_swapchain(swapchain_id, guard).unwrap();
+            resources
+                .try_invalidate_swapchain(swapchain_id, guard)
+                .unwrap();
 
             let has_garbage = sync_state
                 .garbage_queue
@@ -735,7 +737,9 @@ impl SwapchainState {
         if has_present_operations {
             // We can't remove the old swapchain until we know that there are no pending present
             // operations, so we only invalidate it for now.
-            resources.invalidate_swapchain(swapchain_id, guard).unwrap();
+            resources
+                .try_invalidate_swapchain(swapchain_id, guard)
+                .unwrap();
 
             garbage.swapchains.push(swapchain_id);
         } else {
@@ -1017,11 +1021,13 @@ impl Flight {
             return Ok(());
         }
 
+        let frame_count = NonZero::<u64>::from(self.frame_count);
+
         // The `frame_count` bias cancels out under the modulus; however, the `1` bias doesn't, so
         // we subtract it to get the same index as would be computed using the unbiased `frame`.
-        self.fences[((biased_frame - 1) % NonZero::<u64>::from(self.frame_count)) as usize]
-            .read()
-            .wait(timeout)?;
+        let fence = &self.fences[((biased_frame - 1) % frame_count) as usize];
+
+        unsafe { fence.read().wait_unchecked(timeout) }?;
 
         // SAFETY: We waited for the frame.
         if unsafe { self.update_biased_complete_frame(biased_frame) }.is_ok() {

@@ -11,7 +11,13 @@ use crate::{
 
 impl RecordingCommandBuffer {
     #[inline]
-    pub unsafe fn dispatch(
+    #[track_caller]
+    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        unsafe { self.try_dispatch(group_counts) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_dispatch(
         &mut self,
         group_counts: [u32; 3],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -86,7 +92,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn dispatch_indirect(
+    #[track_caller]
+    pub unsafe fn dispatch_indirect(&mut self, buffer: &Buffer, offset: DeviceSize) -> &mut Self {
+        unsafe { self.try_dispatch_indirect(buffer, offset) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_dispatch_indirect(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -165,7 +177,20 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw(
+        &mut self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> &mut Self {
+        unsafe { self.try_draw(vertex_count, instance_count, first_vertex, first_instance) }
+            .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw(
         &mut self,
         vertex_count: u32,
         instance_count: u32,
@@ -226,7 +251,19 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_indirect(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe { self.try_draw_indirect(buffer, offset, draw_count, stride) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_indirect(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -369,7 +406,31 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_indirect_count(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_draw_indirect_count(
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_indirect_count(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -560,7 +621,29 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_indexed(
+        &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_draw_indexed(
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_indexed(
         &mut self,
         index_count: u32,
         instance_count: u32,
@@ -637,7 +720,19 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_indexed_indirect(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe { self.try_draw_indexed_indirect(buffer, offset, draw_count, stride) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_indexed_indirect(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -786,7 +881,31 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_indexed_indirect_count(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_draw_indexed_indirect_count(
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_indexed_indirect_count(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -979,7 +1098,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn draw_mesh_tasks(
+    #[track_caller]
+    pub unsafe fn draw_mesh_tasks(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        unsafe { self.try_draw_mesh_tasks(group_counts) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_mesh_tasks(
         &mut self,
         group_counts: [u32; 3],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1034,7 +1159,19 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_mesh_tasks_indirect(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe { self.try_draw_mesh_tasks_indirect(buffer, offset, draw_count, stride) }.unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_mesh_tasks_indirect(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -1197,7 +1334,31 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
+    #[track_caller]
     pub unsafe fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        buffer: &Buffer,
+        offset: DeviceSize,
+        count_buffer: &Buffer,
+        count_buffer_offset: DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.try_draw_mesh_tasks_indirect_count(
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            )
+        }
+        .unwrap()
+    }
+
+    #[inline]
+    pub unsafe fn try_draw_mesh_tasks_indirect_count(
         &mut self,
         buffer: &Buffer,
         offset: DeviceSize,
@@ -1375,7 +1536,16 @@ impl RecordingCommandBuffer {
         self
     }
 
+    #[track_caller]
     pub unsafe fn trace_rays(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        dimensions: [u32; 3],
+    ) -> &mut Self {
+        unsafe { self.try_trace_rays(shader_binding_table_addresses, dimensions) }.unwrap()
+    }
+
+    pub unsafe fn try_trace_rays(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         dimensions: [u32; 3],

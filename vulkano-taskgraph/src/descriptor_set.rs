@@ -99,12 +99,12 @@ impl BindlessContext {
         }
     }
 
-    pub(crate) fn new(
+    pub(crate) fn try_new(
         resources: &Arc<ResourceStorage>,
         create_info: &BindlessContextCreateInfo<'_>,
     ) -> Result<Self, Validated<VulkanError>> {
         let global_set_layout =
-            GlobalDescriptorSet::create_layout(resources, create_info.global_set)?;
+            GlobalDescriptorSet::try_create_layout(resources, create_info.global_set)?;
 
         let global_set = GlobalDescriptorSet::new(resources, &global_set_layout)?;
 
@@ -136,6 +136,37 @@ impl BindlessContext {
 
     /// Creates a new bindless pipeline layout from the union of the push constant requirements of
     /// each stage in `stages` for push constant ranges and the [global descriptor set layout] and
+    /// optionally the [local descriptor set layout] for set layouts, panicking on a validation
+    /// error.
+    ///
+    /// All pipelines that you bind must have been created with a layout created like this or with
+    /// a compatible layout for the bindless system to be able to bind its descriptor sets.
+    ///
+    /// It is recommended that you share the same pipeline layout object with as many pipelines as
+    /// possible in order to reduce the amount of descriptor set (re)binding that is needed.
+    ///
+    /// This is a shortcut for `try_pipeline_layout_from_stages().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_pipeline_layout_from_stages`] returns a [`ValidationError`].
+    ///
+    /// [global descriptor set layout]: Self::global_set_layout
+    /// [local descriptor set layout]: Self::local_set_layout
+    /// [`try_pipeline_layout_from_stages`]: Self::try_pipeline_layout_from_stages
+    #[track_caller]
+    pub fn pipeline_layout_from_stages(
+        &self,
+        stages: &[PipelineShaderStageCreateInfo<'_>],
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+        match self.try_pipeline_layout_from_stages(stages) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new bindless pipeline layout from the union of the push constant requirements of
+    /// each stage in `stages` for push constant ranges and the [global descriptor set layout] and
     /// optionally the [local descriptor set layout] for set layouts.
     ///
     /// All pipelines that you bind must have been created with a layout created like this or with
@@ -146,7 +177,7 @@ impl BindlessContext {
     ///
     /// [global descriptor set layout]: Self::global_set_layout
     /// [local descriptor set layout]: Self::local_set_layout
-    pub fn pipeline_layout_from_stages(
+    pub fn try_pipeline_layout_from_stages(
         &self,
         stages: &[PipelineShaderStageCreateInfo<'_>],
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
@@ -156,7 +187,7 @@ impl BindlessContext {
             set_layouts.push(local_set_layout);
         }
 
-        PipelineLayout::new(
+        PipelineLayout::try_new(
             self.device(),
             &PipelineLayoutCreateInfo {
                 set_layouts: &set_layouts,
@@ -267,7 +298,7 @@ impl GlobalDescriptorSet {
         let device = resources.device();
 
         let allocator = Arc::new(GlobalDescriptorSetAllocator::new(device));
-        let inner = RawDescriptorSet::new(&allocator, layout, 0).map_err(Validated::unwrap)?;
+        let inner = RawDescriptorSet::new(&allocator, layout, 0)?;
 
         let hyaline_collector = resources.hyaline_collector();
 
@@ -322,7 +353,7 @@ impl GlobalDescriptorSet {
         })
     }
 
-    fn create_layout(
+    fn try_create_layout(
         resources: &Arc<ResourceStorage>,
         create_info: &GlobalDescriptorSetCreateInfo<'_>,
     ) -> Result<Arc<DescriptorSetLayout>, Validated<VulkanError>> {
@@ -393,7 +424,18 @@ impl GlobalDescriptorSet {
         &self.inner
     }
 
+    #[track_caller]
     pub fn create_sampler(
+        &self,
+        create_info: &SamplerCreateInfo<'_>,
+    ) -> Result<SamplerId, VulkanError> {
+        match self.try_create_sampler(create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    pub fn try_create_sampler(
         &self,
         create_info: &SamplerCreateInfo<'_>,
     ) -> Result<SamplerId, Validated<VulkanError>> {
@@ -402,7 +444,20 @@ impl GlobalDescriptorSet {
         Ok(self.add_sampler(sampler))
     }
 
+    #[track_caller]
     pub fn create_sampled_image(
+        &self,
+        image_id: Id<Image>,
+        create_info: &ImageViewCreateInfo<'_>,
+        image_layout: ImageLayout,
+    ) -> Result<SampledImageId, VulkanError> {
+        match self.try_create_sampled_image(image_id, create_info, image_layout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    pub fn try_create_sampled_image(
         &self,
         image_id: Id<Image>,
         create_info: &ImageViewCreateInfo<'_>,
@@ -414,7 +469,20 @@ impl GlobalDescriptorSet {
         Ok(self.add_sampled_image(image_view, image_layout))
     }
 
+    #[track_caller]
     pub fn create_storage_image(
+        &self,
+        image_id: Id<Image>,
+        create_info: &ImageViewCreateInfo<'_>,
+        image_layout: ImageLayout,
+    ) -> Result<StorageImageId, VulkanError> {
+        match self.try_create_storage_image(image_id, create_info, image_layout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    pub fn try_create_storage_image(
         &self,
         image_id: Id<Image>,
         create_info: &ImageViewCreateInfo<'_>,
@@ -426,7 +494,20 @@ impl GlobalDescriptorSet {
         Ok(self.add_storage_image(image_view, image_layout))
     }
 
+    #[track_caller]
     pub fn create_storage_buffer(
+        &self,
+        buffer_id: Id<Buffer>,
+        offset: DeviceSize,
+        size: Option<DeviceSize>,
+    ) -> Result<StorageBufferId, VulkanError> {
+        match self.try_create_storage_buffer(buffer_id, offset, size) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    pub fn try_create_storage_buffer(
         &self,
         buffer_id: Id<Buffer>,
         offset: DeviceSize,
@@ -977,7 +1058,7 @@ impl GlobalDescriptorSetAllocator {
 }
 
 unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
-    fn allocate(
+    fn try_allocate(
         &self,
         layout: &Arc<DescriptorSetLayout>,
         _variable_count: u32,
@@ -988,7 +1069,7 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
             .map(|binding| (binding.descriptor_type, binding.descriptor_count))
             .collect::<Vec<_>>();
 
-        let pool = Arc::new(DescriptorPool::new(
+        let pool = Arc::new(DescriptorPool::try_new(
             layout.device(),
             &DescriptorPoolCreateInfo {
                 flags: DescriptorPoolCreateFlags::UPDATE_AFTER_BIND,
@@ -1000,7 +1081,7 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
 
         let allocate_info = DescriptorSetAllocateInfo::new(layout);
 
-        let inner = unsafe { pool.allocate_descriptor_sets(slice::from_ref(&allocate_info)) }?
+        let inner = unsafe { pool.try_allocate_descriptor_sets(slice::from_ref(&allocate_info)) }?
             .next()
             .unwrap();
 
@@ -1009,6 +1090,14 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
             pool,
             handle: AllocationHandle::null(),
         })
+    }
+
+    unsafe fn allocate_unchecked(
+        &self,
+        _layout: &Arc<DescriptorSetLayout>,
+        _variable_descriptor_count: u32,
+    ) -> Result<DescriptorSetAlloc, VulkanError> {
+        unimplemented!()
     }
 
     unsafe fn deallocate(&self, _allocation: DescriptorSetAlloc) {}
@@ -1037,7 +1126,7 @@ impl LocalDescriptorSet {
         subpass_index: usize,
     ) -> Result<Arc<Self>, VulkanError> {
         let allocator = resources.descriptor_set_allocator();
-        let inner = RawDescriptorSet::new(allocator, layout, 0).map_err(Validated::unwrap)?;
+        let inner = RawDescriptorSet::new(allocator, layout, 0)?;
 
         let render_pass = framebuffer.render_pass();
         let subpass_description = &render_pass.subpasses()[subpass_index];

@@ -351,9 +351,30 @@ pub struct DisplayMode {
 }
 
 impl DisplayMode {
+    /// Creates a custom display mode, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        display: &Arc<Display>,
+        create_info: &DisplayModeCreateInfo<'_>,
+    ) -> Result<Arc<Self>, VulkanError> {
+        match Self::try_new(display, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a custom display mode.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         display: &Arc<Display>,
         create_info: &DisplayModeCreateInfo<'_>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -451,9 +472,31 @@ impl DisplayMode {
         self.refresh_rate
     }
 
+    /// Returns the capabilities of a display plane, when used with this display mode, panicking on
+    /// a validation error.
+    ///
+    /// This is a shortcut for `try_display_plane_capabilities().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_display_plane_capabilities`] returns a [`ValidationError`].
+    ///
+    /// [`try_display_plane_capabilities`]: Self::try_display_plane_capabilities
+    #[inline]
+    #[track_caller]
+    pub fn display_plane_capabilities(
+        &self,
+        plane_index: u32,
+    ) -> Result<DisplayPlaneCapabilities, VulkanError> {
+        match self.try_display_plane_capabilities(plane_index) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns the capabilities of a display plane, when used with this display mode.
     #[inline]
-    pub fn display_plane_capabilities(
+    pub fn try_display_plane_capabilities(
         &self,
         plane_index: u32,
     ) -> Result<DisplayPlaneCapabilities, Validated<VulkanError>> {

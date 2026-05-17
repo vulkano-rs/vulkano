@@ -33,9 +33,30 @@ pub struct QueryPool {
 }
 
 impl QueryPool {
+    /// Creates a new `QueryPool`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &QueryPoolCreateInfo<'_>,
+    ) -> Result<Arc<QueryPool>, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `QueryPool`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &QueryPoolCreateInfo<'_>,
     ) -> Result<Arc<QueryPool>, Validated<VulkanError>> {
@@ -144,6 +165,46 @@ impl QueryPool {
         }) + result_flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize
     }
 
+    /// Copies the results of a range of queries to a buffer on the CPU, panicking on a validation
+    /// error.
+    ///
+    /// [`self.result_len(flags)`] elements will be written for each query in the range, plus 1
+    /// extra element per query if [`WITH_AVAILABILITY`] is enabled. The provided buffer must be
+    /// large enough to hold the data.
+    ///
+    /// `true` is returned if every result was available and written to the buffer. `false` is
+    /// returned if some results were not yet available; these will not be written to the buffer.
+    ///
+    /// See also [`copy_query_pool_results`].
+    ///
+    /// This is a shortcut for `try_get_results().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_get_results`] returns a [`ValidationError`].
+    ///
+    /// [`self.result_len(flags)`]: QueryPool::result_len
+    /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
+    /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
+    /// [`try_get_results`]: Self::try_get_results
+    #[inline]
+    #[track_caller]
+    pub fn get_results<T>(
+        &self,
+        first_query: u32,
+        query_count: u32,
+        destination: &mut [T],
+        flags: QueryResultFlags,
+    ) -> Result<bool, VulkanError>
+    where
+        T: QueryResultElement,
+    {
+        match self.try_get_results(first_query, query_count, destination, flags) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Copies the results of a range of queries to a buffer on the CPU.
     ///
     /// [`self.result_len(flags)`] elements will be written for each query in the range, plus 1
@@ -155,11 +216,11 @@ impl QueryPool {
     ///
     /// See also [`copy_query_pool_results`].
     ///
-    /// [`self.result_len()`]: QueryPool::result_len
+    /// [`self.result_len(flags)`]: QueryPool::result_len
     /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
     /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
     #[inline]
-    pub fn get_results<T>(
+    pub fn try_get_results<T>(
         &self,
         first_query: u32,
         query_count: u32,
@@ -283,6 +344,31 @@ impl QueryPool {
         }
     }
 
+    /// Resets a range of queries, panicking on a validation error.
+    ///
+    /// The [`host_query_reset`] feature must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_reset().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// For the queries indicated by `first_query` and `query_count`:
+    /// - There must be no operations pending or executing on the device.
+    /// - There must be no calls to `reset*` or `get_results*` executing concurrently on another
+    ///   thread.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_reset`] returns a [`ValidationError`].
+    ///
+    /// [`host_query_reset`]: crate::device::DeviceFeatures::host_query_reset
+    /// [`try_reset`]: Self::try_reset
+    #[inline]
+    #[track_caller]
+    pub unsafe fn reset(&self, first_query: u32, query_count: u32) {
+        unsafe { self.try_reset(first_query, query_count) }.unwrap()
+    }
+
     /// Resets a range of queries.
     ///
     /// The [`host_query_reset`] feature must be enabled on the device.
@@ -296,7 +382,7 @@ impl QueryPool {
     ///
     /// [`host_query_reset`]: crate::device::DeviceFeatures::host_query_reset
     #[inline]
-    pub unsafe fn reset(
+    pub unsafe fn try_reset(
         &self,
         first_query: u32,
         query_count: u32,
@@ -796,7 +882,7 @@ mod tests {
     fn pipeline_statistics_feature() {
         let (device, _) = gfx_dev_and_queue!();
         assert!(matches!(
-            QueryPool::new(
+            QueryPool::try_new(
                 &device,
                 &QueryPoolCreateInfo {
                     query_count: 256,

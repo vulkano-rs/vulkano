@@ -1386,7 +1386,7 @@ fn create_render_pass(
         }
     }
 
-    let render_pass = RenderPass::new(
+    let render_pass = RenderPass::try_new(
         resources.physical_resources.device(),
         &RenderPassCreateInfo {
             attachments: &attachments,

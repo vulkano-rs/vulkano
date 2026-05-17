@@ -330,6 +330,52 @@ impl<'a> QueueGuard<'a> {
             .map_err(VulkanError::from)
     }
 
+    /// Bind or unbind memory to resources with sparse memory, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_bind_sparse().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
+    ///
+    /// For every element in the `buffer_binds`, `image_opaque_binds` and `image_binds`
+    /// elements of every `bind_infos` element:
+    /// - The buffers and images must be kept alive while the command is being executed.
+    /// - The memory allocations must be kept alive while they are bound to a buffer or image.
+    /// - Access to the affected regions of each buffer or image must be synchronized.
+    ///
+    /// For every semaphore in the `signal_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_bind_sparse`] returns a [`ValidationError`].
+    ///
+    /// [`try_bind_sparse`]: Self::try_bind_sparse
+    #[inline]
+    #[track_caller]
+    pub unsafe fn bind_sparse(
+        &mut self,
+        bind_infos: &[BindSparseInfo<'_>],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_bind_sparse(bind_infos, fence) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Bind or unbind memory to resources with sparse memory.
     ///
     /// # Safety
@@ -356,7 +402,7 @@ impl<'a> QueueGuard<'a> {
     /// - The fence must be unsignaled and must not be associated with any other command that is
     ///   still executing.
     #[inline]
-    pub unsafe fn bind_sparse(
+    pub unsafe fn try_bind_sparse(
         &mut self,
         bind_infos: &[BindSparseInfo<'_>],
         fence: Option<&Arc<Fence>>,
@@ -447,6 +493,48 @@ impl<'a> QueueGuard<'a> {
         .map_err(VulkanError::from)
     }
 
+    /// Queues swapchain images for presentation to the surface, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_present().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of `present_info`:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
+    ///
+    /// For every element of `present_info.swapchain_infos`:
+    /// - `swapchain` must be kept alive while the command is being executed.
+    /// - `image_index` must be an index previously acquired from the swapchain, and the present
+    ///   operation must happen-after the acquire operation.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must be in the
+    ///   [`ImageLayout::PresentSrc`] layout when the presentation operation is executed.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed after
+    ///   this function is called, until it is acquired again.
+    /// - If `present_id` is `Some`, then it must be greater than any present ID previously used
+    ///   for the same swapchain.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_present`] returns a [`ValidationError`].
+    ///
+    /// [`ImageLayout::PresentSrc`]: crate::image::ImageLayout::PresentSrc
+    /// [`try_present`]: Self::try_present
+    #[inline]
+    #[track_caller]
+    pub unsafe fn present(
+        &mut self,
+        present_info: &PresentInfo,
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, VulkanError> {
+        match unsafe { self.try_present(present_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Queues swapchain images for presentation to the surface.
     ///
     /// # Safety
@@ -471,7 +559,7 @@ impl<'a> QueueGuard<'a> {
     ///
     /// [`ImageLayout::PresentSrc`]: crate::image::ImageLayout::PresentSrc
     #[inline]
-    pub unsafe fn present(
+    pub unsafe fn try_present(
         &mut self,
         present_info: &PresentInfo,
     ) -> Result<
@@ -585,6 +673,65 @@ impl<'a> QueueGuard<'a> {
         }))
     }
 
+    /// Submits command buffers to a queue to be executed, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_submit().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of every `submit_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The safety requirements for semaphores, as detailed in the
+    ///   [`semaphore`](crate::sync::semaphore#Safety) module documentation, must be followed.
+    ///
+    /// For every command buffer in the `command_buffers` elements of every `submit_infos` element,
+    /// as well as any secondary command buffers recorded within it:
+    /// - The command buffer, and any resources it uses, must be kept alive while the command is
+    ///   being executed.
+    /// - Any mutable resources used by the command buffer must be in the state (image layout,
+    ///   query reset, event signal etc.) expected by the command buffer at the time it begins
+    ///   executing, and must be synchronized appropriately.
+    /// - If the command buffer's `usage` is [`CommandBufferUsage::OneTimeSubmit`], then it must
+    ///   not have been previously submitted.
+    /// - If the command buffer's `usage` is [`CommandBufferUsage::MultipleSubmit`], then it must
+    ///   not be currently submitted and not yet completed.
+    /// - If a recorded command performs a queue family transfer acquire operation, then a
+    ///   corresponding queue family transfer release operation with matching parameters must have
+    ///   been previously submitted, and must happen-before it.
+    /// - If a recorded command references an [`Event`], then that `Event` must not be referenced
+    ///   by a command that is currently executing on another queue.
+    ///
+    /// For every semaphore in the `signal_semaphores` elements of every `submit_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The safety requirements for semaphores, as detailed in the
+    ///   [`semaphore`](crate::sync::semaphore#Safety) module documentation, must be followed.
+    ///
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The safety requirements for fences, as detailed in the
+    ///   [`fence`](crate::sync::fence#Safety) module documentation, must be followed.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_submit`] returns a [`ValidationError`].
+    ///
+    /// [`try_submit`]: Self::try_submit
+    /// [`CommandBufferUsage::OneTimeSubmit`]: crate::command_buffer::CommandBufferUsage::OneTimeSubmit
+    /// [`CommandBufferUsage::MultipleSubmit`]: crate::command_buffer::CommandBufferUsage::MultipleSubmit
+    /// [`Event`]: crate::sync::event::Event
+    #[inline]
+    #[track_caller]
+    pub unsafe fn submit(
+        &mut self,
+        submit_infos: &[SubmitInfo<'_>],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_submit(submit_infos, fence) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Submits command buffers to a queue to be executed.
     ///
     /// # Safety
@@ -625,7 +772,7 @@ impl<'a> QueueGuard<'a> {
     /// [`CommandBufferUsage::MultipleSubmit`]: crate::command_buffer::CommandBufferUsage::MultipleSubmit
     /// [`Event`]: crate::sync::event::Event
     #[inline]
-    pub unsafe fn submit(
+    pub unsafe fn try_submit(
         &mut self,
         submit_infos: &[SubmitInfo<'_>],
         fence: Option<&Arc<Fence>>,
@@ -839,13 +986,31 @@ impl<'a> QueueGuard<'a> {
         }
     }
 
+    /// Opens a queue debug label region, panicking on a validation error.
+    ///
+    /// The [`ext_debug_utils`] extension must be enabled on the instance.
+    ///
+    /// This is a shortcut for `try_begin_debug_utils_label().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_begin_debug_utils_label`] returns a [`ValidationError`].
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
+    /// [`try_begin_debug_utils_label`]: Self::try_begin_debug_utils_label
+    #[inline]
+    #[track_caller]
+    pub fn begin_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
+        self.try_begin_debug_utils_label(label_info).unwrap()
+    }
+
     /// Opens a queue debug label region.
     ///
     /// The [`ext_debug_utils`] extension must be enabled on the instance.
     ///
     /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
     #[inline]
-    pub fn begin_debug_utils_label(
+    pub fn try_begin_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
     ) -> Result<(), Box<ValidationError>> {
@@ -893,17 +1058,41 @@ impl<'a> QueueGuard<'a> {
         };
     }
 
-    /// Closes a queue debug label region.
+    /// Closes a queue debug label region, panicking on a validation error.
     ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
+    /// The [`ext_debug_utils`] must be enabled on the instance.
+    ///
+    /// This is a shortcut for `try_end_debug_utils_label().unwrap()`.
     ///
     /// # Safety
     ///
     /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
     ///   the queue.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_end_debug_utils_label`] returns a [`ValidationError`].
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
+    /// [`try_end_debug_utils_label`]: Self::try_end_debug_utils_label
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), Box<ValidationError>> {
+    #[track_caller]
+    pub unsafe fn end_debug_utils_label(&mut self) {
+        unsafe { self.try_end_debug_utils_label() }.unwrap()
+    }
+
+    /// Closes a queue debug label region.
+    ///
+    /// The [`ext_debug_utils`] must be enabled on the instance.
+    ///
+    /// # Safety
+    ///
+    /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
+    ///   the queue.
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
+    #[inline]
+    pub unsafe fn try_end_debug_utils_label(&mut self) -> Result<(), Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
         unsafe { self.end_debug_utils_label_unchecked() };
 
@@ -939,12 +1128,31 @@ impl<'a> QueueGuard<'a> {
         unsafe { (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle) };
     }
 
+    /// Inserts a queue debug label, panicking on a validation error.
+    ///
+    /// The [`ext_debug_utils`] must be enabled on the instance.
+    ///
+    /// This is a shortcut for `try_insert_debug_utils_label().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_insert_debug_utils_label`] returns a [`ValidationError`].
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
+    /// [`try_insert_debug_utils_label`]: Self::try_insert_debug_utils_label
+    #[inline]
+    #[track_caller]
+    pub fn insert_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
+        self.try_insert_debug_utils_label(label_info).unwrap()
+    }
+
     /// Inserts a queue debug label.
     ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
+    /// The [`ext_debug_utils`] must be enabled on the instance.
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
     #[inline]
-    pub fn insert_debug_utils_label(
+    pub fn try_insert_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
     ) -> Result<(), Box<ValidationError>> {

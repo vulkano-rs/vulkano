@@ -67,11 +67,7 @@ impl SceneTask {
             .unwrap();
 
         // FIXME(taskgraph): sane initialization
-        app.resources
-            .flight(app.flight_id)
-            .unwrap()
-            .wait(None)
-            .unwrap();
+        app.resources.flight(app.flight_id).wait(None).unwrap();
 
         unsafe {
             vulkano_taskgraph::execute(
@@ -79,7 +75,7 @@ impl SceneTask {
                 &app.resources,
                 app.flight_id,
                 |_cbf, tcx| {
-                    tcx.write_buffer::<[TriangleVertex]>(vertex_buffer_id, ..)?
+                    tcx.write_buffer::<[TriangleVertex]>(vertex_buffer_id, ..)
                         .copy_from_slice(&vertices);
 
                     Ok(())
@@ -104,8 +100,14 @@ impl SceneTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
-            let vs = vs::load(&app.device).unwrap().entry_point("main").unwrap();
-            let fs = fs::load(&app.device).unwrap().entry_point("main").unwrap();
+            let vs = unsafe { vs::load(&app.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = unsafe { fs::load(&app.device) }
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
             let vertex_input_state = TriangleVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&vs),
@@ -161,11 +163,11 @@ impl Task for SceneTask {
         _tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
-        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
-        unsafe { cbf.draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         Ok(())
     }

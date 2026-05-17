@@ -195,9 +195,36 @@ pub struct Device {
 }
 
 impl Device {
+    /// Creates a new `Device`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        physical_device: &Arc<PhysicalDevice>,
+        create_info: &DeviceCreateInfo<'_>,
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        VulkanError,
+    > {
+        match Self::try_new(physical_device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Device`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
     ) -> Result<
@@ -546,9 +573,32 @@ impl Device {
 
     /// For the given acceleration structure build info and primitive counts, returns the
     /// minimum size required to build the acceleration structure, and the minimum size of the
+    /// scratch buffer used during the build operation, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_acceleration_structure_build_sizes().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_acceleration_structure_build_sizes`] returns a [`ValidationError`].
+    ///
+    /// [`try_acceleration_structure_build_sizes`]: Self::try_acceleration_structure_build_sizes
+    #[inline]
+    #[track_caller]
+    pub fn acceleration_structure_build_sizes(
+        &self,
+        build_type: AccelerationStructureBuildType,
+        build_info: &AccelerationStructureBuildGeometryInfo,
+        max_primitive_counts: &[u32],
+    ) -> AccelerationStructureBuildSizesInfo {
+        self.try_acceleration_structure_build_sizes(build_type, build_info, max_primitive_counts)
+            .unwrap()
+    }
+
+    /// For the given acceleration structure build info and primitive counts, returns the
+    /// minimum size required to build the acceleration structure, and the minimum size of the
     /// scratch buffer used during the build operation.
     #[inline]
-    pub fn acceleration_structure_build_sizes(
+    pub fn try_acceleration_structure_build_sizes(
         &self,
         build_type: AccelerationStructureBuildType,
         build_info: &AccelerationStructureBuildGeometryInfo,
@@ -705,9 +755,30 @@ impl Device {
     }
 
     /// Returns whether a serialized acceleration structure with the specified version data
+    /// is compatible with this device, panicking on a validation error.
+    ///
+    /// This is a shortcut for
+    /// `try_acceleration_structure_is_compatible().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_acceleration_structure_is_compatible`] returns a [`ValidationError`].
+    ///
+    /// [`try_acceleration_structure_is_compatible`]: Self::try_acceleration_structure_is_compatible
+    #[inline]
+    #[track_caller]
+    pub fn acceleration_structure_is_compatible(
+        &self,
+        version_data: &[u8; 2 * vk::UUID_SIZE],
+    ) -> bool {
+        self.try_acceleration_structure_is_compatible(version_data)
+            .unwrap()
+    }
+
+    /// Returns whether a serialized acceleration structure with the specified version data
     /// is compatible with this device.
     #[inline]
-    pub fn acceleration_structure_is_compatible(
+    pub fn try_acceleration_structure_is_compatible(
         &self,
         version_data: &[u8; 2 * vk::UUID_SIZE],
     ) -> Result<bool, Box<ValidationError>> {
@@ -765,6 +836,36 @@ impl Device {
     }
 
     /// Returns whether a descriptor set layout with the given `create_info` could be created
+    /// on the device, and additional supported properties where relevant, panicking on a
+    /// validation error. `Some` is returned if the descriptor set layout is supported, `None` if
+    /// it is not.
+    ///
+    /// This is primarily useful for checking whether the device supports a descriptor set layout
+    /// that goes beyond the [`max_per_set_descriptors`] limit. A layout that does not exceed
+    /// that limit is guaranteed to be supported, otherwise this function can be called.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_maintenance3`] extension must
+    /// be enabled on the device.
+    ///
+    /// This is a shortcut for `try_descriptor_set_layout_support().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_descriptor_set_layout_support`] returns a [`ValidationError`].
+    ///
+    /// [`max_per_set_descriptors`]: crate::device::DeviceProperties::max_per_set_descriptors
+    /// [`khr_maintenance3`]: crate::device::DeviceExtensions::khr_maintenance3
+    /// [`try_descriptor_set_layout_support`]: Self::try_descriptor_set_layout_support
+    #[inline]
+    #[track_caller]
+    pub fn descriptor_set_layout_support(
+        &self,
+        create_info: &DescriptorSetLayoutCreateInfo<'_>,
+    ) -> Option<DescriptorSetLayoutSupport> {
+        self.try_descriptor_set_layout_support(create_info).unwrap()
+    }
+
+    /// Returns whether a descriptor set layout with the given `create_info` could be created
     /// on the device, and additional supported properties where relevant. `Some` is returned if
     /// the descriptor set layout is supported, `None` if it is not.
     ///
@@ -778,7 +879,7 @@ impl Device {
     /// [`max_per_set_descriptors`]: crate::device::DeviceProperties::max_per_set_descriptors
     /// [`khr_maintenance3`]: crate::device::DeviceExtensions::khr_maintenance3
     #[inline]
-    pub fn descriptor_set_layout_support(
+    pub fn try_descriptor_set_layout_support(
         &self,
         create_info: &DescriptorSetLayoutCreateInfo<'_>,
     ) -> Result<Option<DescriptorSetLayoutSupport>, Box<ValidationError>> {
@@ -853,6 +954,29 @@ impl Device {
     }
 
     /// Returns the memory requirements that would apply for a buffer created with the specified
+    /// `create_info`, panicking on a validation error.
+    ///
+    /// The device API version must be at least 1.3, or the [`khr_maintenance4`] extension must
+    /// be enabled on the device.
+    ///
+    /// This is a shortcut for `try_buffer_memory_requirements().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_buffer_memory_requirements`] returns a [`ValidationError`].
+    ///
+    /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
+    /// [`try_buffer_memory_requirements`]: Self::try_buffer_memory_requirements
+    #[inline]
+    #[track_caller]
+    pub fn buffer_memory_requirements(
+        &self,
+        create_info: &BufferCreateInfo<'_>,
+    ) -> MemoryRequirements {
+        self.try_buffer_memory_requirements(create_info).unwrap()
+    }
+
+    /// Returns the memory requirements that would apply for a buffer created with the specified
     /// `create_info`.
     ///
     /// The device API version must be at least 1.3, or the [`khr_maintenance4`] extension must
@@ -860,7 +984,7 @@ impl Device {
     ///
     /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
     #[inline]
-    pub fn buffer_memory_requirements(
+    pub fn try_buffer_memory_requirements(
         &self,
         create_info: &BufferCreateInfo<'_>,
     ) -> Result<MemoryRequirements, Box<ValidationError>> {
@@ -940,6 +1064,35 @@ impl Device {
     }
 
     /// Returns the memory requirements that would apply for an image created with the specified
+    /// `create_info`, panicking on a validation error.
+    ///
+    /// If `create_info.flags` contains [`ImageCreateFlags::DISJOINT`], then `plane` must specify
+    /// the plane number of the format or memory plane (depending on tiling) that memory
+    /// requirements will be returned for. Otherwise, `plane` must be `None`.
+    ///
+    /// The device API version must be at least 1.3, or the [`khr_maintenance4`] extension must
+    /// be enabled on the device.
+    ///
+    /// This is a shortcut for `try_image_memory_requirements().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_image_memory_requirements`] returns a [`ValidationError`].
+    ///
+    /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
+    /// [`try_image_memory_requirements`]: Self::try_image_memory_requirements
+    #[inline]
+    #[track_caller]
+    pub fn image_memory_requirements(
+        &self,
+        create_info: &ImageCreateInfo<'_>,
+        plane: Option<usize>,
+    ) -> MemoryRequirements {
+        self.try_image_memory_requirements(create_info, plane)
+            .unwrap()
+    }
+
+    /// Returns the memory requirements that would apply for an image created with the specified
     /// `create_info`.
     ///
     /// If `create_info.flags` contains [`ImageCreateFlags::DISJOINT`], then `plane` must specify
@@ -951,7 +1104,7 @@ impl Device {
     ///
     /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
     #[inline]
-    pub fn image_memory_requirements(
+    pub fn try_image_memory_requirements(
         &self,
         create_info: &ImageCreateInfo<'_>,
         plane: Option<usize>,
@@ -1159,17 +1312,49 @@ impl Device {
     // TODO: image_sparse_memory_requirements
 
     /// Retrieves the properties of an external file descriptor when imported as a given external
-    /// handle type.
+    /// handle type, panicking on a validation error.
     ///
-    /// An error will be returned if the
-    /// [`khr_external_memory_fd`](DeviceExtensions::khr_external_memory_fd) extension was not
-    /// enabled on the device, or if `handle_type` is [`ExternalMemoryHandleType::OpaqueFd`].
+    /// An error will be returned if the [`khr_external_memory_fd`] extension was not enabled on
+    /// the device, or if `handle_type` is [`ExternalMemoryHandleType::OpaqueFd`].
+    ///
+    /// This is a shortcut for `try_memory_fd_properties().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
     /// - `fd` must be a handle to external memory that was created outside the Vulkan API.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_memory_fd_properties`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_memory_fd`]: DeviceExtensions::khr_external_memory_fd
+    /// [`try_memory_fd_properties`]: Self::try_memory_fd_properties
     #[inline]
+    #[track_caller]
     pub unsafe fn memory_fd_properties(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+        fd: RawFd,
+    ) -> Result<MemoryFdProperties, VulkanError> {
+        match unsafe { self.try_memory_fd_properties(handle_type, fd) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Retrieves the properties of an external file descriptor when imported as a given external
+    /// handle type.
+    ///
+    /// An error will be returned if the [`khr_external_memory_fd`] extension was not enabled on
+    /// the device, or if `handle_type` is [`ExternalMemoryHandleType::OpaqueFd`].
+    ///
+    /// # Safety
+    ///
+    /// - `fd` must be a handle to external memory that was created outside the Vulkan API.
+    ///
+    /// [`khr_external_memory_fd`]: DeviceExtensions::khr_external_memory_fd
+    #[inline]
+    pub unsafe fn try_memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
         fd: RawFd,
@@ -1234,6 +1419,37 @@ impl Device {
     }
 
     /// Retrieves the properties of a Windows external memory handle when imported as a given
+    /// external handle type, panicking on a validation error.
+    ///
+    /// The [`khr_external_memory_fd`] extension must be enabled on the device and `handle_type`
+    /// must not be one of the `Opaque` handle types.
+    ///
+    /// This is a shortcut for `try_memory_win32_handle_properties().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// `handle` must be a valid Windows handle to external memory.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_memory_win32_handle_properties`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_memory_fd`]: DeviceExtensions::khr_external_memory_fd
+    /// [`try_memory_win32_handle_properties`]: Self::try_memory_win32_handle_properties
+    #[inline]
+    #[track_caller]
+    pub unsafe fn memory_win32_handle_properties(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+        handle: vk::HANDLE,
+    ) -> Result<MemoryWin32HandleProperties, VulkanError> {
+        match unsafe { self.try_memory_win32_handle_properties(handle_type, handle) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Retrieves the properties of a Windows external memory handle when imported as a given
     /// external handle type.
     ///
     /// The [`khr_external_memory_fd`] extension must be enabled on the device and `handle_type`
@@ -1245,7 +1461,7 @@ impl Device {
     ///
     /// [`khr_external_memory_fd`]: DeviceExtensions::khr_external_memory_fd
     #[inline]
-    pub unsafe fn memory_win32_handle_properties(
+    pub unsafe fn try_memory_win32_handle_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
         handle: vk::HANDLE,
@@ -1315,18 +1531,51 @@ impl Device {
         ))
     }
 
+    /// Assigns a human-readable name to `object` for debugging purposes, panicking on a validation
+    /// error.
+    ///
+    /// The [`ext_debug_utils`] extension must be enabled on the instance.
+    ///
+    /// If `object_name` is `None`, a previously set object name is removed.
+    ///
+    /// This is a shortcut for `try_set_debug_utils_object_name().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `object` must not be used concurrently by any other Vulkan command.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_set_debug_utils_object_name`] returns a [`ValidationError`].
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
+    /// [`try_set_debug_utils_object_name`]: Self::try_set_debug_utils_object_name
+    #[inline]
+    #[track_caller]
+    pub unsafe fn set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
+        &self,
+        object: &T,
+        object_name: Option<&str>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_set_debug_utils_object_name(object, object_name) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Assigns a human-readable name to `object` for debugging purposes.
     ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) extension
-    /// must be enabled on the instance.
+    /// The [`ext_debug_utils`] extension must be enabled on the instance.
     ///
     /// If `object_name` is `None`, a previously set object name is removed.
     ///
     /// # Safety
     ///
     /// - `object` must not be used concurrently by any other Vulkan command.
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
     #[inline]
-    pub unsafe fn set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
+    pub unsafe fn try_set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
         &self,
         object: &T,
         object_name: Option<&str>,
@@ -2203,7 +2452,7 @@ pub unsafe trait DeviceOwnedVulkanObject {
     unsafe fn set_debug_utils_object_name(
         &self,
         object_name: Option<&str>,
-    ) -> Result<(), Validated<VulkanError>>;
+    ) -> Result<(), VulkanError>;
 }
 
 unsafe impl<T> DeviceOwnedVulkanObject for T
@@ -2213,7 +2462,7 @@ where
     unsafe fn set_debug_utils_object_name(
         &self,
         object_name: Option<&str>,
-    ) -> Result<(), Validated<VulkanError>> {
+    ) -> Result<(), VulkanError> {
         unsafe { self.device().set_debug_utils_object_name(self, object_name) }
     }
 }
@@ -2397,7 +2646,7 @@ mod tests {
             .map(|_| 0.5)
             .collect::<Vec<_>>();
 
-        assert!(Device::new(
+        assert!(Device::try_new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {
@@ -2425,7 +2674,7 @@ mod tests {
             return;
         }
 
-        assert!(Device::new(
+        assert!(Device::try_new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {
@@ -2447,7 +2696,7 @@ mod tests {
             None => return,
         };
 
-        assert!(Device::new(
+        assert!(Device::try_new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {
@@ -2460,7 +2709,7 @@ mod tests {
         )
         .is_err());
 
-        assert!(Device::new(
+        assert!(Device::try_new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {

@@ -61,9 +61,30 @@ pub struct Fence {
 }
 
 impl Fence {
+    /// Creates a new `Fence`, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_new().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new`] returns a [`ValidationError`].
+    ///
+    /// [`try_new`]: Self::try_new
+    #[inline]
+    #[track_caller]
+    pub fn new(
+        device: &Arc<Device>,
+        create_info: &FenceCreateInfo<'_>,
+    ) -> Result<Fence, VulkanError> {
+        match Self::try_new(device, create_info) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Creates a new `Fence`.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         device: &Arc<Device>,
         create_info: &FenceCreateInfo<'_>,
     ) -> Result<Fence, Validated<VulkanError>> {
@@ -193,9 +214,39 @@ impl Fence {
         self.export_handle_types
     }
 
+    /// Returns true if the fence is signaled, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_is_signaled().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_is_signaled`] returns a [`ValidationError`].
+    ///
+    /// [`try_is_signaled`]: Self::try_is_signaled
+    #[inline]
+    #[track_caller]
+    pub fn is_signaled(&self) -> Result<bool, VulkanError> {
+        match self.try_is_signaled() {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Returns true if the fence is signaled.
     #[inline]
-    pub fn is_signaled(&self) -> Result<bool, VulkanError> {
+    pub fn try_is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
+        self.validate_is_signaled()?;
+
+        Ok(unsafe { self.is_signaled_unchecked() }?)
+    }
+
+    fn validate_is_signaled(&self) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn is_signaled_unchecked(&self) -> Result<bool, VulkanError> {
         let fns = self.device.fns();
         let result = unsafe { (fns.v1_0.get_fence_status)(self.device.handle(), self.handle) };
         match result {
@@ -205,10 +256,42 @@ impl Fence {
         }
     }
 
-    /// Waits until the fence is signaled, or at least until the timeout duration has elapsed.
+    /// Waits until the fence is signaled, or at least until the timeout duration has elapsed,
+    /// panicking on a validation error.
     ///
     /// If you pass a duration of 0, then the function will return without blocking.
+    ///
+    /// This is a shortcut for `try_wait().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wait`] returns a [`ValidationError`].
+    ///
+    /// [`try_wait`]: Self::try_wait
+    #[track_caller]
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
+        match self.try_wait(timeout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Waits until the fence is signaled, or at least until the timeout duration has elapsed,
+    /// returning an error on failure.
+    ///
+    /// If you pass a duration of 0, then the function will return without blocking.
+    pub fn try_wait(&self, timeout: Option<Duration>) -> Result<(), Validated<VulkanError>> {
+        self.validate_wait(timeout)?;
+
+        Ok(unsafe { self.wait_unchecked(timeout) }?)
+    }
+
+    fn validate_wait(&self, _timeout: Option<Duration>) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wait_unchecked(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
             timeout
                 .as_secs()
@@ -227,21 +310,39 @@ impl Fence {
         }
     }
 
-    /// Waits for multiple fences at once.
+    /// Waits for many fences at once, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_wait_many().map_err(Validated::unwrap)`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_wait_many`] returns a [`ValidationError`].
+    /// - Panics if not all fences belong to the same device.
+    ///
+    /// [`try_wait_many`]: Self::try_wait_many
+    #[track_caller]
+    pub fn wait_many(fences: &[&Fence], timeout: Option<Duration>) -> Result<(), VulkanError> {
+        match Self::try_wait_many(fences, timeout) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Waits for many fences at once.
     ///
     /// # Panics
     ///
     /// - Panics if not all fences belong to the same device.
-    pub fn multi_wait(
+    pub fn try_wait_many(
         fences: &[&Fence],
         timeout: Option<Duration>,
     ) -> Result<(), Validated<VulkanError>> {
-        Self::validate_multi_wait(fences, timeout)?;
+        Self::validate_wait_many(fences, timeout)?;
 
-        Ok(unsafe { Self::multi_wait_unchecked(fences, timeout) }?)
+        Ok(unsafe { Self::wait_many_unchecked(fences, timeout) }?)
     }
 
-    fn validate_multi_wait(
+    fn validate_wait_many(
         fences: &[&Fence],
         _timeout: Option<Duration>,
     ) -> Result<(), Box<ValidationError>> {
@@ -260,7 +361,7 @@ impl Fence {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn multi_wait_unchecked(
+    pub unsafe fn wait_many_unchecked(
         fences: &[&Fence],
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
@@ -306,13 +407,35 @@ impl Fence {
         }
     }
 
+    /// Resets the fence, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_reset().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - The fence must not be in use by the device.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_reset`] returns a [`ValidationError`].
+    ///
+    /// [`try_reset`]: Self::try_reset
+    #[inline]
+    #[track_caller]
+    pub unsafe fn reset(&self) -> Result<(), VulkanError> {
+        match unsafe { self.try_reset() } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
     /// Resets the fence.
     ///
     /// # Safety
     ///
     /// - The fence must not be in use by the device.
     #[inline]
-    pub unsafe fn reset(&self) -> Result<(), Validated<VulkanError>> {
+    pub unsafe fn try_reset(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
 
         Ok(unsafe { self.reset_unchecked() }?)
@@ -332,18 +455,39 @@ impl Fence {
         Ok(())
     }
 
-    /// Resets multiple fences at once.
+    /// Resets many fences at once, panicking on a validation error.
+    ///
+    /// This is a shortcut for `try_reset_many().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
     /// - The elements of `fences` must not be in use by the device.
-    pub unsafe fn multi_reset(fences: &[&Fence]) -> Result<(), Validated<VulkanError>> {
-        Self::validate_multi_reset(fences)?;
-
-        Ok(unsafe { Self::multi_reset_unchecked(fences) }?)
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_reset_many`] returns a [`ValidationError`].
+    ///
+    /// [`try_reset_many`]: Self::try_reset_many
+    #[track_caller]
+    pub unsafe fn reset_many(fences: &[&Fence]) -> Result<(), VulkanError> {
+        match unsafe { Self::try_reset_many(fences) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
     }
 
-    fn validate_multi_reset(fences: &[&Fence]) -> Result<(), Box<ValidationError>> {
+    /// Resets many fences at once.
+    ///
+    /// # Safety
+    ///
+    /// - The elements of `fences` must not be in use by the device.
+    pub unsafe fn try_reset_many(fences: &[&Fence]) -> Result<(), Validated<VulkanError>> {
+        Self::validate_reset_many(fences)?;
+
+        Ok(unsafe { Self::reset_many_unchecked(fences) }?)
+    }
+
+    fn validate_reset_many(fences: &[&Fence]) -> Result<(), Box<ValidationError>> {
         if fences.is_empty() {
             return Ok(());
         }
@@ -359,7 +503,7 @@ impl Fence {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn multi_reset_unchecked(fences: &[&Fence]) -> Result<(), VulkanError> {
+    pub unsafe fn reset_many_unchecked(fences: &[&Fence]) -> Result<(), VulkanError> {
         if fences.is_empty() {
             return Ok(());
         }
@@ -377,11 +521,12 @@ impl Fence {
         Ok(())
     }
 
-    /// Exports the fence into a POSIX file descriptor. The caller owns the returned file
-    /// descriptor.
+    /// Exports the fence into a POSIX file descriptor, panicking on a validation error. The caller
+    /// owns the returned file descriptor.
     ///
-    /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_fence_fd`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_export_fd().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -390,8 +535,41 @@ impl Fence {
     /// - The fence must not currently have an imported payload from a swapchain acquire operation.
     /// - If the fence has an imported payload, its handle type must allow re-exporting as
     ///   `handle_type`, as returned by [`PhysicalDevice::external_fence_properties`].
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_fd`] returns an error.
+    ///
+    /// [`khr_external_fence_fd`]: crate::device::DeviceExtensions::khr_external_fence_fd
+    /// [`try_export_fd`]: Self::try_export_fd
     #[inline]
+    #[track_caller]
     pub unsafe fn export_fd(
+        &self,
+        handle_type: ExternalFenceHandleType,
+    ) -> Result<RawFd, VulkanError> {
+        match unsafe { self.try_export_fd(handle_type) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Exports the fence into a POSIX file descriptor. The caller owns the returned file
+    /// descriptor.
+    ///
+    /// The [`khr_external_fence_fd`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the fence must be signaled, or a signal
+    ///   operation on the fence must be pending.
+    /// - The fence must not currently have an imported payload from a swapchain acquire operation.
+    /// - If the fence has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_fence_properties`].
+    ///
+    /// [`khr_external_fence_fd`]: crate::device::DeviceExtensions::khr_external_fence_fd
+    #[inline]
+    pub unsafe fn try_export_fd(
         &self,
         handle_type: ExternalFenceHandleType,
     ) -> Result<RawFd, Validated<VulkanError>> {
@@ -471,10 +649,11 @@ impl Fence {
         Ok(fd)
     }
 
-    /// Exports the fence into a Win32 handle.
+    /// Exports the fence into a Win32 handle, panicking on a validation error.
     ///
-    /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_fence_win32`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_export_win32_handle().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -485,8 +664,42 @@ impl Fence {
     ///   `handle_type`, as returned by [`PhysicalDevice::external_fence_properties`].
     /// - If `handle_type` is `ExternalFenceHandleType::OpaqueWin32`, then a handle of this type
     ///   must not have been already exported from this fence.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_export_win32_handle`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_fence_win32`]: crate::device::DeviceExtensions::khr_external_fence_win32
+    /// [`try_export_win32_handle`]: Self::try_export_win32_handle
     #[inline]
+    #[track_caller]
     pub fn export_win32_handle(
+        &self,
+        handle_type: ExternalFenceHandleType,
+    ) -> Result<vk::HANDLE, VulkanError> {
+        match self.try_export_win32_handle(handle_type) {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Exports the fence into a Win32 handle.
+    ///
+    /// The [`khr_external_fence_win32`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the fence must be signaled, or a signal
+    ///   operation on the fence must be pending.
+    /// - The fence must not currently have an imported payload from a swapchain acquire operation.
+    /// - If the fence has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_fence_properties`].
+    /// - If `handle_type` is `ExternalFenceHandleType::OpaqueWin32`, then a handle of this type
+    ///   must not have been already exported from this fence.
+    ///
+    /// [`khr_external_fence_win32`]: crate::device::DeviceExtensions::khr_external_fence_win32
+    #[inline]
+    pub fn try_export_win32_handle(
         &self,
         handle_type: ExternalFenceHandleType,
     ) -> Result<vk::HANDLE, Validated<VulkanError>> {
@@ -565,10 +778,11 @@ impl Fence {
         Ok(handle)
     }
 
-    /// Imports a fence from a POSIX file descriptor.
+    /// Imports a fence from a POSIX file descriptor, panicking on a validation error.
     ///
-    /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_fence_fd`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_import_fd().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -576,8 +790,39 @@ impl Fence {
     /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then `fd`
     ///   must represent a fence that was exported from Vulkan or a compatible API, with a driver
     ///   and device UUID equal to those of the device that owns `self`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_import_fd`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_fence_fd`]: crate::device::DeviceExtensions::khr_external_fence_fd
+    /// [`try_import_fd`]: Self::try_import_fd
     #[inline]
+    #[track_caller]
     pub unsafe fn import_fd(
+        &self,
+        import_fence_fd_info: &ImportFenceFdInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_import_fd(import_fence_fd_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Imports a fence from a POSIX file descriptor.
+    ///
+    /// The [`khr_external_fence_fd`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - The fence must not be in use by the device.
+    /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then `fd`
+    ///   must represent a fence that was exported from Vulkan or a compatible API, with a driver
+    ///   and device UUID equal to those of the device that owns `self`.
+    ///
+    /// [`khr_external_fence_fd`]: crate::device::DeviceExtensions::khr_external_fence_fd
+    #[inline]
+    pub unsafe fn try_import_fd(
         &self,
         import_fence_fd_info: &ImportFenceFdInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -621,10 +866,11 @@ impl Fence {
         Ok(())
     }
 
-    /// Imports a fence from a Win32 handle.
+    /// Imports a fence from a Win32 handle, panicking on a validation error.
     ///
-    /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
-    /// extension must be enabled on the device.
+    /// The [`khr_external_fence_win32`] extension must be enabled on the device.
+    ///
+    /// This is a shortcut for `try_import_win32_handle().map_err(Validated::unwrap)`.
     ///
     /// # Safety
     ///
@@ -632,8 +878,39 @@ impl Fence {
     /// - In `import_fence_win32_handle_info`, `handle` must represent a fence that was exported
     ///   from Vulkan or a compatible API, with a driver and device UUID equal to those of the
     ///   device that owns `self`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_import_win32_handle`] returns a [`ValidationError`].
+    ///
+    /// [`khr_external_fence_win32`]: crate::device::DeviceExtensions::khr_external_fence_win32
+    /// [`try_import_win32_handle`]: Self::try_import_win32_handle
     #[inline]
+    #[track_caller]
     pub unsafe fn import_win32_handle(
+        &self,
+        import_fence_win32_handle_info: &ImportFenceWin32HandleInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        match unsafe { self.try_import_win32_handle(import_fence_win32_handle_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Imports a fence from a Win32 handle.
+    ///
+    /// The [`khr_external_fence_win32`] extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - The fence must not be in use by the device.
+    /// - In `import_fence_win32_handle_info`, `handle` must represent a fence that was exported
+    ///   from Vulkan or a compatible API, with a driver and device UUID equal to those of the
+    ///   device that owns `self`.
+    ///
+    /// [`khr_external_fence_win32`]: crate::device::DeviceExtensions::khr_external_fence_win32
+    #[inline]
+    pub unsafe fn try_import_win32_handle(
         &self,
         import_fence_win32_handle_info: &ImportFenceWin32HandleInfo<'_>,
     ) -> Result<(), Validated<VulkanError>> {
@@ -689,7 +966,7 @@ impl Fence {
         // engine can choose to run some other tasks between probing this one.
 
         // Check if we are done without blocking
-        match self.is_signaled() {
+        match unsafe { self.is_signaled_unchecked() } {
             Err(e) => return Poll::Ready(Err(e)),
             Ok(signaled) => {
                 if signaled {
@@ -1367,7 +1644,7 @@ mod tests {
             )
             .unwrap();
 
-            let _ = Fence::multi_wait(&[&fence1, &fence2], Some(Duration::new(0, 10)));
+            let _ = Fence::wait_many(&[&fence1, &fence2], Some(Duration::new(0, 10)));
         });
     }
 
@@ -1394,7 +1671,7 @@ mod tests {
             )
             .unwrap();
 
-            let _ = unsafe { Fence::multi_reset(&[&fence1, &fence2]) };
+            let _ = unsafe { Fence::reset_many(&[&fence1, &fence2]) };
         });
     }
 

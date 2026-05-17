@@ -94,7 +94,7 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
@@ -119,7 +119,7 @@ impl App {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.presentation_support(i as u32, event_loop).unwrap()
+                            && p.presentation_support(i as u32, event_loop)
                     })
                     .map(|i| (p, i as u32))
             })
@@ -286,8 +286,14 @@ impl ApplicationHandler for App {
         )
         .unwrap();
 
-        let vs = vs::load(&self.device).unwrap().entry_point("main").unwrap();
-        let fs = fs::load(&self.device).unwrap().entry_point("main").unwrap();
+        let vs = unsafe { vs::load(&self.device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = unsafe { fs::load(&self.device) }
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
 
         let (framebuffers, pipeline) = window_size_dependent_setup(
             window_size,
