@@ -9,7 +9,7 @@
 
 ### Public dependency updates
 
-- Rust version: 1.87
+- Rust version: 1.88
 - Removed the [`shaderc`](https://crates.io/crates/shaderc) dependency. `glslc` must now be installed and available on `PATH` (bundled with the Vulkan SDK).
 
 ### Breaking changes
@@ -73,6 +73,7 @@ Changes to descriptor sets:
 Changes to vulkano-shaders:
 - The `shaderc-build-from-source` Cargo feature has been removed.
 - Shader compilation now requires `glslc` to be present on `PATH` at build time instead of `libshaderc` having to be supplied via pkg-config, the `SHADERC_LIB_DIR` environment variable, or the `VULKAN_SDK` environment variable. This hopefully makes setup easier.
+- Files specified with the `path` or `bytes` argument are now relative to the Rust file with the `shader!` invocation instead of being relative to your `Cargo.toml`. The old behavior can be achieved using the `root_path_env: "CARGO_MANIFEST_DIR"` macro option.
 
 Changes to errors:
 - Functions that used to return anything other than `VulkanError` on error now unwrap everything except a `VulkanError`. The old behavior is preserved with the same function name prefixed with `try_` for those that truly need it. This fixes the sea of `.unwrap()`s, or even worse `.map_err(Validated::unwrap)`, that more often than not litter a vulkano application.
@@ -105,6 +106,7 @@ Changes to vulkano-shaders:
 - Added `VulkanLibrary::from_path`, which allows you to load a Vulkan library from a specific path.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
+- Vulkano-shaders: relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
 
 ### Bugs fixed
 
