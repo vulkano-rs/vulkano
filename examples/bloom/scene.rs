@@ -176,16 +176,15 @@ mod vs {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: r"
+        src: r#"
             #version 450
-            #include <shared_exponent.glsl>
+            #include "shared_exponent.glsl"
 
             layout(location = 0) out uint f_color;
 
             void main() {
                 f_color = convertToSharedExponent(vec3(2.0, 0.0, 0.0));
             }
-        ",
-        include: ["."],
+        "#,
     }
 }

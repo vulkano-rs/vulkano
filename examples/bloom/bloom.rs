@@ -152,7 +152,6 @@ mod downsample {
     vulkano_shaders::shader! {
         ty: "compute",
         path: "downsample.glsl",
-        include: ["."],
     }
 }
 
@@ -160,6 +159,5 @@ mod upsample {
     vulkano_shaders::shader! {
         ty: "compute",
         path: "upsample.glsl",
-        include: ["."],
     }
 }
