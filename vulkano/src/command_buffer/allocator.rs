@@ -450,7 +450,12 @@ impl Entry {
         pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
     ) -> Result<Self, Validated<VulkanError>> {
         Ok(Entry {
-            pool: Pool::try_new(device, command_pool_create_info, buffer_count, &pool_reserve)?,
+            pool: Pool::try_new(
+                device,
+                command_pool_create_info,
+                buffer_count,
+                &pool_reserve,
+            )?,
             allocations: [0; 2],
             pool_reserve,
         })
@@ -466,10 +471,11 @@ impl Entry {
             // SAFETY: Enforced by the caller.
             pool: unsafe {
                 Pool::new_unchecked(
-                device,
-                command_pool_create_info,
-                buffer_count,
-                &pool_reserve)
+                    device,
+                    command_pool_create_info,
+                    buffer_count,
+                    &pool_reserve,
+                )
             }?,
             allocations: [0; 2],
             pool_reserve,
@@ -639,10 +645,7 @@ impl Pool {
         buffer_counts: &[usize; 2],
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        let inner = CommandPool::try_new(
-            device,
-            command_pool_create_info,
-        )?;
+        let inner = CommandPool::try_new(device, command_pool_create_info)?;
 
         let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
         let mut buffer_reserve = [None, None];
@@ -681,12 +684,7 @@ impl Pool {
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, VulkanError> {
         // SAFETY: Enforced by the caller.
-        let inner = unsafe {
-            CommandPool::new_unchecked(
-                device,
-                command_pool_create_info,
-            )
-        }?;
+        let inner = unsafe { CommandPool::new_unchecked(device, command_pool_create_info) }?;
 
         let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
         let mut buffer_reserve = [None, None];
