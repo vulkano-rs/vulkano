@@ -1035,10 +1035,11 @@ impl SubmitInfo<'_> {
             {
                 return Err(Box::new(ValidationError {
                     context: format!("command_buffer[{}]", index).into(),
-                    problem: "is an unprotected command_buffer, but the protected structure has protected_submit set to true.".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
-                    "protected_memory",
-                )])]),
+                    problem: "is an unprotected command buffer, but `protected_submit` is `true`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "protected_memory",
+                    )])]),
                     vuids: &["VUID-VkSubmitInfo-pNext-04148"],
                 }));
             }
