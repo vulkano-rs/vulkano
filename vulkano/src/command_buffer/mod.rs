@@ -973,6 +973,11 @@ pub struct SubmitInfo<'a> {
     /// The default value is empty.
     pub signal_semaphores: &'a [SemaphoreSubmitInfo<'a>],
 
+    /// Indicates whether the submission is protected.
+    ///
+    /// The default value is false, indicating an unprotected submit.
+    pub protected_submit: bool,
+
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -991,6 +996,7 @@ impl SubmitInfo<'_> {
             wait_semaphores: &[],
             command_buffers: &[],
             signal_semaphores: &[],
+            protected_submit: false,
             _ne: crate::NE,
         }
     }
@@ -1000,6 +1006,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected_submit,
             _ne: _,
         } = self;
 
@@ -1013,6 +1020,29 @@ impl SubmitInfo<'_> {
             command_buffer_submit_info
                 .validate(device)
                 .map_err(|err| err.add_context(format!("command_buffers[{}]", index)))?;
+
+            if !protected_submit && command_buffer_submit_info.command_buffer.is_protected() {
+                return Err(Box::new(ValidationError {
+                    context: format!("command_buffer[{}]", index).into(),
+                    problem: "is a protected command buffer, but `protected_submit` is `false`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "protected_memory",
+                    )])]),
+                    vuids: &["VUID-VkSubmitInfo-pNext-04120"],
+                }));
+            } else if protected_submit && !command_buffer_submit_info.command_buffer.is_protected()
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("command_buffer[{}]", index).into(),
+                    problem: "is an unprotected command buffer, but `protected_submit` is `true`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "protected_memory",
+                    )])]),
+                    vuids: &["VUID-VkSubmitInfo-pNext-04148"],
+                }));
+            }
         }
 
         for (index, semaphore_submit_info) in signal_semaphores.iter().enumerate() {
@@ -1067,6 +1097,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected_submit: _,
             _ne: _,
         } = self;
 
@@ -1108,9 +1139,14 @@ impl SubmitInfo<'_> {
 
         let SubmitInfoExtensionsVk {
             timeline_semaphore_vk,
+            protected_vk,
         } = extensions_vk;
 
         if let Some(next) = timeline_semaphore_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = protected_vk {
             val_vk = val_vk.push_next(next);
         }
 
@@ -1125,6 +1161,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers: _,
             signal_semaphores,
+            protected_submit,
             _ne: _,
         } = self;
         let SubmitInfoFields1Vk {
@@ -1147,8 +1184,12 @@ impl SubmitInfo<'_> {
                     .signal_semaphore_values(signal_semaphore_values_vk)
             });
 
+        let protected_vk =
+            protected_submit.then(|| vk::ProtectedSubmitInfo::default().protected_submit(true));
+
         SubmitInfoExtensionsVk {
             timeline_semaphore_vk,
+            protected_vk,
         }
     }
 
@@ -1157,6 +1198,7 @@ impl SubmitInfo<'_> {
             wait_semaphores,
             command_buffers,
             signal_semaphores,
+            protected_submit: _,
             _ne: _,
         } = self;
 
@@ -1216,6 +1258,7 @@ pub(crate) struct SubmitInfo2Fields1Vk {
 
 pub(crate) struct SubmitInfoExtensionsVk<'a> {
     pub(crate) timeline_semaphore_vk: Option<vk::TimelineSemaphoreSubmitInfo<'a>>,
+    pub(crate) protected_vk: Option<vk::ProtectedSubmitInfo<'a>>,
 }
 
 pub(crate) struct SubmitInfoFields1Vk {
@@ -1547,6 +1590,7 @@ pub struct OldSubmitInfo {
     pub(crate) wait_semaphores: Vec<Arc<Semaphore>>,
     pub(crate) command_buffers: Vec<Arc<dyn PrimaryCommandBufferAbstract>>,
     pub(crate) signal_semaphores: Vec<Arc<Semaphore>>,
+    pub(crate) protected_submit: bool,
 }
 
 #[derive(Debug, Default)]

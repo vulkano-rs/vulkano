@@ -977,7 +977,6 @@ vulkan_bitflags! {
     /// [`sparse_residency_aliased`]: crate::device::DeviceFeatures::sparse_residency_aliased
     SPARSE_ALIASED = SPARSE_ALIASED,*/
 
-    /* TODO: enable
     /// The buffer is protected, and can only be used in combination with protected memory and other
     /// protected objects.
     ///
@@ -985,7 +984,7 @@ vulkan_bitflags! {
     PROTECTED = PROTECTED
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     /// The buffer's device address can be saved and reused on a subsequent run.
