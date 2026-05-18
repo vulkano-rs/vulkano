@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn validate_no_protected_sparse() {
         let (device, _) = gfx_dev_and_queue!(protected_memory, sparse_binding);
-        match RawBuffer::new(
+        match RawBuffer::try_new(
             &device,
             &BufferCreateInfo {
                 size: 128,
@@ -1051,7 +1051,7 @@ mod tests {
                 );
             }
             Ok(_) => {
-                panic!("RawBuffer::new succeeded when it should have failed!");
+                panic!("RawBuffer::try_new succeeded when it should have failed!");
             }
         };
     }
@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn validate_invalid_protected_usage() {
         let (device, _) = gfx_dev_and_queue!(protected_memory);
-        match RawBuffer::new(
+        match RawBuffer::try_new(
             &device,
             &BufferCreateInfo {
                 size: 128,
@@ -1068,7 +1068,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(Validated::ValidationError(err)) => {}
+            Err(Validated::ValidationError(_)) => {}
             Err(Validated::Error(err)) => {
                 panic!(
                     "Expected a ValidationError, but got a runtime error: {:?}",
@@ -1076,7 +1076,7 @@ mod tests {
                 );
             }
             Ok(_) => {
-                panic!("bind_memory succeeded when it should have failed!");
+                panic!("RawBuffer::try_new succeeded when it should have failed!");
             }
         };
     }

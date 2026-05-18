@@ -322,7 +322,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         let entry_ptr = self.entry(queue_family_index);
         let entry = unsafe { &mut *entry_ptr };
         let command_pool_create_info = CommandPoolCreateInfo {
-            flags: self._command_pool_create_flags,
+            flags: self.command_pool_create_flags,
             queue_family_index,
             ..Default::default()
         };

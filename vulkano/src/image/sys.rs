@@ -3361,7 +3361,7 @@ mod tests {
     fn create_protected_and_sparse_is_disallowed() {
         let (device, _) = gfx_dev_and_queue!(protected_memory, sparse_binding);
 
-        match RawImage::new(
+        match RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 flags: (ImageCreateFlags::PROTECTED | ImageCreateFlags::SPARSE_BINDING),
@@ -3372,7 +3372,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(Validated::ValidationError(err)) => {}
+            Err(Validated::ValidationError(_)) => {}
             Err(Validated::Error(err)) => {
                 panic!(
                     "Expected a ValidationError, but got a runtime error: {:?}",
@@ -3380,7 +3380,7 @@ mod tests {
                 );
             }
             Ok(_) => {
-                panic!("RawImage::new succeeded when it should have failed!");
+                panic!("RawImage::try_new succeeded when it should have failed!");
             }
         }
     }
@@ -3389,7 +3389,7 @@ mod tests {
     fn create_unprotected_image_bind_protected_memory() {
         let (device, _) = gfx_dev_and_queue!(protected_memory);
 
-        let image = RawImage::new(
+        let image = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 image_type: ImageType::Dim2d,
@@ -3427,7 +3427,7 @@ mod tests {
 
         let resource_memory = ResourceMemory::new_dedicated(memory);
 
-        let res = image.bind_memory(iter::once(resource_memory));
+        let res = image.try_bind_memory(iter::once(resource_memory));
         match res {
             Err((Validated::ValidationError(_), _, _)) => {}
             Ok(_) => {
@@ -3446,7 +3446,7 @@ mod tests {
     fn create_protected_image_bind_unprotected_memory() {
         let (device, _) = gfx_dev_and_queue!(protected_memory);
 
-        let image = RawImage::new(
+        let image = RawImage::try_new(
             &device,
             &ImageCreateInfo {
                 flags: ImageCreateFlags::PROTECTED,
@@ -3486,11 +3486,11 @@ mod tests {
 
         let resource_memory = ResourceMemory::new_dedicated(memory);
 
-        let res = image.bind_memory(iter::once(resource_memory));
+        let res = image.try_bind_memory(iter::once(resource_memory));
         match res {
             Err((Validated::ValidationError(_), _, _)) => {}
             Ok(_) => {
-                panic!("bind_memory succeeded when it should have failed!");
+                panic!("try_bind_memory succeeded when it should have failed!");
             }
             Err((Validated::Error(err), _, _)) => {
                 panic!(
