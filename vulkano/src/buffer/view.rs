@@ -11,7 +11,7 @@
 //! ```
 //! # use std::sync::Arc;
 //! use vulkano::{
-//!     buffer::{view::{BufferView, BufferViewCreateInfo}, Buffer, BufferCreateInfo, BufferUsage},
+//!     buffer::{view::{BufferView, BufferViewCreateInfo}, Buffer, BufferContents, BufferCreateInfo, BufferUsage},
 //!     format::Format,
 //!     memory::allocator::AllocationCreateInfo,
 //! };
@@ -19,19 +19,19 @@
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 //! #
-//! let buffer = Buffer::new_slice::<u32>(
+//! let buffer = Buffer::new(
 //!     &memory_allocator,
 //!     &BufferCreateInfo {
 //!         usage: BufferUsage::STORAGE_TEXEL_BUFFER,
 //!         ..Default::default()
 //!     },
 //!     &AllocationCreateInfo::default(),
-//!     128,
+//!     u32::LAYOUT.layout_for_len(128).unwrap(),
 //! )
 //! .unwrap();
 //!
 //! let view = BufferView::new(
-//!     &buffer.buffer(),
+//!     &buffer,
 //!     &BufferViewCreateInfo {
 //!         format: Format::R32_UINT,
 //!         ..Default::default()
@@ -81,7 +81,7 @@ impl BufferView {
         buffer: &Arc<Buffer>,
         create_info: &BufferViewCreateInfo<'_>,
     ) -> Result<Arc<BufferView>, VulkanError> {
-        match Self::try_new(subbuffer, create_info) {
+        match Self::try_new(buffer, create_info) {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
         }
@@ -90,7 +90,7 @@ impl BufferView {
     /// Creates a new `BufferView`, returning an error on failure.
     #[inline]
     pub fn try_new(
-        subbuffer: &Subbuffer<impl ?Sized>,
+        buffer: &Arc<Buffer>,
         create_info: &BufferViewCreateInfo<'_>,
     ) -> Result<Arc<BufferView>, Validated<VulkanError>> {
         Self::validate_new(buffer, create_info)?;
@@ -523,7 +523,7 @@ impl BufferViewCreateInfo<'_> {
 mod tests {
     use super::{BufferView, BufferViewCreateInfo};
     use crate::{
-        buffer::{Buffer, BufferCreateInfo, BufferUsage},
+        buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
         format::Format,
         memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     };
@@ -535,19 +535,19 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
-        let buffer = Buffer::new_slice::<[u8; 4]>(
+        let buffer = Buffer::new(
             &memory_allocator,
             &BufferCreateInfo {
                 usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            128,
+            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
         )
         .unwrap();
 
         BufferView::new(
-            &buffer.buffer(),
+            &buffer,
             &BufferViewCreateInfo {
                 format: Format::R8G8B8A8_UNORM,
                 ..Default::default()
@@ -562,18 +562,18 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
-        let buffer = Buffer::new_slice::<[u8; 4]>(
+        let buffer = Buffer::new(
             &memory_allocator,
             &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            128,
+            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
         )
         .unwrap();
         BufferView::new(
-            &buffer.buffer(),
+            &buffer,
             &BufferViewCreateInfo {
                 format: Format::R8G8B8A8_UNORM,
                 ..Default::default()
@@ -588,18 +588,18 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
-        let buffer = Buffer::new_slice::<u32>(
+        let buffer = Buffer::new(
             &memory_allocator,
             &BufferCreateInfo {
                 usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            128,
+            u32::LAYOUT.layout_for_len(128).unwrap(),
         )
         .unwrap();
         BufferView::new(
-            &buffer.buffer(),
+            &buffer,
             &BufferViewCreateInfo {
                 format: Format::R32_UINT,
                 ..Default::default()
@@ -614,14 +614,14 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
-        let buffer = Buffer::new_slice::<[u8; 4]>(
+        let buffer = Buffer::new(
             &memory_allocator,
             &BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST, // Dummy value
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            128,
+            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
         )
         .unwrap();
 
@@ -642,14 +642,14 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
-        let buffer = Buffer::new_slice::<[f64; 4]>(
+        let buffer = Buffer::new(
             &memory_allocator,
             &BufferCreateInfo {
                 usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            128,
+            <[f64; 4]>::LAYOUT.layout_for_len(128).unwrap(),
         )
         .unwrap();
 
