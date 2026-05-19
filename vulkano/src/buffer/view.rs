@@ -123,7 +123,8 @@ impl BufferView {
 
         if offset >= buffer.size() {
             return Err(Box::new(ValidationError {
-                problem: "`create_info.offset` must be less than `buffer.size()`".into(),
+                context: "offset".into(),
+                problem: "must be less than `buffer.size()`".into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-offset-00925"],
                 ..Default::default()
             }));
@@ -175,7 +176,8 @@ impl BufferView {
         if let Some(range) = range {
             if range == 0 {
                 return Err(Box::new(ValidationError {
-                    problem: "`create_info.range` was specified but must be greater than 0".into(),
+                    context: "range".into(),
+                    problem: "is zero".into(),
                     vuids: &["VUID-VkBufferViewCreateInfo-range-00928"],
                     ..Default::default()
                 }));
@@ -183,9 +185,8 @@ impl BufferView {
 
             if !range.is_multiple_of(block_size) {
                 return Err(Box::new(ValidationError {
-                    problem: "`create_info.range` was specified but is not a multiple of \
-                        `create_info.format.block_size()`"
-                        .into(),
+                    context: "range".into(),
+                    problem: "is not a multiple of `create_info.format.block_size()`".into(),
                     vuids: &["VUID-VkBufferViewCreateInfo-range-00929"],
                     ..Default::default()
                 }));
@@ -195,7 +196,7 @@ impl BufferView {
                 > properties.max_texel_buffer_elements
             {
                 return Err(Box::new(ValidationError {
-                    problem: "`buffer.size / create_info.format.block_size() * \
+                    problem: "`buffer.size() / create_info.format.block_size() * \
                         create_info.format.texels_per_block()` is greater than the \
                         `max_texel_buffer_elements` limit"
                         .into(),
@@ -204,7 +205,7 @@ impl BufferView {
                 }));
             }
 
-            if range.saturating_add(offset) > buffer.size() {
+            if range > buffer.size() - offset {
                 return Err(Box::new(ValidationError {
                     problem: "`create_info.offset + create_info.range` must be less than or \
                         equal to `buffer.size()`"
@@ -457,11 +458,15 @@ pub struct BufferViewCreateInfo<'a> {
     pub format: Format,
 
     /// The offset in bytes.
+    ///
+    /// The default value is `0`.
     pub offset: DeviceSize,
 
     /// The size in bytes.
     ///
-    /// The default value `None` refers to the remaining length of the buffer.
+    /// If set to `None`, the size until the end of the buffer will be used.
+    ///
+    /// The default value is `None`.
     pub range: Option<DeviceSize>,
 
     pub _ne: crate::NonExhaustive<'a>,
