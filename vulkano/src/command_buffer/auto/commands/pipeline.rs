@@ -3686,7 +3686,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             used_resources.push((
                                 use_ref,
                                 Resource::Buffer {
-                                    buffer: buffer.clone(),
+                                    buffer,
                                     range: buffer_view.range().clone(),
                                     memory_access,
                                 },
