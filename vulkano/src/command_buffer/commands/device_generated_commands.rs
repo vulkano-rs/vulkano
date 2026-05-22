@@ -1,9 +1,12 @@
-use crate::command_buffer::auto::Resource;
-use crate::command_buffer::{AutoCommandBufferBuilder, RecordingCommandBuffer, ResourceInCommand};
-use crate::device::DeviceOwned;
-use crate::pipeline::{ComputePipeline, Pipeline};
-use crate::sync::PipelineStageAccessFlags;
-use crate::{ValidationError, VulkanObject};
+use crate::{
+    command_buffer::{
+        auto::Resource, AutoCommandBufferBuilder, RecordingCommandBuffer, ResourceInCommand,
+    },
+    device::DeviceOwned,
+    pipeline::{ComputePipeline, Pipeline},
+    sync::PipelineStageAccessFlags,
+    ValidationError, VulkanObject,
+};
 use std::sync::Arc;
 
 impl<L> AutoCommandBufferBuilder<L> {

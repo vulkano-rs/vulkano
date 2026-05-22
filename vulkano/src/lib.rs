@@ -150,6 +150,7 @@ mod version;
 #[macro_use]
 pub mod render_pass;
 mod cache;
+pub mod device_generated_commands;
 mod fns;
 pub mod image;
 pub mod instance;
@@ -164,7 +165,6 @@ pub mod range_set;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;
-pub mod device_generated_commands;
 
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.

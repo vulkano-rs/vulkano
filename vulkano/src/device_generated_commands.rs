@@ -1,19 +1,17 @@
-﻿use crate::buffer::{BufferUsage, IndexType, Subbuffer};
-use crate::device::{Device, DeviceOwned};
-use crate::macros::{vulkan_bitflags, vulkan_enum};
-use crate::memory::MemoryRequirements;
-use crate::pipeline::compute::ComputePipelineCreateInfo;
-use crate::pipeline::{
-    ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+use crate::{
+    buffer::{BufferUsage, IndexType, Subbuffer},
+    device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, vulkan_enum},
+    memory::MemoryRequirements,
+    pipeline::{
+        compute::ComputePipelineCreateInfo, ComputePipeline, GraphicsPipeline, Pipeline,
+        PipelineBindPoint, PipelineLayout,
+    },
+    shader::ShaderStages,
+    NonNullDeviceAddress, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use crate::shader::ShaderStages;
-use crate::{NonNullDeviceAddress, VulkanError};
-use crate::{Validated, ValidationError, VulkanObject};
 use ash::vk;
-use std::collections::BTreeMap;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{collections::BTreeMap, mem::MaybeUninit, ptr, sync::Arc};
 use vulkano::{Requires, RequiresAllOf, RequiresOneOf};
 
 #[derive(Debug)]
@@ -161,8 +159,7 @@ impl IndirectCommandsLayout {
             output
         };
 
-        let memory_requirements_extension_vk2 =
-            MemoryRequirements::to_mut_vk2_extensions(device);
+        let memory_requirements_extension_vk2 = MemoryRequirements::to_mut_vk2_extensions(device);
 
         MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
     }
@@ -519,7 +516,11 @@ pub struct IndirectCommandsLayoutToken {
 }
 
 impl IndirectCommandsLayoutToken {
-    pub(crate) fn validate(&self, device: &Device, stream_count: u32) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(
+        &self,
+        device: &Device,
+        stream_count: u32,
+    ) -> Result<(), Box<ValidationError>> {
         self.token_type
             .validate_device(device)
             .map_err(|err| err.add_context("token_type"))?;
@@ -532,7 +533,13 @@ impl IndirectCommandsLayoutToken {
             }));
         }
 
-        if self.offset > device.physical_device().properties().max_indirect_commands_token_offset.unwrap() {
+        if self.offset
+            > device
+                .physical_device()
+                .properties()
+                .max_indirect_commands_token_offset
+                .unwrap()
+        {
             return Err(Box::new(ValidationError {
                 problem: "token offset is too big".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-offset-02952"],
@@ -546,9 +553,13 @@ impl IndirectCommandsLayoutToken {
             // TODO: vertex binding unit VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02976
         }
 
-        if (self.token_type == IndirectCommandsTokenType::PushConstant) != self.pushconstant_data.is_some() {
+        if (self.token_type == IndirectCommandsTokenType::PushConstant)
+            != self.pushconstant_data.is_some()
+        {
             return Err(Box::new(ValidationError {
-                problem: "push constant data should be set if and only if token type is PushConstant".into(),
+                problem:
+                    "push constant data should be set if and only if token type is PushConstant"
+                        .into(),
                 ..Default::default()
             }));
         }
@@ -557,7 +568,9 @@ impl IndirectCommandsLayoutToken {
             pushconstant_data.validate(device)?;
         }
 
-        if self.token_type == IndirectCommandsTokenType::StateFlags && self.indirect_state_flags == IndirectStateFlags::empty() {
+        if self.token_type == IndirectCommandsTokenType::StateFlags
+            && self.indirect_state_flags == IndirectStateFlags::empty()
+        {
             return Err(Box::new(ValidationError {
                 problem: "token type is StateFlags but indirect state flags is empty".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02984"],
@@ -687,7 +700,8 @@ pub struct IndirectCommandsLayoutTokenPushConstant {
 
 impl IndirectCommandsLayoutTokenPushConstant {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        self.shader_stage_flags.validate_device(device)
+        self.shader_stage_flags
+            .validate_device(device)
             .map_err(|err| err.add_context("shader_stage_flags"))?;
 
         if !self.offset.is_multiple_of(4) {
@@ -706,7 +720,12 @@ impl IndirectCommandsLayoutTokenPushConstant {
             }));
         }
 
-        if self.offset >= device.physical_device().properties().max_push_constants_size {
+        if self.offset
+            >= device
+                .physical_device()
+                .properties()
+                .max_push_constants_size
+        {
             return Err(Box::new(ValidationError {
                 problem: "offset is too large for physical device limit".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02980"],
@@ -714,7 +733,13 @@ impl IndirectCommandsLayoutTokenPushConstant {
             }));
         }
 
-        if self.size > device.physical_device().properties().max_push_constants_size - self.offset {
+        if self.size
+            > device
+                .physical_device()
+                .properties()
+                .max_push_constants_size
+                - self.offset
+        {
             return Err(Box::new(ValidationError {
                 problem: "size is too large for physical device limit".into(),
                 vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02981"],
@@ -773,8 +798,11 @@ pub struct GeneratedCommandsInfo {
 }
 
 impl GeneratedCommandsInfo {
-
-    pub fn graphics_pipeline(pipeline: Arc<GraphicsPipeline>, indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+    pub fn graphics_pipeline(
+        pipeline: Arc<GraphicsPipeline>,
+        indirect_commands_layout: Arc<IndirectCommandsLayout>,
+        preprocess_buffer: Subbuffer<[u8]>,
+    ) -> Self {
         Self {
             pipeline: GeneratedCommandsPipeline::Graphics(pipeline),
             indirect_commands_layout,
@@ -787,7 +815,11 @@ impl GeneratedCommandsInfo {
         }
     }
 
-    pub fn compute_pipeline(pipeline: Arc<ComputePipeline>, indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+    pub fn compute_pipeline(
+        pipeline: Arc<ComputePipeline>,
+        indirect_commands_layout: Arc<IndirectCommandsLayout>,
+        preprocess_buffer: Subbuffer<[u8]>,
+    ) -> Self {
         Self {
             pipeline: GeneratedCommandsPipeline::Compute(pipeline),
             indirect_commands_layout,
@@ -800,7 +832,10 @@ impl GeneratedCommandsInfo {
         }
     }
 
-    pub fn dynamic_pipeline(indirect_commands_layout: Arc<IndirectCommandsLayout>, preprocess_buffer: Subbuffer<[u8]>) -> Self {
+    pub fn dynamic_pipeline(
+        indirect_commands_layout: Arc<IndirectCommandsLayout>,
+        preprocess_buffer: Subbuffer<[u8]>,
+    ) -> Self {
         Self {
             pipeline: GeneratedCommandsPipeline::Dynamic(),
             indirect_commands_layout,
@@ -822,9 +857,7 @@ impl GeneratedCommandsInfo {
         fields1_vk: &'a GeneratedCommandsInfoFieldsVk1,
     ) -> vk::GeneratedCommandsInfoNV<'a> {
         let result = vk::GeneratedCommandsInfoNV::default()
-            .pipeline_bind_point(
-                self.pipeline.bind_point().into(),
-            )
+            .pipeline_bind_point(self.pipeline.bind_point().into())
             .pipeline(self.pipeline.handle())
             .indirect_commands_layout(self.indirect_commands_layout.handle())
             .streams(fields1_vk.streams.as_slice())
@@ -910,7 +943,11 @@ impl ComputePipelineIndirectBufferInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device, pipeline_create_info: &ComputePipelineCreateInfo) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(
+        &self,
+        device: &Device,
+        pipeline_create_info: &ComputePipelineCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().device_generated_compute_pipelines {
             return Err(Box::new(ValidationError {
                 problem: "compute pipeline indirect buffer info".into(),
@@ -920,9 +957,16 @@ impl ComputePipelineIndirectBufferInfo {
             }));
         }
 
-        let memory_requirements = IndirectCommandsLayout::pipeline_indirect_memory_requirements(device, pipeline_create_info);
+        let memory_requirements = IndirectCommandsLayout::pipeline_indirect_memory_requirements(
+            device,
+            pipeline_create_info,
+        );
 
-        if !self.subbuffer.offset().is_multiple_of(memory_requirements.layout.alignment().as_devicesize()) {
+        if !self
+            .subbuffer
+            .offset()
+            .is_multiple_of(memory_requirements.layout.alignment().as_devicesize())
+        {
             return Err(Box::new(ValidationError {
                 problem: "offset of the subbuffer is not aligned correctly".into(),
                 vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-deviceAddress-09011"],
@@ -938,7 +982,12 @@ impl ComputePipelineIndirectBufferInfo {
             }));
         }
 
-        if !self.subbuffer.buffer().usage().contains(BufferUsage::TRANSFER_DST | BufferUsage::INDIRECT_BUFFER) {
+        if !self
+            .subbuffer
+            .buffer()
+            .usage()
+            .contains(BufferUsage::TRANSFER_DST | BufferUsage::INDIRECT_BUFFER)
+        {
             return Err(Box::new(ValidationError {
                 problem: "pipeline indirect buffer must have usage set for TRANSFER_DST and INDIRECT_BUFFER".into(),
                 vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-deviceAddress-09012"],

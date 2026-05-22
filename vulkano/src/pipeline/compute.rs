@@ -18,18 +18,18 @@ use super::{
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
+    buffer::Subbuffer,
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
+    device_generated_commands::ComputePipelineIndirectBufferInfo,
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
-use ash::vk;
-use crate::buffer::Subbuffer;
-use crate::device_generated_commands::ComputePipelineIndirectBufferInfo;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -50,8 +50,8 @@ pub struct ComputePipeline {
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
-    
-    indirect_pipeline_buffer: Option<Subbuffer<[u8]>>
+
+    indirect_pipeline_buffer: Option<Subbuffer<[u8]>>,
 }
 
 impl ComputePipeline {
@@ -149,7 +149,7 @@ impl ComputePipeline {
             .max()
             .map(|x| x + 1)
             .unwrap_or(0);
-        
+
         let indirect_pipeline_buffer = create_info
             .indirect_buffer_info
             .map(|buffer_info| buffer_info.subbuffer.clone());
@@ -179,7 +179,7 @@ impl ComputePipeline {
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
     }
-    
+
     #[inline]
     pub fn indirect_pipeline_buffer(&self) -> Option<&Subbuffer<[u8]>> {
         self.indirect_pipeline_buffer.as_ref()
@@ -338,10 +338,9 @@ impl ComputePipelineCreateInfo {
                     problem: "'flags' does not contain PipelineCreateFlags::INDIRECT_BINDABLE, but 'indirect_buffer_info' is Some".into(),
                     vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-flags-09010"],
                     ..Default::default()
-                }))
+                }));
             }
             indirect_buffer_info.validate(device, self)?;
-
         } else if flags.intersects(PipelineCreateFlags::INDIRECT_BINDABLE) {
             return Err(Box::new(ValidationError {
                 problem: "indirect_buffer_info is None but flags contains INDIRECT_BINDABLE".into(),
@@ -413,7 +412,7 @@ impl ComputePipelineCreateInfo {
         let ComputePipelineCreateInfoFields1Vk { stage_fields1_vk } = fields1_vk;
         let ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
-            indirect_buffer_info_extension_vk
+            indirect_buffer_info_extension_vk,
         } = extensions_vk;
 
         let stage_vk = stage.to_vk(stage_fields1_vk, stage_extensions_vk);
@@ -431,19 +430,21 @@ impl ComputePipelineCreateInfo {
 
         if let Some(indirect_buffer_info) = indirect_buffer_info_extension_vk {
             as_vk.push_next(indirect_buffer_info)
-        }
-        else {
+        } else {
             as_vk
         }
     }
 
     pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk<'_> {
         let stage_extensions_vk = self.stage.to_vk_extensions();
-        let indirect_buffer_info_extension_vk = self.indirect_buffer_info.as_ref().map(ComputePipelineIndirectBufferInfo::to_vk);
+        let indirect_buffer_info_extension_vk = self
+            .indirect_buffer_info
+            .as_ref()
+            .map(ComputePipelineIndirectBufferInfo::to_vk);
 
         ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
-            indirect_buffer_info_extension_vk
+            indirect_buffer_info_extension_vk,
         }
     }
 
@@ -467,7 +468,8 @@ impl ComputePipelineCreateInfo {
 
 pub(crate) struct ComputePipelineCreateInfoExtensionsVk<'a> {
     pub(crate) stage_extensions_vk: PipelineShaderStageCreateInfoExtensionsVk,
-    pub(crate) indirect_buffer_info_extension_vk: Option<vk::ComputePipelineIndirectBufferInfoNV<'a>>,
+    pub(crate) indirect_buffer_info_extension_vk:
+        Option<vk::ComputePipelineIndirectBufferInfoNV<'a>>,
 }
 
 pub(crate) struct ComputePipelineCreateInfoFields1Vk<'a> {
