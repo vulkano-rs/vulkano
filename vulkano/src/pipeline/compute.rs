@@ -400,7 +400,7 @@ impl ComputePipelineCreateInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a ComputePipelineCreateInfoFields1Vk<'_>,
-        extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk,
+        extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk<'_>,
     ) -> ash::vk::ComputePipelineCreateInfo<'a> {
         let &Self {
             flags,
