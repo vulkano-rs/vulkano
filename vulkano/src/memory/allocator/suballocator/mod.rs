@@ -849,6 +849,17 @@ mod tests {
                 .is_err());
             assert_eq!(allocator.free_size(), 0);
 
+            let mut last_offset = 0;
+
+            for alloc in allocator.suballocations() {
+                if alloc.offset == 0 {
+                    continue;
+                }
+
+                assert!(last_offset < alloc.offset);
+                last_offset = alloc.offset;
+            }
+
             for alloc in allocs.drain(..) {
                 unsafe { allocator.deallocate(alloc) };
             }
@@ -878,11 +889,23 @@ mod tests {
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
             assert_eq!(allocator.free_size(), 0);
-            unsafe { allocator.deallocate(alloc) };
+
+            let mut last_offset = 0;
+
+            for alloc in allocator.suballocations() {
+                if alloc.offset == 0 {
+                    continue;
+                }
+
+                assert!(last_offset < alloc.offset);
+                last_offset = alloc.offset;
+            }
 
             for alloc in allocs.drain(..) {
                 unsafe { allocator.deallocate(alloc) };
             }
+
+            unsafe { allocator.deallocate(alloc) };
         }
     }
 
