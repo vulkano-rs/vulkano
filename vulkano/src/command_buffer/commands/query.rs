@@ -706,7 +706,7 @@ impl RecordingCommandBuffer {
                 }));
             }
 
-            if stride.is_multiple_of(std::mem::size_of::<T>() as DeviceSize) {
+            if !stride.is_multiple_of(std::mem::size_of::<T>() as DeviceSize) {
                 return Err(Box::new(ValidationError {
                     context: "stride".into(),
                     problem: "is not a multiple of the result type's size".into(),
