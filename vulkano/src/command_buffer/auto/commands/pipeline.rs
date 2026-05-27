@@ -3683,7 +3683,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                             let buffer = Subbuffer::new(buffer_view.buffer().clone());
                             let (use_ref, memory_access) = use_iter(index as u32);
                             let offset = buffer_view.offset();
-                            let size = buffer_view.range().unwrap_or(buffer.size());
+                            let size = buffer_view.range().unwrap_or(buffer.size() - offset);
 
                             used_resources.push((
                                 use_ref,
