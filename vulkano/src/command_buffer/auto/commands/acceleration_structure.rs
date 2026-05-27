@@ -7,7 +7,7 @@ use crate::{
         BuildAccelerationStructureMode, CopyAccelerationStructureInfo,
         CopyAccelerationStructureToMemoryInfo, CopyMemoryToAccelerationStructureInfo,
     },
-    buffer::Subbuffer,
+    buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{Resource, ResourceUseRef2},
         sys::RecordingCommandBuffer,
@@ -17,6 +17,7 @@ use crate::{
     sync::PipelineStageAccessFlags,
     ValidationError,
 };
+use ash::vk::DeviceSize;
 use smallvec::SmallVec;
 use std::sync::Arc;
 
@@ -212,9 +213,11 @@ impl<L> AutoCommandBufferBuilder<L> {
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
+        let indirect_buffer = indirect_buffer.buffer();
+
         self.inner.validate_build_acceleration_structure_indirect(
             info,
-            indirect_buffer.buffer(),
+            indirect_buffer.device_address(),
             stride,
             max_primitive_counts,
         )?;
@@ -226,6 +229,27 @@ impl<L> AutoCommandBufferBuilder<L> {
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-renderpass"],
                 ..Default::default()
             }));
+        }
+
+        if info.geometries.len() as DeviceSize * stride as DeviceSize > indirect_buffer.size() {
+            return Err(Box::new(ValidationError {
+                 problem: "`info.geometries.len()` * `stride` is greater than the size of \
+                     `indirect_buffer`".into(),
+                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03646"],
+                 ..Default::default()
+             }));
+        }
+
+        if !indirect_buffer
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                 context: "indirect_buffer".into(),
+                 problem: "the buffer was not created with the `BufferUsage::INDIRECT_BUFFER` usage".into(),
+                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03647"],
+                 ..Default::default()
+             }));
         }
 
         Ok(())
@@ -250,7 +274,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 unsafe {
                     out.build_acceleration_structure_indirect_unchecked(
                         &info,
-                        indirect_buffer.buffer(),
+                        indirect_buffer.buffer().device_address(),
                         stride,
                         &max_primitive_counts,
                     )
