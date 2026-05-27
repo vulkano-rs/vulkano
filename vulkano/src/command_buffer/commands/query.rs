@@ -552,8 +552,9 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Arc<Buffer>,
-        destination_offset: DeviceSize,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
@@ -564,8 +565,9 @@ impl RecordingCommandBuffer {
                 query_pool,
                 first_query,
                 query_count,
-                destination,
-                destination_offset,
+                dst_buffer,
+                dst_offset,
+                stride,
                 flags,
             )
         }
@@ -578,8 +580,9 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Arc<Buffer>,
-        destination_offset: DeviceSize,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, Box<ValidationError>>
     where
@@ -589,8 +592,9 @@ impl RecordingCommandBuffer {
             query_pool,
             first_query,
             query_count,
-            destination,
-            destination_offset,
+            dst_buffer,
+            dst_offset,
+            stride,
             flags,
         )?;
 
@@ -599,8 +603,9 @@ impl RecordingCommandBuffer {
                 query_pool,
                 first_query,
                 query_count,
-                destination,
-                destination_offset,
+                dst_buffer,
+                dst_offset,
+                stride,
                 flags,
             )
         })
@@ -611,8 +616,9 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Arc<Buffer>,
-        destination_offset: DeviceSize,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<(), Box<ValidationError>>
     where
@@ -635,12 +641,12 @@ impl RecordingCommandBuffer {
         let device = self.device();
 
         // VUID-vkCmdCopyQueryPoolResults-commonparent
-        assert_eq!(device, destination.device());
+        assert_eq!(device, dst_buffer.device());
         assert_eq!(device, query_pool.device());
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination_offset.is_multiple_of(size_of::<T>() as DeviceSize));
+        debug_assert!(dst_offset.is_multiple_of(size_of::<T>() as DeviceSize));
 
         if !first_query
             .checked_add(query_count)
@@ -660,18 +666,18 @@ impl RecordingCommandBuffer {
         let per_query_len = query_pool.result_len(flags);
         let required_len = per_query_len * query_count as DeviceSize;
 
-        if destination.size() < required_len {
+        if dst_buffer.size() < required_len {
             return Err(Box::new(ValidationError {
-                problem: "`destination` is smaller than the size required to write the results"
+                problem: "`dst_buffer` is smaller than the size required to write the results"
                     .into(),
                 vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824"],
                 ..Default::default()
             }));
         }
 
-        if !destination.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(Box::new(ValidationError {
-                context: "destination.usage()".into(),
+                context: "dst_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
                 vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825"],
                 ..Default::default()
@@ -690,6 +696,29 @@ impl RecordingCommandBuffer {
             }));
         }
 
+        if query_count > 1 {
+            if stride == 0 {
+                return Err(Box::new(ValidationError {
+                    context: "stride".into(),
+                    problem: "is zero".into(),
+                    vuids: &["VUID-vkCmdCopyQueryPoolResults-queryCount-09438"],
+                    ..Default::default()
+                }));
+            }
+
+            if stride.is_multiple_of(std::mem::size_of::<T>() as DeviceSize) {
+                return Err(Box::new(ValidationError {
+                    context: "stride".into(),
+                    problem: "is not a multiple of the result type's size".into(),
+                    vuids: &[
+                        "VUID-vkCmdCopyQueryPoolResults-queryCount-12254",
+                        "VUID-vkCmdCopyQueryPoolResults-queryCount-12255",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
         Ok(())
     }
 
@@ -699,16 +728,14 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Arc<Buffer>,
-        destination_offset: DeviceSize,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
         T: QueryResultElement,
     {
-        let per_query_len = query_pool.result_len(flags);
-        let stride = per_query_len * size_of::<T>() as DeviceSize;
-
         let fns = self.device().fns();
         unsafe {
             (fns.v1_0.cmd_copy_query_pool_results)(
@@ -716,8 +743,8 @@ impl RecordingCommandBuffer {
                 query_pool.handle(),
                 first_query,
                 query_count,
-                destination.handle(),
-                destination_offset,
+                dst_buffer.handle(),
+                dst_offset,
                 stride,
                 vk::QueryResultFlags::from(flags) | T::FLAG,
             )

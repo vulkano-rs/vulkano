@@ -9,6 +9,7 @@ use crate::{
     sync::{PipelineStage, PipelineStageAccessFlags},
     ValidationError,
 };
+use ash::vk::DeviceSize;
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
@@ -271,18 +272,21 @@ impl<L> AutoCommandBufferBuilder<L> {
         &self,
         query_pool: &QueryPool,
         queries: Range<u32>,
-        destination: &Subbuffer<[T]>,
+        dst: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<(), Box<ValidationError>>
     where
         T: QueryResultElement,
     {
+        let stride = query_pool.result_len(flags) * size_of::<T>() as DeviceSize;
+
         self.inner.validate_copy_query_pool_results::<T>(
             query_pool,
             queries.start,
             queries.end - queries.start,
-            destination.buffer(),
-            destination.offset(),
+            dst.buffer(),
+            dst.offset(),
+            stride,
             flags,
         )?;
 
@@ -308,6 +312,8 @@ impl<L> AutoCommandBufferBuilder<L> {
     where
         T: QueryResultElement,
     {
+        let stride = query_pool.result_len(flags) * size_of::<T>() as DeviceSize;
+
         self.add_command(
             "copy_query_pool_results",
             [(
@@ -328,6 +334,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                         queries.end - queries.start,
                         destination.buffer(),
                         destination.offset(),
+                        stride,
                         flags,
                     )
                 };
