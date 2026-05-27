@@ -11,9 +11,9 @@
 //! ```
 //! # use std::sync::Arc;
 //! use vulkano::{
-//!     buffer::{view::{BufferView, BufferViewCreateInfo}, Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+//!     buffer::{view::{BufferView, BufferViewCreateInfo}, Buffer, BufferCreateInfo, BufferUsage},
 //!     format::Format,
-//!     memory::allocator::AllocationCreateInfo,
+//!     memory::allocator::{AllocationCreateInfo, DeviceLayout},
 //! };
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
@@ -26,7 +26,7 @@
 //!         ..Default::default()
 //!     },
 //!     &AllocationCreateInfo::default(),
-//!     u32::LAYOUT.layout_for_len(128).unwrap(),
+//!     DeviceLayout::new_unsized::<[u32]>(128).unwrap(),
 //! )
 //! .unwrap();
 //!
@@ -528,9 +528,9 @@ impl BufferViewCreateInfo<'_> {
 mod tests {
     use super::{BufferView, BufferViewCreateInfo};
     use crate::{
-        buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage},
         format::Format,
-        memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
+        memory::allocator::{AllocationCreateInfo, DeviceLayout, StandardMemoryAllocator},
     };
     use std::sync::Arc;
 
@@ -547,7 +547,7 @@ mod tests {
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
+            DeviceLayout::new_unsized::<[[u8; 4]]>(128).unwrap(),
         )
         .unwrap();
 
@@ -574,7 +574,7 @@ mod tests {
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
+            DeviceLayout::new_unsized::<[[u8; 4]]>(128).unwrap(),
         )
         .unwrap();
         BufferView::new(
@@ -600,7 +600,7 @@ mod tests {
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            u32::LAYOUT.layout_for_len(128).unwrap(),
+            DeviceLayout::new_unsized::<[u32]>(128).unwrap(),
         )
         .unwrap();
         BufferView::new(
@@ -626,7 +626,7 @@ mod tests {
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            <[u8; 4]>::LAYOUT.layout_for_len(128).unwrap(),
+            DeviceLayout::new_unsized::<[[u8; 4]]>(128).unwrap(),
         )
         .unwrap();
 
@@ -654,7 +654,7 @@ mod tests {
                 ..Default::default()
             },
             &AllocationCreateInfo::default(),
-            <[f64; 4]>::LAYOUT.layout_for_len(128).unwrap(),
+            DeviceLayout::new_unsized::<[[f64; 4]]>(128).unwrap(),
         )
         .unwrap();
 
