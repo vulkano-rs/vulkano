@@ -50,7 +50,7 @@ use crate::{
     DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
 use ash::vk;
-use std::{mem::MaybeUninit, num::NonZero, ops::Range, ptr, sync::Arc};
+use std::{mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -62,7 +62,8 @@ pub struct BufferView {
 
     format: Format,
     format_features: FormatFeatures,
-    range: Range<DeviceSize>,
+    offset: DeviceSize,
+    range: Option<DeviceSize>,
 }
 
 impl BufferView {
@@ -384,7 +385,6 @@ impl BufferView {
                 .format_properties_unchecked(format)
         };
         let format_features = format_properties.buffer_features;
-        let size = range.unwrap_or(buffer.size());
 
         Arc::new(BufferView {
             handle,
@@ -392,7 +392,8 @@ impl BufferView {
             id: Self::next_id(),
             format,
             format_features,
-            range: offset..(offset + size),
+            offset,
+            range,
         })
     }
 
@@ -414,10 +415,16 @@ impl BufferView {
         self.format_features
     }
 
-    /// Returns the byte range of the wrapped buffer that this view exposes.
+    /// Returns the offset of the view in bytes.
     #[inline]
-    pub fn range(&self) -> Range<DeviceSize> {
-        self.range.clone()
+    pub fn offset(&self) -> DeviceSize {
+        self.offset
+    }
+
+    /// Returns the range of the view in bytes.
+    #[inline]
+    pub fn range(&self) -> Option<DeviceSize> {
+        self.range
     }
 }
 
