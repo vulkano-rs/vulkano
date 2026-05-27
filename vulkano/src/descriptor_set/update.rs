@@ -943,7 +943,6 @@ impl<'a> WriteDescriptorSet<'a> {
 
                     if !buffer_view
                         .buffer()
-                        .buffer()
                         .usage()
                         .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
                     {
@@ -997,7 +996,6 @@ impl<'a> WriteDescriptorSet<'a> {
 
                     // TODO: storage_texel_buffer_atomic
                     if !buffer_view
-                        .buffer()
                         .buffer()
                         .usage()
                         .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)

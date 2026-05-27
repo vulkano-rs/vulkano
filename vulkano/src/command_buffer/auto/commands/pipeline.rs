@@ -3680,14 +3680,16 @@ impl<L> AutoCommandBufferBuilder<L> {
                 DescriptorBindingResources::BufferView(elements) => {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(Some(buffer_view)) = element {
-                            let buffer = buffer_view.buffer();
+                            let buffer = Subbuffer::new(buffer_view.buffer().clone());
                             let (use_ref, memory_access) = use_iter(index as u32);
+                            let offset = buffer_view.offset();
+                            let size = buffer_view.range().unwrap_or(buffer.size() - offset);
 
                             used_resources.push((
                                 use_ref,
                                 Resource::Buffer {
-                                    buffer: buffer.clone(),
-                                    range: buffer_view.range().clone(),
+                                    buffer,
+                                    range: offset..(offset + size),
                                     memory_access,
                                 },
                             ));
