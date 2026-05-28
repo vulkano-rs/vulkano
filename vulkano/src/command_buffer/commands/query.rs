@@ -699,8 +699,7 @@ impl RecordingCommandBuffer {
         if query_count > 1 {
             if stride == 0 {
                 return Err(Box::new(ValidationError {
-                    context: "stride".into(),
-                    problem: "is zero".into(),
+                    problem: "`query_count` is greater than 1 but `stride` is zero".into(),
                     vuids: &["VUID-vkCmdCopyQueryPoolResults-queryCount-09438"],
                     ..Default::default()
                 }));
@@ -708,8 +707,9 @@ impl RecordingCommandBuffer {
 
             if !stride.is_multiple_of(std::mem::size_of::<T>() as DeviceSize) {
                 return Err(Box::new(ValidationError {
-                    context: "stride".into(),
-                    problem: "is not a multiple of the result type's size".into(),
+                    problem: "`query_count` is greater than 1 but `stride` is not a multiple of \
+                        the result type's size"
+                        .into(),
                     vuids: &[
                         "VUID-vkCmdCopyQueryPoolResults-queryCount-12254",
                         "VUID-vkCmdCopyQueryPoolResults-queryCount-12255",
