@@ -2517,11 +2517,14 @@ pub const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSi
 }
 
 mod array_vec {
-    use std::ops::{Deref, DerefMut};
+    use std::{
+        fmt,
+        ops::{Deref, DerefMut},
+    };
 
     /// Minimal implementation of an `ArrayVec`. Useful when a `Vec` is needed but there is a known
     /// limit on the number of elements, so that it can occupy real estate on the stack.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy)]
     pub(super) struct ArrayVec<T, const N: usize> {
         len: usize,
         data: [T; N],
@@ -2532,6 +2535,12 @@ mod array_vec {
             assert!(len <= N);
 
             ArrayVec { len, data }
+        }
+    }
+
+    impl<T: fmt::Debug, const N: usize> fmt::Debug for ArrayVec<T, N> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Debug::fmt(&**self, f)
         }
     }
 
