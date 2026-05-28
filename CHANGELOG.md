@@ -108,6 +108,7 @@ Changes to vulkano-shaders:
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
+- Implemented `BuddyAllocator::suballocations`.
 
 ### Bugs fixed
 
