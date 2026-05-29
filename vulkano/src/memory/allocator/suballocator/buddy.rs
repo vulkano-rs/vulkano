@@ -92,13 +92,17 @@ unsafe impl Suballocator for BuddyAllocator {
     ///
     /// # Panics
     ///
-    /// - Panics if `region.size` is not a power of two.
-    /// - Panics if `region.size` is not in the range \[16B,&nbsp;32GiB\].
+    /// - Panics if `region.offset()` is not a multiple of 16.
+    /// - Panics if `region.size()` is not a power of two.
+    /// - Panics if `region.size()` is not in the range \[16B,&nbsp;32GiB\].
     ///
     /// [region]: Suballocator#regions
     fn new(region: Region) -> Self {
         const EMPTY_FREE_LIST: Vec<NonNull<SuballocationTreeNode>> = Vec::new();
 
+        assert!(region
+            .offset()
+            .is_multiple_of(BuddyAllocator::MIN_NODE_SIZE));
         assert!(region.size().is_power_of_two());
         assert!(region.size() >= BuddyAllocator::MIN_NODE_SIZE);
 
