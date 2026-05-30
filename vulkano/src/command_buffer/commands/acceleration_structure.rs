@@ -17,7 +17,7 @@ use crate::{
 };
 use ash::vk::DeviceAddress;
 use smallvec::SmallVec;
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
 impl RecordingCommandBuffer {
     #[inline]
@@ -810,7 +810,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_device_address: NonZero<DeviceAddress>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
@@ -829,7 +829,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn try_build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_device_address: NonZero<DeviceAddress>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -853,7 +853,7 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_build_acceleration_structure_indirect(
         &self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_device_address: NonZero<DeviceAddress>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
@@ -1371,7 +1371,7 @@ impl RecordingCommandBuffer {
             }
         }
 
-        if !indirect_device_address.get().is_multiple_of(4) {
+        if !indirect_device_address.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer's device address is not a multiple of 4".into(),
@@ -1402,7 +1402,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect_unchecked(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_device_address: NonZero<DeviceAddress>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
@@ -1416,7 +1416,7 @@ impl RecordingCommandBuffer {
                 self.handle(),
                 1,
                 &info_vk,
-                &indirect_device_address.get(),
+                &indirect_device_address,
                 &stride,
                 &max_primitive_counts.as_ptr(),
             )
