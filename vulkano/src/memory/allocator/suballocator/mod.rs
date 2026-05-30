@@ -1022,6 +1022,34 @@ mod tests {
     }
 
     #[test]
+    fn buddy_allocator_respects_region_offset() {
+        const MAX_ORDER: usize = 31;
+        const REGION_OFFSET: DeviceSize = align_down(
+            DeviceLayout::MAX_SIZE - REGION_SIZE,
+            unwrap(DeviceAlignment::new(BuddyAllocator::MIN_NODE_SIZE)),
+        );
+        const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
+
+        let mut allocator = BuddyAllocator::new(Region::new(REGION_OFFSET, REGION_SIZE).unwrap());
+
+        for order in (0..=MAX_ORDER).rev().take(10) {
+            let size = BuddyAllocator::MIN_NODE_SIZE << order;
+            let node_count = 1 << (MAX_ORDER - order);
+
+            for index in 0..node_count {
+                let layout = DeviceLayout::from_size_alignment(size, 1).unwrap();
+                let allocation = allocator
+                    .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                    .unwrap();
+                assert_eq!(allocation.offset, REGION_OFFSET + index * size);
+                assert_eq!(allocation.size, size);
+            }
+
+            allocator.reset();
+        }
+    }
+
+    #[test]
     fn bump_allocator_respects_alignment() {
         const ALIGNMENT: DeviceSize = 16;
         const REGION_SIZE: DeviceSize = 10 * ALIGNMENT;
