@@ -213,11 +213,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
-        let indirect_buffer = indirect_buffer.buffer();
-
         self.inner.validate_build_acceleration_structure_indirect(
             info,
-            indirect_buffer.device_address(),
+            indirect_buffer.device_address()?,
             stride,
             max_primitive_counts,
         )?;
@@ -241,6 +239,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
 
         if !indirect_buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
@@ -274,7 +273,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 unsafe {
                     out.build_acceleration_structure_indirect_unchecked(
                         &info,
-                        indirect_buffer.buffer().device_address(),
+                        indirect_buffer.device_address().unwrap(),
                         stride,
                         &max_primitive_counts,
                     )

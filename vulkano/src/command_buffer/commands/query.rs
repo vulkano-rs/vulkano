@@ -644,9 +644,26 @@ impl RecordingCommandBuffer {
         assert_eq!(device, dst_buffer.device());
         assert_eq!(device, query_pool.device());
 
-        // VUID-vkCmdCopyQueryPoolResults-flags-00822
-        // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(dst_offset.is_multiple_of(size_of::<T>() as DeviceSize));
+        if dst_offset >= dst_buffer.size() {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is greater than or equal to `dst_buffer.size()`".into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-dstOffset-00819"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_offset.is_multiple_of(size_of::<T>() as DeviceSize) {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is not a multiple of the result type's size".into(),
+                vuids: &[
+                    "VUID-vkCmdCopyQueryPoolResults-flags-00822",
+                    "VUID-vkCmdCopyQueryPoolResults-flags-00823",
+                ],
+                ..Default::default()
+            }));
+        }
 
         if !first_query
             .checked_add(query_count)
@@ -666,7 +683,7 @@ impl RecordingCommandBuffer {
         let per_query_len = query_pool.result_len(flags);
         let required_len = per_query_len * query_count as DeviceSize;
 
-        if dst_buffer.size() < required_len {
+        if (dst_buffer.size() - dst_offset) / (size_of::<T>() as DeviceSize) < required_len {
             return Err(Box::new(ValidationError {
                 problem: "`dst_buffer` is smaller than the size required to write the results"
                     .into(),
@@ -699,15 +716,15 @@ impl RecordingCommandBuffer {
         if query_count > 1 {
             if stride == 0 {
                 return Err(Box::new(ValidationError {
-                    problem: "`query_count` is greater than 1 but `stride` is zero".into(),
+                    problem: "`query_count` is greater than 1, but `stride` is zero".into(),
                     vuids: &["VUID-vkCmdCopyQueryPoolResults-queryCount-09438"],
                     ..Default::default()
                 }));
             }
 
-            if !stride.is_multiple_of(std::mem::size_of::<T>() as DeviceSize) {
+            if !stride.is_multiple_of(size_of::<T>() as DeviceSize) {
                 return Err(Box::new(ValidationError {
-                    problem: "`query_count` is greater than 1 but `stride` is not a multiple of \
+                    problem: "`query_count` is greater than 1, but `stride` is not a multiple of \
                         the result type's size"
                         .into(),
                     vuids: &[
