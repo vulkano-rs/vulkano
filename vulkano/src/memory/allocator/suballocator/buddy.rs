@@ -71,7 +71,6 @@ use std::{
 /// [`BumpAllocator`]: super::BumpAllocator
 #[derive(Debug)]
 pub struct BuddyAllocator {
-    region: Region,
     // Total memory remaining in the region.
     free_size: DeviceSize,
     suballocations: SuballocationTree,
@@ -115,7 +114,7 @@ unsafe impl Suballocator for BuddyAllocator {
                 tag: NodeTag::Leaf,
                 prev_ptr: None,
                 next_ptr: None,
-                offset: 0,
+                compressed_offset: 0,
                 order: max_order as u8,
                 allocation_type: SuballocationType::Free,
             }),
@@ -128,6 +127,7 @@ unsafe impl Suballocator for BuddyAllocator {
         free_list[max_order].push(root_ptr);
 
         let suballocations = SuballocationTree {
+            region,
             root_ptr,
             len: 1,
             free_list,
@@ -135,7 +135,6 @@ unsafe impl Suballocator for BuddyAllocator {
         };
 
         BuddyAllocator {
-            region,
             free_size: region.size(),
             suballocations,
         }
@@ -166,7 +165,7 @@ unsafe impl Suballocator for BuddyAllocator {
         let mut alignment = layout.alignment();
 
         if buffer_image_granularity != DeviceAlignment::MIN {
-            debug_assert!(is_aligned(self.region.offset(), buffer_image_granularity));
+            debug_assert!(is_aligned(self.region().offset(), buffer_image_granularity));
 
             if allocation_type == AllocationType::Unknown
                 || allocation_type == AllocationType::NonLinear
@@ -236,13 +235,8 @@ unsafe impl Suballocator for BuddyAllocator {
     }
 
     fn reset(&mut self) {
-        // The division can't discard any bits because the region size is a power of two. The cast
-        // can't discard any bits because the region size is at most `1 << 35`, and
-        // `log((1 << 35) / BuddyAllocator::MIN_NODE_SIZE)` is 31.
-        let max_order = (self.region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as u8;
-
-        self.suballocations.reset(max_order);
-        self.free_size = self.region.size();
+        self.suballocations.reset();
+        self.free_size = self.region().size();
     }
 
     /// Returns the total amount of free space left in the [region] that is available to the
@@ -261,7 +255,15 @@ unsafe impl Suballocator for BuddyAllocator {
     }
 }
 
+impl BuddyAllocator {
+    #[inline]
+    fn region(&self) -> &Region {
+        &self.suballocations.region
+    }
+}
+
 struct SuballocationTree {
+    region: Region,
     root_ptr: NonNull<SuballocationTreeNode>,
     len: usize,
     // Every order has its own free-list. Each free-list is sorted by offset because we want to
@@ -289,9 +291,9 @@ struct Leaf {
     tag: NodeTag,
     allocation_type: SuballocationType,
     order: u8,
-    /// The offset divided by `BuddyAllocator::MIN_NODE_SIZE`. This ensures that the offset fits in
-    /// a `u32`, otherwise `Self` would be wider by a `DeviceSize`.
-    offset: u32,
+    /// The offset minus `region.offset()` all divided by `BuddyAllocator::MIN_NODE_SIZE`. This
+    /// ensures that the offset fits in a `u32`, otherwise `Self` would be wider by a `DeviceSize`.
+    compressed_offset: u32,
     /// The previous leaf node.
     prev_ptr: Option<NonNull<SuballocationTreeNode>>,
     /// The next leaf node.
@@ -341,7 +343,7 @@ impl SuballocationTree {
                 // SAFETY: The free-lists only contain leaf nodes.
                 let node_ty = unsafe { node.ty.leaf_unchecked_mut() };
 
-                let offset = DeviceSize::from(node_ty.offset) * BuddyAllocator::MIN_NODE_SIZE;
+                let offset = node_ty.offset(self.region.offset());
 
                 if is_aligned(offset, alignment) {
                     free_list.remove(index);
@@ -353,7 +355,7 @@ impl SuballocationTree {
 
         let prev_ptr = node_ty.prev_ptr;
         let mut next_ptr = node_ty.next_ptr;
-        let node_offset = node_ty.offset;
+        let compressed_offset = node_ty.compressed_offset;
 
         // Go in the opposite direction, splitting nodes from higher orders. The lowest order
         // doesn't need any splitting.
@@ -378,7 +380,7 @@ impl SuballocationTree {
                     tag: NodeTag::Leaf,
                     prev_ptr,
                     next_ptr: Some(right_ptr),
-                    offset: node_offset,
+                    compressed_offset,
                     // This can't discard any bits because `order` is confined to the range
                     // [0, BuddyAllocator::MAX_ORDERS).
                     order: order as u8,
@@ -393,12 +395,13 @@ impl SuballocationTree {
                     tag: NodeTag::Leaf,
                     prev_ptr: Some(left_ptr),
                     next_ptr,
-                    // The addition can't overflow because suballocations are bounded by the region
-                    // whose size can itself not exceed `1 << 35`. The division can't discard any
-                    // bits because offsets and sizes are aligned to
-                    // `BuddyAllocator::MIN_NODE_SIZE`. The cast can't discard any bits because
-                    // `(1 << 35) / BuddyAllocator::MIN_NODE_SIZE` is `1 << 31`.
-                    offset: ((offset + size) / BuddyAllocator::MIN_NODE_SIZE) as u32,
+                    // The division can't discard any bits because sizes are aligned to
+                    // `BuddyAllocator::MIN_NODE_SIZE`. The cast can't discard any bits because the
+                    // region size is at most `1 << 35`, and
+                    // `(1 << 35) / BuddyAllocator::MIN_NODE_SIZE` is `1 << 31`. The addition can't
+                    // overflow because suballocations are bounded by the region.
+                    compressed_offset: compressed_offset
+                        + (size / BuddyAllocator::MIN_NODE_SIZE) as u32,
                     // This can't discard any bits because `order` is confined to the range
                     // [0, BuddyAllocator::MAX_ORDERS).
                     order: order as u8,
@@ -425,7 +428,7 @@ impl SuballocationTree {
             node_ptr = left_ptr;
             next_ptr = Some(right_ptr);
 
-            unsafe { add_to_free_list(free_list, right_ptr, offset) };
+            unsafe { add_to_free_list(free_list, right_ptr, compressed_offset) };
 
             // Repeat splitting for the left child if required in the next loop turn.
         }
@@ -449,7 +452,7 @@ impl SuballocationTree {
         let node_ty = unsafe { node.ty.leaf_unchecked_mut() };
 
         let mut parent_ptr = node.parent_ptr;
-        let mut offset = DeviceSize::from(node_ty.offset) * BuddyAllocator::MIN_NODE_SIZE;
+        let mut compressed_offset = node_ty.compressed_offset;
         let mut node_order = usize::from(node_ty.order);
         debug_assert_ne!(node_ty.allocation_type, SuballocationType::Free);
         node_ty.allocation_type = SuballocationType::Free;
@@ -495,18 +498,20 @@ impl SuballocationTree {
             // If the buddy isn't a free node, we can't coalesce, so we add the node to the
             // free-list.
             if !buddy.ty.is_free() {
-                unsafe { add_to_free_list(free_list, node_ptr, offset) };
+                unsafe { add_to_free_list(free_list, node_ptr, compressed_offset) };
                 return min_order;
             };
 
             // SAFETY: We checked that the buddy is a leaf node above.
             let buddy_ty = unsafe { buddy.ty.leaf_unchecked() };
 
-            let buddy_offset = DeviceSize::from(buddy_ty.offset) * BuddyAllocator::MIN_NODE_SIZE;
+            let buddy_compressed_offset = buddy_ty.compressed_offset;
 
-            let Ok(index) = free_list.binary_search_by_key(&buddy_offset, |&ptr| {
+            let Ok(index) = free_list.binary_search_by_key(&buddy_compressed_offset, |&ptr| {
+                let node = unsafe { ptr.as_ref() };
+
                 // SAFETY: The free-lists only contain leaf nodes.
-                unsafe { offset_unchecked(ptr) }
+                unsafe { node.ty.leaf_unchecked() }.compressed_offset
             }) else {
                 // SAFETY: We checked that the buddy is a free node above, which means it must be
                 // in the free-list.
@@ -527,17 +532,13 @@ impl SuballocationTree {
                 (buddy_ty.prev_ptr, node_ty.next_ptr)
             };
 
-            offset = cmp::min(offset, buddy_offset);
+            compressed_offset = cmp::min(compressed_offset, buddy_compressed_offset);
 
             parent.ty = NodeType::new_leaf(Leaf {
                 tag: NodeTag::Leaf,
                 prev_ptr,
                 next_ptr,
-                // The division can't discard any bits because offsets and sizes are aligned to
-                // `BuddyAllocator::MIN_NODE_SIZE`. The cast can't discard any bits because the
-                // region size is at most `1 << 35`, and
-                // `(1 << 35) / BuddyAllocator::MIN_NODE_SIZE` is `1 << 31`.
-                offset: (offset / BuddyAllocator::MIN_NODE_SIZE) as u32,
+                compressed_offset,
                 // The addition can't overflow and the cast can't discard any bits because `order`
                 // is confined to the range [0, BuddyAllocator::MAX_ORDERS - 1).
                 order: (order + 1) as u8,
@@ -554,14 +555,19 @@ impl SuballocationTree {
         }
 
         let free_list = unsafe { self.free_list.get_unchecked_mut(node_order) };
-        unsafe { add_to_free_list(free_list, node_ptr, offset) };
+        unsafe { add_to_free_list(free_list, node_ptr, compressed_offset) };
 
         min_order
     }
 
-    fn reset(&mut self, max_order: u8) {
+    fn reset(&mut self) {
         self.free_list.iter_mut().for_each(Vec::clear);
         unsafe { self.node_allocator.reset() };
+
+        // The division can't discard any bits because the region size is a power of two. The cast
+        // can't discard any bits because the region size is at most `1 << 35`, and
+        // `log((1 << 35) / BuddyAllocator::MIN_NODE_SIZE)` is 31.
+        let max_order = (self.region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as u8;
 
         let root_ptr = self.node_allocator.allocate();
         let root = SuballocationTreeNode {
@@ -570,7 +576,7 @@ impl SuballocationTree {
                 tag: NodeTag::Leaf,
                 prev_ptr: None,
                 next_ptr: None,
-                offset: 0,
+                compressed_offset: 0,
                 order: max_order,
                 allocation_type: SuballocationType::Free,
             }),
@@ -595,6 +601,7 @@ impl SuballocationTree {
         }
 
         Suballocations {
+            region_offset: self.region.offset(),
             left_ptr: Some(left_ptr),
             right_ptr: Some(right_ptr),
             len: self.len,
@@ -607,25 +614,16 @@ impl SuballocationTree {
 unsafe fn add_to_free_list(
     free_list: &mut Vec<NonNull<SuballocationTreeNode>>,
     node_ptr: NonNull<SuballocationTreeNode>,
-    offset: DeviceSize,
+    compressed_offset: u32,
 ) {
-    let (Ok(index) | Err(index)) = free_list.binary_search_by_key(&offset, |&ptr| {
-        // SAFETY: The caller must ensure that `free_list` is a free-list. The free-lists only
-        // contain leaf nodes.
-        unsafe { offset_unchecked(ptr) }
+    let (Ok(index) | Err(index)) = free_list.binary_search_by_key(&compressed_offset, |&ptr| {
+        // SAFETY: The caller must ensure that `free_list` is a free-list.
+        let node = unsafe { ptr.as_ref() };
+
+        // SAFETY: The free-lists only contain leaf nodes.
+        unsafe { node.ty.leaf_unchecked() }.compressed_offset
     });
     free_list.insert(index, node_ptr);
-}
-
-#[inline]
-unsafe fn offset_unchecked(node_ptr: NonNull<SuballocationTreeNode>) -> DeviceSize {
-    // SAFETY: Enforced by the caller.
-    let node = unsafe { node_ptr.as_ref() };
-
-    // SAFETY: Enforced by the caller.
-    let offset = unsafe { node.ty.leaf_unchecked() }.offset;
-
-    DeviceSize::from(offset) * BuddyAllocator::MIN_NODE_SIZE
 }
 
 impl Debug for SuballocationTree {
@@ -656,6 +654,7 @@ impl Debug for SuballocationTree {
         }
 
         f.debug_struct("SuballocationTree")
+            .field("region", &self.region)
             .field("nodes", &Nodes(self))
             .field("len", &self.len)
             .field("free_list", &self.free_list)
@@ -668,13 +667,12 @@ impl Debug for SuballocationTreeNode {
         match self.ty.tag() {
             NodeTag::Leaf => {
                 let ty = unsafe { self.ty.leaf_unchecked() };
-                let offset = DeviceSize::from(ty.offset) * BuddyAllocator::MIN_NODE_SIZE;
 
                 f.debug_struct("Leaf")
                     .field("parent_ptr", &self.parent_ptr)
                     .field("allocation_type", &ty.allocation_type)
                     .field("order", &ty.order)
-                    .field("offset", &offset)
+                    .field("compressed_offset", &ty.compressed_offset)
                     .field("prev_ptr", &ty.prev_ptr)
                     .field("next_ptr", &ty.next_ptr)
                     .finish()
@@ -777,8 +775,16 @@ impl NodeType {
     }
 }
 
+impl Leaf {
+    #[inline]
+    fn offset(&self, region_offset: DeviceSize) -> DeviceSize {
+        region_offset + DeviceSize::from(self.compressed_offset) * BuddyAllocator::MIN_NODE_SIZE
+    }
+}
+
 #[derive(Clone)]
 pub struct Suballocations<'a> {
+    region_offset: DeviceSize,
     left_ptr: Option<NonNull<SuballocationTreeNode>>,
     right_ptr: Option<NonNull<SuballocationTreeNode>>,
     len: usize,
@@ -805,7 +811,7 @@ impl Iterator for Suballocations<'_> {
                 self.len -= 1;
 
                 Some(SuballocationNode {
-                    offset: DeviceSize::from(node_ty.offset) * BuddyAllocator::MIN_NODE_SIZE,
+                    offset: node_ty.offset(self.region_offset),
                     size: BuddyAllocator::MIN_NODE_SIZE << node_ty.order,
                     allocation_type: node_ty.allocation_type,
                 })
@@ -848,7 +854,7 @@ impl DoubleEndedIterator for Suballocations<'_> {
                 self.len -= 1;
 
                 Some(SuballocationNode {
-                    offset: DeviceSize::from(node_ty.offset) * BuddyAllocator::MIN_NODE_SIZE,
+                    offset: node_ty.offset(self.region_offset),
                     size: BuddyAllocator::MIN_NODE_SIZE << node_ty.order,
                     allocation_type: node_ty.allocation_type,
                 })
