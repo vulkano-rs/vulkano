@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferUsage},
     command_buffer::sys::RecordingCommandBuffer,
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
@@ -7,6 +7,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use ash::vk;
+use std::sync::Arc;
 
 impl RecordingCommandBuffer {
     #[inline]
@@ -551,18 +552,22 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Subbuffer<[T]>,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
         T: QueryResultElement,
     {
         unsafe {
-            self.try_copy_query_pool_results(
+            self.try_copy_query_pool_results::<T>(
                 query_pool,
                 first_query,
                 query_count,
-                destination,
+                dst_buffer,
+                dst_offset,
+                stride,
                 flags,
             )
         }
@@ -575,26 +580,32 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Subbuffer<[T]>,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, Box<ValidationError>>
     where
         T: QueryResultElement,
     {
-        self.validate_copy_query_pool_results(
+        self.validate_copy_query_pool_results::<T>(
             query_pool,
             first_query,
             query_count,
-            destination,
+            dst_buffer,
+            dst_offset,
+            stride,
             flags,
         )?;
 
         Ok(unsafe {
-            self.copy_query_pool_results_unchecked(
+            self.copy_query_pool_results_unchecked::<T>(
                 query_pool,
                 first_query,
                 query_count,
-                destination,
+                dst_buffer,
+                dst_offset,
+                stride,
                 flags,
             )
         })
@@ -605,7 +616,9 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Subbuffer<[T]>,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<(), Box<ValidationError>>
     where
@@ -628,14 +641,29 @@ impl RecordingCommandBuffer {
         let device = self.device();
 
         // VUID-vkCmdCopyQueryPoolResults-commonparent
-        assert_eq!(device, destination.buffer().device());
+        assert_eq!(device, dst_buffer.device());
         assert_eq!(device, query_pool.device());
 
-        // VUID-vkCmdCopyQueryPoolResults-flags-00822
-        // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination
-            .offset()
-            .is_multiple_of(size_of::<T>() as DeviceSize));
+        if dst_offset >= dst_buffer.size() {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is greater than or equal to `dst_buffer.size()`".into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-dstOffset-00819"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_offset.is_multiple_of(size_of::<T>() as DeviceSize) {
+            return Err(Box::new(ValidationError {
+                context: "dst_offset".into(),
+                problem: "is not a multiple of the result type's size".into(),
+                vuids: &[
+                    "VUID-vkCmdCopyQueryPoolResults-flags-00822",
+                    "VUID-vkCmdCopyQueryPoolResults-flags-00823",
+                ],
+                ..Default::default()
+            }));
+        }
 
         if !first_query
             .checked_add(query_count)
@@ -655,22 +683,18 @@ impl RecordingCommandBuffer {
         let per_query_len = query_pool.result_len(flags);
         let required_len = per_query_len * query_count as DeviceSize;
 
-        if destination.len() < required_len {
+        if (dst_buffer.size() - dst_offset) / (size_of::<T>() as DeviceSize) < required_len {
             return Err(Box::new(ValidationError {
-                problem: "`destination` is smaller than the size required to write the results"
+                problem: "`dst_buffer` is smaller than the size required to write the results"
                     .into(),
                 vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824"],
                 ..Default::default()
             }));
         }
 
-        if !destination
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(Box::new(ValidationError {
-                context: "destination.usage()".into(),
+                context: "dst_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
                 vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825"],
                 ..Default::default()
@@ -689,6 +713,29 @@ impl RecordingCommandBuffer {
             }));
         }
 
+        if query_count > 1 {
+            if stride == 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`query_count` is greater than 1, but `stride` is zero".into(),
+                    vuids: &["VUID-vkCmdCopyQueryPoolResults-queryCount-09438"],
+                    ..Default::default()
+                }));
+            }
+
+            if !stride.is_multiple_of(size_of::<T>() as DeviceSize) {
+                return Err(Box::new(ValidationError {
+                    problem: "`query_count` is greater than 1, but `stride` is not a multiple of \
+                        the result type's size"
+                        .into(),
+                    vuids: &[
+                        "VUID-vkCmdCopyQueryPoolResults-queryCount-12254",
+                        "VUID-vkCmdCopyQueryPoolResults-queryCount-12255",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
         Ok(())
     }
 
@@ -698,15 +745,14 @@ impl RecordingCommandBuffer {
         query_pool: &QueryPool,
         first_query: u32,
         query_count: u32,
-        destination: &Subbuffer<[T]>,
+        dst_buffer: &Arc<Buffer>,
+        dst_offset: DeviceSize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
         T: QueryResultElement,
     {
-        let per_query_len = query_pool.result_len(flags);
-        let stride = per_query_len * size_of::<T>() as DeviceSize;
-
         let fns = self.device().fns();
         unsafe {
             (fns.v1_0.cmd_copy_query_pool_results)(
@@ -714,8 +760,8 @@ impl RecordingCommandBuffer {
                 query_pool.handle(),
                 first_query,
                 query_count,
-                destination.buffer().handle(),
-                destination.offset(),
+                dst_buffer.handle(),
+                dst_offset,
                 stride,
                 vk::QueryResultFlags::from(flags) | T::FLAG,
             )

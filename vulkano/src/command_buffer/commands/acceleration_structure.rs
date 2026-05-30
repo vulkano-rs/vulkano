@@ -9,12 +9,13 @@ use crate::{
         CopyAccelerationStructureToMemoryInfo, CopyMemoryToAccelerationStructureInfo,
         TransformMatrix,
     },
-    buffer::{BufferUsage, Subbuffer},
+    buffer::BufferUsage,
     command_buffer::sys::RecordingCommandBuffer,
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
+use ash::vk::DeviceAddress;
 use smallvec::SmallVec;
 use std::sync::Arc;
 
@@ -809,14 +810,14 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
         unsafe {
             self.try_build_acceleration_structure_indirect(
                 info,
-                indirect_buffer,
+                indirect_device_address,
                 stride,
                 max_primitive_counts,
             )
@@ -828,13 +829,13 @@ impl RecordingCommandBuffer {
     pub unsafe fn try_build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure_indirect(
             info,
-            indirect_buffer,
+            indirect_device_address,
             stride,
             max_primitive_counts,
         )?;
@@ -842,7 +843,7 @@ impl RecordingCommandBuffer {
         Ok(unsafe {
             self.build_acceleration_structure_indirect_unchecked(
                 info,
-                indirect_buffer,
+                indirect_device_address,
                 stride,
                 max_primitive_counts,
             )
@@ -852,7 +853,7 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_build_acceleration_structure_indirect(
         &self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
@@ -1370,34 +1371,7 @@ impl RecordingCommandBuffer {
             }
         }
 
-        if geometries.len() as DeviceSize * stride as DeviceSize > indirect_buffer.size() {
-            return Err(Box::new(ValidationError {
-                problem: "`info.geometries.len()` * `stride` is greater than the size of \
-                    `indirect_buffer`".into(),
-                vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03646"],
-                ..Default::default()
-            }));
-        }
-
-        if !indirect_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
-            return Err(Box::new(ValidationError {
-                context: "indirect_buffer".into(),
-                problem: "the buffer was not created with the `BufferUsage::INDIRECT_BUFFER` usage".into(),
-                vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03647"],
-                ..Default::default()
-            }));
-        }
-
-        if !indirect_buffer
-            .device_address()
-            .unwrap()
-            .get()
-            .is_multiple_of(4)
-        {
+        if !indirect_device_address.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer's device address is not a multiple of 4".into(),
@@ -1428,7 +1402,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn build_acceleration_structure_indirect_unchecked(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[u8]>,
+        indirect_device_address: DeviceAddress,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
@@ -1442,7 +1416,7 @@ impl RecordingCommandBuffer {
                 self.handle(),
                 1,
                 &info_vk,
-                &indirect_buffer.device_address().unwrap().get(),
+                &indirect_device_address,
                 &stride,
                 &max_primitive_counts.as_ptr(),
             )
