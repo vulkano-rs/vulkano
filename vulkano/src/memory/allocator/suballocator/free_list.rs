@@ -74,28 +74,16 @@ unsafe impl Suballocator for FreeListAllocator {
     ///
     /// [region]: Suballocator#regions
     fn new(region: Region) -> Self {
-        let node_allocator = slabbin::SlabAllocator::<SuballocationListNode>::new(32);
-        let root_ptr = node_allocator.allocate();
-        let root = SuballocationListNode {
-            prev_ptr: None,
-            next_ptr: None,
-            offset: region.offset(),
-            size: region.size(),
-            allocation_type: SuballocationType::Free,
-        };
-        unsafe { root_ptr.write(root) };
-
-        let mut free_list = Vec::with_capacity(32);
-        free_list.push(root_ptr);
-
-        let suballocations = SuballocationList {
+        let mut suballocations = SuballocationList {
             region,
-            head_ptr: root_ptr,
-            tail_ptr: root_ptr,
-            len: 1,
-            free_list,
-            node_allocator,
+            head_ptr: NonNull::dangling(),
+            tail_ptr: NonNull::dangling(),
+            len: 0,
+            free_list: Vec::with_capacity(32),
+            node_allocator: slabbin::SlabAllocator::new(32),
         };
+
+        unsafe { suballocations.init() };
 
         FreeListAllocator {
             free_size: region.size(),
@@ -131,8 +119,8 @@ unsafe impl Suballocator for FreeListAllocator {
                 // suballocations with the same size, we get the first one of them, that is, the
                 // one with the lowest offset.
                 let dummy_node = SuballocationListNode {
-                    prev_ptr: None,
-                    next_ptr: None,
+                    prev_ptr: NonNull::dangling(),
+                    next_ptr: NonNull::dangling(),
                     offset: 0,
                     size,
                     allocation_type: SuballocationType::Unknown,
@@ -165,19 +153,17 @@ unsafe impl Suballocator for FreeListAllocator {
                     if buffer_image_granularity != DeviceAlignment::MIN {
                         debug_assert!(is_aligned(self.region().offset(), buffer_image_granularity));
 
-                        if let Some(prev_ptr) = node.prev_ptr {
-                            let prev = unsafe { prev_ptr.as_ref() };
+                        let prev = unsafe { node.prev_ptr.as_ref() };
 
-                            if are_blocks_on_same_page(
-                                prev.offset,
-                                prev.size,
-                                offset,
-                                buffer_image_granularity,
-                            ) && has_granularity_conflict(prev.allocation_type, allocation_type)
-                            {
-                                // This is overflow-safe for the same reason as above.
-                                offset = align_up(offset, buffer_image_granularity);
-                            }
+                        if are_blocks_on_same_page(
+                            prev.offset,
+                            prev.size,
+                            offset,
+                            buffer_image_granularity,
+                        ) && has_granularity_conflict(prev.allocation_type, allocation_type)
+                        {
+                            // This is overflow-safe for the same reason as above.
+                            offset = align_up(offset, buffer_image_granularity);
                         }
                     }
 
@@ -294,14 +280,52 @@ unsafe impl Sync for SuballocationList {}
 
 #[derive(Clone, Copy, Debug)]
 struct SuballocationListNode {
-    prev_ptr: Option<NonNull<Self>>,
-    next_ptr: Option<NonNull<Self>>,
+    prev_ptr: NonNull<Self>,
+    next_ptr: NonNull<Self>,
     offset: DeviceSize,
     size: DeviceSize,
     allocation_type: SuballocationType,
 }
 
 impl SuballocationList {
+    unsafe fn init(&mut self) {
+        let head_ptr = self.node_allocator.allocate();
+        let root_ptr = self.node_allocator.allocate();
+        let tail_ptr = self.node_allocator.allocate();
+
+        let head = SuballocationListNode {
+            prev_ptr: NonNull::dangling(),
+            next_ptr: root_ptr,
+            offset: self.region.offset(),
+            size: 0,
+            allocation_type: SuballocationType::Unknown,
+        };
+        unsafe { head_ptr.write(head) };
+
+        let root = SuballocationListNode {
+            prev_ptr: head_ptr,
+            next_ptr: tail_ptr,
+            offset: self.region.offset(),
+            size: self.region.size(),
+            allocation_type: SuballocationType::Free,
+        };
+        unsafe { root_ptr.write(root) };
+
+        let tail = SuballocationListNode {
+            prev_ptr: root_ptr,
+            next_ptr: NonNull::dangling(),
+            offset: self.region.offset() + self.region.size(),
+            size: 0,
+            allocation_type: SuballocationType::Unknown,
+        };
+        unsafe { tail_ptr.write(tail) };
+
+        self.head_ptr = head_ptr;
+        self.tail_ptr = tail_ptr;
+        self.len = 1;
+        self.free_list.push(root_ptr);
+    }
+
     /// Fits a suballocation inside the target one, splitting the target at the ends if required.
     ///
     /// # Safety
@@ -332,28 +356,22 @@ impl SuballocationList {
             let padding_ptr = self.node_allocator.allocate();
             let padding = SuballocationListNode {
                 prev_ptr: node.prev_ptr,
-                next_ptr: Some(node_ptr),
+                next_ptr: node_ptr,
                 offset: node.offset,
                 size: padding_front,
                 allocation_type: SuballocationType::Free,
             };
             unsafe { padding_ptr.write(padding) };
 
-            if let Some(mut prev_ptr) = padding.prev_ptr {
-                let prev = unsafe { prev_ptr.as_mut() };
-                prev.next_ptr = Some(padding_ptr);
-            }
+            let prev = unsafe { node.prev_ptr.as_mut() };
+            prev.next_ptr = padding_ptr;
 
-            node.prev_ptr = Some(padding_ptr);
+            node.prev_ptr = padding_ptr;
             node.offset = offset;
             // The caller must uphold that the given region is contained within that of `node`, and
             // it follows that if there is padding, the size of the node must be larger than that
             // of the padding, so this can't overflow.
             node.size -= padding.size;
-
-            if node_ptr == self.head_ptr {
-                self.head_ptr = padding_ptr;
-            }
 
             self.len += 1;
 
@@ -365,7 +383,7 @@ impl SuballocationList {
         if padding_back > 0 {
             let padding_ptr = self.node_allocator.allocate();
             let padding = SuballocationListNode {
-                prev_ptr: Some(node_ptr),
+                prev_ptr: node_ptr,
                 next_ptr: node.next_ptr,
                 offset: offset + size,
                 size: padding_back,
@@ -373,18 +391,12 @@ impl SuballocationList {
             };
             unsafe { padding_ptr.write(padding) };
 
-            if let Some(mut next_ptr) = padding.next_ptr {
-                let next = unsafe { next_ptr.as_mut() };
-                next.prev_ptr = Some(padding_ptr);
-            }
+            let next = unsafe { node.next_ptr.as_mut() };
+            next.prev_ptr = padding_ptr;
 
-            node.next_ptr = Some(padding_ptr);
+            node.next_ptr = padding_ptr;
             // This is overflow-safe for the same reason as above.
             node.size -= padding.size;
-
-            if node_ptr == self.tail_ptr {
-                self.tail_ptr = padding_ptr;
-            }
 
             self.len += 1;
 
@@ -422,67 +434,55 @@ impl SuballocationList {
         debug_assert_eq!(node.allocation_type, SuballocationType::Free);
         debug_assert!(!self.free_list.contains(&node_ptr));
 
-        if let Some(prev_ptr) = node.prev_ptr {
-            let prev = unsafe { prev_ptr.as_ref() };
+        let prev_ptr = node.prev_ptr;
+        let prev = unsafe { prev_ptr.as_ref() };
 
-            if prev.allocation_type == SuballocationType::Free {
-                // SAFETY: We checked that the suballocation is free, which means that it must be
-                // in the free-list.
-                unsafe { self.remove_from_free_list(prev_ptr) };
+        if prev.allocation_type == SuballocationType::Free {
+            // SAFETY: We checked that the suballocation is free, which means that it must be
+            // in the free-list.
+            unsafe { self.remove_from_free_list(prev_ptr) };
 
-                node.prev_ptr = prev.prev_ptr;
-                node.offset = prev.offset;
-                // The sizes of suballocations are constrained by that of the parent allocation, so
-                // they can't possibly overflow when added up.
-                node.size += prev.size;
+            node.prev_ptr = prev.prev_ptr;
+            node.offset = prev.offset;
+            // The sizes of suballocations are constrained by that of the parent allocation, so
+            // they can't possibly overflow when added up.
+            node.size += prev.size;
 
-                if let Some(mut prev_ptr) = prev.prev_ptr {
-                    let prev = unsafe { prev_ptr.as_mut() };
-                    prev.next_ptr = Some(node_ptr);
-                }
+            let mut prev_prev_ptr = prev.prev_ptr;
+            let prev_prev = unsafe { prev_prev_ptr.as_mut() };
+            prev_prev.next_ptr = node_ptr;
 
-                if prev_ptr == self.head_ptr {
-                    self.head_ptr = node_ptr;
-                }
+            self.len -= 1;
 
-                self.len -= 1;
-
-                // SAFETY:
-                // - The suballocation is free.
-                // - The suballocation was removed from the free-list.
-                // - The next suballocation and possibly a previous suballocation have been updated
-                //   such that they no longer reference the suballocation.
-                // - The head no longer points to the suballocation if it used to.
-                // All of these conditions combined guarantee that `prev_ptr` cannot be used again.
-                unsafe { self.node_allocator.deallocate(prev_ptr) };
-            }
+            // SAFETY:
+            // - The suballocation is free.
+            // - The suballocation was removed from the free-list.
+            // - The next suballocation and possibly a previous suballocation have been updated such
+            //   that they no longer reference the suballocation.
+            // - The head no longer points to the suballocation if it used to.
+            // All of these conditions combined guarantee that `prev_ptr` cannot be used again.
+            unsafe { self.node_allocator.deallocate(prev_ptr) };
         }
 
-        if let Some(next_ptr) = node.next_ptr {
-            let next = unsafe { next_ptr.as_ref() };
+        let next_ptr = node.next_ptr;
+        let next = unsafe { next_ptr.as_ref() };
 
-            if next.allocation_type == SuballocationType::Free {
-                // SAFETY: Same as above.
-                unsafe { self.remove_from_free_list(next_ptr) };
+        if next.allocation_type == SuballocationType::Free {
+            // SAFETY: Same as above.
+            unsafe { self.remove_from_free_list(next_ptr) };
 
-                node.next_ptr = next.next_ptr;
-                // This is overflow-safe for the same reason as above.
-                node.size += next.size;
+            node.next_ptr = next.next_ptr;
+            // This is overflow-safe for the same reason as above.
+            node.size += next.size;
 
-                if let Some(mut next_ptr) = next.next_ptr {
-                    let next = unsafe { next_ptr.as_mut() };
-                    next.prev_ptr = Some(node_ptr);
-                }
+            let mut next_next_ptr = next.next_ptr;
+            let next_next = unsafe { next_next_ptr.as_mut() };
+            next_next.prev_ptr = node_ptr;
 
-                if next_ptr == self.tail_ptr {
-                    self.tail_ptr = node_ptr;
-                }
+            self.len -= 1;
 
-                self.len -= 1;
-
-                // SAFETY: Same as above.
-                unsafe { self.node_allocator.deallocate(next_ptr) };
-            }
+            // SAFETY: Same as above.
+            unsafe { self.node_allocator.deallocate(next_ptr) };
         }
     }
 
@@ -512,28 +512,17 @@ impl SuballocationList {
     fn reset(&mut self) {
         self.free_list.clear();
         unsafe { self.node_allocator.reset() };
-
-        let root_ptr = self.node_allocator.allocate();
-        let root = SuballocationListNode {
-            prev_ptr: None,
-            next_ptr: None,
-            offset: self.region.offset(),
-            size: self.region.size(),
-            allocation_type: SuballocationType::Free,
-        };
-        unsafe { root_ptr.write(root) };
-
-        self.head_ptr = root_ptr;
-        self.tail_ptr = root_ptr;
-        self.len = 1;
-        self.free_list.push(root_ptr);
+        unsafe { self.init() };
     }
 
     #[inline]
     fn iter(&self) -> Suballocations<'_> {
+        let head_ptr = unsafe { self.head_ptr.as_ref() }.next_ptr;
+        let tail_ptr = unsafe { self.tail_ptr.as_ref() }.prev_ptr;
+
         Suballocations {
-            head_ptr: Some(self.head_ptr),
-            tail_ptr: Some(self.tail_ptr),
+            head_ptr,
+            tail_ptr,
             len: self.len,
             marker: PhantomData,
         }
@@ -570,8 +559,8 @@ impl Ord for SuballocationListNode {
 
 #[derive(Clone)]
 pub struct Suballocations<'a> {
-    head_ptr: Option<NonNull<SuballocationListNode>>,
-    tail_ptr: Option<NonNull<SuballocationListNode>>,
+    head_ptr: NonNull<SuballocationListNode>,
+    tail_ptr: NonNull<SuballocationListNode>,
     len: usize,
     marker: PhantomData<&'a SuballocationList>,
 }
@@ -585,19 +574,15 @@ impl Iterator for Suballocations<'_> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len != 0 {
-            if let Some(head_ptr) = self.head_ptr {
-                let head = unsafe { head_ptr.as_ref() };
-                self.head_ptr = head.next_ptr;
-                self.len -= 1;
+            let head = unsafe { self.head_ptr.as_ref() };
+            self.head_ptr = head.next_ptr;
+            self.len -= 1;
 
-                Some(SuballocationNode {
-                    offset: head.offset,
-                    size: head.size,
-                    allocation_type: head.allocation_type,
-                })
-            } else {
-                None
-            }
+            Some(SuballocationNode {
+                offset: head.offset,
+                size: head.size,
+                allocation_type: head.allocation_type,
+            })
         } else {
             None
         }
@@ -618,19 +603,15 @@ impl DoubleEndedIterator for Suballocations<'_> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len != 0 {
-            if let Some(tail_ptr) = self.tail_ptr {
-                let tail = unsafe { tail_ptr.as_ref() };
-                self.tail_ptr = tail.prev_ptr;
-                self.len -= 1;
+            let tail = unsafe { self.tail_ptr.as_ref() };
+            self.tail_ptr = tail.prev_ptr;
+            self.len -= 1;
 
-                Some(SuballocationNode {
-                    offset: tail.offset,
-                    size: tail.size,
-                    allocation_type: tail.allocation_type,
-                })
-            } else {
-                None
-            }
+            Some(SuballocationNode {
+                offset: tail.offset,
+                size: tail.size,
+                allocation_type: tail.allocation_type,
+            })
         } else {
             None
         }

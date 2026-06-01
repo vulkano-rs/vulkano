@@ -8,7 +8,7 @@ pub use self::{
     buddy::BuddyAllocator, bump::BumpAllocator, free_list::FreeListAllocator, region::Region,
 };
 use super::{align_down, AllocationHandle, DeviceAlignment, DeviceLayout};
-use crate::{image::ImageTiling, DeviceSize};
+use crate::{image::ImageTiling, memory::allocator::align_up, DeviceSize};
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
@@ -648,23 +648,24 @@ impl From<AllocationType> for SuballocationType {
 ///
 /// > Note
 /// >
-/// > Assumes `a_offset + a_size > 0` and `a_offset + a_size <= b_offset`.
+/// > Assumes `a_offset + a_size <= b_offset` and that `align_up(a_offset + a_size, page_size)`
+/// > doesn't overflow.
 ///
 /// </div>
+#[inline]
 fn are_blocks_on_same_page(
     a_offset: DeviceSize,
     a_size: DeviceSize,
     b_offset: DeviceSize,
     page_size: DeviceAlignment,
 ) -> bool {
-    debug_assert!(a_offset + a_size > 0);
-    debug_assert!(a_offset + a_size <= b_offset);
-
-    let a_end = a_offset + a_size - 1;
-    let a_end_page = align_down(a_end, page_size);
+    let a_end_page_plus_one = align_up(a_offset + a_size, page_size);
     let b_start_page = align_down(b_offset, page_size);
 
-    a_end_page == b_start_page
+    debug_assert!(a_offset + a_size <= b_offset);
+    debug_assert!(!(a_offset + a_size > 0 && a_end_page_plus_one == 0));
+
+    a_end_page_plus_one > b_start_page
 }
 
 #[cfg(test)]
