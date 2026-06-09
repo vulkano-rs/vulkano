@@ -296,13 +296,22 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
-                let (artifact, includes) = codegen::compile(
-                    &input,
-                    &source.value(),
-                    &root_path,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
+                let (artifact, includes) = match input.source_language {
+                    Some(SourceLanguage::Slang) => codegen::compile::<codegen::Slangc>(
+                        &input,
+                        &source.value(),
+                        &root_path,
+                        shader_kind.unwrap(),
+                        &macro_defines,
+                    ),
+                    _ => codegen::compile::<codegen::GLSLc>(
+                        &input,
+                        &source.value(),
+                        &root_path,
+                        shader_kind.unwrap(),
+                        &macro_defines,
+                    ),
+                }
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
                 codegen::reflect(
@@ -334,13 +343,22 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 
                 let working_dir = full_path.parent().unwrap();
 
-                let (artifact, mut includes) = codegen::compile(
-                    &input,
-                    &source,
-                    working_dir,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
+                let (artifact, mut includes) = match input.source_language {
+                    Some(SourceLanguage::Slang) => codegen::compile::<codegen::Slangc>(
+                        &input,
+                        &source,
+                        working_dir,
+                        shader_kind.unwrap(),
+                        &macro_defines,
+                    ),
+                    _ => codegen::compile::<codegen::GLSLc>(
+                        &input,
+                        &source,
+                        working_dir,
+                        shader_kind.unwrap(),
+                        &macro_defines,
+                    ),
+                }
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
                 includes.push(full_path.into_os_string().into_string().unwrap());
@@ -456,6 +474,7 @@ enum SourceKind {
 enum SourceLanguage {
     Glsl,
     Hlsl,
+    Slang,
 }
 
 impl From<SourceLanguage> for &str {
@@ -463,6 +482,7 @@ impl From<SourceLanguage> for &str {
         match lang {
             SourceLanguage::Glsl => "glsl",
             SourceLanguage::Hlsl => "hlsl",
+            SourceLanguage::Slang => "slang",
         }
     }
 }
@@ -523,6 +543,20 @@ impl From<SpirvVersion> for &str {
     }
 }
 
+impl SpirvVersion {
+    fn as_slangc_profile(self) -> &'static str {
+        match self {
+            SpirvVersion::V1_0 => "spirv_1_0",
+            SpirvVersion::V1_1 => "spirv_1_1",
+            SpirvVersion::V1_2 => "spirv_1_2",
+            SpirvVersion::V1_3 => "spirv_1_3",
+            SpirvVersion::V1_4 => "spirv_1_4",
+            SpirvVersion::V1_5 => "spirv_1_5",
+            SpirvVersion::V1_6 => "spirv_1_6",
+        }
+    }
+}
+
 impl std::fmt::Display for SpirvVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(<&str>::from(*self))
@@ -564,6 +598,25 @@ impl ShaderKind {
             ShaderKind::Miss => "rmiss",
             ShaderKind::Intersection => "rint",
             ShaderKind::Callable => "rcall",
+        }
+    }
+
+    fn as_slangc_stage(self) -> &'static str {
+        match self {
+            ShaderKind::Vertex => "vertex",
+            ShaderKind::TessControl => "hull",
+            ShaderKind::TessEvaluation => "domain",
+            ShaderKind::Geometry => "geometry",
+            ShaderKind::Task => "amplification",
+            ShaderKind::Mesh => "mesh",
+            ShaderKind::Fragment => "fragment",
+            ShaderKind::Compute => "compute",
+            ShaderKind::RayGeneration => "raygeneration",
+            ShaderKind::AnyHit => "anyhit",
+            ShaderKind::ClosestHit => "closesthit",
+            ShaderKind::Miss => "miss",
+            ShaderKind::Intersection => "intersection",
+            ShaderKind::Callable => "callable",
         }
     }
 }
@@ -870,7 +923,8 @@ impl Parse for MacroInput {
                     source_language = Some(match lit.value().as_str() {
                         "glsl" => SourceLanguage::Glsl,
                         "hlsl" => SourceLanguage::Hlsl,
-                        lang => bail!(lit, "expected `glsl` or `hlsl`, found `{lang}`"),
+                        "slang" => SourceLanguage::Slang,
+                        lang => bail!(lit, "expected `glsl`, `hlsl`, or `slang`, found `{lang}`"),
                     })
                 }
                 "vulkan_version" => {
