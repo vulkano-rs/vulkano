@@ -470,7 +470,7 @@ pub(super) fn reflect(
         #[inline]
         #[track_caller]
         pub unsafe fn #load_name(
-            device: ::std::sync::Arc<::vulkano::device::Device>,
+            device: &::std::sync::Arc<::vulkano::device::Device>,
         ) -> ::std::result::Result<
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
             ::vulkano::VulkanError,
@@ -489,7 +489,7 @@ pub(super) fn reflect(
         #[allow(unsafe_code)]
         #[inline]
         pub unsafe fn #try_load_name(
-            device: ::std::sync::Arc<::vulkano::device::Device>,
+            device: &::std::sync::Arc<::vulkano::device::Device>,
         ) -> ::std::result::Result<
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
             ::vulkano::Validated<::vulkano::VulkanError>,
@@ -499,9 +499,9 @@ pub(super) fn reflect(
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                ::vulkano::shader::ShaderModule::new(
+                ::vulkano::shader::ShaderModule::try_new(
                     device,
-                    ::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
+                    &::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
                 )
             }
         }
