@@ -296,22 +296,15 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
-                let (artifact, includes) = match input.source_language {
-                    Some(SourceLanguage::Slang) => codegen::compile::<codegen::Slangc>(
-                        &input,
-                        &source.value(),
-                        &root_path,
-                        shader_kind.unwrap(),
-                        &macro_defines,
-                    ),
-                    _ => codegen::compile::<codegen::GLSLc>(
-                        &input,
-                        &source.value(),
-                        &root_path,
-                        shader_kind.unwrap(),
-                        &macro_defines,
-                    ),
-                }
+                let source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
+                let (artifact, includes) = codegen::compile(
+                    source_language,
+                    &input,
+                    &source.value(),
+                    &root_path,
+                    shader_kind.unwrap(),
+                    &macro_defines,
+                )
                 .map_err(|err| Error::new_spanned(&source, err))?;
 
                 codegen::reflect(
@@ -343,22 +336,15 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 
                 let working_dir = full_path.parent().unwrap();
 
-                let (artifact, mut includes) = match input.source_language {
-                    Some(SourceLanguage::Slang) => codegen::compile::<codegen::Slangc>(
-                        &input,
-                        &source,
-                        working_dir,
-                        shader_kind.unwrap(),
-                        &macro_defines,
-                    ),
-                    _ => codegen::compile::<codegen::GLSLc>(
-                        &input,
-                        &source,
-                        working_dir,
-                        shader_kind.unwrap(),
-                        &macro_defines,
-                    ),
-                }
+                let source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
+                let (artifact, mut includes) = codegen::compile(
+                    source_language,
+                    &input,
+                    &source,
+                    working_dir,
+                    shader_kind.unwrap(),
+                    &macro_defines,
+                )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
                 includes.push(full_path.into_os_string().into_string().unwrap());
