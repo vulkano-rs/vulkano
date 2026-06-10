@@ -1,7 +1,7 @@
-use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
+use crate::{LinAlgType, MacroInput, bail, codegen::Shader};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use quote::{ToTokens, TokenStreamExt, format_ident, quote};
 use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
@@ -291,7 +291,11 @@ impl Type {
                     },
                     Span::call_site(),
                 );
-                Some(format_ident!("vec{}_{}", ty.component_count as usize, scalar))
+                Some(format_ident!(
+                    "vec{}_{}",
+                    ty.component_count as usize,
+                    scalar
+                ))
             }
             Self::Matrix(ty) => Some(format_ident!(
                 "mat{}x{}",
@@ -878,15 +882,15 @@ impl TypeStruct {
             members.push(Member { ident, ty, offset });
         }
 
-        let ident =
-            if ident.to_string().starts_with("StructuredBuffer") && members.len() == 1
-                && let Type::Array(TypeArray { element_type, .. }) = &members[0].ty
-                && let Some(element_ident) = element_type.ident()
-            {
-                format_ident!("{}_{}", ident, element_ident, span = ident.span())
-            } else {
-                ident
-            };
+        let ident = if ident.to_string().starts_with("StructuredBuffer")
+            && members.len() == 1
+            && let Type::Array(TypeArray { element_type, .. }) = &members[0].ty
+            && let Some(element_ident) = element_type.ident()
+        {
+            format_ident!("{}_{}", ident, element_ident, span = ident.span())
+        } else {
+            ident
+        };
 
         Ok(TypeStruct { ident, members })
     }

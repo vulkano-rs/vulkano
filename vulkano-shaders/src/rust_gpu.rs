@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{codegen::reflect, structs::TypeRegistry, MacroInput};
+    use crate::{MacroInput, codegen::reflect, structs::TypeRegistry};
     use proc_macro2::Span;
     use syn::LitStr;
 
