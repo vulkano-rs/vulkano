@@ -148,7 +148,7 @@ impl App {
                     .map(|i| (p, i as u32))
             })
             // All the physical devices that pass the filters above are suitable for the
-            // application. However, not every device is equal, some are preferred over others.
+            // application. However, not every device is equal; some are preferred over others.
             // Now, we assign each physical device a score, and pick the device with the lowest
             // ("best") score.
             //
