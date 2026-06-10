@@ -1,6 +1,6 @@
 use crate::{
-    EnvVersion, MacroInput, ShaderKind, SourceLanguage, SpirvVersion,
     structs::{self, TypeRegistry},
+    EnvVersion, MacroInput, ShaderKind, SourceLanguage, SpirvVersion,
 };
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;

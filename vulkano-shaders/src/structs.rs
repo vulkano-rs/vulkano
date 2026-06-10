@@ -1,7 +1,7 @@
-use crate::{LinAlgType, MacroInput, bail, codegen::Shader};
+use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, TokenStreamExt, format_ident, quote};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
@@ -708,6 +708,17 @@ impl TypeArray {
     }
 }
 
+fn deduplicate_ident(ident: &Ident, members: &[Member]) -> Option<Ident> {
+    if !ident.to_string().starts_with("StructuredBuffer") || members.len() != 1 {
+        return None;
+    }
+    let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
+        return None;
+    };
+    let e = element_type.ident()?;
+    Some(format_ident!("{}_{}", ident, e, span = ident.span()))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeStruct {
     ident: Ident,
@@ -882,15 +893,7 @@ impl TypeStruct {
             members.push(Member { ident, ty, offset });
         }
 
-        let ident = if ident.to_string().starts_with("StructuredBuffer")
-            && members.len() == 1
-            && let Type::Array(TypeArray { element_type, .. }) = &members[0].ty
-            && let Some(element_ident) = element_type.ident()
-        {
-            format_ident!("{}_{}", ident, element_ident, span = ident.span())
-        } else {
-            ident
-        };
+        let ident = deduplicate_ident(&ident, &members).unwrap_or(ident);
 
         Ok(TypeStruct { ident, members })
     }

@@ -247,9 +247,9 @@ use quote::quote;
 use std::{env, fs, mem, path::PathBuf};
 use structs::TypeRegistry;
 use syn::{
-    Error, Ident, LitBool, LitStr, Path as SynPath, Token, braced, bracketed, parenthesized,
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, parse_quote,
+    parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
 mod codegen;
