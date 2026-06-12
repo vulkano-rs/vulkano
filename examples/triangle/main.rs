@@ -137,7 +137,7 @@ impl App {
                     .position(|(i, q)| {
                         // We select a queue family that supports graphics operations. When drawing
                         // to a window surface, as we do in this example, we also need to check
-                        // that queues in this queue family are capable of presenting images to the
+                        // that queues in this queue family are capable of presenting images to a
                         // surface.
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
                             && p.presentation_support(i as u32, event_loop)
@@ -148,7 +148,7 @@ impl App {
                     .map(|i| (p, i as u32))
             })
             // All the physical devices that pass the filters above are suitable for the
-            // application. However, not every device is equal, some are preferred over others.
+            // application. However, not every device is equal; some are preferred over others.
             // Now, we assign each physical device a score, and pick the device with the lowest
             // ("best") score.
             //
@@ -188,8 +188,8 @@ impl App {
                 // is the `khr_swapchain` extension that allows us to draw to a window.
                 enabled_extensions: &device_extensions,
 
-                // The list of queues that we are going to use. Here we only use one queue, from
-                // the previously chosen queue family.
+                // The list of queues that we are going to use. Here we only use one queue from the
+                // previously chosen queue family.
                 queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
@@ -205,14 +205,14 @@ impl App {
         // the iterator.
         let queue = queues.next().unwrap();
 
-        // We will use Vulkano's "task graph", which is available through the `vulkano_taskgraph`
+        // We will use vulkano's "task graph", which is available through the `vulkano_taskgraph`
         // crate.
         //
-        // The task graph is an optional abstraction built on top of Vulkano. It simplifies parts
+        // The task graph is an optional abstraction built on top of vulkano. It simplifies parts
         // of the Vulkan API by providing a modular, node based approach to structure and execute
         // GPU work.
         //
-        // In order to use the task graph, we need to create a `Resources` instance. This will be
+        // In order to use the task graph, we need to create a `Resources` collection. This will be
         // the container for our GPU resources, allowing the task graph to track their lifetime and
         // usage.
         let resources = Resources::new(&device, &Default::default()).unwrap();
@@ -228,18 +228,19 @@ impl App {
         // advance ahead of the GPU's execution before it needs to wait. Higher numbers increase
         // the size of this buffer, while a value of 1 effectively disables pipelining.
         //
-        // We choose to use 2 frames in flight, enabling pipelining without excessive latency.
+        // We choose to use 2 frames in flight, which is the go-to for desktops. For mobile
+        // devices, Arm recommends 3 frames in flight.
         //
         // One reason to choose a higher number is making the application more resilient to spikes
         // in frame time. A longer buffer allows the application to make up for missed frames, but
-        // may increase latency noticeably. Memory usage is also increased, since data transferred
+        // may increase latency noticeably. Memory usage is also increased since data transferred
         // to the GPU needs to be available for longer.
         //
         // On the other hand, a single frame in flight might be attractive for applications that
         // have very low workloads and thus don't benefit much from pipelining.
         let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
-        // The "render context" is left uninitialized for now. In order to set it up we need a
+        // The "render context" is left uninitialized for now. In order to set it up, we need a
         // window and swapchain first, which can be created once winit's event loop has started.
         let rcx = None;
 
@@ -260,7 +261,7 @@ impl ApplicationHandler for App {
         // to create the window.
         //
         // Before we can render to a window, we must first create a `Surface` object from it, which
-        // represents the drawable surface of a window. For that we must wrap the `Window` in an
+        // represents the drawable surface of a window. For that, we must wrap the `Window` in an
         // `Arc`.
         let window = Arc::new(
             event_loop
@@ -272,11 +273,11 @@ impl ApplicationHandler for App {
 
         // In order to draw on a surface, we need to create a "swapchain".
         //
-        // Creating a swapchain allocates the color buffers that will contain the image that will
-        // ultimately be visible on the screen. These images are returned alongside the swapchain.
+        // Creating a swapchain allocates the swapchain images that will contain the image that
+        // will ultimately be visible on the screen.
         let swapchain_format;
         let swapchain_id = {
-            // Querying the capabilities of the surface. When we create the swapchain we can only
+            // Querying the capabilities of the surface. When we create the swapchain, we can only
             // pass values that are allowed by the capabilities.
             let surface_capabilities = self
                 .device
@@ -297,19 +298,30 @@ impl ApplicationHandler for App {
                     &surface,
                     &SwapchainCreateInfo {
                         // We choose the lowest image count that the surface supports in order to
-                        // to minimize latency. However, we also take our minimum value of
-                        // `MAX_FRAMES_IN_FLIGHT + 1` into account. The latter will ensure that
-                        // enough images are available such that all frames in flight can be used.
+                        // minimize memory usage. However, we also take our minimum value of
+                        // `MAX_FRAMES_IN_FLIGHT + 1` into account.
+                        //
+                        // We need at least as many images as frames in flight, otherwise not all
+                        // frames would actually be in flight since there wouldn't be enough images
+                        // for the device to work on at the same time. At least, that would be the
+                        // case if only the host and device were involved.
+                        //
+                        // When it comes to presentation, there is a third party involved: the
+                        // "Presentation Engine". It can be working on one swapchain image at a
+                        // time, and its work is not necessarily in sync with the device, so we
+                        // need one more swapchain image. With fewer swapchain images, we could be
+                        // blocking on the host while acquiring the next image.
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
+
                         image_format: swapchain_format,
 
                         // The size of the window, only used to initially setup the swapchain.
                         //
                         // NOTE:
-                        // On some drivers the swapchain extent is specified by
-                        // `surface_capabilities.current_extent` and the swapchain size must use
+                        // On some drivers, the swapchain extent is specified by
+                        // `surface_capabilities.current_extent`, and the swapchain size must use
                         // this extent. This extent is always the same as the window size.
                         //
                         // However, other drivers don't specify a value, i.e.
@@ -319,6 +331,7 @@ impl ApplicationHandler for App {
                         // Both of these cases need the swapchain to use the window size, so we just
                         // use that.
                         image_extent: window_size.into(),
+
                         image_usage: ImageUsage::COLOR_ATTACHMENT,
 
                         // The alpha mode indicates how the alpha value of the final image will
@@ -329,6 +342,7 @@ impl ApplicationHandler for App {
                             .into_iter()
                             .next()
                             .unwrap(),
+
                         ..Default::default()
                     },
                 )
@@ -346,8 +360,8 @@ impl ApplicationHandler for App {
 
         // Now let's define what we want the GPU to do each frame by creating a task graph.
         //
-        // This graph lets us structure our GPU work, while taking care of resource synchronization
-        // among other things.
+        // This graph lets us structure our GPU work while taking care of resource synchronization
+        // and resource cleanup.
         //
         // The task graph has a generic "world" type parameter. It can be used to pass shared data
         // to all nodes when executing the graph. We use the `RenderContext` as world, which
@@ -361,23 +375,34 @@ impl ApplicationHandler for App {
         // is executed.
         //
         // In the case of our swapchain, this means that we can recreate the swapchain whenever
-        // the window is resized, without having to recreate and recompile the entire task graph.
+        // the window is resized without having to recreate and recompile the entire task graph.
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
             image_format: swapchain_format,
             ..Default::default()
         });
 
-        // We also create a virtual framebuffer that we will use to render into the swapchain
-        // images.
+        // We also create a virtual framebuffer, which, unlike virtual resources, is not a stand-in
+        // for a physical framebuffer.
+        //
+        // For one, the task graph creates its framebuffers and render passes internally, so you
+        // don't need to specify these yourself.
+        //
+        // Also, a single virtual framebuffer doesn't necessarily correspond to a single physical
+        // framebuffer. Instead, all a virtual framebuffer is for is a way to inform the task graph
+        // that different nodes' attachments have the same dimensions. This allows the task graph
+        // to combine different nodes into the same render pass, or even the same subpass.
+        // Therefore, you should use the same virtual framebuffer across nodes that share the same
+        // framebuffer dimensions.
         let virtual_framebuffer_id = task_graph.add_framebuffer();
 
         // Next, we instantiate our `TriangleTask`.
         //
-        // A "task" defines some work that we want the GPU to perform. We insert it into the graph
-        // by creating a node.
+        // A "task" defines some work that we want the GPU to perform. A task is only useful when
+        // it is inserted into the task graph as part of a task node.
         //
-        // A "task node" is an instance of a task. It is a unit of work that can be independently
-        // scheduled and synchronized by the task graph.
+        // A "task node" contains a task alongside information about how it needs to be
+        // synchronized. It is a unit of work that can be independently scheduled and synchronized
+        // by the task graph.
         //
         // When creating a task node, we need to be explicit about how each resource is accessed.
         // This way, the task graph can ensure that accesses are correctly synchronized and images
@@ -398,7 +423,10 @@ impl ApplicationHandler for App {
                 // `current_image_id()` means that this color attachment will always use the
                 // currently acquired swapchain image.
                 virtual_swapchain_id.current_image_id(),
-                AccessTypes::COLOR_ATTACHMENT_READ | AccessTypes::COLOR_ATTACHMENT_WRITE,
+                // We only need `COLOR_ATTACHMENT_WRITE` for the color attachment because our
+                // graphics pipeline has color blending disabled, which would otherwise be a read
+                // as well.
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
                 ImageLayoutType::Optimal,
                 &AttachmentInfo {
                     // We want to clear the color attachment before drawing.
@@ -431,7 +459,8 @@ impl ApplicationHandler for App {
                 //
                 // In this example, we only have a single graphics queue.
                 queues: &[&self.queue],
-                // We use the same queue for presentation.
+                // We use the same queue for presentation. You must specify a present queue if your
+                // task graph uses any swapchains.
                 present_queue: Some(&self.queue),
                 // The flight that we use to track each execution of this task graph.
                 flight_id: self.flight_id,
@@ -452,8 +481,7 @@ impl ApplicationHandler for App {
 
         // In some situations, the swapchain will become invalid by itself. This includes for
         // example when the window is resized (as the images of the swapchain will no longer match
-        // the window's) or, on Android, when the application went to the background and goes back
-        // to the foreground.
+        // the window's).
         //
         // In this situation, acquiring a swapchain image or presenting it will return an error.
         // Rendering to an image of that swapchain will not produce any error, but may or may not
@@ -500,9 +528,8 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                // Whenever the window resizes we need to recreate everything dependent on the
-                // window size. In this example that includes the swapchain, the framebuffers and
-                // the dynamic state viewport.
+                // Whenever the window resizes, we need to recreate everything dependent on the
+                // window size. In this example, that includes the swapchain and the viewport.
                 if rcx.recreate_swapchain {
                     // Use the new dimensions of the window.
 
@@ -539,7 +566,7 @@ impl ApplicationHandler for App {
                 } {
                     Ok(()) => {}
                     // Since the task graph also handles presenting to the swapchain, it may return
-                    // a swapchain error. When the swapchain is "out of date" we set a flag to
+                    // a swapchain error. When the swapchain is "out of date", we set a flag to
                     // recreate it during the next frame.
                     Err(ExecuteError::Swapchain {
                         error: VulkanError::OutOfDate,
@@ -586,7 +613,7 @@ impl TriangleTask {
 
         // Allocate the Vulkan buffer that will hold the vertices.
         //
-        // Since we are using Vulkano's task graph, the buffer is created using the `Resources`
+        // Since we are using vulkano's task graph, the buffer is created using the `Resources`
         // collection.
         let vertex_buffer_id = app
             .resources
@@ -609,8 +636,6 @@ impl TriangleTask {
             )
             .unwrap();
 
-        app.resources.flight(app.flight_id).wait(None).unwrap();
-
         unsafe {
             vulkano_taskgraph::execute(
                 &app.queue,
@@ -629,8 +654,8 @@ impl TriangleTask {
         }
         .unwrap();
 
-        // As mentioned earlier, the pipeline depends on the subpass which is only created once the
-        // task graph is compiled. The pipeline field is initialized below.
+        // As mentioned earlier, the pipeline depends on the subpass, which is only created once
+        // the task graph is compiled. The pipeline field is initialized below.
         let pipeline = None;
 
         Self {
@@ -643,16 +668,16 @@ impl TriangleTask {
     pub fn create_pipeline(&mut self, app: &App, subpass: &Subpass) {
         // The next step is to create the shaders.
         //
-        // The raw shader creation API provided by the Vulkano library is unsafe for various
-        // reasons, so the `shader!` macro provides a way to generate a Rust module from GLSL
+        // The raw shader creation API provided by the vulkano library is unsafe for various
+        // reasons, so the `shader!` macro provides a way to generate a Rust module from shader
         // source. In the example below, the source is provided as a string input directly to the
         // shader, but a path to a source file can be provided as well. Note that the user must
         // specify the type of shader (e.g. "vertex", "fragment", etc.) using the `ty` option of
         // the macro.
         //
         // The items generated by the `shader!` macro include a `load` function which loads the
-        // shader using a logical device. The module also includes type definitions for layout
-        // structures defined in the shader source, for example uniforms and push constants.
+        // shader using a logical device. The module also includes structs compatible with the ones
+        // defined in the shader source, such as uniforms and push constants for example.
         //
         // A more detailed overview of what the `shader!` macro generates can be found in the
         // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
@@ -691,7 +716,7 @@ impl TriangleTask {
         // contains many settings for customization, all baked into a single object. For drawing
         // triangles, we create a graphics pipeline, but there are also other types of pipelines.
         let pipeline = {
-            // First, we load the shaders that the pipeline will use: The vertex shader and the
+            // First, we load the shaders that the pipeline will use: the vertex shader and the
             // fragment shader.
             //
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
@@ -706,7 +731,7 @@ impl TriangleTask {
                 .unwrap();
 
             // Automatically generate a vertex input state from the vertex shader's input
-            // interface, that takes a single vertex buffer containing `Vertex` structs.
+            // interface that takes a single vertex buffer containing `Vertex` structs.
             let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
 
             // Make a list of the shader stages that the pipeline will have.
@@ -743,7 +768,7 @@ impl TriangleTask {
                     // is a triangle.
                     input_assembly_state: Some(&InputAssemblyState::default()),
                     // How primitives are transformed and clipped to fit the framebuffer. We use a
-                    // resizable viewport, set to draw over the entire window.
+                    // resizable viewport set to draw over the entire window.
                     viewport_state: Some(&ViewportState::default()),
                     // How polygons are culled and converted into a raster of pixels. The default
                     // value does not perform any culling.
@@ -752,7 +777,7 @@ impl TriangleTask {
                     // The default value does not perform any multisampling.
                     multisample_state: Some(&MultisampleState::default()),
                     // How pixel values are combined with the values already present in the
-                    // framebuffer. The default value overwrites the old value with the new one,
+                    // framebuffer. The default value overwrites the old value with the new one
                     // without any blending.
                     color_blend_state: Some(&ColorBlendState {
                         attachments: &[ColorBlendAttachmentState::default()],
@@ -800,24 +825,24 @@ impl Task for TriangleTask {
         // GPU commands to execute as part of this task.
 
         // Update the dynamic viewport, which is set to the current window and swapchain size.
-        cbf.try_set_viewport(0, slice::from_ref(&rcx.viewport))?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
 
         // Bind the graphics pipeline and vertex buffer.
-        cbf.try_bind_pipeline_graphics(self.pipeline.as_ref().unwrap())?;
-        cbf.try_bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
+        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
         // Draw the triangle using one instance of our three vertices.
-        unsafe { cbf.try_draw(3, 1, 0, 0) }?;
+        unsafe { cbf.draw(3, 1, 0, 0) };
 
         // If you are familiar with Vulkan, you will notice that we have performed no manual
-        // synchronization here. This is handled entirely by the task graph, as long as we have
+        // synchronization here. This is handled entirely by the task graph as long as we have
         // specified all resources that we want to access when creating the task node.
 
         Ok(())
     }
 }
 
-// We use `#[repr(C)]` here to force rustc to use a defined layout for our data, as the default
+// We use `#[repr(C)]` here to force rustc to use a defined layout for our data as the default
 // representation has *no guarantees*.
 #[derive(Clone, Copy, BufferContents, Vertex)]
 #[repr(C)]
