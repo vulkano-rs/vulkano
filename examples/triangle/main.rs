@@ -88,8 +88,8 @@ impl App {
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
-                // Enable enumerating devices that use non-conformant Vulkan implementations.
-                // (e.g. MoltenVK)
+                // Enable enumerating devices that use non-conformant Vulkan implementations (e.g.,
+                // MoltenVK).
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: &required_extensions,
                 ..Default::default()
@@ -120,10 +120,10 @@ impl App {
                 // For each physical device, we try to find a suitable queue family that will
                 // execute our draw commands.
                 //
-                // Devices can provide multiple queues to run commands in parallel (for example a
+                // Devices can provide multiple queues to run commands in parallel (for example, a
                 // draw queue and a compute queue), similar to CPU threads. This is something you
-                // have to have to manage manually in Vulkan. Queues of the same family have the
-                // same properties.
+                // have to manage manually in Vulkan. Queues of the same family have the same
+                // properties.
                 //
                 // Here, we look for a single queue family that is suitable for our purposes. In a
                 // real-world application, you may want to use a separate dedicated transfer queue
@@ -181,8 +181,8 @@ impl App {
             &DeviceCreateInfo {
                 // A list of optional features and extensions that our program needs to work
                 // correctly. Some parts of the Vulkan specs are optional and must be enabled
-                // manually at device creation. In this example the only thing we are going to need
-                // is the `khr_swapchain` extension that allows us to draw to a window.
+                // manually at device creation. In this example, the only thing we are going to
+                // need is the `khr_swapchain` extension that allows us to draw to a window.
                 enabled_extensions: &device_extensions,
 
                 // The list of queues that we are going to use. Here we only use one queue from the
@@ -202,11 +202,11 @@ impl App {
         // the iterator.
         let queue = queues.next().unwrap();
 
-        // We will use vulkano's "task graph", which is available through the `vulkano_taskgraph`
+        // We will use vulkano's "task graph", which is available through the vulkano-taskgraph
         // crate.
         //
         // The task graph is an optional abstraction built on top of vulkano. It simplifies parts
-        // of the Vulkan API by providing a modular, node based approach to structure and execute
+        // of the Vulkan API by providing a modular, node-based approach to structure and execute
         // GPU work.
         //
         // In order to use the task graph, we need to create a `Resources` collection. This will be
@@ -218,7 +218,7 @@ impl App {
         //
         // This is where the concept of "pipelining" comes into play. Rather than waiting for the
         // GPU to finish drawing each individual frame, it's preferred to start preparing the next
-        // frame right way. This allows us to overlap CPU and GPU work, thus maximizing throughput
+        // frame right away. This allows us to overlap CPU and GPU work, thus maximizing throughput
         // at the cost of some latency. Flights are the task graph's mechanism to do just that.
         //
         // The number of frames in flight puts a hard limit on how far the CPU side is allowed to
@@ -322,11 +322,11 @@ impl ApplicationHandler for App {
                         // this extent. This extent is always the same as the window size.
                         //
                         // However, other drivers don't specify a value, i.e.
-                        // `surface_capabilities.current_extent` is `None`. These drivers will allow
-                        // anything, but the only sensible value is the window size.
+                        // `surface_capabilities.current_extent` is `None`. These drivers will
+                        // allow anything, but the only sensible value is the window size.
                         //
-                        // Both of these cases need the swapchain to use the window size, so we just
-                        // use that.
+                        // Both of these cases need the swapchain to use the window size, so we
+                        // just use that.
                         image_extent: window_size.into(),
 
                         image_usage: ImageUsage::COLOR_ATTACHMENT,
@@ -346,8 +346,8 @@ impl ApplicationHandler for App {
                 .unwrap()
         };
 
-        // Dynamic viewports allow us to recreate just the viewport when the window is resized.
-        // Otherwise, we would have to recreate the whole pipeline.
+        // We will use a dynamic viewport, which allows us to recreate just the viewport when the
+        // window is resized. Otherwise, we would have to recreate the whole graphics pipeline.
         let viewport = Viewport {
             offset: [0.0, 0.0],
             extent: window_size.into(),
@@ -415,7 +415,7 @@ impl ApplicationHandler for App {
             )
             // We bind the framebuffer that we want to use...
             .framebuffer(virtual_framebuffer_id)
-            // ...and set the color attachment to the current swapchain image.
+            // ...and add the current swapchain image as a color attachment.
             .color_attachment(
                 // `current_image_id()` means that this color attachment will always use the
                 // currently acquired swapchain image.
@@ -444,15 +444,19 @@ impl ApplicationHandler for App {
         //
         // This step turns the graph into an executable form, producing a linear sequence of
         // instructions to execute. During compilation, the task graph chooses the order in which
-        // nodes are executed, such that synchronization overhead is minimized.
+        // nodes are executed such that synchronization overhead is minimized.
         //
         // All of this is done ahead of time, so executing the graph becomes as efficient as
-        // possible.
+        // possible. This does not necessarily mean that compiling the task graph each time it's
+        // executed is inefficient. The AOT (ahead-of-time) compilation can squeeze out the most
+        // performance out of the device regardless of how often it is done; it just results in
+        // slightly more host-side overhead. Compiling the task graph each time it's executed, or
+        // however often you need, is a perfectly valid strategy if that's what you need.
         let mut task_graph = unsafe {
             task_graph.compile(&CompileInfo {
-                // We need to provide all queues that we want to use for executing the graph. These
-                // must be compatible with the queue family types that were specified in the task
-                // nodes.
+                // We need to provide all queues that we want to use for executing the graph. The
+                // queue family types that were specified in the task nodes must be compatible with
+                // these queues.
                 //
                 // In this example, we only have a single graphics queue.
                 queues: &[&self.queue],
@@ -669,7 +673,7 @@ impl TriangleTask {
         // reasons, so the `shader!` macro provides a way to generate a Rust module from shader
         // source. In the example below, the source is provided as a string input directly to the
         // shader, but a path to a source file can be provided as well. Note that the user must
-        // specify the type of shader (e.g. "vertex", "fragment", etc.) using the `ty` option of
+        // specify the type of shader (e.g., "vertex", "fragment", etc.) using the `ty` option of
         // the macro.
         //
         // The items generated by the `shader!` macro include a `load` function which loads the
@@ -780,7 +784,7 @@ impl TriangleTask {
                         attachments: &[ColorBlendAttachmentState::default()],
                         ..Default::default()
                     }),
-                    // Dynamic states allows us to specify parts of the pipeline settings when
+                    // Dynamic state allows us to specify parts of the pipeline settings when
                     // recording the command buffer, before we perform drawing. Here, we specify
                     // that the viewport should be dynamic.
                     dynamic_state: &[DynamicState::Viewport],
