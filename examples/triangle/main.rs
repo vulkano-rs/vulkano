@@ -235,6 +235,17 @@ impl App {
         //
         // On the other hand, a single frame in flight might be attractive for applications that
         // have very low workloads and thus don't benefit much from pipelining.
+        //
+        // A common misconception is that frames in flight and swapchain images are the same thing,
+        // or that they serve the same purpose. This is not the case as there wouldn't be a need
+        // for this separation then. You can use no swapchain, one swapchain, or however many
+        // swapchains you need with the same flight. The swapchains can each have a different
+        // amount of swapchain images. Swapchain images don't correspond to frames in flight (more
+        // on this further down).
+        //
+        // What a flight *does* roughly correspond to is a thread. If you have 2 threads both
+        // executing their own task graph, they should use different flights so as to not interfere
+        // with each other. However, you can also use more than one flight on the same thread.
         let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
         // The "render context" is left uninitialized for now. In order to set it up, we need a
@@ -308,6 +319,22 @@ impl ApplicationHandler for App {
                         // time, and its work is not necessarily in sync with the device, so we
                         // need one more swapchain image. With fewer swapchain images, we could be
                         // blocking on the host while acquiring the next image.
+                        //
+                        // Note that even if you had the same amount of swapchain images as frames
+                        // in flight, they would still not be interchangeable. The order in which
+                        // swapchain image indices are acquired is unpredictable, whereas the
+                        // current frame index always cycles in the same way. Say for example that
+                        // you have 3 frames and 3 swapchain images. Then this cycle might happen:
+                        //
+                        // frame_index 0 1 2 0 1 2 0 1 2
+                        // image_index 0 1 0 1 2 0 2 0 1
+                        //
+                        // This means that the image index can only be used to index resources that
+                        // are swapchain image-local, such as image views made from the swapchain
+                        // image. This is especially obvious if you add a second swapchain to the
+                        // mix because the image indices of the two will likely be acquired in a
+                        // different order. The current frame index can be used to index everything
+                        // that's frame-local, such as uniform buffers.
                         min_image_count: surface_capabilities
                             .min_image_count
                             .max(MIN_SWAPCHAIN_IMAGES),
@@ -370,6 +397,12 @@ impl ApplicationHandler for App {
         // Virtual resources allow us to declare resources ahead of time and reference them in the
         // task graph. These can be thought of as placeholders that are filled in once the graph
         // is executed.
+        //
+        // Another way to think about the difference between a virtual and physical ID is that a
+        // physical ID can always be used to retrieve the thing it's referencing. In the case of a
+        // physical resource ID for instance, you can use it to get a resource from the `Resources`
+        // collection. However, you can't use a virtual resource ID to retrieve the resource it's
+        // referencing until task graph execution.
         //
         // In the case of our swapchain, this means that we can recreate the swapchain whenever
         // the window is resized without having to recreate and recompile the entire task graph.
