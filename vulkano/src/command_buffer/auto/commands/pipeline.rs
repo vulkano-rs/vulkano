@@ -1734,7 +1734,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.inner.validate_trace_rays_indirect(
             &shader_binding_table_addresses,
-            &indirect_buffer.buffer(),
+            indirect_buffer.buffer(),
         )?;
 
         Ok(unsafe {
