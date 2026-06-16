@@ -1,34 +1,17 @@
 #[cfg(doc)]
 use crate::device::{DeviceFeatures, DeviceProperties};
 use crate::{
-    acceleration_structure::AccelerationStructure,
-    buffer::{view::BufferView, Subbuffer},
-    command_buffer::{
-        auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::RecordingCommandBuffer,
-        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
-    },
-    descriptor_set::{
-        layout::{DescriptorBindingFlags, DescriptorType},
-        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo,
-    },
-    device::DeviceOwned,
-    format::{FormatFeatures, NumericType},
-    image::{sampler::Sampler, view::ImageView, ImageAspects, ImageLayout, SampleCount},
-    pipeline::{
-        graphics::{
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject, acceleration_structure::AccelerationStructure, buffer::{Subbuffer, view::BufferView}, command_buffer::{
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents, TraceRaysIndirectCommand, auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2}, sys::RecordingCommandBuffer
+    }, descriptor_set::{
+        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo, layout::{DescriptorBindingFlags, DescriptorType}
+    }, device::DeviceOwned, format::{FormatFeatures, NumericType}, image::{ImageAspects, ImageLayout, SampleCount, sampler::Sampler, view::ImageView}, pipeline::{
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, graphics::{
             input_assembly::PrimitiveTopology,
             subpass::PipelineSubpassType,
             vertex_input::{RequiredVertexInputsVUIDs, VertexInputRate},
-        },
-        ray_tracing::ShaderBindingTableAddresses,
-        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
-    },
-    query::QueryType,
-    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages},
-    sync::{PipelineStageAccess, PipelineStageAccessFlags},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
+        }, ray_tracing::ShaderBindingTableAddresses
+    }, query::QueryType, shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages}, sync::{PipelineStageAccess, PipelineStageAccessFlags}
 };
 use std::sync::Arc;
 
@@ -1696,6 +1679,61 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self.add_command("trace_rays", used_resources, move |out| {
             unsafe { out.trace_rays_unchecked(&shader_binding_table_addresses, dimensions) };
+        });
+
+        self
+    }
+
+    /// Performs multiple ray tracing operations using a ray tracing pipeline, panicking on a
+    /// validation error.
+    /// 
+    /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
+    /// is read from `buffer`.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// This is a shortcut for `try_trace_rays_indirect().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_trace_rays_indirect`] returns a [`ValidationError`].
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
+    /// [`try_trace_rays_indirect`]: Self::try_trace_rays_indirect
+    pub unsafe fn trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: ShaderBindingTableAddresses,
+        indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.inner
+            .validate_trace_rays_indirect(&shader_binding_table_addresses, &indirect_buffer.buffer())?;
+
+        Ok(unsafe { self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_buffer) })
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trace_rays_indirect_unchecked(
+        &mut self,
+        shader_binding_table_addresses: ShaderBindingTableAddresses,
+        indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
+    ) -> &mut Self {
+        let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command("trace_rays_indirect", used_resources, move |out| {
+            unsafe { out.trace_rays_indirect_unchecked(&shader_binding_table_addresses, indirect_buffer.buffer()) };
         });
 
         self

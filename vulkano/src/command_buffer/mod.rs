@@ -257,7 +257,7 @@ unsafe impl Zeroable for DrawIndexedIndirectCommand {}
 /// # Safety
 ///
 /// - The `width`, `height` and `depth` values must not exceed the product of the respective
-/// [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) and
+/// [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) elements and
 /// [`max_compute_work_group_size`](DeviceProperties::max_compute_work_group_size) elements.
 /// - `width` * `height` * `depth` must not exceed
 /// [`max_ray_dispatch_invocation_count`](RayTracingPipelineProperties::max_ray_dispatch_invocation_count).
