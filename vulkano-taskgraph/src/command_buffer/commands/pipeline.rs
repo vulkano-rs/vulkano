@@ -1225,4 +1225,85 @@ impl RecordingCommandBuffer<'_> {
 
         self
     }
+
+    /// Performs multiple ray tracing operations using a ray tracing pipeline, panicking on a
+    /// validation error.
+    /// 
+    /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
+    /// is read from `buffer`.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// This is a shortcut for `try_trace_rays_indirect().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_trace_rays_indirect`] returns a [`ValidationError`].
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
+    /// [`try_trace_rays_indirect`]: Self::try_trace_rays_indirect
+    #[track_caller]
+    pub unsafe fn trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        buffer: Id<Buffer>,
+    ) -> &mut Self {
+        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer) }.unwrap()
+    }
+
+    /// Performs multiple ray tracing operations using a ray tracing pipeline.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    pub unsafe fn try_trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        buffer: Id<Buffer>,
+    ) -> Result<&mut Self> {
+        Ok(unsafe { self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer) })
+    }
+
+    pub unsafe fn trace_rays_indirect_unchecked(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        buffer: Id<Buffer>,
+    ) -> &mut Self {
+        let buffer = unsafe { self.accesses.buffer_unchecked(buffer) };
+
+        let raygen = shader_binding_table_addresses.raygen.to_vk();
+        let miss = shader_binding_table_addresses.miss.to_vk();
+        let hit = shader_binding_table_addresses.hit.to_vk();
+        let callable = shader_binding_table_addresses.callable.to_vk();
+
+        let fns = self.device().fns();
+        unsafe {
+            (fns.khr_ray_tracing_pipeline.cmd_trace_rays_indirect_khr)(
+                self.handle(),
+                &raygen,
+                &miss,
+                &hit,
+                &callable,
+                buffer.device_address().into()
+            )
+        };
+
+        self
+    }
 }

@@ -251,6 +251,27 @@ pub struct DrawIndexedIndirectCommand {
 unsafe impl Pod for DrawIndexedIndirectCommand {}
 unsafe impl Zeroable for DrawIndexedIndirectCommand {}
 
+/// Used as buffer contents to provide input for the
+/// [`AutoCommandBufferBuilder::trace_rays_indirect`] command.
+///
+/// # Safety
+///
+/// - The `width`, `height` and `depth` values must not exceed the product of the respective
+/// [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) and
+/// [`max_compute_work_group_size`](DeviceProperties::max_compute_work_group_size) elements.
+/// - `width` * `height` * `depth` must not exceed
+/// [`max_ray_dispatch_invocation_count`](RayTracingPipelineProperties::max_ray_dispatch_invocation_count).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TraceRaysIndirectCommand {
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+}
+
+unsafe impl Pod for TraceRaysIndirectCommand {}
+unsafe impl Zeroable for TraceRaysIndirectCommand {}
+
 vulkan_enum! {
     #[non_exhaustive]
 
