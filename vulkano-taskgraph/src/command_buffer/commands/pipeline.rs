@@ -1228,7 +1228,7 @@ impl RecordingCommandBuffer<'_> {
 
     /// Performs multiple ray tracing operations using a ray tracing pipeline, panicking on a
     /// validation error.
-    /// 
+    ///
     /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
     /// is read from `buffer`.
     ///
@@ -1300,7 +1300,7 @@ impl RecordingCommandBuffer<'_> {
                 &miss,
                 &hit,
                 &callable,
-                buffer.device_address().into()
+                buffer.device_address().into(),
             )
         };
 

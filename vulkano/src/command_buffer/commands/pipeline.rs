@@ -1,7 +1,12 @@
 use crate::{
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject, buffer::{Buffer, BufferUsage}, command_buffer::{
-        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand, DrawMeshTasksIndirectCommand, TraceRaysIndirectCommand, sys::RecordingCommandBuffer
-    }, device::{DeviceOwned, QueueFlags}, pipeline::ray_tracing::ShaderBindingTableAddresses
+    buffer::{Buffer, BufferUsage},
+    command_buffer::{
+        sys::RecordingCommandBuffer, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+        DrawIndirectCommand, DrawMeshTasksIndirectCommand, TraceRaysIndirectCommand,
+    },
+    device::{DeviceOwned, QueueFlags},
+    pipeline::ray_tracing::ShaderBindingTableAddresses,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 
 impl RecordingCommandBuffer {
@@ -1712,7 +1717,9 @@ impl RecordingCommandBuffer {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "ray_tracing_pipeline_trace_rays_indirect",
                 )])]),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-rayTracingPipelineTraceRaysIndirect-03637"],
+                vuids: &[
+                    "VUID-vkCmdTraceRaysIndirectKHR-rayTracingPipelineTraceRaysIndirect-03637",
+                ],
                 ..Default::default()
             }));
         }
