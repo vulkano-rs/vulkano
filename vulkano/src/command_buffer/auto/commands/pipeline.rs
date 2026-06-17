@@ -1702,8 +1702,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
-    /// Performs multiple ray tracing operations using a ray tracing pipeline, panicking on a
-    /// validation error.
+    /// Performs multiple ray tracing operations using a ray tracing pipeline.
     ///
     /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
     /// is read from `buffer`.
@@ -1712,21 +1711,14 @@ impl<L> AutoCommandBufferBuilder<L> {
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
     /// beforehand.
     ///
-    /// This is a shortcut for `try_trace_rays_indirect().unwrap()`.
-    ///
     /// # Safety
     ///
     /// - The general [shader safety requirements] apply.
     /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
     ///
-    /// # Panics
-    ///
-    /// - Panics if [`try_trace_rays_indirect`] returns a [`ValidationError`].
-    ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
     /// [shader safety requirements]: vulkano::shader#safety
     /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
-    /// [`try_trace_rays_indirect`]: Self::try_trace_rays_indirect
     pub unsafe fn trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: ShaderBindingTableAddresses,

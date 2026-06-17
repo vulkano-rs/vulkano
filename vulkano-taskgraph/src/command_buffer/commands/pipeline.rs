@@ -1269,9 +1269,11 @@ impl RecordingCommandBuffer<'_> {
     /// # Safety
     ///
     /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
     /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
     pub unsafe fn try_trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
