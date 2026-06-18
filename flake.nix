@@ -43,7 +43,6 @@
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
-          SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
           VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
         };
         devShells.CI = with pkgs; mkShell rec {
@@ -66,7 +65,6 @@
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
-          SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
         };
         devShells.CI-MSRV = let
           manifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
@@ -84,7 +82,6 @@
           ];
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
-          SHADERC_LIB_DIR = lib.makeLibraryPath [ shaderc ];
         };
       }
     );
