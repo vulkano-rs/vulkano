@@ -8,6 +8,7 @@ use crate::{
         sys::RecordingCommandBuffer,
         AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
         DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
+        TraceRaysIndirectCommand,
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
@@ -1696,6 +1697,65 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self.add_command("trace_rays", used_resources, move |out| {
             unsafe { out.trace_rays_unchecked(&shader_binding_table_addresses, dimensions) };
+        });
+
+        self
+    }
+
+    /// Performs a single ray tracing operation using a ray tracing pipeline, reading the
+    /// ray trace query dimensions from a separate buffer.
+    ///
+    /// A single ray tracing operation is performed for the `TraceRaysIndirectCommand` struct that
+    /// is read from `indirect_buffer`.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
+    pub unsafe fn trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: ShaderBindingTableAddresses,
+        indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.inner.validate_trace_rays_indirect(
+            &shader_binding_table_addresses,
+            indirect_buffer.buffer(),
+            indirect_buffer.offset(),
+        )?;
+
+        Ok(unsafe {
+            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_buffer)
+        })
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trace_rays_indirect_unchecked(
+        &mut self,
+        shader_binding_table_addresses: ShaderBindingTableAddresses,
+        indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
+    ) -> &mut Self {
+        let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command("trace_rays_indirect", used_resources, move |out| {
+            unsafe {
+                out.trace_rays_indirect_unchecked(
+                    &shader_binding_table_addresses,
+                    indirect_buffer.buffer(),
+                    indirect_buffer.offset(),
+                )
+            };
         });
 
         self
