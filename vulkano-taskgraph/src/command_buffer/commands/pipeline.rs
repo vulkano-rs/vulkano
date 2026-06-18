@@ -1226,11 +1226,11 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Performs multiple ray tracing operations using a ray tracing pipeline, panicking on a
-    /// validation error.
+    /// Performs a single ray tracing operation using a ray tracing pipeline, reading the
+    /// ray trace query dimensions from a separate buffer.
     ///
-    /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
-    /// is read from `buffer`.
+    /// A single ray tracing operation is performed for the `TraceRaysIndirectCommand` struct that
+    /// is read from `buffer` starting at `offset`.
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
@@ -1256,11 +1256,13 @@ impl RecordingCommandBuffer<'_> {
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: Id<Buffer>,
+        offset: DeviceSize,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer) }.unwrap()
+        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer, offset) }
+            .unwrap()
     }
 
-    /// Performs multiple ray tracing operations using a ray tracing pipeline.
+    /// Performs multiple ray tracing operations using a ray tracing pipeline
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
@@ -1278,14 +1280,18 @@ impl RecordingCommandBuffer<'_> {
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: Id<Buffer>,
+        offset: DeviceSize,
     ) -> Result<&mut Self> {
-        Ok(unsafe { self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer) })
+        Ok(unsafe {
+            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer, offset)
+        })
     }
 
     pub unsafe fn trace_rays_indirect_unchecked(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: Id<Buffer>,
+        offset: DeviceSize,
     ) -> &mut Self {
         let buffer = unsafe { self.accesses.buffer_unchecked(buffer) };
 
@@ -1302,7 +1308,7 @@ impl RecordingCommandBuffer<'_> {
                 &miss,
                 &hit,
                 &callable,
-                buffer.device_address().into(),
+                buffer.device_address().get() + offset,
             )
         };
 

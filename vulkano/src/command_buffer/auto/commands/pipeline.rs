@@ -1702,10 +1702,11 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
-    /// Performs multiple ray tracing operations using a ray tracing pipeline.
+    /// Performs a single ray tracing operation using a ray tracing pipeline, reading the
+    /// ray trace query dimensions from a separate buffer.
     ///
-    /// One ray tracing operation is performed for each `TraceRaysIndirectCommand` struct that
-    /// is read from `buffer`.
+    /// A single ray tracing operation is performed for the `TraceRaysIndirectCommand` struct that
+    /// is read from `indirect_buffer`.
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
@@ -1727,6 +1728,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.inner.validate_trace_rays_indirect(
             &shader_binding_table_addresses,
             indirect_buffer.buffer(),
+            indirect_buffer.offset(),
         )?;
 
         Ok(unsafe {
@@ -1751,6 +1753,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 out.trace_rays_indirect_unchecked(
                     &shader_binding_table_addresses,
                     indirect_buffer.buffer(),
+                    indirect_buffer.offset(),
                 )
             };
         });

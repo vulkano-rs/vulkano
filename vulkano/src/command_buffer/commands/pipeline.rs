@@ -1680,24 +1680,30 @@ impl RecordingCommandBuffer {
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: &Buffer,
+        offset: DeviceSize,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer) }.unwrap()
+        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer, offset) }
+            .unwrap()
     }
 
     pub unsafe fn try_trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: &Buffer,
+        offset: DeviceSize,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_trace_rays_indirect(shader_binding_table_addresses, buffer)?;
+        self.validate_trace_rays_indirect(shader_binding_table_addresses, buffer, offset)?;
 
-        Ok(unsafe { self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer) })
+        Ok(unsafe {
+            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer, offset)
+        })
     }
 
     pub(crate) fn validate_trace_rays_indirect(
         &self,
         _shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: &Buffer,
+        offset: DeviceSize,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_features().ray_tracing_pipeline {
             return Err(Box::new(ValidationError {
@@ -1747,19 +1753,23 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !buffer.device_address().get().is_multiple_of(4) {
+        if !offset.is_multiple_of(4) {
             return Err(Box::new(ValidationError {
-                context: "buffer.device_address()".into(),
+                context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
                 vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
                 ..Default::default()
             }));
         }
 
-        if size_of::<TraceRaysIndirectCommand>() as DeviceSize > buffer.size() {
+        if offset
+            .checked_add(size_of::<TraceRaysIndirectCommand>() as DeviceSize)
+            .is_none_or(|end| end > buffer.size())
+        {
             return Err(Box::new(ValidationError {
-                context: "buffer.size()".into(),
-                problem: "is less than `size_of::<TraceRaysIndirectCommand>()`".into(),
+                problem: "`offset + size_of::<TraceRaysIndirectCommand>()` is greater than \
+                    `buffer.size()`"
+                    .into(),
                 vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03636"],
                 ..Default::default()
             }));
@@ -1773,6 +1783,7 @@ impl RecordingCommandBuffer {
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         buffer: &Buffer,
+        offset: DeviceSize,
     ) -> &mut Self {
         let raygen = shader_binding_table_addresses.raygen.to_vk();
         let miss = shader_binding_table_addresses.miss.to_vk();
@@ -1788,7 +1799,7 @@ impl RecordingCommandBuffer {
                 &miss,
                 &hit,
                 &callable,
-                buffer.device_address().into(),
+                buffer.device_address().get() + offset,
             )
         };
 
