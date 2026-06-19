@@ -1,25 +1,19 @@
 use crate::{App, RenderContext};
 use glam::{Mat4, Vec3};
-use std::{iter, sync::Arc};
+use std::{slice, sync::Arc};
 use vulkano::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,
         AccelerationStructureBuildRangeInfo, AccelerationStructureBuildType,
-        AccelerationStructureCreateInfo, AccelerationStructureGeometries,
-        AccelerationStructureGeometryInstancesData, AccelerationStructureGeometryInstancesDataType,
+        AccelerationStructureCreateInfo, AccelerationStructureGeometry,
+        AccelerationStructureGeometryData, AccelerationStructureGeometryInstancesData,
         AccelerationStructureGeometryTrianglesData, AccelerationStructureInstance,
         AccelerationStructureType, BuildAccelerationStructureFlags, BuildAccelerationStructureMode,
     },
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryCommandBufferAbstract,
-    },
-    device::{Device, Queue},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    device::{DeviceOwned, Queue},
     format::Format,
-    memory::allocator::{
-        AllocationCreateInfo, DeviceLayout, MemoryTypeFilter, StandardMemoryAllocator,
-    },
+    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{
         graphics::vertex_input::Vertex,
         ray_tracing::{
@@ -29,12 +23,12 @@ use vulkano::{
         Pipeline, PipelineShaderStageCreateInfo,
     },
     swapchain::Swapchain,
-    sync::GpuFuture,
+    DeviceSize,
 };
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer,
     descriptor_set::{AccelerationStructureId, StorageBufferId},
-    resource::HostAccessType,
+    resource::{AccessTypes, Flight, HostAccessType, Resources},
     Id, Task, TaskContext, TaskResult,
 };
 
@@ -50,12 +44,7 @@ pub struct SceneTask {
 }
 
 impl SceneTask {
-    pub fn new(
-        app: &App,
-        virtual_swapchain_id: Id<Swapchain>,
-        memory_allocator: &Arc<StandardMemoryAllocator>,
-        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
-    ) -> Self {
+    pub fn new(app: &App, virtual_swapchain_id: Id<Swapchain>) -> (Self, Id<Buffer>, Id<Buffer>) {
         let bcx = app.resources.bindless_context().unwrap();
 
         let pipeline = {
@@ -116,47 +105,67 @@ impl SceneTask {
                 position: [0.25, -0.1, 0.0],
             },
         ];
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            &BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER
-                    | BufferUsage::SHADER_DEVICE_ADDRESS
-                    | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
-                ..Default::default()
-            },
-            &AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
+        let vertex_buffer_id = app
+            .resources
+            .create_buffer(
+                &BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER
+                        | BufferUsage::SHADER_DEVICE_ADDRESS
+                        | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
+                    ..Default::default()
+                },
+                &AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                DeviceLayout::for_value(vertices.as_slice()).unwrap(),
+            )
+            .unwrap();
+
+        unsafe {
+            vulkano_taskgraph::execute(
+                &app.queue,
+                &app.resources,
+                app.flight_id,
+                |_cbf, tcx| {
+                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)
+                        .copy_from_slice(&vertices);
+
+                    Ok(())
+                },
+                [(vertex_buffer_id, HostAccessType::Write)],
+                [],
+                [],
+            )
+        }
         .unwrap();
+
+        // FIXME(taskgraph): sane initialization
+        app.resources.flight(app.flight_id).wait(None).unwrap();
 
         // Build the bottom-level acceleration structure and then the top-level acceleration
         // structure. Acceleration structures are used to accelerate ray tracing. The bottom-level
         // acceleration structure contains the geometry data. The top-level acceleration structure
         // contains the instances of the bottom-level acceleration structures. In our shader, we
         // will trace rays against the top-level acceleration structure.
-        let blas = unsafe {
+        let (blas, blas_buffer_id) = unsafe {
             build_acceleration_structure_triangles(
-                &vertex_buffer,
-                memory_allocator,
-                command_buffer_allocator,
-                &app.device,
                 &app.queue,
+                &app.resources,
+                app.flight_id,
+                vertex_buffer_id,
             )
         };
-        let tlas = unsafe {
-            build_top_level_acceleration_structure(
-                vec![AccelerationStructureInstance {
+        let (tlas, tlas_buffer_id) = unsafe {
+            build_acceleration_structure_instances(
+                &app.queue,
+                &app.resources,
+                app.flight_id,
+                &[AccelerationStructureInstance {
                     acceleration_structure_reference: blas.device_address().into(),
                     ..Default::default()
                 }],
-                memory_allocator,
-                command_buffer_allocator,
-                &app.device,
-                &app.queue,
             )
         };
 
@@ -211,16 +220,19 @@ impl SceneTask {
             .create_storage_buffer(camera_buffer_id, 0, None)
             .unwrap();
 
-        let shader_binding_table = ShaderBindingTable::new(memory_allocator, &pipeline).unwrap();
+        let shader_binding_table =
+            ShaderBindingTable::new(app.resources.memory_allocator(), &pipeline).unwrap();
 
-        SceneTask {
+        let task = SceneTask {
             swapchain_id: virtual_swapchain_id,
             acceleration_structure_id,
             camera_storage_buffer_id,
             shader_binding_table,
             pipeline,
             _blas: blas,
-        }
+        };
+
+        (task, tlas_buffer_id, blas_buffer_id)
     }
 }
 
@@ -278,179 +290,235 @@ mod miss {
     }
 }
 
-#[derive(BufferContents, Vertex)]
+#[derive(Clone, Copy, BufferContents, Vertex)]
 #[repr(C)]
 struct MyVertex {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
 }
 
-/// A helper function to build a acceleration structure and wait for its completion.
+/// A helper function to build an acceleration structure and wait for its completion.
 ///
 /// # Safety
 ///
 /// - If you are referencing a bottom-level acceleration structure in a top-level acceleration
 ///   structure, you must ensure that the bottom-level acceleration structure is kept alive.
 unsafe fn build_acceleration_structure_common(
-    geometries: AccelerationStructureGeometries,
-    primitive_count: u32,
-    ty: AccelerationStructureType,
-    memory_allocator: &Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
-    device: &Arc<Device>,
     queue: &Arc<Queue>,
-) -> Arc<AccelerationStructure> {
-    let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
+    resources: &Arc<Resources>,
+    flight_id: Id<Flight>,
+    ty: AccelerationStructureType,
+    geometries: &[AccelerationStructureGeometry<'_>],
+    geometry_buffer_id: Id<Buffer>,
+    primitive_count: u32,
+) -> (Arc<AccelerationStructure>, Id<Buffer>) {
+    let mut build_geometry_info = AccelerationStructureBuildGeometryInfo {
+        ty,
         mode: BuildAccelerationStructureMode::Build,
         flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
-        ..AccelerationStructureBuildGeometryInfo::new(geometries)
+        geometries,
+        ..Default::default()
     };
 
-    let as_build_sizes_info = device.acceleration_structure_build_sizes(
+    let build_sizes_info = resources.device().acceleration_structure_build_sizes(
         AccelerationStructureBuildType::Device,
-        &as_build_geometry_info,
+        &build_geometry_info,
         &[primitive_count],
     );
 
-    // We create a new scratch buffer for each acceleration structure for simplicity. You may want
-    // to reuse scratch buffers if you need to build many acceleration structures.
-    let scratch_buffer = Buffer::new_slice::<u8>(
-        memory_allocator,
-        &BufferCreateInfo {
-            usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        &AllocationCreateInfo::default(),
-        as_build_sizes_info.build_scratch_size,
-    )
-    .unwrap();
+    let buffer_id = resources
+        .create_buffer(
+            &BufferCreateInfo {
+                usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+                    | BufferUsage::SHADER_DEVICE_ADDRESS,
+                ..Default::default()
+            },
+            &AllocationCreateInfo::default(),
+            DeviceLayout::new_unsized::<[u8]>(build_sizes_info.acceleration_structure_size)
+                .unwrap(),
+        )
+        .unwrap();
 
-    let acceleration = unsafe {
+    let acceleration_structure = unsafe {
         AccelerationStructure::new(
-            device,
+            resources.device(),
             &AccelerationStructureCreateInfo {
+                size: build_sizes_info.acceleration_structure_size,
                 ty,
-                ..AccelerationStructureCreateInfo::new(
-                    &Buffer::new_slice::<u8>(
-                        memory_allocator,
-                        &BufferCreateInfo {
-                            usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
-                                | BufferUsage::SHADER_DEVICE_ADDRESS,
-                            ..Default::default()
-                        },
-                        &AllocationCreateInfo::default(),
-                        as_build_sizes_info.acceleration_structure_size,
-                    )
-                    .unwrap(),
-                )
+                ..AccelerationStructureCreateInfo::new(resources.buffer(buffer_id).buffer())
             },
         )
     }
     .unwrap();
 
-    as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
-    as_build_geometry_info.scratch_data = Some(scratch_buffer);
+    let device_properties = resources.device().physical_device().properties();
+    let min_scratch_alignment = device_properties
+        .min_acceleration_structure_scratch_offset_alignment
+        .unwrap();
 
-    let as_build_range_info = AccelerationStructureBuildRangeInfo {
+    // We create a new scratch buffer for each acceleration structure build for simplicity. You may
+    // want to reuse scratch buffers if you need to build many acceleration structures.
+    let scratch_buffer_id = resources
+        .create_buffer(
+            &BufferCreateInfo {
+                usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            &AllocationCreateInfo::default(),
+            DeviceLayout::from_size_alignment(
+                build_sizes_info.build_scratch_size,
+                DeviceSize::from(min_scratch_alignment),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let scratch_buffer_state = resources.buffer(scratch_buffer_id);
+    let scratch_buffer = scratch_buffer_state.buffer();
+
+    build_geometry_info.dst_acceleration_structure = Some(&acceleration_structure);
+    build_geometry_info.scratch_data = scratch_buffer.device_address().get();
+
+    let build_range_info = AccelerationStructureBuildRangeInfo {
         primitive_count,
         ..Default::default()
     };
 
-    // For simplicity, we build a single command buffer that builds the acceleration structure,
-    // then waits for its execution to complete.
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator.clone(),
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
+    // For simplicity, we execute a one-off task graph that builds the acceleration structure, and
+    // wait for its execution to complete.
+    unsafe {
+        vulkano_taskgraph::execute(
+            queue,
+            resources,
+            flight_id,
+            |cbf, _tcx| {
+                cbf.as_raw().build_acceleration_structure(
+                    &build_geometry_info,
+                    slice::from_ref(&build_range_info),
+                );
+
+                Ok(())
+            },
+            [],
+            [
+                (
+                    buffer_id,
+                    AccessTypes::ACCELERATION_STRUCTURE_BUILD_ACCELERATION_STRUCTURE_WRITE,
+                ),
+                (
+                    scratch_buffer_id,
+                    AccessTypes::ACCELERATION_STRUCTURE_BUILD_ACCELERATION_STRUCTURE_READ
+                        | AccessTypes::ACCELERATION_STRUCTURE_BUILD_ACCELERATION_STRUCTURE_WRITE,
+                ),
+                (
+                    geometry_buffer_id,
+                    AccessTypes::ACCELERATION_STRUCTURE_BUILD_SHADER_READ,
+                ),
+            ],
+            [],
+        )
+    }
     .unwrap();
 
-    builder
-        .build_acceleration_structure(
-            as_build_geometry_info,
-            iter::once(as_build_range_info).collect(),
-        )
-        .unwrap();
+    resources.flight(flight_id).wait(None).unwrap();
 
-    builder
-        .build()
-        .unwrap()
-        .execute(queue.clone())
-        .unwrap()
-        .then_signal_fence_and_flush()
-        .unwrap()
-        .wait(None)
-        .unwrap();
-
-    acceleration
+    (acceleration_structure, buffer_id)
 }
 
 unsafe fn build_acceleration_structure_triangles(
-    vertex_buffer: &Subbuffer<[MyVertex]>,
-    memory_allocator: &Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
-    device: &Arc<Device>,
     queue: &Arc<Queue>,
-) -> Arc<AccelerationStructure> {
-    let primitive_count = (vertex_buffer.len() / 3) as u32;
-    let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
-        max_vertex: vertex_buffer.len() as _,
-        vertex_data: Some(vertex_buffer.clone().into_bytes()),
-        vertex_stride: size_of::<MyVertex>() as _,
-        ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
+    resources: &Arc<Resources>,
+    flight_id: Id<Flight>,
+    vertex_buffer_id: Id<Buffer>,
+) -> (Arc<AccelerationStructure>, Id<Buffer>) {
+    let vertex_buffer_state = resources.buffer(vertex_buffer_id);
+    let vertex_buffer = vertex_buffer_state.buffer();
+    let vertex_count = vertex_buffer.size() / size_of::<MyVertex>() as DeviceSize;
+    let triangles_data = AccelerationStructureGeometryTrianglesData {
+        vertex_format: Format::R32G32B32_SFLOAT,
+        vertex_data: vertex_buffer.device_address().get(),
+        vertex_stride: size_of::<MyVertex>() as u32,
+        max_vertex: u32::try_from(vertex_count).unwrap() - 1,
+        ..Default::default()
     };
+    let geometry = AccelerationStructureGeometry::new(
+        AccelerationStructureGeometryData::Triangles(triangles_data),
+    );
 
-    let geometries = AccelerationStructureGeometries::Triangles(vec![as_geometry_triangles_data]);
+    let primitive_count = vertex_count as u32 / 3;
 
     build_acceleration_structure_common(
-        geometries,
-        primitive_count,
-        AccelerationStructureType::BottomLevel,
-        memory_allocator,
-        command_buffer_allocator,
-        device,
         queue,
+        resources,
+        flight_id,
+        AccelerationStructureType::BottomLevel,
+        slice::from_ref(&geometry),
+        vertex_buffer_id,
+        primitive_count,
     )
 }
 
-unsafe fn build_top_level_acceleration_structure(
-    as_instances: Vec<AccelerationStructureInstance>,
-    memory_allocator: &Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
-    device: &Arc<Device>,
+unsafe fn build_acceleration_structure_instances(
     queue: &Arc<Queue>,
-) -> Arc<AccelerationStructure> {
-    let primitive_count = as_instances.len() as u32;
+    resources: &Arc<Resources>,
+    flight_id: Id<Flight>,
+    instances: &[AccelerationStructureInstance],
+) -> (Arc<AccelerationStructure>, Id<Buffer>) {
+    let primitive_count = instances.len() as u32;
 
-    let instance_buffer = Buffer::from_iter(
-        memory_allocator,
-        &BufferCreateInfo {
-            usage: BufferUsage::SHADER_DEVICE_ADDRESS
-                | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
-            ..Default::default()
-        },
-        &AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        as_instances,
-    )
+    let instance_buffer_id = resources
+        .create_buffer(
+            &BufferCreateInfo {
+                usage: BufferUsage::SHADER_DEVICE_ADDRESS
+                    | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
+                ..Default::default()
+            },
+            &AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            DeviceLayout::for_value(instances).unwrap(),
+        )
+        .unwrap();
+    let instance_buffer_state = resources.buffer(instance_buffer_id);
+    let instance_buffer = instance_buffer_state.buffer();
+
+    unsafe {
+        vulkano_taskgraph::execute(
+            queue,
+            resources,
+            flight_id,
+            |_cbf, tcx| {
+                tcx.write_buffer::<[AccelerationStructureInstance]>(instance_buffer_id, ..)
+                    .copy_from_slice(instances);
+
+                Ok(())
+            },
+            [(instance_buffer_id, HostAccessType::Write)],
+            [],
+            [],
+        )
+    }
     .unwrap();
 
-    let as_geometry_instances_data = AccelerationStructureGeometryInstancesData::new(
-        AccelerationStructureGeometryInstancesDataType::Values(Some(instance_buffer)),
+    // FIXME(taskgraph): sane initialization
+    resources.flight(flight_id).wait(None).unwrap();
+
+    let instances_data = AccelerationStructureGeometryInstancesData {
+        data: instance_buffer.device_address().get(),
+        ..Default::default()
+    };
+    let geometry = AccelerationStructureGeometry::new(
+        AccelerationStructureGeometryData::Instances(instances_data),
     );
 
-    let geometries = AccelerationStructureGeometries::Instances(as_geometry_instances_data);
-
     build_acceleration_structure_common(
-        geometries,
-        primitive_count,
-        AccelerationStructureType::TopLevel,
-        memory_allocator,
-        command_buffer_allocator,
-        device,
         queue,
+        resources,
+        flight_id,
+        AccelerationStructureType::TopLevel,
+        slice::from_ref(&geometry),
+        instance_buffer_id,
+        primitive_count,
     )
 }

@@ -126,7 +126,8 @@ pub use crate::fns::DeviceFunctions;
 use crate::{
     acceleration_structure::{
         AccelerationStructureBuildGeometryInfo, AccelerationStructureBuildSizesInfo,
-        AccelerationStructureBuildType, AccelerationStructureGeometries,
+        AccelerationStructureBuildType, AccelerationStructureGeometry,
+        AccelerationStructureGeometryData,
     },
     buffer::BufferCreateInfo,
     descriptor_set::layout::{DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport},
@@ -587,7 +588,7 @@ impl Device {
     pub fn acceleration_structure_build_sizes(
         &self,
         build_type: AccelerationStructureBuildType,
-        build_info: &AccelerationStructureBuildGeometryInfo,
+        build_info: &AccelerationStructureBuildGeometryInfo<'_>,
         max_primitive_counts: &[u32],
     ) -> AccelerationStructureBuildSizesInfo {
         self.try_acceleration_structure_build_sizes(build_type, build_info, max_primitive_counts)
@@ -601,7 +602,7 @@ impl Device {
     pub fn try_acceleration_structure_build_sizes(
         &self,
         build_type: AccelerationStructureBuildType,
-        build_info: &AccelerationStructureBuildGeometryInfo,
+        build_info: &AccelerationStructureBuildGeometryInfo<'_>,
         max_primitive_counts: &[u32],
     ) -> Result<AccelerationStructureBuildSizesInfo, Box<ValidationError>> {
         self.validate_acceleration_structure_build_sizes(
@@ -622,7 +623,7 @@ impl Device {
     fn validate_acceleration_structure_build_sizes(
         &self,
         build_type: AccelerationStructureBuildType,
-        build_info: &AccelerationStructureBuildGeometryInfo,
+        build_info: &AccelerationStructureBuildGeometryInfo<'_>,
         max_primitive_counts: &[u32],
     ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_acceleration_structure {
@@ -656,6 +657,7 @@ impl Device {
             .validate(self)
             .map_err(|err| err.add_context("build_info"))?;
 
+        let mut total_primitive_count = 0;
         let max_primitive_count = self
             .physical_device()
             .properties()
@@ -667,59 +669,58 @@ impl Device {
             .max_instance_count
             .unwrap();
 
-        let geometry_count = match &build_info.geometries {
-            AccelerationStructureGeometries::Triangles(geometries) => {
-                for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
-                    if primitive_count as u64 > max_primitive_count {
+        for (geometry, &primitive_count) in build_info.geometries.iter().zip(max_primitive_counts) {
+            let AccelerationStructureGeometry {
+                geometry,
+                flags: _,
+                _ne: _,
+            } = geometry;
+
+            total_primitive_count += primitive_count as u64;
+
+            match geometry {
+                AccelerationStructureGeometryData::Triangles(_triangles_data) => {
+                    if total_primitive_count > max_primitive_count {
                         return Err(Box::new(ValidationError {
-                            context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "exceeds the `max_primitive_count` limit".into(),
+                            context: "info.geometries".into(),
+                            problem: "the total number of triangles exceeds the \
+                                `max_primitive_count` limit"
+                                .into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
                             ..Default::default()
                         }));
                     }
                 }
-
-                geometries.len()
-            }
-            AccelerationStructureGeometries::Aabbs(geometries) => {
-                for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
-                    if primitive_count as u64 > max_primitive_count {
+                AccelerationStructureGeometryData::Aabbs(_aabbs_data) => {
+                    if total_primitive_count > max_primitive_count {
                         return Err(Box::new(ValidationError {
-                            context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "exceeds the `max_primitive_count` limit".into(),
+                            problem: "the total number of AABBs exceeds the `max_primitive_count` \
+                                limit"
+                                .into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
                             ..Default::default()
                         }));
                     }
                 }
-
-                geometries.len()
-            }
-            AccelerationStructureGeometries::Instances(_) => {
-                for (index, &instance_count) in max_primitive_counts.iter().enumerate() {
-                    if instance_count as u64 > max_instance_count {
+                AccelerationStructureGeometryData::Instances(_instances_data) => {
+                    if primitive_count as u64 > max_instance_count {
                         return Err(Box::new(ValidationError {
-                            context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "exceeds the `max_instance_count` limit".into(),
-                            vuids: &[
-                                "VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03785",
-                            ],
+                            context: "build_range_infos[0].primitive_count".into(),
+                            problem: "exceeds the the `max_instance_count` limit".into(),
+                            vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03801"],
                             ..Default::default()
                         }));
                     }
                 }
-
-                1
             }
-        };
+        }
 
-        if max_primitive_counts.len() != geometry_count {
+        if build_info.geometries.len() != max_primitive_counts.len() {
             return Err(Box::new(ValidationError {
-                problem: "`build_info.geometries` and `max_primitive_counts` \
-                    do not have the same length"
+                problem: "`build_info.geometries` and `max_primitive_counts` do not have the same \
+                    length"
                     .into(),
-                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03619"],
+                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-pMaxPrimitiveCounts-11612"],
                 ..Default::default()
             }));
         }
@@ -731,7 +732,7 @@ impl Device {
     pub unsafe fn acceleration_structure_build_sizes_unchecked(
         &self,
         build_type: AccelerationStructureBuildType,
-        build_info: &AccelerationStructureBuildGeometryInfo,
+        build_info: &AccelerationStructureBuildGeometryInfo<'_>,
         max_primitive_counts: &[u32],
     ) -> AccelerationStructureBuildSizesInfo {
         let build_info_fields1_vk = build_info.to_vk_fields1();
