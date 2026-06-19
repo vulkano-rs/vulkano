@@ -3701,13 +3701,15 @@ impl<L> AutoCommandBufferBuilder<L> {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(Some(acceleration_structure)) = element {
                             let buffer = acceleration_structure.buffer();
+                            let offset = acceleration_structure.offset();
+                            let size = acceleration_structure.size();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
                             used_resources.push((
                                 use_ref,
                                 Resource::Buffer {
-                                    buffer: buffer.clone(),
-                                    range: 0..buffer.size(),
+                                    buffer: buffer.clone().into(),
+                                    range: offset..offset + size,
                                     memory_access,
                                 },
                             ));

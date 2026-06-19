@@ -208,9 +208,9 @@ impl StridedDeviceAddressRegion {
     }
 }
 
-/// Holds 24 bits in the least significant bits of memory,
-/// and 8 bytes in the most significant bits of that memory,
-/// occupying a single [`u32`] in total.
+/// Holds 24 bits in the least significant bits of memory, and 8 bits in the most significant bits
+/// of that memory, occupying a single [`u32`] in total.
+//
 // NOTE: This is copied from Ash, but duplicated here so that we can implement traits on it.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
@@ -220,22 +220,40 @@ unsafe impl Pod for Packed24_8 {}
 unsafe impl Zeroable for Packed24_8 {}
 
 impl Packed24_8 {
-    /// Returns a new `Packed24_8` value.
-    // TODO: make const
+    /// Creates a new `Packed24_8` from the low 24 and high 8 bits.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `low_24` has any of its high 8 bits set.
     #[inline]
-    pub fn new(low_24: u32, high_8: u8) -> Self {
-        Self((low_24 & 0x00ff_ffff) | (u32::from(high_8) << 24))
+    #[track_caller]
+    pub const fn new(low_24: u32, high_8: u8) -> Self {
+        assert!(low_24 & 0xff00_0000 == 0);
+
+        Self(low_24 | ((high_8 as u32) << 24))
+    }
+
+    /// Creates a new `Packed24_8` from the underlying `u32`.
+    #[inline]
+    pub const fn from_u32(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    /// Returns the underlying `u32`.
+    #[inline]
+    pub const fn as_u32(self) -> u32 {
+        self.0
     }
 
     /// Returns the least-significant 24 bits (3 bytes) of this integer.
     #[inline]
-    pub fn low_24(&self) -> u32 {
-        self.0 & 0xffffff
+    pub const fn low_24(self) -> u32 {
+        self.0 & 0x00ff_ffff
     }
 
     /// Returns the most significant 8 bits (single byte) of this integer.
     #[inline]
-    pub fn high_8(&self) -> u8 {
+    pub const fn high_8(self) -> u8 {
         (self.0 >> 24) as u8
     }
 }

@@ -67,10 +67,12 @@
 //! # Accessing an acceleration structure in a shader
 //!
 //! Acceleration structures can be bound to and accessed in any shader type. They are accessed
-//! as descriptors, like buffers and images, and are declared in GLSL with
+//! as descriptors, like buffers and images, and are declared in GLSL like so:
+//!
 //! ```glsl
 //! layout (set = N, binding = N) uniform accelerationStructureEXT nameOfTheVariable;
 //! ```
+//!
 //! You must enable either the `GL_EXT_ray_query` or the `GL_EXT_ray_tracing` GLSL extensions in
 //! the shader to use this.
 //!
@@ -85,7 +87,7 @@
 //! [`WriteDescriptorSet::acceleration_structure`]: crate::descriptor_set::WriteDescriptorSet::acceleration_structure
 
 use crate::{
-    buffer::{BufferCreateFlags, BufferUsage, IndexBuffer, Subbuffer},
+    buffer::{Buffer, BufferCreateFlags, BufferUsage, IndexType},
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
@@ -105,7 +107,9 @@ pub struct AccelerationStructure {
     id: NonZero<u64>,
 
     create_flags: AccelerationStructureCreateFlags,
-    buffer: Subbuffer<[u8]>,
+    buffer: Arc<Buffer>,
+    offset: DeviceSize,
+    size: DeviceSize,
     ty: AccelerationStructureType,
 }
 
@@ -231,6 +235,8 @@ impl AccelerationStructure {
         let &AccelerationStructureCreateInfo {
             create_flags,
             buffer,
+            offset,
+            size,
             ty,
             _ne: _,
         } = create_info;
@@ -242,6 +248,8 @@ impl AccelerationStructure {
 
             create_flags,
             buffer: buffer.clone(),
+            offset,
+            size,
             ty,
         })
     }
@@ -252,16 +260,24 @@ impl AccelerationStructure {
         self.create_flags
     }
 
-    /// Returns the subbuffer that the acceleration structure is stored on.
+    /// Returns the buffer that the acceleration structure is stored in.
     #[inline]
-    pub fn buffer(&self) -> &Subbuffer<[u8]> {
+    pub fn buffer(&self) -> &Arc<Buffer> {
         &self.buffer
+    }
+
+    /// Returns the offset from the start of [`buffer`] where the acceleration structure is stored.
+    ///
+    /// [`buffer`]: Self::buffer
+    #[inline]
+    pub fn offset(&self) -> DeviceSize {
+        self.offset
     }
 
     /// Returns the size of the acceleration structure.
     #[inline]
     pub fn size(&self) -> DeviceSize {
-        self.buffer.size()
+        self.size
     }
 
     /// Returns the type of the acceleration structure.
@@ -353,7 +369,20 @@ pub struct AccelerationStructureCreateInfo<'a> {
     /// to the acceleration structure.
     ///
     /// There is no default value.
-    pub buffer: &'a Subbuffer<[u8]>,
+    pub buffer: &'a Arc<Buffer>,
+
+    /// The offset (in bytes) from the start of `buffer` where the acceleration structure will be
+    /// stored.
+    ///
+    /// This must be a multiple of 256.
+    ///
+    /// The default value is `0`.
+    pub offset: DeviceSize,
+
+    /// The size (in bytes) required for the acceleration structure.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
 
     /// The type of acceleration structure to create.
     ///
@@ -369,10 +398,12 @@ pub struct AccelerationStructureCreateInfo<'a> {
 impl<'a> AccelerationStructureCreateInfo<'a> {
     /// Returns a default `AccelerationStructureCreateInfo` with the provided `buffer`.
     #[inline]
-    pub const fn new(buffer: &'a Subbuffer<[u8]>) -> Self {
+    pub const fn new(buffer: &'a Arc<Buffer>) -> Self {
         Self {
             create_flags: AccelerationStructureCreateFlags::empty(),
             buffer,
+            offset: 0,
+            size: 0,
             ty: AccelerationStructureType::Generic,
             _ne: crate::NE,
         }
@@ -382,6 +413,8 @@ impl<'a> AccelerationStructureCreateInfo<'a> {
         let &Self {
             create_flags,
             buffer,
+            offset,
+            size,
             ty,
             _ne: _,
         } = self;
@@ -397,7 +430,6 @@ impl<'a> AccelerationStructureCreateInfo<'a> {
         })?;
 
         if !buffer
-            .buffer()
             .usage()
             .intersects(BufferUsage::ACCELERATION_STRUCTURE_STORAGE)
         {
@@ -412,25 +444,32 @@ impl<'a> AccelerationStructureCreateInfo<'a> {
         }
 
         if buffer
-            .buffer()
             .flags()
             .intersects(BufferCreateFlags::SPARSE_RESIDENCY)
         {
             return Err(Box::new(ValidationError {
-                context: "buffer.buffer().flags()".into(),
+                context: "buffer.flags()".into(),
                 problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`".into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-buffer-03615"],
                 ..Default::default()
             }));
         }
 
-        // VUID-VkAccelerationStructureCreateInfoKHR-offset-03616
-        // Ensured by the definition of `Subbuffer`.
-
-        if buffer.offset() % 256 != 0 {
+        if offset
+            .checked_add(size)
+            .is_none_or(|end| end > buffer.size())
+        {
             return Err(Box::new(ValidationError {
-                context: "buffer".into(),
-                problem: "the offset of the buffer is not a multiple of 256".into(),
+                problem: "`offset + size` is greater than `buffer.size()`".into(),
+                vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-offset-03616"],
+                ..Default::default()
+            }));
+        }
+
+        if !offset.is_multiple_of(256) {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 256".into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-offset-03734"],
                 ..Default::default()
             }));
@@ -443,15 +482,17 @@ impl<'a> AccelerationStructureCreateInfo<'a> {
         let &Self {
             create_flags,
             buffer,
+            offset,
+            size,
             ty,
             _ne: _,
         } = self;
 
         vk::AccelerationStructureCreateInfoKHR::default()
             .create_flags(create_flags.into())
-            .buffer(buffer.buffer().handle())
-            .offset(buffer.offset())
-            .size(buffer.size())
+            .buffer(buffer.handle())
+            .offset(offset)
+            .size(size)
             .ty(ty.into())
             .device_address(0) // TODO: allow user to specify
     }
@@ -484,8 +525,13 @@ vulkan_bitflags! {
 
 /// Geometries and other parameters for an acceleration structure build operation.
 #[derive(Clone, Debug)]
-pub struct AccelerationStructureBuildGeometryInfo {
-    /// Specifies how to build the acceleration structure.
+pub struct AccelerationStructureBuildGeometryInfo<'a> {
+    /// The type of acceleration structure to build.
+    ///
+    /// The default value is `AccelerationStructureType::Generic`, which must be overridden.
+    pub ty: AccelerationStructureType,
+
+    /// Additional properties of how the acceleration structure should be built.
     ///
     /// The default value is empty.
     pub flags: BuildAccelerationStructureFlags,
@@ -497,55 +543,85 @@ pub struct AccelerationStructureBuildGeometryInfo {
     /// The default value is [`BuildAccelerationStructureMode::Build`].
     pub mode: BuildAccelerationStructureMode,
 
+    /// The acceleration structure to use as the source of an acceleration structure update.
+    ///
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`] or when
+    /// `mode` is `BuildAccelerationStructureMode::Build`, but must be `Some` otherwise.
+    ///
+    /// This can be the same as `dst_acceleration_structure`, in which case the update happens
+    /// in-place.
+    ///
+    /// The default value is `None`.
+    pub src_acceleration_structure: Option<&'a Arc<AccelerationStructure>>,
+
     /// The acceleration structure to build or update.
     ///
-    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`], but must be
+    /// `Some` otherwise.
     ///
-    /// There is no default value.
-    pub dst_acceleration_structure: Option<Arc<AccelerationStructure>>,
+    /// This can be the same as `src_acceleration_structure`, in which case the update happens
+    /// in-place.
+    ///
+    /// The default value is `None`.
+    pub dst_acceleration_structure: Option<&'a Arc<AccelerationStructure>>,
 
     /// The geometries that will be built into `dst_acceleration_structure`.
     ///
-    /// The geometry type must match the `ty` that was specified when the acceleration structure
-    /// was created:
-    /// - `Instances` must be used with `TopLevel` or `Generic`.
-    /// - `Triangles` and `Aabbs` must be used with `BottomLevel` or `Generic`.
+    /// `ty` restricts which geometry types can be used:
+    /// - [`TopLevel`] only allows a single [`Instances`] geometry.
+    /// - [`BottomLevel`] only allows one of [`Triangles`] or [`Aabbs`] geometries.
     ///
-    /// There is no default value.
-    pub geometries: AccelerationStructureGeometries,
+    /// The default value is empty.
+    ///
+    /// [`TopLevel`]: AccelerationStructureType::TopLevel
+    /// [`BottomLevel`]: AccelerationStructureType::BottomLevel
+    /// [`Triangles`]: AccelerationStructureGeometryData::Triangles
+    /// [`Aabbs`]: AccelerationStructureGeometryData::Aabbs
+    /// [`Instances`]: AccelerationStructureGeometryData::Instances
+    pub geometries: &'a [AccelerationStructureGeometry<'a>],
 
     /// Scratch memory to be used for the build.
     ///
-    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
+    /// This can be `0` (null) when calling [`Device::acceleration_structure_build_sizes`], but
+    /// must be a valid buffer device address otherwise.
     ///
-    /// The default value is `None`.
-    pub scratch_data: Option<Subbuffer<[u8]>>,
+    /// The default value is `0` (null).
+    pub scratch_data: DeviceAddress,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl AccelerationStructureBuildGeometryInfo {
-    /// Returns a default `AccelerationStructureBuildGeometryInfo` with the provided `geometries`.
+impl Default for AccelerationStructureBuildGeometryInfo<'_> {
     #[inline]
-    pub const fn new(geometries: AccelerationStructureGeometries) -> Self {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> AccelerationStructureBuildGeometryInfo<'a> {
+    /// Returns a default `AccelerationStructureBuildGeometryInfo`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
+            ty: AccelerationStructureType::Generic,
             flags: BuildAccelerationStructureFlags::empty(),
             mode: BuildAccelerationStructureMode::Build,
+            src_acceleration_structure: None,
             dst_acceleration_structure: None,
-            geometries,
-            scratch_data: None,
+            geometries: &[],
+            scratch_data: 0,
             _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
+            ty,
             flags,
-            ref mode,
-            ref dst_acceleration_structure,
-            ref geometries,
+            mode,
+            src_acceleration_structure,
+            dst_acceleration_structure,
+            geometries,
             scratch_data: _,
             _ne: _,
         } = self;
@@ -555,61 +631,13 @@ impl AccelerationStructureBuildGeometryInfo {
                 .set_vuids(&["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-parameter"])
         })?;
 
-        let max_geometry_count = device
-            .physical_device()
-            .properties()
-            .max_geometry_count
-            .unwrap();
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode") // vuids?
+        })?;
 
-        match geometries {
-            // VUID-VkAccelerationStructureGeometryKHR-triangles-parameter
-            AccelerationStructureGeometries::Triangles(geometries) => {
-                for (index, triangles_data) in geometries.iter().enumerate() {
-                    triangles_data
-                        .validate(device)
-                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
-                }
-
-                if geometries.len() as u64 > max_geometry_count {
-                    return Err(Box::new(ValidationError {
-                        context: "geometries".into(),
-                        problem: "the length exceeds the `max_geometry_count` limit".into(),
-                        vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
-                        ..Default::default()
-                    }));
-                }
-
-                // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795
-                // Is checked in the top-level functions.
-            }
-
-            // VUID-VkAccelerationStructureGeometryKHR-aabbs-parameter
-            AccelerationStructureGeometries::Aabbs(geometries) => {
-                for (index, aabbs_data) in geometries.iter().enumerate() {
-                    aabbs_data
-                        .validate(device)
-                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
-                }
-
-                if geometries.len() as u64 > max_geometry_count {
-                    return Err(Box::new(ValidationError {
-                        context: "geometries".into(),
-                        problem: "the length exceeds the `max_geometry_count` limit".into(),
-                        vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
-                        ..Default::default()
-                    }));
-                }
-
-                // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794
-                // Is checked in the top-level functions.
-            }
-
-            // VUID-VkAccelerationStructureGeometryKHR-instances-parameter
-            AccelerationStructureGeometries::Instances(instances_data) => {
-                instances_data
-                    .validate(device)
-                    .map_err(|err| err.add_context("geometries"))?;
-            }
+        if let Some(src_acceleration_structure) = src_acceleration_structure {
+            // VUID-VkAccelerationStructureBuildGeometryInfoKHR-commonparent
+            assert_eq!(device, src_acceleration_structure.device().as_ref());
         }
 
         if let Some(dst_acceleration_structure) = dst_acceleration_structure {
@@ -617,8 +645,100 @@ impl AccelerationStructureBuildGeometryInfo {
             assert_eq!(device, dst_acceleration_structure.device().as_ref());
         }
 
-        if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
-            assert_eq!(device, src_acceleration_structure.device().as_ref());
+        match ty {
+            AccelerationStructureType::TopLevel => {
+                for (index, geometry) in geometries.iter().enumerate() {
+                    if !matches!(
+                        geometry.geometry,
+                        AccelerationStructureGeometryData::Instances(_),
+                    ) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`ty` is `AccelerationStructureType::TopLevel`, but \
+                                `geometries` doesn't contain only \
+                                `AccelerationStructureGeometryData::Instances` geometries"
+                                .into(),
+                            vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03789"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    geometry
+                        .validate(device)
+                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
+                }
+
+                if geometries.len() != 1 {
+                    return Err(Box::new(ValidationError {
+                        problem: "`ty` is `AccelerationStructureType::TopLevel`, but \
+                            `geometries.len()` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03790"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            AccelerationStructureType::BottomLevel => {
+                let mut prev_geometry_type = geometries
+                    .first()
+                    .map(|geometry| geometry.geometry.geometry_type())
+                    .unwrap_or_default();
+
+                for (index, geometry) in geometries.iter().enumerate() {
+                    if matches!(
+                        geometry.geometry,
+                        AccelerationStructureGeometryData::Instances(_),
+                    ) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`ty` is `AccelerationStructureType::BottomLevel`, but \
+                                `geometries` contains an \
+                                `AccelerationStructureGeometryData::Instances` geometry"
+                                .into(),
+                            vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03791"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    let geometry_type = geometry.geometry.geometry_type();
+
+                    if geometry_type != prev_geometry_type {
+                        return Err(Box::new(ValidationError {
+                            problem: "`ty` is `AccelerationStructureType::BottomLevel`, but \
+                                `geometries` don't all have the same geometry type"
+                                .into(),
+                            vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03792"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    geometry
+                        .validate(device)
+                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
+
+                    prev_geometry_type = geometry_type;
+                }
+
+                let max_geometry_count = device
+                    .physical_device()
+                    .properties()
+                    .max_geometry_count
+                    .unwrap();
+
+                if geometries.len() as u64 > max_geometry_count {
+                    return Err(Box::new(ValidationError {
+                        problem: "`geometries.len()` exceeds the `max_geometry_count` limit".into(),
+                        vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            AccelerationStructureType::Generic => {
+                return Err(Box::new(ValidationError {
+                    context: "ty".into(),
+                    problem: "is `AccelerationStructureType::Generic`".into(),
+                    vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03654"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if flags.contains(
@@ -638,61 +758,45 @@ impl AccelerationStructureBuildGeometryInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk<'a>(
+    pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a AccelerationStructureBuildGeometryInfoFields1Vk,
     ) -> vk::AccelerationStructureBuildGeometryInfoKHR<'a> {
         let &Self {
+            ty,
             flags,
-            ref mode,
-            ref dst_acceleration_structure,
-            ref geometries,
-            ref scratch_data,
+            mode,
+            src_acceleration_structure,
+            dst_acceleration_structure,
+            geometries: _,
+            scratch_data,
             _ne: _,
         } = self;
         let AccelerationStructureBuildGeometryInfoFields1Vk { geometries_vk } = fields1_vk;
 
         vk::AccelerationStructureBuildGeometryInfoKHR::default()
-            .ty(geometries.to_vk_ty())
+            .ty(ty.into())
             .flags(flags.into())
-            .mode(mode.to_vk())
-            .src_acceleration_structure(match mode {
-                BuildAccelerationStructureMode::Build => Default::default(),
-                BuildAccelerationStructureMode::Update(src_acceleration_structure) => {
-                    src_acceleration_structure.handle()
-                }
-            })
+            .mode(mode.into())
+            .src_acceleration_structure(
+                src_acceleration_structure.map_or_else(Default::default, VulkanObject::handle),
+            )
             .dst_acceleration_structure(
-                dst_acceleration_structure
-                    .as_ref()
-                    .map_or_else(Default::default, VulkanObject::handle),
+                dst_acceleration_structure.map_or_else(Default::default, VulkanObject::handle),
             )
             .geometries(geometries_vk)
-            .scratch_data(
-                scratch_data
-                    .as_ref()
-                    .map_or_else(Default::default, Subbuffer::to_vk_device_or_host_address),
-            )
+            .scratch_data(vk::DeviceOrHostAddressKHR {
+                device_address: scratch_data,
+            })
     }
 
     pub(crate) fn to_vk_fields1(&self) -> AccelerationStructureBuildGeometryInfoFields1Vk {
-        let Self { geometries, .. } = self;
+        let &Self { geometries, .. } = self;
 
-        let geometries_vk = match geometries {
-            AccelerationStructureGeometries::Triangles(geometries) => geometries
-                .iter()
-                .map(AccelerationStructureGeometryTrianglesData::to_vk)
-                .collect(),
-
-            AccelerationStructureGeometries::Aabbs(geometries) => geometries
-                .iter()
-                .map(AccelerationStructureGeometryAabbsData::to_vk)
-                .collect(),
-
-            AccelerationStructureGeometries::Instances(instances_data) => {
-                [instances_data.to_vk()].into_iter().collect()
-            }
-        };
+        let geometries_vk = geometries
+            .iter()
+            .map(AccelerationStructureGeometry::to_vk)
+            .collect();
 
         AccelerationStructureBuildGeometryInfoFields1Vk { geometries_vk }
     }
@@ -766,90 +870,77 @@ vulkan_bitflags! {
     ]), */
 }
 
-/// What mode an acceleration structure build command should operate in.
-#[derive(Clone, Debug)]
-#[repr(i32)]
-pub enum BuildAccelerationStructureMode {
-    /// Build a new acceleration structure from scratch.
-    Build = vk::BuildAccelerationStructureModeKHR::BUILD.as_raw(),
+vulkan_enum! {
+    #[non_exhaustive]
 
-    /// Update a previously built source acceleration structure with new data, storing the
-    /// updated structure in the destination. The source and destination acceleration structures
-    /// may be the same, which will do the update in-place.
+    /// What mode an acceleration structure build command should operate in.
+    BuildAccelerationStructureMode = BuildAccelerationStructureModeKHR(i32);
+
+    /// Build a new acceleration structure from scratch.
+    Build = BUILD,
+
+    /// Update a previously built source acceleration structure with new data, storing the updated
+    /// structure in the destination.
     ///
     /// The destination acceleration structure must have been built with the
     /// [`BuildAccelerationStructureFlags::ALLOW_UPDATE`] flag.
-    Update(Arc<AccelerationStructure>) = vk::BuildAccelerationStructureModeKHR::UPDATE.as_raw(),
+    Update = UPDATE,
 }
 
-impl BuildAccelerationStructureMode {
-    pub(crate) fn to_vk(&self) -> vk::BuildAccelerationStructureModeKHR {
-        match self {
-            BuildAccelerationStructureMode::Build => vk::BuildAccelerationStructureModeKHR::BUILD,
-            BuildAccelerationStructureMode::Update(_) => {
-                vk::BuildAccelerationStructureModeKHR::UPDATE
-            }
-        }
-    }
-}
-
-/// The type of geometry data in an acceleration structure.
 #[derive(Clone, Debug)]
-pub enum AccelerationStructureGeometries {
-    /// The geometries consist of bottom-level triangles data.
-    Triangles(Vec<AccelerationStructureGeometryTrianglesData>),
+pub struct AccelerationStructureGeometry<'a> {
+    /// The type of geometry data.
+    ///
+    /// There is no default value.
+    pub geometry: AccelerationStructureGeometryData<'a>,
 
-    /// The geometries consist of bottom-level axis-aligned bounding box data.
-    Aabbs(Vec<AccelerationStructureGeometryAabbsData>),
+    /// Additional properties of how the geometry should be built.
+    ///
+    /// The default value is empty.
+    pub flags: GeometryFlags,
 
-    /// The geometries consist of top-level instance data.
-    Instances(AccelerationStructureGeometryInstancesData),
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl AccelerationStructureGeometries {
-    /// Returns the number of geometries.
+impl<'a> AccelerationStructureGeometry<'a> {
+    /// Returns a default `AccelerationStructureGeometry` with the provided `geometry`.
     #[inline]
-    pub fn len(&self) -> usize {
-        match self {
-            AccelerationStructureGeometries::Triangles(geometries) => geometries.len(),
-            AccelerationStructureGeometries::Aabbs(geometries) => geometries.len(),
-            AccelerationStructureGeometries::Instances(_) => 1,
+    pub const fn new(geometry: AccelerationStructureGeometryData<'a>) -> Self {
+        Self {
+            geometry,
+            flags: GeometryFlags::empty(),
+            _ne: crate::NE,
         }
     }
 
-    pub(crate) fn to_vk_ty(&self) -> vk::AccelerationStructureTypeKHR {
-        match self {
-            AccelerationStructureGeometries::Triangles(_) => {
-                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
-            }
-            AccelerationStructureGeometries::Aabbs(_) => {
-                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
-            }
-            AccelerationStructureGeometries::Instances(_) => {
-                vk::AccelerationStructureTypeKHR::TOP_LEVEL
-            }
-        }
-    }
-}
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref geometry,
+            flags,
+            _ne: _,
+        } = self;
 
-impl From<Vec<AccelerationStructureGeometryTrianglesData>> for AccelerationStructureGeometries {
-    #[inline]
-    fn from(value: Vec<AccelerationStructureGeometryTrianglesData>) -> Self {
-        Self::Triangles(value)
-    }
-}
+        geometry.validate(device)?;
 
-impl From<Vec<AccelerationStructureGeometryAabbsData>> for AccelerationStructureGeometries {
-    #[inline]
-    fn from(value: Vec<AccelerationStructureGeometryAabbsData>) -> Self {
-        Self::Aabbs(value)
-    }
-}
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
+        })?;
 
-impl From<AccelerationStructureGeometryInstancesData> for AccelerationStructureGeometries {
-    #[inline]
-    fn from(value: AccelerationStructureGeometryInstancesData) -> Self {
-        Self::Instances(value)
+        Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
+        let &Self {
+            ref geometry,
+            flags,
+            _ne: _,
+        } = self;
+
+        vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(geometry.geometry_type().into())
+            .geometry(geometry.to_vk())
+            .flags(flags.into())
     }
 }
 
@@ -866,28 +957,119 @@ vulkan_bitflags! {
     NO_DUPLICATE_ANY_HIT_INVOCATION = NO_DUPLICATE_ANY_HIT_INVOCATION,
 }
 
+/// The type of geometry data in an acceleration structure.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum AccelerationStructureGeometryData<'a> {
+    /// The geometry consists of triangle data.
+    Triangles(AccelerationStructureGeometryTrianglesData<'a>),
+
+    /// The geometry consists of axis-aligned bounding box data.
+    Aabbs(AccelerationStructureGeometryAabbsData<'a>),
+
+    /// The geometry consists of instance data.
+    Instances(AccelerationStructureGeometryInstancesData<'a>),
+}
+
+impl AccelerationStructureGeometryData<'_> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        match self {
+            AccelerationStructureGeometryData::Triangles(geometry) => geometry.validate(device),
+            AccelerationStructureGeometryData::Aabbs(geometry) => geometry.validate(device),
+            AccelerationStructureGeometryData::Instances(geometry) => geometry.validate(device),
+        }
+    }
+
+    pub(crate) fn geometry_type(&self) -> GeometryType {
+        match self {
+            AccelerationStructureGeometryData::Triangles(_) => GeometryType::Triangles,
+            AccelerationStructureGeometryData::Aabbs(_) => GeometryType::Aabbs,
+            AccelerationStructureGeometryData::Instances(_) => GeometryType::Instances,
+        }
+    }
+
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryDataKHR<'static> {
+        match self {
+            AccelerationStructureGeometryData::Triangles(geometry) => {
+                vk::AccelerationStructureGeometryDataKHR {
+                    triangles: geometry.to_vk(),
+                }
+            }
+            AccelerationStructureGeometryData::Aabbs(geometry) => {
+                vk::AccelerationStructureGeometryDataKHR {
+                    aabbs: geometry.to_vk(),
+                }
+            }
+            AccelerationStructureGeometryData::Instances(geometry) => {
+                vk::AccelerationStructureGeometryDataKHR {
+                    instances: geometry.to_vk(),
+                }
+            }
+        }
+    }
+}
+
+impl<'a> From<AccelerationStructureGeometryTrianglesData<'a>>
+    for AccelerationStructureGeometryData<'a>
+{
+    #[inline]
+    fn from(value: AccelerationStructureGeometryTrianglesData<'a>) -> Self {
+        Self::Triangles(value)
+    }
+}
+
+impl<'a> From<AccelerationStructureGeometryAabbsData<'a>>
+    for AccelerationStructureGeometryData<'a>
+{
+    #[inline]
+    fn from(value: AccelerationStructureGeometryAabbsData<'a>) -> Self {
+        Self::Aabbs(value)
+    }
+}
+
+impl<'a> From<AccelerationStructureGeometryInstancesData<'a>>
+    for AccelerationStructureGeometryData<'a>
+{
+    #[inline]
+    fn from(value: AccelerationStructureGeometryInstancesData<'a>) -> Self {
+        Self::Instances(value)
+    }
+}
+
+// TODO: `vulkan_enum!` can't generate non-public types.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum GeometryType {
+    #[default]
+    Triangles = vk::GeometryTypeKHR::TRIANGLES.as_raw(),
+    Aabbs = vk::GeometryTypeKHR::AABBS.as_raw(),
+    Instances = vk::GeometryTypeKHR::INSTANCES.as_raw(),
+}
+
+impl From<GeometryType> for vk::GeometryTypeKHR {
+    #[inline]
+    fn from(val: GeometryType) -> Self {
+        vk::GeometryTypeKHR::from_raw(val as i32)
+    }
+}
+
 /// A bottom-level geometry consisting of triangles.
 #[derive(Clone, Debug)]
-pub struct AccelerationStructureGeometryTrianglesData {
-    /// Specifies how the geometry should be built.
-    ///
-    /// The default value is empty.
-    pub flags: GeometryFlags,
-
+pub struct AccelerationStructureGeometryTrianglesData<'a> {
     /// The format of each vertex in `vertex_data`.
     ///
     /// This works in the same way as formats for vertex buffers.
     ///
-    /// There is no default value.
+    /// The default value is `Format::UNDEFINED`.
     pub vertex_format: Format,
 
-    /// The vertex data itself, consisting of an array of `vertex_format` values.
+    /// The address of the vertex data itself, consisting of an array of `vertex_format` values.
     ///
-    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
+    /// This can be `0` (null) when calling [`Device::acceleration_structure_build_sizes`], but
+    /// must be a valid buffer device address otherwise.
     ///
-    /// The default value is `None`.
-    pub vertex_data: Option<Subbuffer<[u8]>>,
+    /// The default value is `0` (null).
+    pub vertex_data: DeviceAddress,
 
     /// The number of bytes between the start of successive elements in `vertex_data`.
     ///
@@ -901,57 +1083,61 @@ pub struct AccelerationStructureGeometryTrianglesData {
     /// The default value is 0, which must be overridden.
     pub max_vertex: u32,
 
-    /// If indices are to be used, the buffer holding the index data.
+    /// If indices are to be used, the type of each index in `index_data`.
+    ///
+    /// The default value is `None`.
+    pub index_type: Option<IndexType>,
+
+    /// If indices are to be used, the address where the index data will be read from.
     ///
     /// The indices will be used to index into the elements of `vertex_data`.
     ///
-    /// The default value is `None`.
-    pub index_data: Option<IndexBuffer>,
+    /// The default value is `0` (null).
+    pub index_data: DeviceAddress,
 
-    /// Optionally, a 3x4 matrix that will be used to transform the vertices in
+    /// Optionally, the address of a [`TransformMatrix`] used to transform the vertices in
     /// `vertex_data` to the space in which the acceleration structure is defined.
     ///
-    /// The first three columns must be a 3x3 invertible matrix.
-    ///
-    /// The default value is `None`.
-    pub transform_data: Option<Subbuffer<TransformMatrix>>,
+    /// The default value is `0` (null).
+    pub transform_data: DeviceAddress,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl AccelerationStructureGeometryTrianglesData {
-    /// Returns a default `AccelerationStructureGeometryTrianglesData` with the provided
-    /// `vertex_format`.
+impl Default for AccelerationStructureGeometryTrianglesData<'_> {
     #[inline]
-    pub const fn new(vertex_format: Format) -> Self {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AccelerationStructureGeometryTrianglesData<'_> {
+    /// Returns a default `AccelerationStructureGeometryTrianglesData`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
-            flags: GeometryFlags::empty(),
-            vertex_format,
-            vertex_data: None,
+            vertex_format: Format::UNDEFINED,
+            vertex_data: 0,
             vertex_stride: 0,
             max_vertex: 0,
-            index_data: None,
-            transform_data: None,
+            index_type: None,
+            index_data: 0,
+            transform_data: 0,
             _ne: crate::NE,
         }
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            flags,
             vertex_format,
             vertex_data: _,
             vertex_stride,
             max_vertex: _,
-            ref index_data,
+            index_type,
+            index_data,
             transform_data: _,
             _ne: _,
         } = self;
-
-        flags.validate_device(device).map_err(|err| {
-            err.add_context("flags")
-                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
-        })?;
 
         vertex_format.validate_device(device).map_err(|err| {
             err.add_context("vertex_format").set_vuids(&[
@@ -987,7 +1173,7 @@ impl AccelerationStructureGeometryTrianglesData {
             .unwrap() as u32;
         let smallest_component_bytes = ((smallest_component_bits + 7) & !7) / 8;
 
-        if vertex_stride % smallest_component_bytes != 0 {
+        if !vertex_stride.is_multiple_of(smallest_component_bytes) {
             return Err(Box::new(ValidationError {
                 problem: "`vertex_stride` is not a multiple of the byte size of the \
                     smallest component of `vertex_format`"
@@ -997,14 +1183,22 @@ impl AccelerationStructureGeometryTrianglesData {
             }));
         }
 
-        if let Some(index_data) = index_data.as_ref() {
-            if !matches!(index_data, IndexBuffer::U16(_) | IndexBuffer::U32(_)) {
+        if let Some(index_type) = index_type {
+            if !matches!(index_type, IndexType::U16 | IndexType::U32) {
                 return Err(Box::new(ValidationError {
-                    context: "index_data".into(),
-                    problem: "is not `IndexBuffer::U16` or `IndexBuffer::U32`".into(),
+                    context: "index_type".into(),
+                    problem: "is not `IndexType::U16` or `IndexType::U32`".into(),
                     vuids: &[
                         "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-indexType-03798",
                     ],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if index_data != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`index_type` is `None`, but `index_data` is not 0".into(),
+                    // vuids?
                     ..Default::default()
                 }));
             }
@@ -1013,69 +1207,50 @@ impl AccelerationStructureGeometryTrianglesData {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryTrianglesDataKHR<'static> {
         let &Self {
-            flags,
             vertex_format,
-            ref vertex_data,
+            vertex_data,
             vertex_stride,
             max_vertex,
-            ref index_data,
-            ref transform_data,
+            index_type,
+            index_data,
+            transform_data,
             _ne,
         } = self;
 
-        vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(vk::AccelerationStructureGeometryDataKHR {
-                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-                    .vertex_format(vertex_format.into())
-                    .vertex_data(vertex_data.as_ref().map_or_else(
-                        Default::default,
-                        Subbuffer::to_vk_device_or_host_address_const,
-                    ))
-                    .vertex_stride(vertex_stride as DeviceSize)
-                    .max_vertex(max_vertex)
-                    .index_type(
-                        index_data
-                            .as_ref()
-                            .map_or(vk::IndexType::NONE_KHR, |index_data| {
-                                index_data.index_type().into()
-                            }),
-                    )
-                    .index_data(index_data.as_ref().map(IndexBuffer::as_bytes).map_or_else(
-                        Default::default,
-                        Subbuffer::to_vk_device_or_host_address_const,
-                    ))
-                    .transform_data(transform_data.as_ref().map_or_else(
-                        Default::default,
-                        Subbuffer::to_vk_device_or_host_address_const,
-                    )),
+        vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+            .vertex_format(vertex_format.into())
+            .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                device_address: vertex_data,
             })
-            .flags(flags.into())
+            .vertex_stride(vertex_stride as DeviceSize)
+            .max_vertex(max_vertex)
+            .index_type(index_type.map_or(vk::IndexType::NONE_KHR, Into::into))
+            .index_data(vk::DeviceOrHostAddressConstKHR {
+                device_address: index_data,
+            })
+            .transform_data(vk::DeviceOrHostAddressConstKHR {
+                device_address: transform_data,
+            })
     }
 }
 
-/// A 3x4 transformation matrix.
+/// A 3x4 row-major affine transformation matrix.
 ///
 /// The first three columns must be a 3x3 invertible matrix.
 pub type TransformMatrix = [[f32; 4]; 3];
 
 /// A bottom-level geometry consisting of axis-aligned bounding boxes.
 #[derive(Clone, Debug)]
-pub struct AccelerationStructureGeometryAabbsData {
-    /// Specifies how the geometry should be built.
-    ///
-    /// The default value is empty.
-    pub flags: GeometryFlags,
-
+pub struct AccelerationStructureGeometryAabbsData<'a> {
     /// The AABB data itself, consisting of an array of [`AabbPositions`] structs.
     ///
-    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
+    /// This can be `0` (null) when calling [`Device::acceleration_structure_build_sizes`], but
+    /// must be a valid buffer device address otherwise.
     ///
-    /// The default value is `None`.
-    pub data: Option<Subbuffer<[u8]>>,
+    /// The default value is `0` (null).
+    pub data: DeviceAddress,
 
     /// The number of bytes between the start of successive elements in `data`.
     ///
@@ -1084,42 +1259,35 @@ pub struct AccelerationStructureGeometryAabbsData {
     /// The default value is 0, which must be overridden.
     pub stride: u32,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for AccelerationStructureGeometryAabbsData {
+impl Default for AccelerationStructureGeometryAabbsData<'_> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AccelerationStructureGeometryAabbsData {
+impl AccelerationStructureGeometryAabbsData<'_> {
     /// Returns a default `AccelerationStructureGeometryAabbsData`.
     #[inline]
     pub const fn new() -> Self {
         Self {
-            flags: GeometryFlags::empty(),
-            data: None,
+            data: 0,
             stride: 0,
             _ne: crate::NE,
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            flags,
             data: _,
             stride,
             _ne: _,
         } = self;
 
-        flags.validate_device(device).map_err(|err| {
-            err.add_context("flags")
-                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
-        })?;
-
-        if stride % 8 != 0 {
+        if !stride.is_multiple_of(8) {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 8".into(),
@@ -1131,25 +1299,18 @@ impl AccelerationStructureGeometryAabbsData {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryAabbsDataKHR<'static> {
         let &Self {
-            flags,
-            ref data,
+            data,
             stride,
             _ne: _,
         } = self;
 
-        vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(vk::GeometryTypeKHR::AABBS)
-            .geometry(vk::AccelerationStructureGeometryDataKHR {
-                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR::default()
-                    .data(data.as_ref().map_or_else(
-                        Default::default,
-                        Subbuffer::to_vk_device_or_host_address_const,
-                    ))
-                    .stride(stride as DeviceSize),
+        vk::AccelerationStructureGeometryAabbsDataKHR::default()
+            .data(vk::DeviceOrHostAddressConstKHR {
+                device_address: data,
             })
-            .flags(flags.into())
+            .stride(stride as DeviceSize)
     }
 }
 
@@ -1175,122 +1336,61 @@ unsafe impl Zeroable for AabbPositions {}
 
 /// A top-level geometry consisting of instances of bottom-level acceleration structures.
 #[derive(Clone, Debug)]
-pub struct AccelerationStructureGeometryInstancesData {
-    /// Specifies how the geometry should be built.
-    ///
-    /// The default value is empty.
-    pub flags: GeometryFlags,
+pub struct AccelerationStructureGeometryInstancesData<'a> {
+    pub array_of_pointers: bool,
 
     /// The instance data itself.
     ///
-    /// There is no default value.
-    pub data: AccelerationStructureGeometryInstancesDataType,
+    /// The default value is `0` (null), which must be overridden.
+    pub data: DeviceAddress,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl AccelerationStructureGeometryInstancesData {
-    /// Returns a default `AccelerationStructureGeometryInstancesData` with the provided `data`.
+impl Default for AccelerationStructureGeometryInstancesData<'_> {
     #[inline]
-    pub const fn new(data: AccelerationStructureGeometryInstancesDataType) -> Self {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AccelerationStructureGeometryInstancesData<'_> {
+    /// Returns a default `AccelerationStructureGeometryInstancesData`.
+    #[inline]
+    pub const fn new() -> Self {
         Self {
-            flags: GeometryFlags::empty(),
-            data,
+            array_of_pointers: false,
+            data: 0,
             _ne: crate::NE,
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            flags,
+            array_of_pointers: _,
             data: _,
             _ne: _,
         } = self;
 
-        flags.validate_device(device).map_err(|err| {
-            err.add_context("flags")
-                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
-        })?;
-
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryKHR<'static> {
+    pub(crate) fn to_vk(&self) -> vk::AccelerationStructureGeometryInstancesDataKHR<'static> {
         let &Self {
-            flags,
-            ref data,
+            array_of_pointers,
+            data,
             _ne: _,
         } = self;
 
-        let (array_of_pointers_vk, data_vk) = data.to_vk();
-
-        vk::AccelerationStructureGeometryKHR::default()
-            .geometry_type(vk::GeometryTypeKHR::INSTANCES)
-            .geometry(vk::AccelerationStructureGeometryDataKHR {
-                instances: vk::AccelerationStructureGeometryInstancesDataKHR::default()
-                    .array_of_pointers(array_of_pointers_vk)
-                    .data(data_vk),
+        vk::AccelerationStructureGeometryInstancesDataKHR::default()
+            .array_of_pointers(array_of_pointers)
+            .data(vk::DeviceOrHostAddressConstKHR {
+                device_address: data,
             })
-            .flags(flags.into())
     }
 }
 
-/// The data type of an instances geometry.
-#[derive(Clone, Debug)]
-pub enum AccelerationStructureGeometryInstancesDataType {
-    /// The data buffer contains an array of [`AccelerationStructureInstance`] structures directly.
-    ///
-    /// The inner value can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
-    Values(Option<Subbuffer<[AccelerationStructureInstance]>>),
-
-    /// The data buffer contains an array of pointers to [`AccelerationStructureInstance`]
-    /// structures.
-    ///
-    /// The inner value can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
-    Pointers(Option<Subbuffer<[DeviceSize]>>),
-}
-
-impl AccelerationStructureGeometryInstancesDataType {
-    pub(crate) fn to_vk(&self) -> (bool, vk::DeviceOrHostAddressConstKHR) {
-        match self {
-            AccelerationStructureGeometryInstancesDataType::Values(data) => (
-                false,
-                data.as_ref().map_or_else(
-                    Default::default,
-                    Subbuffer::to_vk_device_or_host_address_const,
-                ),
-            ),
-            AccelerationStructureGeometryInstancesDataType::Pointers(data) => (
-                true,
-                data.as_ref().map_or_else(
-                    Default::default,
-                    Subbuffer::to_vk_device_or_host_address_const,
-                ),
-            ),
-        }
-    }
-}
-
-impl From<Subbuffer<[AccelerationStructureInstance]>>
-    for AccelerationStructureGeometryInstancesDataType
-{
-    #[inline]
-    fn from(value: Subbuffer<[AccelerationStructureInstance]>) -> Self {
-        Self::Values(Some(value))
-    }
-}
-
-impl From<Subbuffer<[DeviceSize]>> for AccelerationStructureGeometryInstancesDataType {
-    #[inline]
-    fn from(value: Subbuffer<[DeviceSize]>) -> Self {
-        Self::Pointers(Some(value))
-    }
-}
-
-/// Specifies a bottom-level acceleration structure instance when
-/// building a top-level structure.
+/// Specifies a bottom-level acceleration structure instance when building a top-level structure.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct AccelerationStructureInstance {
@@ -1304,8 +1404,8 @@ pub struct AccelerationStructureInstance {
     /// Low 24 bits: A custom index value to be accessible via the `InstanceCustomIndexKHR`
     /// built-in variable in ray shaders. The default value is 0.
     ///
-    /// High 8 bits: A visibility mask for the geometry. The instance will not be hit if the
-    /// cull mask ANDed with this mask is zero. The default value is 0xFF.
+    /// High 8 bits: A visibility mask for the geometry. The instance will not be hit if the cull
+    /// mask ANDed with this mask is zero. The default value is 0xFF.
     pub instance_custom_index_and_mask: Packed24_8,
 
     /// Low 24 bits: An offset used in calculating the binding table index of the hit shader.
@@ -1333,9 +1433,8 @@ impl Default for AccelerationStructureInstance {
 
 impl AccelerationStructureInstance {
     /// Returns a default `AccelerationStructureInstance`.
-    // TODO: make const
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             transform: [
                 [1.0, 0.0, 0.0, 0.0],
@@ -1444,29 +1543,32 @@ impl AccelerationStructureBuildRangeInfo {
 
 /// Parameters for copying an acceleration structure.
 #[derive(Clone, Debug)]
-pub struct CopyAccelerationStructureInfo {
+pub struct CopyAccelerationStructureInfo<'a> {
     /// The acceleration structure to copy from.
     ///
     /// There is no default value.
-    pub src: Arc<AccelerationStructure>,
+    pub src: &'a Arc<AccelerationStructure>,
 
     /// The acceleration structure to copy into.
     ///
     /// There is no default value.
-    pub dst: Arc<AccelerationStructure>,
+    pub dst: &'a Arc<AccelerationStructure>,
 
     /// Additional operations to perform during the copy.
     ///
     /// The default value is [`CopyAccelerationStructureMode::Clone`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyAccelerationStructureInfo {
+impl<'a> CopyAccelerationStructureInfo<'a> {
     /// Returns a default `CopyAccelerationStructureInfo` with the provided `src` and `dst`.
     #[inline]
-    pub const fn new(src: Arc<AccelerationStructure>, dst: Arc<AccelerationStructure>) -> Self {
+    pub const fn new(
+        src: &'a Arc<AccelerationStructure>,
+        dst: &'a Arc<AccelerationStructure>,
+    ) -> Self {
         Self {
             src,
             dst,
@@ -1477,8 +1579,8 @@ impl CopyAccelerationStructureInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src,
-            ref dst,
+            src,
+            dst,
             mode,
             _ne: _,
         } = self;
@@ -1525,8 +1627,8 @@ impl CopyAccelerationStructureInfo {
 
     pub(crate) fn to_vk(&self) -> vk::CopyAccelerationStructureInfoKHR<'static> {
         let &Self {
-            ref src,
-            ref dst,
+            src,
+            dst,
             mode,
             _ne: _,
         } = self;
@@ -1540,33 +1642,34 @@ impl CopyAccelerationStructureInfo {
 
 /// Parameters for copying from an acceleration structure into memory.
 #[derive(Clone, Debug)]
-pub struct CopyAccelerationStructureToMemoryInfo {
+pub struct CopyAccelerationStructureToMemoryInfo<'a> {
     /// The acceleration structure to copy from.
     ///
     /// There is no default value.
-    pub src: Arc<AccelerationStructure>,
+    pub src: &'a Arc<AccelerationStructure>,
 
-    /// The memory to copy the structure to.
+    /// The address to copy the acceleration structure to.
     ///
-    /// There is no default value.
-    pub dst: Subbuffer<[u8]>,
+    /// This must be a valid buffer device address.
+    ///
+    /// The default value is `0` (null), which must be overridden.
+    pub dst: DeviceAddress,
 
     /// Additional operations to perform during the copy.
     ///
     /// The default value is [`CopyAccelerationStructureMode::Serialize`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyAccelerationStructureToMemoryInfo {
-    /// Returns a default `CopyAccelerationStructureToMemoryInfo` with the provided `src` and
-    /// `dst`.
+impl<'a> CopyAccelerationStructureToMemoryInfo<'a> {
+    /// Returns a default `CopyAccelerationStructureToMemoryInfo` with the provided `src`.
     #[inline]
-    pub const fn new(src: Arc<AccelerationStructure>, dst: Subbuffer<[u8]>) -> Self {
+    pub const fn new(src: &'a Arc<AccelerationStructure>) -> Self {
         Self {
             src,
-            dst,
+            dst: 0,
             mode: CopyAccelerationStructureMode::Serialize,
             _ne: crate::NE,
         }
@@ -1574,14 +1677,13 @@ impl CopyAccelerationStructureToMemoryInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src,
-            ref dst,
+            src,
+            dst: _,
             mode,
             _ne: _,
         } = self;
 
         assert_eq!(device, src.device().as_ref());
-        assert_eq!(device, dst.device().as_ref());
 
         mode.validate_device(device).map_err(|err| {
             err.add_context("mode")
@@ -1608,47 +1710,50 @@ impl CopyAccelerationStructureToMemoryInfo {
 
     pub(crate) fn to_vk(&self) -> vk::CopyAccelerationStructureToMemoryInfoKHR<'static> {
         let &Self {
-            ref src,
-            ref dst,
+            src,
+            dst,
             mode,
             _ne: _,
         } = self;
 
         vk::CopyAccelerationStructureToMemoryInfoKHR::default()
             .src(src.handle())
-            .dst(dst.to_vk_device_or_host_address())
+            .dst(vk::DeviceOrHostAddressKHR {
+                device_address: dst,
+            })
             .mode(mode.into())
     }
 }
 
 /// Parameters for copying from memory into an acceleration structure.
 #[derive(Clone, Debug)]
-pub struct CopyMemoryToAccelerationStructureInfo {
-    /// The memory to copy the structure from.
+pub struct CopyMemoryToAccelerationStructureInfo<'a> {
+    /// The address to copy the acceleration structure from.
     ///
-    /// There is no default value.
-    pub src: Subbuffer<[u8]>,
+    /// This must be a valid buffer device address.
+    ///
+    /// The default value is `0` (null), which must be overridden.
+    pub src: DeviceAddress,
 
     /// The acceleration structure to copy into.
     ///
     /// There is no default value.
-    pub dst: Arc<AccelerationStructure>,
+    pub dst: &'a Arc<AccelerationStructure>,
 
     /// Additional operations to perform during the copy.
     ///
     /// The default value is [`CopyAccelerationStructureMode::Deserialize`].
     pub mode: CopyAccelerationStructureMode,
 
-    pub _ne: crate::NonExhaustive<'static>,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl CopyMemoryToAccelerationStructureInfo {
-    /// Returns a default `CopyMemoryToAccelerationStructureInfo` with the specified `src` and
-    /// `dst`.
+impl<'a> CopyMemoryToAccelerationStructureInfo<'a> {
+    /// Returns a default `CopyMemoryToAccelerationStructureInfo` with the specified `src`.
     #[inline]
-    pub const fn new(src: Subbuffer<[u8]>, dst: Arc<AccelerationStructure>) -> Self {
+    pub const fn new(dst: &'a Arc<AccelerationStructure>) -> Self {
         Self {
-            src,
+            src: 0,
             dst,
             mode: CopyAccelerationStructureMode::Deserialize,
             _ne: crate::NE,
@@ -1657,13 +1762,12 @@ impl CopyMemoryToAccelerationStructureInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            ref src,
-            ref dst,
+            src: _,
+            dst,
             mode,
             _ne: _,
         } = self;
 
-        assert_eq!(device, src.device().as_ref());
         assert_eq!(device, dst.device().as_ref());
 
         mode.validate_device(device).map_err(|err| {
@@ -1694,14 +1798,16 @@ impl CopyMemoryToAccelerationStructureInfo {
 
     pub(crate) fn to_vk(&self) -> vk::CopyMemoryToAccelerationStructureInfoKHR<'static> {
         let &Self {
-            ref src,
-            ref dst,
+            src,
+            dst,
             mode,
             _ne: _,
         } = self;
 
         vk::CopyMemoryToAccelerationStructureInfoKHR::default()
-            .src(src.to_vk_device_or_host_address_const())
+            .src(vk::DeviceOrHostAddressConstKHR {
+                device_address: src,
+            })
             .dst(dst.handle())
             .mode(mode.into())
     }
@@ -1756,6 +1862,7 @@ vulkan_enum! {
 /// The minimum sizes needed for various resources during an acceleration structure build
 /// operation.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct AccelerationStructureBuildSizesInfo {
     /// The minimum required size of the acceleration structure for a build or update operation.
     pub acceleration_structure_size: DeviceSize,
@@ -1765,8 +1872,6 @@ pub struct AccelerationStructureBuildSizesInfo {
 
     /// The minimum required size of the scratch data buffer for a build operation.
     pub build_scratch_size: DeviceSize,
-
-    pub _ne: crate::NonExhaustive<'static>,
 }
 
 impl AccelerationStructureBuildSizesInfo {
@@ -1786,7 +1891,6 @@ impl AccelerationStructureBuildSizesInfo {
             acceleration_structure_size,
             update_scratch_size,
             build_scratch_size,
-            _ne: crate::NE,
         }
     }
 }
