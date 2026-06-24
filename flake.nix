@@ -23,6 +23,7 @@
             (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
 
             # Vulkan dependencies
+            shader-slang
             shaderc
             spirv-tools
             vulkan-loader
@@ -57,6 +58,7 @@
             (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
 
             # Vulkan dependencies
+            shader-slang
             shaderc
 
             # Workflow dependencies
@@ -78,6 +80,7 @@
             })
 
             # Vulkan dependencies
+            shader-slang
             shaderc
           ];
 
