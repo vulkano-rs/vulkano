@@ -278,6 +278,35 @@ impl Type {
         }
     }
 
+    fn ident(&self) -> Option<Ident> {
+        match self {
+            Self::Scalar(TypeScalar::Int(ty)) => Some(ty.to_ident()),
+            Self::Scalar(TypeScalar::Float(ty)) => Some(ty.to_ident()),
+            Self::Pointer(_) => None,
+            Self::Vector(ty) => {
+                let scalar = Ident::new(
+                    match &ty.component_type {
+                        TypeScalar::Int(i) => i.as_str(),
+                        TypeScalar::Float(f) => f.as_str(),
+                    },
+                    Span::call_site(),
+                );
+                Some(format_ident!(
+                    "vec{}_{}",
+                    ty.component_count as usize,
+                    scalar
+                ))
+            }
+            Self::Matrix(ty) => Some(format_ident!(
+                "mat{}x{}",
+                ty.column_count as usize,
+                ty.row_count as usize,
+            )),
+            Self::Array(ty) => ty.element_type.ident(),
+            Self::Struct(ty) => Some(ty.ident.clone()),
+        }
+    }
+
     fn scalar_alignment(&self) -> Alignment {
         match self {
             Self::Scalar(ty) => ty.alignment(),
@@ -679,6 +708,17 @@ impl TypeArray {
     }
 }
 
+fn deduplicate_ident(ident: &Ident, members: &[Member]) -> Option<Ident> {
+    if !ident.to_string().starts_with("StructuredBuffer") || members.len() != 1 {
+        return None;
+    }
+    let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
+        return None;
+    };
+    let e = element_type.ident()?;
+    Some(format_ident!("{}_{}", ident, e, span = ident.span()))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeStruct {
     ident: Ident,
@@ -852,6 +892,8 @@ impl TypeStruct {
 
             members.push(Member { ident, ty, offset });
         }
+
+        let ident = deduplicate_ident(&ident, &members).unwrap_or(ident);
 
         Ok(TypeStruct { ident, members })
     }
