@@ -778,6 +778,42 @@ vulkan_bitflags! {
     ]),
 }
 
+/// The current memory budget and usage of each memory heap of a physical device.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryBudget {
+    /// For each memory heap, an estimate of how much memory the process can allocate before
+    /// allocation is likely to fail or cause performance degradation. Indexed identically to
+    /// [`MemoryProperties::memory_heaps`].
+    pub heap_budget: Vec<DeviceSize>,
+
+    /// For each memory heap, an estimate of how much memory the process is currently using.
+    /// Indexed identically to [`MemoryProperties::memory_heaps`].
+    pub heap_usage: Vec<DeviceSize>,
+}
+
+impl MemoryBudget {
+    pub(crate) fn to_mut_vk2() -> vk::PhysicalDeviceMemoryBudgetPropertiesEXT<'static> {
+        vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default()
+    }
+
+    pub(crate) fn from_vk(
+        val_vk: &vk::PhysicalDeviceMemoryBudgetPropertiesEXT<'_>,
+        memory_heap_count: usize,
+    ) -> Self {
+        let &vk::PhysicalDeviceMemoryBudgetPropertiesEXT {
+            heap_budget,
+            heap_usage,
+            ..
+        } = val_vk;
+
+        Self {
+            heap_budget: heap_budget[..memory_heap_count].to_vec(),
+            heap_usage: heap_usage[..memory_heap_count].to_vec(),
+        }
+    }
+}
+
 /// A memory heap in a physical device.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
