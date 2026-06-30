@@ -11,7 +11,7 @@ use crate::{
     },
     instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    memory::{ExternalMemoryHandleType, MemoryProperties},
+    memory::{ExternalMemoryHandleType, MemoryBudget, MemoryProperties},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
         SurfaceInfo, SurfaceInfo2ExtensionsVk,
@@ -495,6 +495,79 @@ impl PhysicalDevice {
     #[inline]
     pub fn queue_family_properties(&self) -> &[QueueFamilyProperties] {
         &self.queue_family_properties
+    }
+
+    /// Retrieves the current memory budget and usage of each memory heap of the physical device,
+    /// panicking on a validation error.
+    ///
+    /// These properties may change during runtime, so the result only reflects the current
+    /// situation and is not cached.
+    ///
+    /// The [`ext_memory_budget`] extension must be supported by the physical device.
+    ///
+    /// This is a shortcut for `try_memory_budget().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_memory_budget`] returns a [`ValidationError`].
+    ///
+    /// [`ext_memory_budget`]: crate::device::DeviceExtensions::ext_memory_budget
+    /// [`try_memory_budget`]: Self::try_memory_budget
+    #[inline]
+    #[track_caller]
+    pub fn memory_budget(&self) -> MemoryBudget {
+        self.try_memory_budget().unwrap()
+    }
+
+    /// Retrieves the current memory budget and usage of each memory heap of the physical device.
+    ///
+    /// These properties may change during runtime, so the result only reflects the current
+    /// situation and is not cached.
+    ///
+    /// The [`ext_memory_budget`] extension must be supported by the physical device.
+    ///
+    /// [`ext_memory_budget`]: crate::device::DeviceExtensions::ext_memory_budget
+    #[inline]
+    pub fn try_memory_budget(&self) -> Result<MemoryBudget, Box<ValidationError>> {
+        self.validate_memory_budget()?;
+
+        Ok(unsafe { self.memory_budget_unchecked() })
+    }
+
+    fn validate_memory_budget(&self) -> Result<(), Box<ValidationError>> {
+        if !self.supported_extensions().ext_memory_budget {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_memory_budget",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn memory_budget_unchecked(&self) -> MemoryBudget {
+        let mut budget_vk = MemoryBudget::to_mut_vk2();
+        let mut properties2_vk = MemoryProperties::to_mut_vk2().push_next(&mut budget_vk);
+
+        let fns = self.instance.fns();
+        if self.instance.api_version() >= Version::V1_1 {
+            unsafe {
+                (fns.v1_1.get_physical_device_memory_properties2)(self.handle, &mut properties2_vk)
+            };
+        } else {
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_memory_properties2_khr)(
+                    self.handle, &mut properties2_vk
+                )
+            };
+        }
+
+        MemoryBudget::from_vk(&budget_vk, self.memory_properties().memory_heaps.len())
     }
 
     /// Returns the properties of displays attached to the physical device, panicking on a
