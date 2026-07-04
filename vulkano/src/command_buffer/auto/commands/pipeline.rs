@@ -1,17 +1,35 @@
 #[cfg(doc)]
 use crate::device::{DeviceFeatures, DeviceProperties};
 use crate::{
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject, acceleration_structure::AccelerationStructure, buffer::{BufferUsage, Subbuffer, view::BufferView}, command_buffer::{
-        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents, TraceRaysIndirectCommand, auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2}, sys::RecordingCommandBuffer,
-    }, descriptor_set::{
-        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo, layout::{DescriptorBindingFlags, DescriptorType},
-    }, device::DeviceOwned, format::{FormatFeatures, NumericType}, image::{ImageAspects, ImageLayout, SampleCount, sampler::Sampler, view::ImageView}, pipeline::{
-        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, graphics::{
+    acceleration_structure::AccelerationStructure,
+    buffer::{view::BufferView, BufferUsage, Subbuffer},
+    command_buffer::{
+        auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+        DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
+        TraceRaysIndirectCommand,
+    },
+    descriptor_set::{
+        layout::{DescriptorBindingFlags, DescriptorType},
+        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo,
+    },
+    device::DeviceOwned,
+    format::{FormatFeatures, NumericType},
+    image::{sampler::Sampler, view::ImageView, ImageAspects, ImageLayout, SampleCount},
+    pipeline::{
+        graphics::{
             input_assembly::PrimitiveTopology,
             subpass::PipelineSubpassType,
             vertex_input::{RequiredVertexInputsVUIDs, VertexInputRate},
-        }, ray_tracing::ShaderBindingTableAddresses,
-    }, query::QueryType, shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages}, sync::{PipelineStageAccess, PipelineStageAccessFlags},
+        },
+        ray_tracing::ShaderBindingTableAddresses,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
+    },
+    query::QueryType,
+    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages},
+    sync::{PipelineStageAccess, PipelineStageAccessFlags},
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use std::sync::Arc;
 
@@ -1716,7 +1734,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_buffer)
         })
     }
-    
+
     fn validate_trace_rays_indirect(
         &self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,

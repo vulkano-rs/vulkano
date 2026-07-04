@@ -1,5 +1,3 @@
-use ash::vk::DeviceAddress;
-
 use crate::{
     buffer::{Buffer, BufferUsage},
     command_buffer::{
@@ -10,6 +8,7 @@ use crate::{
     pipeline::ray_tracing::ShaderBindingTableAddresses,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk::DeviceAddress;
 
 impl RecordingCommandBuffer {
     #[inline]
@@ -1683,8 +1682,10 @@ impl RecordingCommandBuffer {
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         indirect_device_address: DeviceAddress,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address) }
-            .unwrap()
+        unsafe {
+            self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)
+        }
+        .unwrap()
     }
 
     pub unsafe fn try_trace_rays_indirect(
@@ -1695,7 +1696,10 @@ impl RecordingCommandBuffer {
         self.validate_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)?;
 
         Ok(unsafe {
-            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_device_address)
+            self.trace_rays_indirect_unchecked(
+                shader_binding_table_addresses,
+                indirect_device_address,
+            )
         })
     }
 

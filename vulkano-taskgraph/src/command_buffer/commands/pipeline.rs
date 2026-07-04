@@ -8,7 +8,8 @@ use vulkano::command_buffer::{
     DrawMeshTasksIndirectCommand,
 };
 use vulkano::{
-    DeviceAddress, DeviceSize, Version, VulkanObject, buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
+    buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
+    DeviceAddress, DeviceSize, Version, VulkanObject,
 };
 
 /// # Commands to execute a bound pipeline
@@ -1256,8 +1257,10 @@ impl RecordingCommandBuffer<'_> {
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
         indirect_device_address: DeviceAddress,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address) }
-            .unwrap()
+        unsafe {
+            self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)
+        }
+        .unwrap()
     }
 
     /// Performs multiple ray tracing operations using a ray tracing pipeline
@@ -1280,7 +1283,10 @@ impl RecordingCommandBuffer<'_> {
         indirect_device_address: DeviceAddress,
     ) -> Result<&mut Self> {
         Ok(unsafe {
-            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_device_address)
+            self.trace_rays_indirect_unchecked(
+                shader_binding_table_addresses,
+                indirect_device_address,
+            )
         })
     }
 
