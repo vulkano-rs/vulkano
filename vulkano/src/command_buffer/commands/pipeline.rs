@@ -1,8 +1,10 @@
+use ash::vk::DeviceAddress;
+
 use crate::{
     buffer::{Buffer, BufferUsage},
     command_buffer::{
         sys::RecordingCommandBuffer, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, DrawMeshTasksIndirectCommand, TraceRaysIndirectCommand,
+        DrawIndirectCommand, DrawMeshTasksIndirectCommand,
     },
     device::{DeviceOwned, QueueFlags},
     pipeline::ray_tracing::ShaderBindingTableAddresses,
@@ -1679,31 +1681,28 @@ impl RecordingCommandBuffer {
     pub unsafe fn trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: &Buffer,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer, offset) }
+        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address) }
             .unwrap()
     }
 
     pub unsafe fn try_trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: &Buffer,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_trace_rays_indirect(shader_binding_table_addresses, buffer, offset)?;
+        self.validate_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)?;
 
         Ok(unsafe {
-            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer, offset)
+            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_device_address)
         })
     }
 
     pub(crate) fn validate_trace_rays_indirect(
         &self,
         _shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: &Buffer,
-        offset: DeviceSize,
+        _indirect_device_address: DeviceAddress,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_features().ray_tracing_pipeline {
             return Err(Box::new(ValidationError {
@@ -1744,37 +1743,6 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
-            return Err(Box::new(ValidationError {
-                context: "buffer.usage()".into(),
-                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03633"],
-                ..Default::default()
-            }));
-        }
-
-        if !offset.is_multiple_of(4) {
-            return Err(Box::new(ValidationError {
-                context: "offset".into(),
-                problem: "is not a multiple of 4".into(),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
-                ..Default::default()
-            }));
-        }
-
-        if offset
-            .checked_add(size_of::<TraceRaysIndirectCommand>() as DeviceSize)
-            .is_none_or(|end| end > buffer.size())
-        {
-            return Err(Box::new(ValidationError {
-                problem: "`offset + size_of::<TraceRaysIndirectCommand>()` is greater than \
-                    `buffer.size()`"
-                    .into(),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03636"],
-                ..Default::default()
-            }));
-        }
-
         Ok(())
     }
 
@@ -1782,8 +1750,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn trace_rays_indirect_unchecked(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: &Buffer,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> &mut Self {
         let raygen = shader_binding_table_addresses.raygen.to_vk();
         let miss = shader_binding_table_addresses.miss.to_vk();
@@ -1799,7 +1766,7 @@ impl RecordingCommandBuffer {
                 &miss,
                 &hit,
                 &callable,
-                buffer.device_address().get() + offset,
+                indirect_device_address,
             )
         };
 

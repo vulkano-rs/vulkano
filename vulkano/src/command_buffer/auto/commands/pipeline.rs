@@ -1,35 +1,17 @@
 #[cfg(doc)]
 use crate::device::{DeviceFeatures, DeviceProperties};
 use crate::{
-    acceleration_structure::AccelerationStructure,
-    buffer::{view::BufferView, Subbuffer},
-    command_buffer::{
-        auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::RecordingCommandBuffer,
-        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
-        TraceRaysIndirectCommand,
-    },
-    descriptor_set::{
-        layout::{DescriptorBindingFlags, DescriptorType},
-        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo,
-    },
-    device::DeviceOwned,
-    format::{FormatFeatures, NumericType},
-    image::{sampler::Sampler, view::ImageView, ImageAspects, ImageLayout, SampleCount},
-    pipeline::{
-        graphics::{
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject, acceleration_structure::AccelerationStructure, buffer::{BufferUsage, Subbuffer, view::BufferView}, command_buffer::{
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents, TraceRaysIndirectCommand, auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2}, sys::RecordingCommandBuffer,
+    }, descriptor_set::{
+        DescriptorBindingResources, OwnedDescriptorBufferInfo, OwnedDescriptorImageInfo, layout::{DescriptorBindingFlags, DescriptorType},
+    }, device::DeviceOwned, format::{FormatFeatures, NumericType}, image::{ImageAspects, ImageLayout, SampleCount, sampler::Sampler, view::ImageView}, pipeline::{
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, graphics::{
             input_assembly::PrimitiveTopology,
             subpass::PipelineSubpassType,
             vertex_input::{RequiredVertexInputsVUIDs, VertexInputRate},
-        },
-        ray_tracing::ShaderBindingTableAddresses,
-        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
-    },
-    query::QueryType,
-    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages},
-    sync::{PipelineStageAccess, PipelineStageAccessFlags},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
+        }, ray_tracing::ShaderBindingTableAddresses,
+    }, query::QueryType, shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages}, sync::{PipelineStageAccess, PipelineStageAccessFlags},
 };
 use std::sync::Arc;
 
@@ -1725,15 +1707,62 @@ impl<L> AutoCommandBufferBuilder<L> {
         shader_binding_table_addresses: ShaderBindingTableAddresses,
         indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.inner.validate_trace_rays_indirect(
+        self.validate_trace_rays_indirect(
             &shader_binding_table_addresses,
-            indirect_buffer.buffer(),
-            indirect_buffer.offset(),
+            indirect_buffer.as_bytes(),
         )?;
 
         Ok(unsafe {
             self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_buffer)
         })
+    }
+    
+    fn validate_trace_rays_indirect(
+        &self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_buffer: &Subbuffer<[u8]>,
+    ) -> Result<(), Box<ValidationError>> {
+        let buffer = indirect_buffer.buffer();
+        let offset = indirect_buffer.offset();
+        let indirect_device_address = buffer.device_address().get() + offset;
+
+        self.inner.validate_trace_rays_indirect(
+            shader_binding_table_addresses,
+            indirect_device_address,
+        )?;
+
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
+            return Err(Box::new(ValidationError {
+                context: "buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03633"],
+                ..Default::default()
+            }));
+        }
+
+        if !offset.is_multiple_of(4) {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
+                ..Default::default()
+            }));
+        }
+
+        if offset
+            .checked_add(size_of::<TraceRaysIndirectCommand>() as DeviceSize)
+            .is_none_or(|end| end > buffer.size())
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`offset + size_of::<TraceRaysIndirectCommand>()` is greater than \
+                    `buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03636"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -1742,6 +1771,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         shader_binding_table_addresses: ShaderBindingTableAddresses,
         indirect_buffer: Subbuffer<[TraceRaysIndirectCommand]>,
     ) -> &mut Self {
+        let buffer = indirect_buffer.buffer();
+        let offset = indirect_buffer.offset();
+        let indirect_device_address = buffer.device_address().get() + offset;
+
         let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
 
         let mut used_resources = Vec::new();
@@ -1752,8 +1785,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             unsafe {
                 out.trace_rays_indirect_unchecked(
                     &shader_binding_table_addresses,
-                    indirect_buffer.buffer(),
-                    indirect_buffer.offset(),
+                    indirect_device_address,
                 )
             };
         });

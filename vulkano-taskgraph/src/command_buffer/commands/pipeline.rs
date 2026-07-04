@@ -8,8 +8,7 @@ use vulkano::command_buffer::{
     DrawMeshTasksIndirectCommand,
 };
 use vulkano::{
-    buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
-    DeviceSize, Version, VulkanObject,
+    DeviceAddress, DeviceSize, Version, VulkanObject, buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
 };
 
 /// # Commands to execute a bound pipeline
@@ -1255,10 +1254,9 @@ impl RecordingCommandBuffer<'_> {
     pub unsafe fn trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: Id<Buffer>,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> &mut Self {
-        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, buffer, offset) }
+        unsafe { self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address) }
             .unwrap()
     }
 
@@ -1279,22 +1277,18 @@ impl RecordingCommandBuffer<'_> {
     pub unsafe fn try_trace_rays_indirect(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: Id<Buffer>,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> Result<&mut Self> {
         Ok(unsafe {
-            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, buffer, offset)
+            self.trace_rays_indirect_unchecked(shader_binding_table_addresses, indirect_device_address)
         })
     }
 
     pub unsafe fn trace_rays_indirect_unchecked(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        buffer: Id<Buffer>,
-        offset: DeviceSize,
+        indirect_device_address: DeviceAddress,
     ) -> &mut Self {
-        let buffer = unsafe { self.accesses.buffer_unchecked(buffer) };
-
         let raygen = shader_binding_table_addresses.raygen.to_vk();
         let miss = shader_binding_table_addresses.miss.to_vk();
         let hit = shader_binding_table_addresses.hit.to_vk();
@@ -1308,7 +1302,7 @@ impl RecordingCommandBuffer<'_> {
                 &miss,
                 &hit,
                 &callable,
-                buffer.device_address().get() + offset,
+                indirect_device_address,
             )
         };
 
