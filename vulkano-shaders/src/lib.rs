@@ -296,9 +296,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
-                let source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
                 let (artifact, includes) = codegen::compile(
-                    source_language,
                     &input,
                     &source.value(),
                     &root_path,
@@ -336,9 +334,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 
                 let working_dir = full_path.parent().unwrap();
 
-                let source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
                 let (artifact, mut includes) = codegen::compile(
-                    source_language,
                     &input,
                     &source,
                     working_dir,
