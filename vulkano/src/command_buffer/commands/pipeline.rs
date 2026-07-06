@@ -1708,15 +1708,6 @@ impl RecordingCommandBuffer {
         _shader_binding_table_addresses: &ShaderBindingTableAddresses,
         _indirect_device_address: DeviceAddress,
     ) -> Result<(), Box<ValidationError>> {
-        if !self.device().enabled_features().ray_tracing_pipeline {
-            return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
-                    "ray_tracing_pipeline",
-                )])]),
-                ..Default::default()
-            }));
-        }
-
         if !self
             .device()
             .enabled_features()

@@ -1226,11 +1226,9 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Performs a single ray tracing operation using a ray tracing pipeline, reading the
-    /// ray trace query dimensions from a separate buffer.
-    ///
-    /// A single ray tracing operation is performed for the `TraceRaysIndirectCommand` struct that
-    /// is read from `buffer` starting at `offset`.
+    /// Performs a single ray tracing operation using a ray tracing pipeline, panicking on a  
+    /// validation error. One ray tracing operation is performed for the  
+    /// [`TraceRaysIndirectCommand`] struct that is read from `indirect_device_address`.
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
@@ -1263,7 +1261,9 @@ impl RecordingCommandBuffer<'_> {
         .unwrap()
     }
 
-    /// Performs multiple ray tracing operations using a ray tracing pipeline
+    /// Performs a single ray tracing operation using a ray tracing pipeline. One ray tracing  
+    /// operation is performed for the [`TraceRaysIndirectCommand`] struct that is read from  
+    /// `indirect_device_address`.
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set

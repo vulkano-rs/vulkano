@@ -1702,11 +1702,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
-    /// Performs a single ray tracing operation using a ray tracing pipeline, reading the
-    /// ray trace query dimensions from a separate buffer.
-    ///
-    /// A single ray tracing operation is performed for the `TraceRaysIndirectCommand` struct that
-    /// is read from `indirect_buffer`.
+    /// Performs a single ray tracing operation using a ray tracing pipeline. One ray tracing  
+    /// operation is performed for the [`TraceRaysIndirectCommand`] struct that is read from  
+    /// `indirect_buffer`.
     ///
     /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
     /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
@@ -1751,31 +1749,9 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(Box::new(ValidationError {
-                context: "buffer.usage()".into(),
+                context: "indirect_buffer.usage()".into(),
                 problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
                 vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03633"],
-                ..Default::default()
-            }));
-        }
-
-        if !offset.is_multiple_of(4) {
-            return Err(Box::new(ValidationError {
-                context: "offset".into(),
-                problem: "is not a multiple of 4".into(),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
-                ..Default::default()
-            }));
-        }
-
-        if offset
-            .checked_add(size_of::<TraceRaysIndirectCommand>() as DeviceSize)
-            .is_none_or(|end| end > buffer.size())
-        {
-            return Err(Box::new(ValidationError {
-                problem: "`offset + size_of::<TraceRaysIndirectCommand>()` is greater than \
-                    `buffer.size()`"
-                    .into(),
-                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03636"],
                 ..Default::default()
             }));
         }
