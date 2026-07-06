@@ -503,7 +503,7 @@ impl PhysicalDevice {
     /// These properties may change during runtime, so the result only reflects the current
     /// situation and is not cached.
     ///
-    /// The [`ext_memory_budget`] extension must be enabled on the device.
+    /// The [`ext_memory_budget`] extension must be supported by the physical device.
     ///
     /// This is a shortcut for `try_memory_budget().unwrap()`.
     ///
@@ -524,7 +524,7 @@ impl PhysicalDevice {
     /// These properties may change during runtime, so the result only reflects the current
     /// situation and is not cached.
     ///
-    /// The [`ext_memory_budget`] extension must be enabled on the device.
+    /// The [`ext_memory_budget`] extension must be supported by the physical device.
     ///
     /// [`ext_memory_budget`]: crate::device::DeviceExtensions::ext_memory_budget
     #[inline]
