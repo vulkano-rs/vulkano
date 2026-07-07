@@ -1757,13 +1757,15 @@ mod tests {
                 ..MacroInput::empty()
             },
             r#"
-                [vk::binding(0, 0)] RWStructuredBuffer<float> output;
-                [vk::binding(1, 0)] StructuredBuffer<float> buffer_1;
-                [vk::binding(2, 0)] StructuredBuffer<uint> buffer_2;
+                [vk::binding(0, 0)] RWStructuredBuffer<float> output_1;
+                [vk::binding(1, 0)] RWStructuredBuffer<uint> output_2;
+                [vk::binding(2, 0)] StructuredBuffer<float> buffer_1;
+                [vk::binding(3, 0)] StructuredBuffer<uint> buffer_2;
                 [numthreads(1, 1, 1)]
                 void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
-                    output[dispatchThreadID.x] = (float)buffer_1[dispatchThreadID.x]
+                    output_1[dispatchThreadID.x] = (float)buffer_1[dispatchThreadID.x]
                         + buffer_2[dispatchThreadID.x];
+                    output_2[dispatchThreadID.x] = buffer_2[dispatchThreadID.x];
                 }
             "#,
             ShaderKind::Compute,
@@ -1816,13 +1818,22 @@ mod tests {
             quote!({pub __member0: [u32],}).to_string()
         );
 
-        let output_buffer = structs
+        let output_1 = structs
             .iter()
-            .find(|s| s.ident == "RWStructuredBuffer")
+            .find(|s| s.ident == "RWStructuredBuffer_f32")
             .unwrap();
         assert_eq!(
-            output_buffer.fields.to_token_stream().to_string(),
+            output_1.fields.to_token_stream().to_string(),
             quote!({pub __member0: [f32],}).to_string()
+        );
+
+        let output_2 = structs
+            .iter()
+            .find(|s| s.ident == "RWStructuredBuffer_u32")
+            .unwrap();
+        assert_eq!(
+            output_2.fields.to_token_stream().to_string(),
+            quote!({pub __member0: [u32],}).to_string()
         );
     }
 }
