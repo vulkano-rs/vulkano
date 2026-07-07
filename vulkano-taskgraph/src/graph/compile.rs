@@ -113,21 +113,21 @@ impl<W: ?Sized> TaskGraph<W> {
             }
         }
 
-        let (
-            IntermediateRepresentationBuilder {
-                prev_accesses: last_accesses,
-                submissions,
-                nodes,
-                semaphore_count,
-                render_passes,
-                pre_present_queue_family_ownership_transfers,
-                ..
-            },
-            last_swapchain_accesses,
-        ) = match unsafe { self.lower(present_queue, &topological_order) } {
-            Ok(x) => x,
-            Err(kind) => return Err(CompileError::new(self, kind)),
-        };
+        let (builder, last_swapchain_accesses) =
+            match unsafe { self.lower(present_queue, &topological_order) } {
+                Ok(x) => x,
+                Err(kind) => return Err(CompileError::new(self, kind)),
+            };
+        let IntermediateRepresentationBuilder {
+            submissions,
+            nodes,
+            prev_accesses: last_accesses,
+            prev_node_indices: _,
+            semaphore_count,
+            render_passes,
+            is_render_pass_instance_active: _,
+            pre_present_queue_family_ownership_transfers,
+        } = builder;
 
         let mut builder = FinalRepresentationBuilder::new(present_queue);
         let mut prev_submission_end = 0;
@@ -1581,6 +1581,8 @@ impl FinalRepresentationBuilder {
     }
 
     fn signal_semaphore(&mut self, semaphore_index: SemaphoreIndex) {
+        self.flush_barriers();
+
         self.instructions.push(Instruction::SignalSemaphore {
             semaphore_index,
             stage_mask: PipelineStages::ALL_COMMANDS,
@@ -1590,6 +1592,8 @@ impl FinalRepresentationBuilder {
     }
 
     fn signal_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
+        self.flush_barriers();
+
         self.instructions.push(Instruction::SignalPresent {
             swapchain_id,
             stage_mask,
@@ -1599,6 +1603,8 @@ impl FinalRepresentationBuilder {
     }
 
     fn signal_pre_present(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
+        self.flush_barriers();
+
         self.instructions.push(Instruction::SignalPrePresent {
             swapchain_id,
             stage_mask,
@@ -2847,10 +2853,6 @@ mod tests {
         assert_matches_instructions!(
             graph,
             ExecuteTask { node: compute_node },
-            SignalSemaphore {
-                semaphore_index: semaphore,
-                stage_mask: ALL_COMMANDS,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -2890,6 +2892,10 @@ mod tests {
                         resource: image2,
                     },
                 ],
+            },
+            SignalSemaphore {
+                semaphore_index: semaphore,
+                stage_mask: ALL_COMMANDS,
             },
             FlushSubmit,
             Submit,
@@ -3140,10 +3146,6 @@ mod tests {
         assert_matches_instructions!(
             graph,
             ExecuteTask { node: compute_node },
-            SignalSemaphore {
-                semaphore_index: semaphore,
-                stage_mask: ALL_COMMANDS,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -3183,6 +3185,10 @@ mod tests {
                         resource: image2,
                     },
                 ],
+            },
+            SignalSemaphore {
+                semaphore_index: semaphore,
+                stage_mask: ALL_COMMANDS,
             },
             FlushSubmit,
             Submit,
@@ -3461,14 +3467,6 @@ mod tests {
                 ],
             },
             ExecuteTask { node: node },
-            SignalPresent {
-                swapchain_id: swapchain1,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
-            SignalPresent {
-                swapchain_id: swapchain2,
-                stage_mask: COMPUTE_SHADER,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -3490,6 +3488,14 @@ mod tests {
                         resource: swapchain2,
                     },
                 ],
+            },
+            SignalPresent {
+                swapchain_id: swapchain1,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
+            },
+            SignalPresent {
+                swapchain_id: swapchain2,
+                stage_mask: COMPUTE_SHADER,
             },
             FlushSubmit,
             Submit,
@@ -3623,22 +3629,6 @@ mod tests {
                 ],
             },
             ExecuteTask { node: node },
-            SignalPrePresent {
-                swapchain_id: swapchain1,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
-            SignalPrePresent {
-                swapchain_id: swapchain3,
-                stage_mask: COMPUTE_SHADER,
-            },
-            SignalPresent {
-                swapchain_id: swapchain2,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
-            SignalPresent {
-                swapchain_id: swapchain4,
-                stage_mask: COMPUTE_SHADER,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -3678,6 +3668,22 @@ mod tests {
                         resource: swapchain4,
                     },
                 ],
+            },
+            SignalPrePresent {
+                swapchain_id: swapchain1,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
+            },
+            SignalPrePresent {
+                swapchain_id: swapchain3,
+                stage_mask: COMPUTE_SHADER,
+            },
+            SignalPresent {
+                swapchain_id: swapchain2,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
+            },
+            SignalPresent {
+                swapchain_id: swapchain4,
+                stage_mask: COMPUTE_SHADER,
             },
             FlushSubmit,
             Submit,
@@ -3823,10 +3829,6 @@ mod tests {
             NextSubpass,
             ExecuteTask { node: node3 },
             EndRenderPass,
-            SignalPresent {
-                swapchain_id: swapchain,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -3839,6 +3841,10 @@ mod tests {
                         resource: swapchain,
                     },
                 ],
+            },
+            SignalPresent {
+                swapchain_id: swapchain,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
             },
             FlushSubmit,
             Submit,
@@ -3980,14 +3986,6 @@ mod tests {
             NextSubpass,
             ExecuteTask { node: node3 },
             EndRenderPass,
-            SignalPrePresent {
-                swapchain_id: swapchain1,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
-            SignalPresent {
-                swapchain_id: swapchain2,
-                stage_mask: COLOR_ATTACHMENT_OUTPUT,
-            },
             PipelineBarrier {
                 barriers: [
                     {
@@ -4009,6 +4007,14 @@ mod tests {
                         resource: swapchain2,
                     },
                 ],
+            },
+            SignalPrePresent {
+                swapchain_id: swapchain1,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
+            },
+            SignalPresent {
+                swapchain_id: swapchain2,
+                stage_mask: COLOR_ATTACHMENT_OUTPUT,
             },
             FlushSubmit,
             Submit,

@@ -3,14 +3,12 @@
 use scene::SceneTask;
 use std::{error::Error, sync::Arc};
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         Queue, QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, ImageFormatInfo, ImageLayout, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::StandardMemoryAllocator,
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     Version, VulkanError, VulkanLibrary,
 };
@@ -227,34 +225,27 @@ impl ApplicationHandler for App {
         let swapchain_storage_image_ids =
             window_size_dependent_setup(&self.resources, swapchain_id);
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new(
-            &self.device,
-            &Default::default(),
-        ));
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            &self.device,
-            &Default::default(),
-        ));
-
         let mut task_graph = TaskGraph::new(&self.resources);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
 
+        let (scene_task, tlas_buffer_id, blas_buffer_id) =
+            SceneTask::new(self, virtual_swapchain_id);
+
         task_graph
-            .create_task_node(
-                "Scene",
-                QueueFamilyType::Graphics,
-                SceneTask::new(
-                    self,
-                    virtual_swapchain_id,
-                    &memory_allocator,
-                    &command_buffer_allocator,
-                ),
-            )
+            .create_task_node("Scene", QueueFamilyType::Graphics, scene_task)
             .image_access(
                 virtual_swapchain_id.current_image_id(),
                 AccessTypes::RAY_TRACING_SHADER_STORAGE_WRITE,
                 ImageLayoutType::General,
+            )
+            .buffer_access(
+                tlas_buffer_id,
+                AccessTypes::RAY_TRACING_SHADER_ACCELERATION_STRUCTURE_READ,
+            )
+            .buffer_access(
+                blas_buffer_id,
+                AccessTypes::RAY_TRACING_SHADER_ACCELERATION_STRUCTURE_READ,
             );
 
         let task_graph = unsafe {
