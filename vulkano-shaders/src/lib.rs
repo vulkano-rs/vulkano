@@ -46,8 +46,8 @@
 //!   `Result<Arc<ShaderModule>, VulkanError>`. It also generates the `try_load` function, which
 //!   works the same, but returns a `Result<Arc<ShaderModule>, Validated<VulkanError>>`. These
 //!   functions are both unsafe because they delegate to the unsafe [`ShaderModule::try_new`].
-//!   Additionally, a `load_unchecked` function is generated, which skips validation entirely
-//!   and delegates to [`ShaderModule::new_unchecked`].
+//!   Additionally, a `load_unchecked` function is generated, which skips validation entirely and
+//!   delegates to [`ShaderModule::new_unchecked`].
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //!   `try_` and `_unchecked` variants are also generated for each shader.
