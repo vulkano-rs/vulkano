@@ -709,7 +709,10 @@ impl TypeArray {
 }
 
 fn deduplicate_ident(ident: &Ident, members: &[Member]) -> Option<Ident> {
-    if !ident.to_string().starts_with("StructuredBuffer") || members.len() != 1 {
+    let name = ident.to_string();
+    if !(name.starts_with("StructuredBuffer") || name.starts_with("RWStructuredBuffer"))
+        || members.len() != 1
+    {
         return None;
     }
     let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
