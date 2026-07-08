@@ -449,16 +449,13 @@ pub(super) fn reflect(
         spirv,
     };
 
-    let include_bytes: Vec<_> = input_paths
-        .into_iter()
-        .map(|s| {
-            quote! {
-                // Using `include_bytes` here ensures that changing the shader will force recompilation.
-                // The bytes themselves can be optimized out by the compiler as they are unused.
-                ::std::include_bytes!( #s )
-            }
-        })
-        .collect();
+    let include_bytes = input_paths.into_iter().map(|s| {
+        quote! {
+            // Using `include_bytes` here ensures that changing the shader will force recompilation.
+            // The bytes themselves can be optimized out by the compiler as they are unused.
+            ::std::include_bytes!( #s )
+        }
+    });
 
     let load_name = if shader.name.is_empty() {
         format_ident!("load")
@@ -467,8 +464,13 @@ pub(super) fn reflect(
     };
     let try_load_name = format_ident!("try_{load_name}");
     let load_unchecked_name = format_ident!("{load_name}_unchecked");
+    let words_name = format_ident!("{}_WORDS", load_name.to_string().to_uppercase());
 
     let shader_code = quote! {
+        const _: &[&[u8]] = &[ #( #include_bytes ),* ];
+
+        static #words_name: &[u32] = &[ #( #words ),* ];
+
         /// Loads the shader as a `ShaderModule`, panicking on a validation error.
         #[allow(unsafe_code)]
         #[inline]
@@ -498,14 +500,10 @@ pub(super) fn reflect(
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
             ::vulkano::Validated<::vulkano::VulkanError>,
         > {
-            let _bytes = ( #( #include_bytes ),* );
-
-            static WORDS: &[u32] = &[ #( #words ),* ];
-
             unsafe {
                 ::vulkano::shader::ShaderModule::try_new(
                     device,
-                    &::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
+                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
                 )
             }
         }
@@ -519,14 +517,10 @@ pub(super) fn reflect(
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
             ::vulkano::VulkanError,
         > {
-            let _bytes = ( #( #include_bytes ),* );
-
-            static WORDS: &[u32] = &[ #( #words ),* ];
-
             unsafe {
                 ::vulkano::shader::ShaderModule::new_unchecked(
                     device,
-                    &::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
+                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
                 )
             }
         }
