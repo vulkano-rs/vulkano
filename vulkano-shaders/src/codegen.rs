@@ -511,7 +511,6 @@ pub(super) fn reflect(
         }
 
         /// Loads the shader as a `ShaderModule`, skipping validation.
-        #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
         #[allow(unsafe_code)]
         #[inline]
         pub unsafe fn #load_unchecked_name(
