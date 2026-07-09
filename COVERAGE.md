@@ -246,7 +246,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 	- Check for `tessellationPointMode`
 - [`VK_KHR_ray_tracing_pipeline`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_pipeline.html)
 	- `vkCmdSetRayTracingPipelineStackSizeKHR`
-	- `vkCmdTraceRaysIndirectKHR` / `VkTraceRaysIndirectCommandKHR`
 	- `vkGetRayTracingCaptureReplayShaderGroupHandlesKHR`
 	- deferred host operations
 - [`VK_KHR_ray_tracing_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_maintenance1.html)
