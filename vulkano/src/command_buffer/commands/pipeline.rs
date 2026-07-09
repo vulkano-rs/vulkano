@@ -1706,7 +1706,7 @@ impl RecordingCommandBuffer {
     pub(crate) fn validate_trace_rays_indirect(
         &self,
         _shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        _indirect_device_address: DeviceAddress,
+        indirect_device_address: DeviceAddress,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .device()
@@ -1734,6 +1734,15 @@ impl RecordingCommandBuffer {
                     compute operations"
                     .into(),
                 vuids: &["VUID-vkCmdTraceRaysIndirectKHR-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_device_address.is_multiple_of(4) {
+            return Err(Box::new(ValidationError {
+                context: "indirect_device_address".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
                 ..Default::default()
             }));
         }
