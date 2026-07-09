@@ -9,7 +9,7 @@ use vulkano::command_buffer::{
 };
 use vulkano::{
     buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
-    DeviceSize, Version, VulkanObject,
+    DeviceAddress, DeviceSize, Version, VulkanObject,
 };
 
 /// # Commands to execute a bound pipeline
@@ -1220,6 +1220,95 @@ impl RecordingCommandBuffer<'_> {
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],
+            )
+        };
+
+        self
+    }
+
+    /// Performs a single ray tracing operation using a ray tracing pipeline, panicking on a  
+    /// validation error. One ray tracing operation is performed for the  
+    /// [`TraceRaysIndirectCommand`] struct that is read from `indirect_device_address`.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// This is a shortcut for `try_trace_rays_indirect().unwrap()`.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_trace_rays_indirect`] returns a [`ValidationError`].
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
+    /// [`try_trace_rays_indirect`]: Self::try_trace_rays_indirect
+    #[track_caller]
+    pub unsafe fn trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> &mut Self {
+        unsafe {
+            self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)
+        }
+        .unwrap()
+    }
+
+    /// Performs a single ray tracing operation using a ray tracing pipeline. One ray tracing  
+    /// operation is performed for the [`TraceRaysIndirectCommand`] struct that is read from  
+    /// `indirect_device_address`.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
+    /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
+    pub unsafe fn try_trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> Result<&mut Self> {
+        Ok(unsafe {
+            self.trace_rays_indirect_unchecked(
+                shader_binding_table_addresses,
+                indirect_device_address,
+            )
+        })
+    }
+
+    pub unsafe fn trace_rays_indirect_unchecked(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> &mut Self {
+        let raygen = shader_binding_table_addresses.raygen.to_vk();
+        let miss = shader_binding_table_addresses.miss.to_vk();
+        let hit = shader_binding_table_addresses.hit.to_vk();
+        let callable = shader_binding_table_addresses.callable.to_vk();
+
+        let fns = self.device().fns();
+        unsafe {
+            (fns.khr_ray_tracing_pipeline.cmd_trace_rays_indirect_khr)(
+                self.handle(),
+                &raygen,
+                &miss,
+                &hit,
+                &callable,
+                indirect_device_address,
             )
         };
 

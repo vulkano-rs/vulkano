@@ -8,6 +8,7 @@ use crate::{
     pipeline::ray_tracing::ShaderBindingTableAddresses,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk::DeviceAddress;
 
 impl RecordingCommandBuffer {
     #[inline]
@@ -1669,6 +1670,107 @@ impl RecordingCommandBuffer {
                 dimensions[0],
                 dimensions[1],
                 dimensions[2],
+            )
+        };
+
+        self
+    }
+
+    #[track_caller]
+    pub unsafe fn trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> &mut Self {
+        unsafe {
+            self.try_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)
+        }
+        .unwrap()
+    }
+
+    pub unsafe fn try_trace_rays_indirect(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_trace_rays_indirect(shader_binding_table_addresses, indirect_device_address)?;
+
+        Ok(unsafe {
+            self.trace_rays_indirect_unchecked(
+                shader_binding_table_addresses,
+                indirect_device_address,
+            )
+        })
+    }
+
+    pub(crate) fn validate_trace_rays_indirect(
+        &self,
+        _shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .device()
+            .enabled_features()
+            .ray_tracing_pipeline_trace_rays_indirect
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "ray_tracing_pipeline_trace_rays_indirect",
+                )])]),
+                vuids: &[
+                    "VUID-vkCmdTraceRaysIndirectKHR-rayTracingPipelineTraceRaysIndirect-03637",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_device_address.is_multiple_of(4) {
+            return Err(Box::new(ValidationError {
+                context: "indirect_device_address".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trace_rays_indirect_unchecked(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        indirect_device_address: DeviceAddress,
+    ) -> &mut Self {
+        let raygen = shader_binding_table_addresses.raygen.to_vk();
+        let miss = shader_binding_table_addresses.miss.to_vk();
+        let hit = shader_binding_table_addresses.hit.to_vk();
+        let callable = shader_binding_table_addresses.callable.to_vk();
+
+        let fns = self.device().fns();
+
+        unsafe {
+            (fns.khr_ray_tracing_pipeline.cmd_trace_rays_indirect_khr)(
+                self.handle(),
+                &raygen,
+                &miss,
+                &hit,
+                &callable,
+                indirect_device_address,
             )
         };
 
