@@ -1037,7 +1037,6 @@ impl FormatProperties {
         {
             let &vk::DrmFormatModifierPropertiesListEXT {
                 drm_format_modifier_count,
-                p_drm_format_modifier_properties: _,
                 ..
             } = list_vk;
 
