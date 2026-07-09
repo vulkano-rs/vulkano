@@ -107,6 +107,7 @@ Changes to vulkano-shaders:
 - Added support for the `protected_memory` device feature.
 - Implemented `BuddyAllocator::suballocations`.
 - Added support for the `ext_memory_budget` extension.
+- Added support for the `ray_tracing_pipeline_trace_rays_indirect` device feature.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
