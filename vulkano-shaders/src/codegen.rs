@@ -463,8 +463,14 @@ pub(super) fn reflect(
         format_ident!("load_{}", shader.name.to_snake_case())
     };
     let try_load_name = format_ident!("try_{load_name}");
+    let load_unchecked_name = format_ident!("{load_name}_unchecked");
+    let words_name = format_ident!("{}_WORDS", load_name.to_string().to_uppercase());
 
     let shader_code = quote! {
+        const _: &[&[u8]] = &[ #( #include_bytes ),* ];
+
+        static #words_name: &[u32] = &[ #( #words ),* ];
+
         /// Loads the shader as a `ShaderModule`, panicking on a validation error.
         #[allow(unsafe_code)]
         #[inline]
@@ -494,14 +500,27 @@ pub(super) fn reflect(
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
             ::vulkano::Validated<::vulkano::VulkanError>,
         > {
-            let _bytes = ( #( #include_bytes ),* );
-
-            static WORDS: &[u32] = &[ #( #words ),* ];
-
             unsafe {
                 ::vulkano::shader::ShaderModule::try_new(
                     device,
-                    &::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
+                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
+                )
+            }
+        }
+
+        /// Loads the shader as a `ShaderModule`, skipping validation.
+        #[allow(unsafe_code)]
+        #[inline]
+        pub unsafe fn #load_unchecked_name(
+            device: &::std::sync::Arc<::vulkano::device::Device>,
+        ) -> ::std::result::Result<
+            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
+            ::vulkano::VulkanError,
+        > {
+            unsafe {
+                ::vulkano::shader::ShaderModule::new_unchecked(
+                    device,
+                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
                 )
             }
         }
