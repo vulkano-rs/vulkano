@@ -40,7 +40,7 @@ pub struct Surface {
     instance: DebugWrapper<Arc<Instance>>,
     id: NonZero<u64>,
     api: SurfaceApi,
-    object: Option<Arc<dyn Any + Send + Sync>>,
+    object: Option<SurfaceObject>,
     // Data queried by the user at runtime, cached for faster lookups.
     // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
     // `Surface` is destroyed.
@@ -49,6 +49,15 @@ pub struct Surface {
     pub(crate) surface_present_modes:
         OnceCache<(vk::PhysicalDevice, SurfaceInfo<'static>), Vec<PresentMode>>,
     pub(crate) surface_support: OnceCache<(vk::PhysicalDevice, u32), bool>,
+}
+
+/// The `window` or `object` parameter that is passed when creating a [`Surface`].
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum SurfaceObject {
+    #[cfg(feature = "raw_window_handle")]
+    Window(Arc<dyn Window>),
+    Other(Arc<dyn Any + Send + Sync>),
 }
 
 impl Surface {
@@ -122,11 +131,11 @@ impl Surface {
     #[track_caller]
     pub fn from_window(
         instance: &Arc<Instance>,
-        window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
+        window: &Arc<impl Window + ?Sized>,
     ) -> Result<Arc<Self>, VulkanError> {
         Self::from_window_inner(
             instance,
-            window.clone(),
+            window.clone().as_dyn(),
             window.window_handle(),
             window.display_handle(),
         )
@@ -136,7 +145,7 @@ impl Surface {
     #[track_caller]
     fn from_window_inner(
         instance: &Arc<Instance>,
-        window: Arc<dyn Any + Send + Sync>,
+        window: Arc<dyn Window>,
         window_handle: Result<WindowHandle<'_>, HandleError>,
         display_handle: Result<DisplayHandle<'_>, HandleError>,
     ) -> Result<Arc<Self>, VulkanError> {
@@ -150,24 +159,29 @@ impl Surface {
     #[cfg(feature = "raw_window_handle")]
     pub fn try_from_window(
         instance: &Arc<Instance>,
-        window: &Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
+        window: &Arc<impl Window + ?Sized>,
     ) -> Result<Arc<Self>, Validated<FromWindowError>> {
         let window_handle = window.window_handle();
         let display_handle = window.display_handle();
 
-        Self::try_from_window_inner(instance, window.clone(), window_handle, display_handle)
+        Self::try_from_window_inner(
+            instance,
+            window.clone().as_dyn(),
+            window_handle,
+            display_handle,
+        )
     }
 
     #[cfg(feature = "raw_window_handle")]
     fn try_from_window_inner(
         instance: &Arc<Instance>,
-        window: Arc<dyn Any + Send + Sync>,
+        window: Arc<dyn Window>,
         window_handle: Result<WindowHandle<'_>, HandleError>,
         display_handle: Result<DisplayHandle<'_>, HandleError>,
     ) -> Result<Arc<Self>, Validated<FromWindowError>> {
         let mut surface =
             unsafe { Self::try_from_window_ref_inner(instance, window_handle, display_handle) }?;
-        Arc::get_mut(&mut surface).unwrap().object = Some(window);
+        Arc::get_mut(&mut surface).unwrap().object = Some(SurfaceObject::Window(window));
 
         Ok(surface)
     }
@@ -312,7 +326,7 @@ impl Surface {
         instance: &Arc<Instance>,
         handle: vk::SurfaceKHR,
         api: SurfaceApi,
-        object: Option<Arc<dyn Any + Send + Sync>>,
+        object: Option<SurfaceObject>,
     ) -> Self {
         Surface {
             handle,
@@ -402,7 +416,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Headless, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Headless,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -669,7 +688,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Android, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Android,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -773,7 +797,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::DirectFB, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::DirectFB,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -872,7 +901,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::FuchsiaImagePipe, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::FuchsiaImagePipe,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -970,7 +1004,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::GgpStreamDescriptor, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::GgpStreamDescriptor,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1069,7 +1108,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Ios, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Ios,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1168,7 +1212,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::MacOs, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::MacOs,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1272,7 +1321,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Metal, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Metal,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1378,7 +1432,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::QnxScreen, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::QnxScreen,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1472,7 +1531,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Vi, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Vi,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1580,7 +1644,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Wayland, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Wayland,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1688,7 +1757,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Win32, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Win32,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1796,7 +1870,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Xcb, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Xcb,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1904,7 +1983,12 @@ impl Surface {
         };
 
         Ok(Arc::new(unsafe {
-            Self::from_handle(instance, handle, SurfaceApi::Xlib, object)
+            Self::from_handle(
+                instance,
+                handle,
+                SurfaceApi::Xlib,
+                object.map(SurfaceObject::Other),
+            )
         }))
     }
 
@@ -1920,10 +2004,10 @@ impl Surface {
         self.api
     }
 
-    /// Returns a reference to the `object` parameter that was passed when creating the
+    /// Returns a reference to the `window` or `object` parameter that was passed when creating the
     /// surface.
     #[inline]
-    pub fn object(&self) -> Option<&Arc<dyn Any + Send + Sync>> {
+    pub fn object(&self) -> Option<&SurfaceObject> {
         self.object.as_ref()
     }
 }
@@ -1979,6 +2063,27 @@ impl Debug for Surface {
 }
 
 impl_id_counter!(Surface);
+
+/// A trait for windows that can be passed to [`Surface::from_window`].
+#[cfg(feature = "raw_window_handle")]
+pub trait Window: HasWindowHandle + HasDisplayHandle + Any + Send + Sync {
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn Window>;
+}
+
+#[cfg(feature = "raw_window_handle")]
+impl<T: HasWindowHandle + HasDisplayHandle + Send + Sync + 'static> Window for T {
+    #[inline]
+    fn as_dyn(self: Arc<Self>) -> Arc<dyn Window> {
+        self
+    }
+}
+
+#[cfg(feature = "raw_window_handle")]
+impl Debug for dyn Window {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("Window").finish_non_exhaustive()
+    }
+}
 
 /// Parameters to create a surface from a display mode and plane.
 #[derive(Clone, Debug)]
