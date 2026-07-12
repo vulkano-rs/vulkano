@@ -3,6 +3,7 @@ pub(super) mod bind_push;
 pub(super) mod clear;
 pub(super) mod copy;
 pub(super) mod debug;
+pub(super) mod device_generated_commands;
 pub(super) mod dynamic_state;
 pub(super) mod pipeline;
 pub(super) mod query;
