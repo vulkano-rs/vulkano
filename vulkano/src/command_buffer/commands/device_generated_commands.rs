@@ -1,8 +1,8 @@
 use crate::{
     command_buffer::RecordingCommandBuffer,
     device::DeviceOwned,
-    pipeline::{ComputePipeline, Pipeline},
-    ValidationError, VulkanObject,
+    pipeline::{ComputePipeline, Pipeline, PipelineCreateFlags},
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use std::sync::Arc;
 
@@ -21,7 +21,37 @@ impl RecordingCommandBuffer {
         &self,
         pipeline: &Arc<ComputePipeline>,
     ) -> Result<(), Box<ValidationError>> {
-        // TODO
+        if !self
+            .device()
+            .enabled_features()
+            .device_generated_compute_pipelines
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                    Requires::DeviceFeature("device_generated_compute_pipelines"),
+                ])]),
+                vuids: &[
+                    "VUID-vkCmdUpdatePipelineIndirectBufferNV-deviceGeneratedComputePipelines-09021",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdUpdatePipelineIndirectBufferNV-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        if !pipeline
+            .flags()
+            .intersects(PipelineCreateFlags::INDIRECT_BINDABLE)
+        {
+            return Err(Box::new(ValidationError {
+                context: "pipeline.flags()".into(),
+                problem: "does not contain `PipelineCreateFlags::INDIRECT_BINDABLE`".into(),
+                vuids: &["VUID-vkCmdUpdatePipelineIndirectBufferNV-pipeline-09019"],
+                ..Default::default()
+            }));
+        }
+
         Ok(())
     }
 

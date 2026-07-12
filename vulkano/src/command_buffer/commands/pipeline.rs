@@ -1774,9 +1774,9 @@ impl RecordingCommandBuffer {
 
     pub unsafe fn preprocess_generated_commands(
         &mut self,
-        generated_commands_info: &GeneratedCommandsInfo,
+        generated_commands_info: &GeneratedCommandsInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        // TODO: Validate
+        generated_commands_info.validate(self.device())?;
 
         Ok(unsafe { self.preprocess_generated_commands_unchecked(generated_commands_info) })
     }
@@ -1784,7 +1784,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn preprocess_generated_commands_unchecked(
         &mut self,
-        generated_commands_info: &GeneratedCommandsInfo,
+        generated_commands_info: &GeneratedCommandsInfo<'_>,
     ) -> &mut Self {
         let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
         let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
@@ -1802,9 +1802,9 @@ impl RecordingCommandBuffer {
     pub unsafe fn execute_generated_commands(
         &mut self,
         is_preprocessed: bool,
-        generated_commands_info: &GeneratedCommandsInfo,
+        generated_commands_info: &GeneratedCommandsInfo<'_>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        // TODO: Validate
+        generated_commands_info.validate(self.device())?;
 
         Ok(unsafe {
             self.execute_generated_commands_unchecked(is_preprocessed, generated_commands_info)
@@ -1815,7 +1815,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn execute_generated_commands_unchecked(
         &mut self,
         is_preprocessed: bool,
-        generated_commands_info: &GeneratedCommandsInfo,
+        generated_commands_info: &GeneratedCommandsInfo<'_>,
     ) -> &mut Self {
         let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
         let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
