@@ -8,9 +8,8 @@ use vulkano::command_buffer::{
     DrawMeshTasksIndirectCommand,
 };
 use vulkano::{
-    buffer::Buffer, device::DeviceOwned, device_generated_commands::GeneratedCommandsInfo,
-    pipeline::ray_tracing::ShaderBindingTableAddresses, DeviceAddress, DeviceSize, Version,
-    VulkanObject,
+    buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
+    DeviceAddress, DeviceSize, Version, VulkanObject,
 };
 
 /// # Commands to execute a bound pipeline
@@ -1310,134 +1309,6 @@ impl RecordingCommandBuffer<'_> {
                 &hit,
                 &callable,
                 indirect_device_address,
-            )
-        };
-
-        self
-    }
-
-    /// Preprocesses input data for device-generated commands, panicking on a validation error.
-    ///
-    /// The preprocessing step executes in a separate logical pipeline from either graphics or
-    /// compute, and must be explicitly synchronized against the command execution.
-    ///
-    /// This is a shortcut for `try_preprocess_generated_commands().unwrap()`.
-    ///
-    /// # Safety
-    ///
-    /// - The general [shader safety requirements] apply.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if [`try_preprocess_generated_commands`] returns a [`ValidationError`].
-    ///
-    /// [shader safety requirements]: vulkano::shader#safety
-    /// [`try_preprocess_generated_commands`]: Self::try_preprocess_generated_commands
-    #[track_caller]
-    pub unsafe fn preprocess_generated_commands(
-        &mut self,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> &mut Self {
-        unsafe { self.try_preprocess_generated_commands(generated_commands_info) }.unwrap()
-    }
-
-    /// Preprocesses input data for device-generated commands.
-    ///
-    /// The preprocessing step executes in a separate logical pipeline from either graphics or
-    /// compute, and must be explicitly synchronized against the command execution.
-    ///
-    /// # Safety
-    ///
-    /// - The general [shader safety requirements] apply.
-    ///
-    /// [shader safety requirements]: vulkano::shader#safety
-    pub unsafe fn try_preprocess_generated_commands(
-        &mut self,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> Result<&mut Self> {
-        Ok(unsafe { self.preprocess_generated_commands_unchecked(generated_commands_info) })
-    }
-
-    pub unsafe fn preprocess_generated_commands_unchecked(
-        &mut self,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> &mut Self {
-        let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
-        let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
-
-        let fns = self.device().fns();
-        unsafe {
-            (fns.nv_device_generated_commands
-                .cmd_preprocess_generated_commands_nv)(self.handle(), &commands_info_vk)
-        };
-
-        self
-    }
-
-    /// Generates and executes device-generated commands, panicking on a validation error.
-    ///
-    /// If `is_preprocessed` is `true`, the preprocessing step is skipped and the previously
-    /// preprocessed data is used. Otherwise, the preprocessing and execution are performed
-    /// together.
-    ///
-    /// This is a shortcut for `try_execute_generated_commands().unwrap()`.
-    ///
-    /// # Safety
-    ///
-    /// - The general [shader safety requirements] apply.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if [`try_execute_generated_commands`] returns a [`ValidationError`].
-    ///
-    /// [shader safety requirements]: vulkano::shader#safety
-    /// [`try_execute_generated_commands`]: Self::try_execute_generated_commands
-    #[track_caller]
-    pub unsafe fn execute_generated_commands(
-        &mut self,
-        is_preprocessed: bool,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> &mut Self {
-        unsafe { self.try_execute_generated_commands(is_preprocessed, generated_commands_info) }
-            .unwrap()
-    }
-
-    /// Generates and executes device-generated commands.
-    ///
-    /// If `is_preprocessed` is `true`, the preprocessing step is skipped and the previously
-    /// preprocessed data is used. Otherwise, the preprocessing and execution are performed
-    /// together.
-    ///
-    /// # Safety
-    ///
-    /// - The general [shader safety requirements] apply.
-    ///
-    /// [shader safety requirements]: vulkano::shader#safety
-    pub unsafe fn try_execute_generated_commands(
-        &mut self,
-        is_preprocessed: bool,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> Result<&mut Self> {
-        Ok(unsafe {
-            self.execute_generated_commands_unchecked(is_preprocessed, generated_commands_info)
-        })
-    }
-
-    pub unsafe fn execute_generated_commands_unchecked(
-        &mut self,
-        is_preprocessed: bool,
-        generated_commands_info: &GeneratedCommandsInfo<'_>,
-    ) -> &mut Self {
-        let commands_info_field1_vk = generated_commands_info.to_vk_fields1();
-        let commands_info_vk = generated_commands_info.to_vk(&commands_info_field1_vk);
-
-        let fns = self.device().fns();
-        unsafe {
-            (fns.nv_device_generated_commands
-                .cmd_execute_generated_commands_nv)(
-                self.handle(),
-                is_preprocessed.into(),
-                &commands_info_vk,
             )
         };
 

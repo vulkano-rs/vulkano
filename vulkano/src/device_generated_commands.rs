@@ -15,7 +15,7 @@ use crate::{
         PipelineBindPoint, PipelineCreateFlags, PipelineLayout,
     },
     shader::ShaderStages,
-    NonNullDeviceAddress, Validated, ValidationError, VulkanError, VulkanObject, NE,
+    NonNullDeviceAddress, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk::{self, DeviceAddress};
 use std::{collections::BTreeMap, mem::MaybeUninit, ptr, sync::Arc};
@@ -531,7 +531,7 @@ impl<'a> Default for IndirectCommandsLayoutCreateInfo<'a> {
             pipeline_bind_point: PipelineBindPoint::Graphics,
             tokens: &[],
             stream_strides: &[],
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 }
@@ -748,7 +748,7 @@ impl Default for IndirectCommandsLayoutToken {
             pushconstant_data: None,
             indirect_state_flags: Default::default(),
             index_types: Default::default(),
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 }
@@ -1113,7 +1113,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             sequence_count_buffer_offset: 0,
             sequence_index_buffer: None,
             sequence_index_buffer_offset: 0,
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 
@@ -1136,7 +1136,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             sequence_count_buffer_offset: 0,
             sequence_index_buffer: None,
             sequence_index_buffer_offset: 0,
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 
@@ -1158,7 +1158,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             sequence_count_buffer_offset: 0,
             sequence_index_buffer: None,
             sequence_index_buffer_offset: 0,
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 
@@ -1505,7 +1505,7 @@ impl ComputePipelineIndirectBufferInfo {
             buffer,
             size,
             pipeline_device_address_capture_replay: DeviceAddress::default(),
-            _ne: NE,
+            _ne: crate::NE,
         }
     }
 
