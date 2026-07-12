@@ -18,7 +18,13 @@ use super::{
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
-    Validated, ValidationError, VulkanError, VulkanObject, device::{Device, DeviceOwned, DeviceOwnedDebugWrapper}, device_generated_commands::ComputePipelineIndirectBufferInfo, instance::InstanceOwnedDebugWrapper, macros::impl_id_counter, pipeline::{Pipeline, PipelineBindPoint, cache::PipelineCache, layout::PipelineLayout}, shader::{DescriptorBindingRequirements, spirv::ExecutionModel},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
+    device_generated_commands::ComputePipelineIndirectBufferInfo,
+    instance::InstanceOwnedDebugWrapper,
+    macros::impl_id_counter,
+    pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
+    shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
 use foldhash::HashMap;
@@ -267,7 +273,7 @@ pub struct ComputePipelineCreateInfo<'a> {
     pub base_pipeline: Option<&'a Arc<ComputePipeline>>,
 
     /// The buffer where the pipeline's metadata will be saved.
-    /// 
+    ///
     /// If this is `Some`, then `flags` must contain [`PipelineCreateFlags::INDIRECT_BINDABLE`].
     ///
     /// The default value is `None`.

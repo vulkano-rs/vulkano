@@ -874,10 +874,7 @@ impl Device {
         &self,
         pipeline_create_info: &ComputePipelineCreateInfo<'_>,
     ) -> Result<(), Box<ValidationError>> {
-        if !self
-            .enabled_features()
-            .device_generated_compute_pipelines
-        {
+        if !self.enabled_features().device_generated_compute_pipelines {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "device_generated_compute_pipelines",
@@ -896,9 +893,7 @@ impl Device {
             return Err(Box::new(ValidationError {
                 context: "pipeline_create_info.flags".into(),
                 problem: "does not contain `PipelineCreateFlags::INDIRECT_BINDABLE`".into(),
-                vuids: &[
-                    "VUID-vkGetPipelineIndirectMemoryRequirementsNV-pCreateInfo-09083",
-                ],
+                vuids: &["VUID-vkGetPipelineIndirectMemoryRequirementsNV-pCreateInfo-09083"],
                 ..Default::default()
             }));
         }
@@ -931,8 +926,7 @@ impl Device {
             output
         };
 
-        let memory_requirements_extension_vk2 =
-            MemoryRequirements::to_mut_vk2_extensions(self);
+        let memory_requirements_extension_vk2 = MemoryRequirements::to_mut_vk2_extensions(self);
 
         MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
     }

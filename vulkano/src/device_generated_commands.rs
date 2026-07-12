@@ -1,4 +1,4 @@
-﻿//! Generating command buffer content on the device.
+//! Generating command buffer content on the device.
 //!
 //! Device-generated commands allow the device to create and execute command buffer content without
 //! a round-trip to the host. A layout is defined that describes the sequence of commands to
@@ -6,9 +6,16 @@
 //! the device generates and executes the commands.
 
 use crate::{
-    NE, NonNullDeviceAddress, Validated, ValidationError, VulkanError, VulkanObject, buffer::{Buffer, BufferUsage, IndexType}, device::{Device, DeviceOwned}, macros::{vulkan_bitflags, vulkan_enum}, memory::MemoryRequirements, pipeline::{
-        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineCreateFlags, PipelineLayout, compute::ComputePipelineCreateInfo,
-    }, shader::ShaderStages,
+    buffer::{Buffer, BufferUsage, IndexType},
+    device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, vulkan_enum},
+    memory::MemoryRequirements,
+    pipeline::{
+        compute::ComputePipelineCreateInfo, ComputePipeline, GraphicsPipeline, Pipeline,
+        PipelineBindPoint, PipelineCreateFlags, PipelineLayout,
+    },
+    shader::ShaderStages,
+    NonNullDeviceAddress, Validated, ValidationError, VulkanError, VulkanObject, NE,
 };
 use ash::vk::{self, DeviceAddress};
 use std::{collections::BTreeMap, mem::MaybeUninit, ptr, sync::Arc};
@@ -425,7 +432,6 @@ impl<'a> IndirectCommandsLayoutCreateInfo<'a> {
                     ..Default::default()
                 }));
             }
-
         }
 
         if self.pipeline_bind_point == PipelineBindPoint::Compute {
@@ -437,18 +443,19 @@ impl<'a> IndirectCommandsLayoutCreateInfo<'a> {
                         "device_generated_compute",
                     )])]),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09088"],
-                    ..Default::default()
                 }));
             }
 
             if self
                 .tokens
                 .iter()
-                .filter(|token| match token.token_type {
-                    IndirectCommandsTokenType::PushConstant
-                    | IndirectCommandsTokenType::Pipeline
-                    | IndirectCommandsTokenType::Dispatch => false,
-                    _ => true,
+                .filter(|token| {
+                    !matches!(
+                        token.token_type,
+                        IndirectCommandsTokenType::PushConstant
+                            | IndirectCommandsTokenType::Pipeline
+                            | IndirectCommandsTokenType::Dispatch
+                    )
                 })
                 .count()
                 > 0
@@ -476,7 +483,6 @@ impl<'a> IndirectCommandsLayoutCreateInfo<'a> {
                         "device_generated_compute_pipelines",
                     )])]),
                     vuids: &["VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09090"],
-                    ..Default::default()
                 }));
             }
         }
@@ -505,9 +511,7 @@ impl<'a> IndirectCommandsLayoutCreateInfo<'a> {
             .zip(fields2_vk.token_index_types.iter())
             .map(|(token, token_fields1_vk)| token.to_vk(token_fields1_vk))
             .collect::<Vec<_>>();
-        IndirectCommandsLayoutCreateInfoFields1Vk {
-            tokens,
-        }
+        IndirectCommandsLayoutCreateInfoFields1Vk { tokens }
     }
 
     pub(crate) fn to_vk_fields2(&self) -> IndirectCommandsLayoutCreateInfoFields2Vk {
@@ -516,9 +520,7 @@ impl<'a> IndirectCommandsLayoutCreateInfo<'a> {
             .iter()
             .map(|token| token.to_vk_field1())
             .collect::<Vec<_>>();
-        IndirectCommandsLayoutCreateInfoFields2Vk {
-            token_index_types,
-        }
+        IndirectCommandsLayoutCreateInfoFields2Vk { token_index_types }
     }
 }
 
@@ -926,9 +928,7 @@ impl IndirectCommandsLayoutTokenPushConstant {
                             `shader_stage_flags` does not contain all stages in that \
                             range"
                             .into(),
-                        vuids: &[
-                            "VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02983",
-                        ],
+                        vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02983"],
                         ..Default::default()
                     }));
                 }
@@ -954,9 +954,7 @@ impl IndirectCommandsLayoutTokenPushConstant {
                         that stage and the full byte range specified by `offset` and \
                         `size`"
                         .into(),
-                    vuids: &[
-                        "VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02982",
-                    ],
+                    vuids: &["VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02982"],
                     ..Default::default()
                 }));
             }
@@ -979,9 +977,7 @@ vulkan_bitflags! {
 }
 
 impl ComputePipeline {
-    pub fn indirect_device_address(
-        &self,
-    ) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
+    pub fn indirect_device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
         self.validate_indirect_device_address()?;
 
         Ok(unsafe { self.indirect_device_address_unchecked() })
@@ -1169,11 +1165,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let properties = device.physical_device().properties();
 
-        if self.sequence_count
-            > properties
-                .max_indirect_sequence_count
-                .unwrap_or(0)
-        {
+        if self.sequence_count > properties.max_indirect_sequence_count.unwrap_or(0) {
             return Err(Box::new(ValidationError {
                 context: "sequence_count".into(),
                 problem: "is greater than the `max_indirect_sequence_count` limit".into(),
@@ -1195,9 +1187,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             }));
         }
 
-        if let Some(min_alignment) =
-            properties.min_indirect_commands_buffer_offset_alignment
-        {
+        if let Some(min_alignment) = properties.min_indirect_commands_buffer_offset_alignment {
             if !self.preprocess_offset.is_multiple_of(min_alignment as u64) {
                 return Err(Box::new(ValidationError {
                     context: "preprocess_offset".into(),
@@ -1223,9 +1213,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                 }));
             }
 
-            if let Some(min_alignment) =
-                properties.min_sequences_count_buffer_offset_alignment
-            {
+            if let Some(min_alignment) = properties.min_sequences_count_buffer_offset_alignment {
                 if !self
                     .sequence_count_buffer_offset
                     .is_multiple_of(min_alignment as u64)
@@ -1235,9 +1223,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                         problem: "is not a multiple of the \
                             `min_sequences_count_buffer_offset_alignment` device property"
                             .into(),
-                        vuids: &[
-                            "VUID-VkGeneratedCommandsInfoNV-sequencesCountBuffer-02923",
-                        ],
+                        vuids: &["VUID-VkGeneratedCommandsInfoNV-sequencesCountBuffer-02923"],
                         ..Default::default()
                     }));
                 }
@@ -1257,9 +1243,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                 }));
             }
 
-            if let Some(min_alignment) =
-                properties.min_sequences_index_buffer_offset_alignment
-            {
+            if let Some(min_alignment) = properties.min_sequences_index_buffer_offset_alignment {
                 if !self
                     .sequence_index_buffer_offset
                     .is_multiple_of(min_alignment as u64)
@@ -1269,18 +1253,14 @@ impl<'a> GeneratedCommandsInfo<'a> {
                         problem: "is not a multiple of the \
                             `min_sequences_index_buffer_offset_alignment` device property"
                             .into(),
-                        vuids: &[
-                            "VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02926",
-                        ],
+                        vuids: &["VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02926"],
                         ..Default::default()
                     }));
                 }
             }
         }
 
-        if self.streams.len() as u32
-            != self.indirect_commands_layout.stream_count()
-        {
+        if self.streams.len() as u32 != self.indirect_commands_layout.stream_count() {
             return Err(Box::new(ValidationError {
                 problem: "the length of `streams` does not match \
                     `indirect_commands_layout.stream_count()`"
@@ -1290,9 +1270,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             }));
         }
 
-        if let Some(min_alignment) =
-            properties.min_indirect_commands_buffer_offset_alignment
-        {
+        if let Some(min_alignment) = properties.min_indirect_commands_buffer_offset_alignment {
             for (index, stream) in self.streams.iter().enumerate() {
                 if !stream.offset.is_multiple_of(min_alignment as u64) {
                     return Err(Box::new(ValidationError {
@@ -1321,9 +1299,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                                 created with the `PipelineCreateFlags::INDIRECT_BINDABLE` \
                                 flag"
                                 .into(),
-                            vuids: &[
-                                "VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09084",
-                            ],
+                            vuids: &["VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09084"],
                             ..Default::default()
                         }));
                     }
@@ -1332,17 +1308,14 @@ impl<'a> GeneratedCommandsInfo<'a> {
                     if !self
                         .indirect_commands_layout
                         .token_types()
-                        .iter()
-                        .any(|&t| t == IndirectCommandsTokenType::Pipeline)
+                        .contains(&IndirectCommandsTokenType::Pipeline)
                     {
                         return Err(Box::new(ValidationError {
                             problem: "`pipeline` is `Dynamic`, but \
                                 `indirect_commands_layout` does not contain a \
                                 `IndirectCommandsTokenType::Pipeline` token"
                                 .into(),
-                            vuids: &[
-                                "VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09087",
-                            ],
+                            vuids: &["VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09087"],
                             ..Default::default()
                         }));
                     }
@@ -1353,8 +1326,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
             if self
                 .indirect_commands_layout
                 .token_types()
-                .iter()
-                .any(|&t| t == IndirectCommandsTokenType::Pipeline)
+                .contains(&IndirectCommandsTokenType::Pipeline)
             {
                 if !matches!(self.pipeline, GeneratedCommandsPipeline::Dynamic) {
                     return Err(Box::new(ValidationError {
@@ -1362,9 +1334,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                             `IndirectCommandsTokenType::Pipeline` token, but `pipeline` \
                             is not `Dynamic`"
                             .into(),
-                        vuids: &[
-                            "VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09087",
-                        ],
+                        vuids: &["VUID-VkGeneratedCommandsInfoNV-pipelineBindPoint-09087"],
                         ..Default::default()
                     }));
                 }
@@ -1382,9 +1352,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                         `IndirectCommandsLayoutUsageFlags::INDEXED_SEQUENCES`, but \
                         `sequence_index_buffer` is `None`"
                         .into(),
-                    vuids: &[
-                        "VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02924",
-                    ],
+                    vuids: &["VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02924"],
                     ..Default::default()
                 }));
             }
@@ -1394,9 +1362,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
                     `IndirectCommandsLayoutUsageFlags::INDEXED_SEQUENCES`, but \
                     `sequence_index_buffer` is `Some`"
                     .into(),
-                vuids: &[
-                    "VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02924",
-                ],
+                vuids: &["VUID-VkGeneratedCommandsInfoNV-sequencesIndexBuffer-02924"],
                 ..Default::default()
             }));
         }
@@ -1404,7 +1370,8 @@ impl<'a> GeneratedCommandsInfo<'a> {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
+    #[doc(hidden)]
+    pub fn to_vk(
         &self,
         fields1_vk: &'a GeneratedCommandsInfoFieldsVk1,
     ) -> vk::GeneratedCommandsInfoNV<'a> {
@@ -1432,14 +1399,16 @@ impl<'a> GeneratedCommandsInfo<'a> {
         result
     }
 
-    pub(crate) fn to_vk_fields1(&self) -> GeneratedCommandsInfoFieldsVk1 {
+    #[doc(hidden)]
+    pub fn to_vk_fields1(&self) -> GeneratedCommandsInfoFieldsVk1 {
         let streams = self.streams.iter().map(|stream| stream.to_vk()).collect();
         GeneratedCommandsInfoFieldsVk1 { streams }
     }
 }
 
-pub(crate) struct GeneratedCommandsInfoFieldsVk1 {
-    streams: Vec<vk::IndirectCommandsStreamNV>,
+#[doc(hidden)]
+pub struct GeneratedCommandsInfoFieldsVk1 {
+    pub streams: Vec<vk::IndirectCommandsStreamNV>,
 }
 
 /// The pipeline used in the generation and execution of device-generated commands.
@@ -1531,10 +1500,7 @@ pub struct ComputePipelineIndirectBufferInfo {
 }
 
 impl ComputePipelineIndirectBufferInfo {
-    pub fn buffer(
-        buffer: DeviceAddress,
-        size: u64,
-    ) -> Self {
+    pub fn buffer(buffer: DeviceAddress, size: u64) -> Self {
         Self {
             buffer,
             size,
@@ -1559,11 +1525,11 @@ impl ComputePipelineIndirectBufferInfo {
             }));
         }
 
-        let memory_requirements = device.pipeline_indirect_memory_requirements(
-            pipeline_create_info,
-        );
+        let memory_requirements =
+            device.pipeline_indirect_memory_requirements(pipeline_create_info);
 
-        if !self.buffer
+        if !self
+            .buffer
             .is_multiple_of(memory_requirements.layout.alignment().as_devicesize())
         {
             return Err(Box::new(ValidationError {
@@ -1591,14 +1557,11 @@ impl ComputePipelineIndirectBufferInfo {
                 return Err(Box::new(ValidationError {
                     context: "pipeline_device_address_capture_replay".into(),
                     problem: "is not zero".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                        Requires::DeviceFeature(
-                            "device_generated_compute_capture_replay",
-                        ),
-                    ])]),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "device_generated_compute_capture_replay",
+                    )])]),
                     vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-\
                         pipelineDeviceAddressCaptureReplay-09014"],
-                    ..Default::default()
                 }));
             }
         }
@@ -1610,8 +1573,6 @@ impl ComputePipelineIndirectBufferInfo {
         vk::ComputePipelineIndirectBufferInfoNV::default()
             .device_address(self.buffer)
             .size(self.size)
-            .pipeline_device_address_capture_replay(
-                self.pipeline_device_address_capture_replay
-            )
+            .pipeline_device_address_capture_replay(self.pipeline_device_address_capture_replay)
     }
 }
