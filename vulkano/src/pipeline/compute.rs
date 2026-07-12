@@ -18,12 +18,7 @@ use super::{
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
-    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
-    instance::InstanceOwnedDebugWrapper,
-    macros::impl_id_counter,
-    pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
-    shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
-    Validated, ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject, device::{Device, DeviceOwned, DeviceOwnedDebugWrapper}, device_generated_commands::ComputePipelineIndirectBufferInfo, instance::InstanceOwnedDebugWrapper, macros::impl_id_counter, pipeline::{Pipeline, PipelineBindPoint, cache::PipelineCache, layout::PipelineLayout}, shader::{DescriptorBindingRequirements, spirv::ExecutionModel},
 };
 use ash::vk;
 use foldhash::HashMap;
@@ -150,6 +145,7 @@ impl ComputePipeline {
             ref stage,
             layout,
             base_pipeline: _,
+            indirect_buffer_info: _,
             _ne: _,
         } = create_info;
 
@@ -270,6 +266,13 @@ pub struct ComputePipelineCreateInfo<'a> {
     /// The default value is `None`.
     pub base_pipeline: Option<&'a Arc<ComputePipeline>>,
 
+    /// The buffer where the pipeline's metadata will be saved.
+    /// 
+    /// If this is `Some`, then `flags` must contain [`PipelineCreateFlags::INDIRECT_BINDABLE`].
+    ///
+    /// The default value is `None`.
+    pub indirect_buffer_info: Option<ComputePipelineIndirectBufferInfo>,
+
     pub _ne: crate::NonExhaustive<'a>,
 }
 
@@ -285,6 +288,7 @@ impl<'a> ComputePipelineCreateInfo<'a> {
             stage,
             layout,
             base_pipeline: None,
+            indirect_buffer_info: None,
             _ne: crate::NE,
         }
     }
@@ -295,6 +299,7 @@ impl<'a> ComputePipelineCreateInfo<'a> {
             ref stage,
             layout,
             base_pipeline,
+            ref indirect_buffer_info,
             _ne: _,
         } = self;
 
@@ -334,6 +339,27 @@ impl<'a> ComputePipelineCreateInfo<'a> {
                 problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
                     `base_pipeline` is `Some`"
                     .into(),
+                ..Default::default()
+            }));
+        }
+
+        if let Some(indirect_buffer_info) = indirect_buffer_info {
+            if !flags.intersects(PipelineCreateFlags::INDIRECT_BINDABLE) {
+                return Err(Box::new(ValidationError {
+                    problem: "'flags' does not contain `PipelineCreateFlags::INDIRECT_BINDABLE`, \
+                        but 'indirect_buffer_info' is Some"
+                        .into(),
+                    vuids: &["VUID-VkComputePipelineIndirectBufferInfoNV-flags-09010"],
+                    ..Default::default()
+                }));
+            }
+            indirect_buffer_info.validate(device, self)?;
+        } else if flags.intersects(PipelineCreateFlags::INDIRECT_BINDABLE) {
+            return Err(Box::new(ValidationError {
+                problem: "`flags` contains `PipelineCreateFlags::INDIRECT_BINDABLE`, but \
+                    `indirect_buffer_info` is `None`"
+                    .into(),
+                vuids: &["VUID-VkComputePipelineCreateInfo-flags-09008"],
                 ..Default::default()
             }));
         }
@@ -388,23 +414,25 @@ impl<'a> ComputePipelineCreateInfo<'a> {
     pub(crate) fn to_vk(
         &self,
         fields1_vk: &'a ComputePipelineCreateInfoFields1Vk<'_>,
-        extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk,
+        extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk<'_>,
     ) -> vk::ComputePipelineCreateInfo<'a> {
         let &Self {
             flags,
             ref stage,
             layout,
             base_pipeline,
+            indirect_buffer_info: _,
             _ne: _,
         } = self;
         let ComputePipelineCreateInfoFields1Vk { stage_fields1_vk } = fields1_vk;
         let ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
+            indirect_buffer_info_extension_vk,
         } = extensions_vk;
 
         let stage_vk = stage.to_vk(stage_fields1_vk, stage_extensions_vk);
 
-        vk::ComputePipelineCreateInfo::default()
+        let create_info_vk = vk::ComputePipelineCreateInfo::default()
             .flags(flags.into())
             .stage(stage_vk)
             .layout(layout.handle())
@@ -413,14 +441,25 @@ impl<'a> ComputePipelineCreateInfo<'a> {
                     .as_ref()
                     .map_or(vk::Pipeline::null(), VulkanObject::handle),
             )
-            .base_pipeline_index(-1)
+            .base_pipeline_index(-1);
+
+        if let Some(indirect_buffer_info) = indirect_buffer_info_extension_vk {
+            create_info_vk.push_next(indirect_buffer_info)
+        } else {
+            create_info_vk
+        }
     }
 
-    pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk {
+    pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk<'_> {
         let stage_extensions_vk = self.stage.to_vk_extensions();
+        let indirect_buffer_info_extension_vk = self
+            .indirect_buffer_info
+            .as_ref()
+            .map(ComputePipelineIndirectBufferInfo::to_vk);
 
         ComputePipelineCreateInfoExtensionsVk {
             stage_extensions_vk,
+            indirect_buffer_info_extension_vk,
         }
     }
 
@@ -442,8 +481,10 @@ impl<'a> ComputePipelineCreateInfo<'a> {
     }
 }
 
-pub(crate) struct ComputePipelineCreateInfoExtensionsVk {
+pub(crate) struct ComputePipelineCreateInfoExtensionsVk<'a> {
     pub(crate) stage_extensions_vk: PipelineShaderStageCreateInfoExtensionsVk,
+    pub(crate) indirect_buffer_info_extension_vk:
+        Option<vk::ComputePipelineIndirectBufferInfoNV<'a>>,
 }
 
 pub(crate) struct ComputePipelineCreateInfoFields1Vk<'a> {
