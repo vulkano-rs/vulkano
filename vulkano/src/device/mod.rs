@@ -138,6 +138,7 @@ use crate::{
         ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements,
         MemoryWin32HandleProperties,
     },
+    pipeline::{compute::ComputePipelineCreateInfo, PipelineCreateFlags},
     RawFd, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
@@ -834,6 +835,100 @@ impl Device {
         };
 
         compatibility_vk == vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
+    }
+
+    /// Returns the memory requirements for a compute pipeline's metadata for use with
+    /// device-generated commands, panicking on a validation error.
+    ///
+    /// This is a shortcut for
+    /// `try_pipeline_indirect_memory_requirements().unwrap()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_pipeline_indirect_memory_requirements`] returns a [`ValidationError`].
+    ///
+    /// [`try_pipeline_indirect_memory_requirements`]: Self::try_pipeline_indirect_memory_requirements
+    #[inline]
+    #[track_caller]
+    pub fn pipeline_indirect_memory_requirements(
+        &self,
+        pipeline_create_info: &ComputePipelineCreateInfo<'_>,
+    ) -> MemoryRequirements {
+        self.try_pipeline_indirect_memory_requirements(pipeline_create_info)
+            .unwrap()
+    }
+
+    /// Returns the memory requirements for a compute pipeline's metadata for use with
+    /// device-generated commands.
+    #[inline]
+    pub fn try_pipeline_indirect_memory_requirements(
+        &self,
+        pipeline_create_info: &ComputePipelineCreateInfo<'_>,
+    ) -> Result<MemoryRequirements, Box<ValidationError>> {
+        self.validate_pipeline_indirect_memory_requirements(pipeline_create_info)?;
+
+        Ok(unsafe { self.pipeline_indirect_memory_requirements_unchecked(pipeline_create_info) })
+    }
+
+    fn validate_pipeline_indirect_memory_requirements(
+        &self,
+        pipeline_create_info: &ComputePipelineCreateInfo<'_>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.enabled_features().device_generated_compute_pipelines {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "device_generated_compute_pipelines",
+                )])]),
+                vuids: &[
+                    "VUID-vkGetPipelineIndirectMemoryRequirementsNV-deviceGeneratedComputePipelines-09082",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if !pipeline_create_info
+            .flags
+            .intersects(PipelineCreateFlags::INDIRECT_BINDABLE)
+        {
+            return Err(Box::new(ValidationError {
+                context: "pipeline_create_info.flags".into(),
+                problem: "does not contain `PipelineCreateFlags::INDIRECT_BINDABLE`".into(),
+                vuids: &["VUID-vkGetPipelineIndirectMemoryRequirementsNV-pCreateInfo-09083"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn pipeline_indirect_memory_requirements_unchecked(
+        &self,
+        pipeline_create_info: &ComputePipelineCreateInfo<'_>,
+    ) -> MemoryRequirements {
+        let create_info_fields2_vk = pipeline_create_info.to_vk_fields2();
+        let create_info_fields1_vk = pipeline_create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = pipeline_create_info.to_vk_extensions();
+        let create_info_vk =
+            pipeline_create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
+
+        let memory_requirements_vk2 = {
+            let fns = self.fns();
+            let mut output = vk::MemoryRequirements2::default();
+            unsafe {
+                (fns.nv_device_generated_commands_compute
+                    .get_pipeline_indirect_memory_requirements_nv)(
+                    self.handle(),
+                    &create_info_vk,
+                    &mut output,
+                )
+            };
+            output
+        };
+
+        let memory_requirements_extension_vk2 = MemoryRequirements::to_mut_vk2_extensions(self);
+
+        MemoryRequirements::from_vk2(&memory_requirements_vk2, &memory_requirements_extension_vk2)
     }
 
     /// Returns whether a descriptor set layout with the given `create_info` could be created
