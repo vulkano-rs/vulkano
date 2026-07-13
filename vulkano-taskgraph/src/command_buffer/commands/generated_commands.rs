@@ -280,7 +280,7 @@ pub struct GeneratedCommandsInfo<'a> {
     /// layout of this buffer are opaque to applications and must not be modified outside functions
     /// related to device-generated commands or copied to another buffer for reuse.
     ///
-    /// The default value is [`Id::INVALID`], which must be overridden.
+    /// There is no default value.
     pub preprocess_buffer: Id<Buffer>,
 
     /// The byte offset into `preprocess_buffer` where the preprocessed data is stored.

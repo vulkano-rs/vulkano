@@ -1094,6 +1094,7 @@ pub struct GeneratedCommandsInfo<'a> {
 }
 
 impl<'a> GeneratedCommandsInfo<'a> {
+    /// Returns a `GeneratedCommandsInfo` for a graphics pipeline.
     pub fn graphics_pipeline(
         pipeline: Arc<GraphicsPipeline>,
         indirect_commands_layout: Arc<IndirectCommandsLayout>,
@@ -1117,6 +1118,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
         }
     }
 
+    /// Returns a `GeneratedCommandsInfo` for a compute pipeline.
     pub fn compute_pipeline(
         pipeline: Arc<ComputePipeline>,
         indirect_commands_layout: Arc<IndirectCommandsLayout>,
@@ -1140,6 +1142,7 @@ impl<'a> GeneratedCommandsInfo<'a> {
         }
     }
 
+    /// Returns a `GeneratedCommandsInfo` for a dynamically selected pipeline.
     pub fn dynamic_pipeline(
         indirect_commands_layout: Arc<IndirectCommandsLayout>,
         preprocess_buffer: &'a Arc<Buffer>,
