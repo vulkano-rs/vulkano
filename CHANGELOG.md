@@ -89,6 +89,10 @@ Changes to descriptor set allocation:
 Changes to vulkano-shaders:
 - The `shader!` macro now generates unsafe functions. These have always been unsafe because they delegate to the unsafe `ShaderModule::new`, but marked incorrectly. This fixes a long-standing soundness issue.
 
+Changes to `Surface`:
+- `Surface::object` now returns a reference to `SurfaceObject`.
+- `Surface::from_handle` now takes a `SurfaceObject` as parameter.
+
 ### Additions
 
 - `ash` is now re-exported.
@@ -112,6 +116,8 @@ Changes to vulkano-shaders:
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
+- Added the `Window` trait for windows that can be passed to `Surface::from_window`.
+- Added `SurfaceObject`.
 
 ### Bugs fixed
 
