@@ -27,8 +27,7 @@ use vulkano::{
     pipeline::{
         compute::ComputePipelineCreateInfo,
         layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        ComputePipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     shader::ShaderStages,
     sync::{self, GpuFuture},

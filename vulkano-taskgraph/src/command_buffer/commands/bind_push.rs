@@ -12,7 +12,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, IndexType},
     device::DeviceOwned,
     pipeline::{
-        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline, Pipeline,
+        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline,
         PipelineBindPoint, PipelineLayout,
     },
     DeviceSize, Version, VulkanObject,

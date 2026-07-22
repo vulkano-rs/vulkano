@@ -20,8 +20,8 @@ use vulkano::{
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
-        PipelineLayout, PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     sync::{self, GpuFuture},
     VulkanLibrary,

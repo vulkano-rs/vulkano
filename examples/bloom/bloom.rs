@@ -4,8 +4,7 @@ use std::sync::Arc;
 use vulkano::{
     image::{mip_level_extent, Image},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineShaderStageCreateInfo,
     },
     sync::{AccessFlags, PipelineStages},
 };

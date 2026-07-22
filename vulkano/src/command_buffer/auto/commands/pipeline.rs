@@ -94,11 +94,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDispatch-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::Dispatch;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
 
         Ok(())
@@ -106,15 +105,10 @@ impl<L> AutoCommandBufferBuilder<L> {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn dispatch_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
-        let pipeline = self
-            .builder_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_compute.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
 
         self.add_command(
             "dispatch",
@@ -173,11 +167,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDispatchIndirect-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DispatchIndirect;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
 
         Ok(())
@@ -188,15 +181,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> &mut Self {
-        let pipeline = self
-            .builder_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_compute.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
@@ -272,11 +260,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDraw-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::Draw;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -383,15 +370,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
 
         self.add_command(
@@ -469,11 +451,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawIndirect-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndirect;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -495,15 +476,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
@@ -606,11 +582,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawIndirectCount-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndirectCount;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -633,15 +608,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
         self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
@@ -756,11 +726,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawIndexed-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexed;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -878,15 +847,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
 
@@ -978,11 +942,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirect;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -1012,15 +975,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
@@ -1130,11 +1088,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawIndexedIndirectCount-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirectCount;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -1165,15 +1122,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
@@ -1239,11 +1191,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawMeshTasksEXT-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasks;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -1365,15 +1316,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
 
         self.add_command(
             "draw_mesh_tasks",
@@ -1447,11 +1393,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasksIndirect;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -1483,15 +1428,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
@@ -1592,11 +1532,10 @@ impl<L> AutoCommandBufferBuilder<L> {
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-None-08606"],
                     ..Default::default()
                 })
-            })?
-            .as_ref();
+            })?;
 
         const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasksIndirectCount;
-        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline.into())?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
         self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
@@ -1629,15 +1568,10 @@ impl<L> AutoCommandBufferBuilder<L> {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
         self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
 
@@ -1690,10 +1624,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         shader_binding_table_addresses: ShaderBindingTableAddresses,
         dimensions: [u32; 3],
     ) -> &mut Self {
-        let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
+        let pipeline = self.builder_state.pipeline_ray_tracing.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
 
         self.add_command("trace_rays", used_resources, move |out| {
             unsafe { out.trace_rays_unchecked(&shader_binding_table_addresses, dimensions) };
@@ -1769,10 +1703,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         let offset = indirect_buffer.offset();
         let indirect_device_address = buffer.device_address().get() + offset;
 
-        let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
+        let pipeline = self.builder_state.pipeline_ray_tracing.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline.into());
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command("trace_rays_indirect", used_resources, move |out| {
@@ -1787,10 +1721,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
-    fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
+    fn validate_pipeline_descriptor_sets(
         &self,
         vuid_type: VUIDType,
-        pipeline: &Pl,
+        pipeline: Pipeline<'_>,
     ) -> Result<(), Box<ValidationError>> {
         fn validate_resources<T>(
             vuid_type: VUIDType,
@@ -3621,10 +3555,10 @@ impl<L> AutoCommandBufferBuilder<L> {
         Ok(())
     }
 
-    fn add_descriptor_sets_resources<Pl: Pipeline>(
+    fn add_descriptor_sets_resources(
         &self,
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
-        pipeline: &Pl,
+        pipeline: Pipeline<'_>,
     ) {
         let descriptor_sets_state = match self
             .builder_state

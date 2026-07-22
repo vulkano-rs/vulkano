@@ -31,7 +31,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},

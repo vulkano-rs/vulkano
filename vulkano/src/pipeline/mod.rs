@@ -9,13 +9,16 @@
 //! initialization or during a loading screen.
 
 pub use self::{
-    compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout, shader::*,
+    compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout,
+    ray_tracing::RayTracingPipeline, shader::*,
 };
 use crate::{
-    device::DeviceOwned,
+    device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
     shader::DescriptorBindingRequirements,
+    VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use std::sync::Arc;
 
@@ -26,22 +29,111 @@ pub mod layout;
 pub mod ray_tracing;
 pub(crate) mod shader;
 
-/// A trait for operations shared between pipeline types.
-pub trait Pipeline: DeviceOwned {
+/// An enum of the different pipeline types.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Pipeline<'a> {
+    Compute(&'a Arc<ComputePipeline>),
+    Graphics(&'a Arc<GraphicsPipeline>),
+    RayTracing(&'a Arc<RayTracingPipeline>),
+}
+
+impl Pipeline<'_> {
     /// Returns the bind point of this pipeline.
-    fn bind_point(&self) -> PipelineBindPoint;
+    #[inline]
+    pub fn bind_point(&self) -> PipelineBindPoint {
+        match self {
+            Pipeline::Compute(_) => PipelineBindPoint::Compute,
+            Pipeline::Graphics(_) => PipelineBindPoint::Graphics,
+            Pipeline::RayTracing(_) => PipelineBindPoint::RayTracing,
+        }
+    }
 
     /// Returns the pipeline layout used in this pipeline.
-    fn layout(&self) -> &Arc<PipelineLayout>;
+    #[inline]
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
+        match self {
+            Pipeline::Compute(compute_pipeline) => compute_pipeline.layout(),
+            Pipeline::Graphics(graphics_pipeline) => graphics_pipeline.layout(),
+            Pipeline::RayTracing(ray_tracing_pipeline) => ray_tracing_pipeline.layout(),
+        }
+    }
 
     /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
     /// than the number of sets in the pipeline layout.
-    fn num_used_descriptor_sets(&self) -> u32;
+    #[inline]
+    pub fn num_used_descriptor_sets(&self) -> u32 {
+        match self {
+            Pipeline::Compute(compute_pipeline) => compute_pipeline.num_used_descriptor_sets(),
+            Pipeline::Graphics(graphics_pipeline) => graphics_pipeline.num_used_descriptor_sets(),
+            Pipeline::RayTracing(ray_tracing_pipeline) => {
+                ray_tracing_pipeline.num_used_descriptor_sets()
+            }
+        }
+    }
 
     /// Returns a reference to the descriptor binding requirements for this pipeline.
-    fn descriptor_binding_requirements(
+    #[inline]
+    pub fn descriptor_binding_requirements(
         &self,
-    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements>;
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
+        match self {
+            Pipeline::Compute(compute_pipeline) => {
+                compute_pipeline.descriptor_binding_requirements()
+            }
+            Pipeline::Graphics(graphics_pipeline) => {
+                graphics_pipeline.descriptor_binding_requirements()
+            }
+            Pipeline::RayTracing(ray_tracing_pipeline) => {
+                ray_tracing_pipeline.descriptor_binding_requirements()
+            }
+        }
+    }
+}
+
+impl<'a> From<&'a Arc<ComputePipeline>> for Pipeline<'a> {
+    #[inline]
+    fn from(compute_pipeline: &'a Arc<ComputePipeline>) -> Self {
+        Pipeline::Compute(compute_pipeline)
+    }
+}
+
+impl<'a> From<&'a Arc<GraphicsPipeline>> for Pipeline<'a> {
+    #[inline]
+    fn from(graphics_pipeline: &'a Arc<GraphicsPipeline>) -> Self {
+        Pipeline::Graphics(graphics_pipeline)
+    }
+}
+
+impl<'a> From<&'a Arc<RayTracingPipeline>> for Pipeline<'a> {
+    #[inline]
+    fn from(ray_tracing_pipeline: &'a Arc<RayTracingPipeline>) -> Self {
+        Pipeline::RayTracing(ray_tracing_pipeline)
+    }
+}
+
+unsafe impl VulkanObject for Pipeline<'_> {
+    type Handle = vk::Pipeline;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        match self {
+            Pipeline::Compute(compute_pipeline) => compute_pipeline.handle(),
+            Pipeline::Graphics(graphics_pipeline) => graphics_pipeline.handle(),
+            Pipeline::RayTracing(ray_tracing_pipeline) => ray_tracing_pipeline.handle(),
+        }
+    }
+}
+
+unsafe impl DeviceOwned for Pipeline<'_> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        match self {
+            Pipeline::Compute(compute_pipeline) => compute_pipeline.device(),
+            Pipeline::Graphics(graphics_pipeline) => graphics_pipeline.device(),
+            Pipeline::RayTracing(ray_tracing_pipeline) => ray_tracing_pipeline.device(),
+        }
+    }
 }
 
 vulkan_enum! {

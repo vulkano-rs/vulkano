@@ -14,8 +14,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineShaderStageCreateInfo,
     },
     VulkanLibrary,
 };

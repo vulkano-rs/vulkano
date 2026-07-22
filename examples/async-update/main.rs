@@ -49,7 +49,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
     },
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync::Sharing,

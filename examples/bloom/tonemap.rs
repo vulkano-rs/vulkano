@@ -11,7 +11,7 @@ use vulkano::{
             viewport::ViewportState,
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
 };

@@ -20,7 +20,7 @@ use vulkano::{
             RayTracingPipeline, RayTracingPipelineCreateInfo, RayTracingShaderGroupCreateInfo,
             ShaderBindingTable,
         },
-        Pipeline, PipelineShaderStageCreateInfo,
+        PipelineShaderStageCreateInfo,
     },
     swapchain::Swapchain,
     DeviceSize,

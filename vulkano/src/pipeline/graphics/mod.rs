@@ -101,9 +101,9 @@ use super::{
     cache::PipelineCache,
     inout_interface::{shader_interface_location_info, ShaderInterfaceLocationInfo},
     shader::inout_interface::validate_interfaces_compatible,
-    DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags, PipelineLayout,
-    PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
-    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
+    DynamicState, PipelineCreateFlags, PipelineLayout, PipelineShaderStageCreateInfo,
+    PipelineShaderStageCreateInfoExtensionsVk, PipelineShaderStageCreateInfoFields1Vk,
+    PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -598,26 +598,23 @@ impl GraphicsPipeline {
     ) -> Option<&HashMap<u32, ShaderInterfaceLocationInfo>> {
         self.required_vertex_inputs.as_ref()
     }
-}
 
-impl Pipeline for GraphicsPipeline {
+    /// Returns the pipeline layout used in this pipeline.
     #[inline]
-    fn bind_point(&self) -> PipelineBindPoint {
-        PipelineBindPoint::Graphics
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
     }
 
+    /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
+    /// than the number of sets in the pipeline layout.
     #[inline]
-    fn num_used_descriptor_sets(&self) -> u32 {
+    pub fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
     }
 
+    /// Returns a reference to the descriptor binding requirements for this pipeline.
     #[inline]
-    fn descriptor_binding_requirements(
+    pub fn descriptor_binding_requirements(
         &self,
     ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
         &self.descriptor_binding_requirements
