@@ -258,7 +258,7 @@ impl Task for SceneTask {
                 camera_buffer_id: self.camera_storage_buffer_id,
             },
         );
-        cbf.bind_pipeline_ray_tracing(&self.pipeline);
+        cbf.bind_pipeline(&self.pipeline);
 
         unsafe { cbf.trace_rays(self.shader_binding_table.addresses(), extent) };
 

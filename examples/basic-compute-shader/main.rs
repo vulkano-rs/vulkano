@@ -228,7 +228,7 @@ fn main() {
                     *value = i;
                 }
 
-                cbf.bind_pipeline_compute(&pipeline);
+                cbf.bind_pipeline(&pipeline);
                 cbf.push_constants(
                     pipeline.layout(),
                     0,

@@ -13,7 +13,7 @@ use crate::{
     memory::is_aligned,
     pipeline::{
         graphics::vertex_input::VertexBuffersCollection, ray_tracing::RayTracingPipeline,
-        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     DeviceSize, ValidationError,
 };
@@ -343,9 +343,10 @@ impl<L> AutoCommandBufferBuilder<L> {
 
     fn validate_bind_pipeline_compute(
         &self,
-        pipeline: &ComputePipeline,
+        pipeline: &Arc<ComputePipeline>,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_bind_pipeline_compute(pipeline)?;
+        self.inner
+            .validate_bind_pipeline(Pipeline::Compute(pipeline))?;
 
         Ok(())
     }
@@ -360,7 +361,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_compute",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.bind_pipeline_compute_unchecked(&pipeline) };
+                unsafe { out.bind_pipeline_unchecked(Pipeline::Compute(&pipeline)) };
             },
         );
 
@@ -379,9 +380,10 @@ impl<L> AutoCommandBufferBuilder<L> {
 
     fn validate_bind_pipeline_graphics(
         &self,
-        pipeline: &GraphicsPipeline,
+        pipeline: &Arc<GraphicsPipeline>,
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_bind_pipeline_graphics(pipeline)?;
+        self.inner
+            .validate_bind_pipeline(Pipeline::Graphics(pipeline))?;
 
         // VUID-vkCmdBindPipeline-pipeline-00781
         // TODO:
@@ -403,7 +405,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_graphics",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.bind_pipeline_graphics_unchecked(&pipeline) };
+                unsafe { out.bind_pipeline_unchecked(Pipeline::Graphics(&pipeline)) };
             },
         );
 
@@ -415,7 +417,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         pipeline: Arc<RayTracingPipeline>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.inner.validate_bind_pipeline_ray_tracing(&pipeline)?;
+        self.inner
+            .validate_bind_pipeline(Pipeline::RayTracing(&pipeline))?;
         Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
     }
 
@@ -429,7 +432,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_ray_tracing",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                unsafe { out.bind_pipeline_ray_tracing_unchecked(&pipeline) };
+                unsafe { out.bind_pipeline_unchecked(Pipeline::RayTracing(&pipeline)) };
             },
         );
 

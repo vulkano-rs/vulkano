@@ -164,7 +164,7 @@ impl Task for SceneTask {
         rcx: &Self::World,
     ) -> TaskResult {
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
         unsafe { cbf.draw(3, 1, 0, 0) };
