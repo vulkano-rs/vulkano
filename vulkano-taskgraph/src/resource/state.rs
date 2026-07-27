@@ -9,10 +9,10 @@ use ash::vk;
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use smallvec::SmallVec;
 use std::{
-    cell::UnsafeCell,
+    cell::{Cell, UnsafeCell},
     collections::VecDeque,
     error::Error,
-    fmt,
+    fmt, mem,
     num::NonZero,
     sync::{
         atomic::{
@@ -23,6 +23,7 @@ use std::{
     },
     time::Duration,
 };
+use thread_local::ThreadLocal;
 use vulkano::{
     buffer::Buffer,
     device::{Device, DeviceOwned},
@@ -225,8 +226,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn acquire_next_image(&self) -> Result<(), VulkanError> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.allocate_semaphore()?;
@@ -264,8 +266,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn current_acquire_semaphore(&self) -> Option<vk::Semaphore> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.current_acquire_semaphore.as_ref()?;
@@ -274,8 +277,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn init_pre_present_semaphore(&self) -> Result<vk::Semaphore, VulkanError> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.allocate_semaphore()?;
@@ -288,8 +292,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn current_pre_present_semaphore(&self) -> Option<vk::Semaphore> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.current_pre_present_semaphore.as_ref()?;
@@ -298,8 +303,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn init_present_semaphore(&self) -> Result<vk::Semaphore, VulkanError> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.allocate_semaphore()?;
@@ -312,8 +318,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn current_present_semaphore(&self) -> Option<vk::Semaphore> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.current_present_semaphore.as_ref()?;
@@ -326,8 +333,9 @@ impl SwapchainState {
         result: vk::Result,
         deferred_batch: &mut DeferredBatch<'_>,
     ) {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let generation = self.generation;
@@ -390,8 +398,9 @@ impl SwapchainState {
     }
 
     pub(crate) unsafe fn collect(&self) -> Result<(), VulkanError> {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let mut present_index = 0;
@@ -457,6 +466,7 @@ impl SwapchainState {
                 // If there is no present semaphore then this is a dummy present operation used only
                 // to clean up the fence and potentially acquire semaphore, so we can't allow it to
                 // clean up anything else.
+                present_index += 1;
                 continue;
             }
 
@@ -478,14 +488,17 @@ impl SwapchainState {
                     sync_state.deallocate_semaphore(semaphore);
                 }
             }
+
+            present_index += 1;
         }
 
         Ok(())
     }
 
     pub(crate) unsafe fn handle_execution_failure(&self, sync_stage: SwapchainSyncStage) {
-        // SAFETY: The caller must ensure that the swapchain has been locked for execution, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // wait idle has been locked, which ensures correct synchronization. We also don't create
+        // additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let generation = self.generation;
@@ -555,8 +568,9 @@ impl SwapchainState {
     }
 
     pub(super) unsafe fn handle_recreation(&self, swapchain_id: Id<Swapchain>) {
-        // SAFETY: The caller must ensure that the swapchain has been locked for recreation, which
-        // ensures correct synchronization. We also don't create additional references.
+        // SAFETY: The caller must ensure that the swapchain has been locked for recreation and
+        // that wait idle has been locked, which ensures correct synchronization. We also don't
+        // create additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let generation = self.generation;
@@ -677,8 +691,9 @@ impl SwapchainState {
             .try_remove(self.generation)
             .expect("failed to remove the swapchain");
 
-        // SAFETY: We removed the swapchain above, which ensures correct synchronization. We also
-        // don't create additional references.
+        // SAFETY: We removed the swapchain above, and the caller must ensure that wait idle has
+        // been locked, which ensures correct synchronization. We also don't create additional
+        // references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let mut garbage = super::SwapchainGarbage::default();
@@ -760,6 +775,36 @@ impl SwapchainState {
         } else {
             resources.storage.swapchain_garbage.lock().push(garbage);
         }
+    }
+
+    pub(super) unsafe fn handle_wait_idle(&self) -> Result<(), VulkanError> {
+        // SAFETY: The caller must ensure that wait idle has been locked exclusively, which ensures
+        // correct synchronization.
+        unsafe { self.collect() }?;
+
+        // SAFETY: The caller must ensure that wait idle has been locked exclusively, which ensures
+        // correct synchronization. We also don't create additional references.
+        let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
+
+        let resources = sync_state.resources.upgrade().unwrap();
+
+        let mut garbage_index = 0;
+
+        while garbage_index < sync_state.garbage_queue.len() {
+            let garbage = sync_state.garbage_queue.pop_front().unwrap();
+
+            for swapchain_id in garbage.swapchains {
+                unsafe { resources.remove_invalidated_swapchain_unchecked(swapchain_id) };
+            }
+
+            for semaphore in garbage.semaphores {
+                sync_state.deallocate_semaphore(semaphore);
+            }
+
+            garbage_index += 1;
+        }
+
+        Ok(())
     }
 
     /// Returns the image index that's acquired in the current frame, or returns `None` if no image
@@ -1183,7 +1228,7 @@ impl<T> fmt::Debug for SwapchainLock<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(crate) enum SwapchainLockError {
     Unused,
     ExecutionLocked,
@@ -1203,6 +1248,12 @@ impl SwapchainLockError {
     }
 }
 
+impl fmt::Debug for SwapchainLockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
 impl fmt::Display for SwapchainLockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1218,3 +1269,104 @@ impl fmt::Display for SwapchainLockError {
 }
 
 impl Error for SwapchainLockError {}
+
+/// A reader-writer lock that doesn't deadlock in `write` when the thread already has read lock
+/// guard(s).
+///
+/// This is not to be confused with a reentrant mutex, which allows the same thread to access the
+/// lock's data when it already has another guard. This lock instead only returns an error when
+/// attempting to write when already having read lock guard(s) (because that's all we need). When
+/// needed, this can be extended to returning an error when attempting to write when already having
+/// a write guard.
+pub(super) struct ReentrantRwLock<T> {
+    inner: RwLock<T>,
+    read_lock_counts: ThreadLocal<Cell<usize>>,
+}
+
+impl<T> ReentrantRwLock<T> {
+    pub(super) const fn new(data: T) -> Self {
+        ReentrantRwLock {
+            inner: RwLock::new(data),
+            read_lock_counts: ThreadLocal::new(),
+        }
+    }
+
+    #[inline]
+    pub(super) fn read(&self) -> ReentrantRwLockReadGuard<'_, T> {
+        mem::forget(self.inner.read());
+
+        self.read_lock_count().update(|x| x + 1);
+
+        // SAFETY: We locked for reading above.
+        unsafe { ReentrantRwLockReadGuard::new(self) }
+    }
+
+    #[inline]
+    pub(super) fn write(&self) -> Result<ReentrantRwLockWriteGuard<'_, T>, ReentrantRwLockError> {
+        if self.read_lock_count().get() != 0 {
+            return Err(ReentrantRwLockError);
+        }
+
+        mem::forget(self.inner.write());
+
+        // SAFETY: We locked for writing above.
+        Ok(unsafe { ReentrantRwLockWriteGuard::new(self) })
+    }
+
+    #[inline]
+    fn read_lock_count(&self) -> &Cell<usize> {
+        self.read_lock_counts.get_or_default()
+    }
+}
+
+impl<T> fmt::Debug for ReentrantRwLock<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReentrantRwLock").finish_non_exhaustive()
+    }
+}
+
+pub(crate) struct ReentrantRwLockReadGuard<'a, T> {
+    lock: &'a ReentrantRwLock<T>,
+}
+
+unsafe impl<T: Send + Sync> Send for ReentrantRwLockReadGuard<'_, T> {}
+unsafe impl<T: Sync> Sync for ReentrantRwLockReadGuard<'_, T> {}
+
+impl<'a, T> ReentrantRwLockReadGuard<'a, T> {
+    unsafe fn new(lock: &'a ReentrantRwLock<T>) -> Self {
+        ReentrantRwLockReadGuard { lock }
+    }
+}
+
+impl<T> Drop for ReentrantRwLockReadGuard<'_, T> {
+    #[inline]
+    fn drop(&mut self) {
+        // SAFETY: Enforced by the caller of `ReentrantRwLockReadGuard::new`.
+        unsafe { self.lock.inner.force_unlock_read() };
+
+        self.lock.read_lock_count().update(|x| x - 1);
+    }
+}
+
+pub(super) struct ReentrantRwLockWriteGuard<'a, T> {
+    lock: &'a ReentrantRwLock<T>,
+}
+
+unsafe impl<T: Send + Sync> Send for ReentrantRwLockWriteGuard<'_, T> {}
+unsafe impl<T: Sync> Sync for ReentrantRwLockWriteGuard<'_, T> {}
+
+impl<'a, T> ReentrantRwLockWriteGuard<'a, T> {
+    unsafe fn new(lock: &'a ReentrantRwLock<T>) -> Self {
+        ReentrantRwLockWriteGuard { lock }
+    }
+}
+
+impl<T> Drop for ReentrantRwLockWriteGuard<'_, T> {
+    #[inline]
+    fn drop(&mut self) {
+        // SAFETY: Enforced by the caller of `ReentrantRwLockWriteGuard::new`.
+        unsafe { self.lock.inner.force_unlock_write() };
+    }
+}
+
+pub(super) struct ReentrantRwLockError;
