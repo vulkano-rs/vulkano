@@ -113,6 +113,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         ));
         assert!(resource_map.is_exhaustive());
 
+        let _wait_idle_lock_guard = resource_map.physical_resources.lock_wait_idle();
+
         let flight_id = self.flight_id;
 
         let flight = resource_map

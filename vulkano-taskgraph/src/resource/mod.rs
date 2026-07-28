@@ -1,5 +1,6 @@
 //! Synchronization state tracking of all resources.
 
+use self::state::{ReentrantRwLock, ReentrantRwLockReadGuard};
 use crate::{
     assert_unsafe_precondition,
     collector::{self, DeferredBatch},
@@ -45,6 +46,7 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 pub struct Resources {
     storage: Arc<ResourceStorage>,
     bindless_context: Option<BindlessContext>,
+    wait_idle_lock: ReentrantRwLock<()>,
 }
 
 #[derive(Debug)]
@@ -182,6 +184,7 @@ impl Resources {
         Ok(Arc::new(Resources {
             storage,
             bindless_context,
+            wait_idle_lock: ReentrantRwLock::new(()),
         }))
     }
 
@@ -561,6 +564,8 @@ impl Resources {
         id: Id<Swapchain>,
         f: impl for<'a> FnOnce(&SwapchainCreateInfo<'a>) -> SwapchainCreateInfo<'a>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
+        let _wait_idle_lock_guard = self.lock_wait_idle();
+
         let guard = &self.storage.pin();
 
         let state = self.storage.swapchain_protected(id, guard).unwrap();
@@ -687,6 +692,8 @@ impl Resources {
     /// [`wait_idle`]: Self::wait_idle
     #[track_caller]
     pub fn try_remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
+        let _wait_idle_lock_guard = self.lock_wait_idle();
+
         let guard = self.storage.pin();
 
         let state = self
@@ -867,7 +874,12 @@ impl Resources {
     ///
     /// This is equivalent to [`Device::wait_idle`], but unlike that method, this method
     /// additionally collects outstanding garbage.
+    #[track_caller]
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
+        let Ok(_lock_guard) = self.wait_idle_lock.write() else {
+            panic!("`Resources::wait_idle` cannot be called from within a task");
+        };
+
         let guard = &self.storage.pin();
         let mut frames = SmallVec::<[_; 8]>::new();
 
@@ -876,15 +888,7 @@ impl Resources {
             frames.push((flight, biased_frame));
         }
 
-        let swapchain_garbage = mem::take(&mut *self.storage.swapchain_garbage.lock());
-
-        if let Err(err) = self.device().wait_idle() {
-            self.storage
-                .swapchain_garbage
-                .lock()
-                .extend(swapchain_garbage);
-            return Err(err);
-        }
+        self.device().wait_idle()?;
 
         let mut collect = false;
 
@@ -900,13 +904,21 @@ impl Resources {
             unsafe { self.garbage_queue().collect(self, guard) };
         }
 
-        for garbage in swapchain_garbage {
+        for (_, swapchain_state) in self.storage.swapchains.iter(guard) {
+            unsafe { swapchain_state.handle_wait_idle() }?;
+        }
+
+        for garbage in self.storage.swapchain_garbage.lock().drain(..) {
             for swapchain_id in garbage.swapchains {
                 unsafe { self.remove_invalidated_swapchain_unchecked(swapchain_id) };
             }
         }
 
         Ok(())
+    }
+
+    pub(crate) fn lock_wait_idle(&self) -> ReentrantRwLockReadGuard<'_, ()> {
+        self.wait_idle_lock.read()
     }
 
     pub(crate) fn pin(&self) -> hyaline::Guard<'_> {
