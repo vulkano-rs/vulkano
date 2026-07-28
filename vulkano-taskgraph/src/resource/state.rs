@@ -788,11 +788,7 @@ impl SwapchainState {
 
         let resources = sync_state.resources.upgrade().unwrap();
 
-        let mut garbage_index = 0;
-
-        while garbage_index < sync_state.garbage_queue.len() {
-            let garbage = sync_state.garbage_queue.pop_front().unwrap();
-
+        while let Some(garbage) = sync_state.garbage_queue.pop_front() {
             for swapchain_id in garbage.swapchains {
                 unsafe { resources.remove_invalidated_swapchain_unchecked(swapchain_id) };
             }
@@ -800,8 +796,6 @@ impl SwapchainState {
             for semaphore in garbage.semaphores {
                 sync_state.deallocate_semaphore(semaphore);
             }
-
-            garbage_index += 1;
         }
 
         Ok(())
