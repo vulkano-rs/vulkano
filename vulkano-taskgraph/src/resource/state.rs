@@ -466,7 +466,6 @@ impl SwapchainState {
                 // If there is no present semaphore then this is a dummy present operation used only
                 // to clean up the fence and potentially acquire semaphore, so we can't allow it to
                 // clean up anything else.
-                present_index += 1;
                 continue;
             }
 
@@ -488,8 +487,6 @@ impl SwapchainState {
                     sync_state.deallocate_semaphore(semaphore);
                 }
             }
-
-            present_index += 1;
         }
 
         Ok(())
