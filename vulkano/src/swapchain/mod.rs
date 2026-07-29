@@ -2101,6 +2101,19 @@ impl<'a> SwapchainCreateInfo<'a> {
                 .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-flags-parameter"])
         })?;
 
+        if flags.intersects(SwapchainCreateFlags::DEFERRED_MEMORY_ALLOCATION)
+            && !device.enabled_features().swapchain_maintenance1
+        {
+            return Err(Box::new(ValidationError {
+                context: "flags".into(),
+                problem: "contains `SwapchainCreateFlags::DEFERRED_MEMORY_ALLOCATION`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "swapchain_maintenance1",
+                )])]),
+                vuids: &["VUID-VkSwapchainCreateInfoKHR-swapchainMaintenance1-10157"],
+            }));
+        }
+
         image_format.validate_device(device).map_err(|err| {
             err.add_context("image_format")
                 .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter"])
@@ -2616,11 +2629,12 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(khr_swapchain_mutable_format)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
-    DEFERRED_MEMORY_ALLOCATION = DEFERRED_MEMORY_ALLOCATION_EXT {
-        device_extensions: [ext_swapchain_maintenance1],
-    },*/
+    /// Allows the implementation to defer the allocation of a swapchain image until its image
+    /// index is acquired for the first time.
+    DEFERRED_MEMORY_ALLOCATION = DEFERRED_MEMORY_ALLOCATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_swapchain_maintenance1)]),
+    ]),
 }
 
 impl From<SwapchainCreateFlags> for ImageCreateFlags {
