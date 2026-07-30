@@ -16,7 +16,7 @@ use vulkano::{
             viewport::ViewportState,
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
     swapchain::Swapchain,
@@ -241,7 +241,7 @@ impl AmbientLightingPipeline {
         cbf: &mut RecordingCommandBuffer<'_>,
         ambient_color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
@@ -438,7 +438,7 @@ impl DirectionalLightingPipeline {
         direction: Vec3,
         color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
@@ -658,7 +658,7 @@ impl PointLightingPipeline {
         position: Vec3,
         color: [f32; 3],
     ) -> TaskResult {
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,

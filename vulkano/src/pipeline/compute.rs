@@ -21,7 +21,7 @@ use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
+    pipeline::{cache::PipelineCache, layout::PipelineLayout},
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -191,26 +191,23 @@ impl ComputePipeline {
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
     }
-}
 
-impl Pipeline for ComputePipeline {
+    /// Returns the pipeline layout used in this pipeline.
     #[inline]
-    fn bind_point(&self) -> PipelineBindPoint {
-        PipelineBindPoint::Compute
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
     }
 
+    /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
+    /// than the number of sets in the pipeline layout.
     #[inline]
-    fn num_used_descriptor_sets(&self) -> u32 {
+    pub fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
     }
 
+    /// Returns a reference to the descriptor binding requirements for this pipeline.
     #[inline]
-    fn descriptor_binding_requirements(
+    pub fn descriptor_binding_requirements(
         &self,
     ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
         &self.descriptor_binding_requirements
@@ -467,8 +464,8 @@ mod tests {
         },
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{
-            compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline, PipelineBindPoint,
-            PipelineLayout, PipelineShaderStageCreateInfo,
+            compute::ComputePipelineCreateInfo, ComputePipeline, PipelineBindPoint, PipelineLayout,
+            PipelineShaderStageCreateInfo,
         },
         shader::{ShaderModule, ShaderModuleCreateInfo, ShaderStages},
         sync::{now, GpuFuture},

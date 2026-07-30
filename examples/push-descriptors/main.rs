@@ -35,7 +35,7 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::{push_constant_ranges_from_stages, PipelineLayoutCreateInfo},
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},

@@ -231,6 +231,15 @@ impl RecordingCommandBuffer {
     pub(in crate::command_buffer) fn queue_family_properties(&self) -> &QueueFamilyProperties {
         &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
     }
+
+    /// Returns `true` if the command buffer was created from a protected pool.
+    #[inline]
+    pub(crate) fn is_protected(&self) -> bool {
+        self.allocation
+            .pool
+            .flags()
+            .contains(CommandPoolCreateFlags::PROTECTED)
+    }
 }
 
 impl Drop for RecordingCommandBuffer {
@@ -454,14 +463,10 @@ impl CommandBuffer {
         self.inner.usage
     }
 
-    /// Returns true if the command buffer was created from a protected pool.
+    /// Returns `true` if the command buffer was created from a protected pool.
     #[inline]
     pub(crate) fn is_protected(&self) -> bool {
-        self.inner
-            .allocation
-            .pool
-            .flags()
-            .contains(CommandPoolCreateFlags::PROTECTED)
+        self.inner.is_protected()
     }
 
     /// Returns the inheritance info of the command buffer, if it is a secondary command buffer.

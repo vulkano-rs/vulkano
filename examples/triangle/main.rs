@@ -862,7 +862,7 @@ impl Task for TriangleTask {
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
 
         // Bind the graphics pipeline and vertex buffer.
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[]);
 
         // Draw the triangle using one instance of our three vertices.

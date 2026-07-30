@@ -4,8 +4,7 @@ use std::sync::Arc;
 use vulkano::{
     image::{mip_level_extent, Image},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, Pipeline,
-        PipelineShaderStageCreateInfo,
+        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineShaderStageCreateInfo,
     },
     sync::{AccessFlags, PipelineStages},
 };
@@ -94,7 +93,7 @@ impl Task for BloomTask {
             ..Default::default()
         };
 
-        cbf.bind_pipeline_compute(&self.downsample_pipeline);
+        cbf.bind_pipeline(&self.downsample_pipeline);
 
         for src_mip_level in 0..bloom_image.mip_levels() - 1 {
             let dst_mip_level = src_mip_level + 1;
@@ -119,7 +118,7 @@ impl Task for BloomTask {
             cbf.pipeline_barrier(&dependency_info);
         }
 
-        cbf.bind_pipeline_compute(&self.upsample_pipeline);
+        cbf.bind_pipeline(&self.upsample_pipeline);
 
         for dst_mip_level in (0..bloom_image.mip_levels() - 1).rev() {
             let dst_extent = mip_level_extent(bloom_image.extent(), dst_mip_level).unwrap();

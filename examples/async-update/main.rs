@@ -49,7 +49,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
     },
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync::Sharing,
@@ -750,7 +750,7 @@ impl Task for RenderTask {
         let pipeline = self.pipeline.as_ref().unwrap();
 
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
-        cbf.bind_pipeline_graphics(pipeline);
+        cbf.bind_pipeline(pipeline);
         cbf.push_constants(
             pipeline.layout(),
             0,

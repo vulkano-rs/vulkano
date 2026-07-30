@@ -45,8 +45,8 @@
 //! groups during execution.
 
 use super::{
-    cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
+    cache::PipelineCache, DynamicState, PipelineCreateFlags, PipelineLayout,
+    PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
@@ -386,26 +386,23 @@ impl RayTracingPipeline {
 
         Ok(ShaderGroupHandlesData { data, handle_size })
     }
-}
 
-impl Pipeline for RayTracingPipeline {
+    /// Returns the pipeline layout used in this pipeline.
     #[inline]
-    fn bind_point(&self) -> PipelineBindPoint {
-        PipelineBindPoint::RayTracing
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
     }
 
+    /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
+    /// than the number of sets in the pipeline layout.
     #[inline]
-    fn num_used_descriptor_sets(&self) -> u32 {
+    pub fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
     }
 
+    /// Returns a reference to the descriptor binding requirements for this pipeline.
     #[inline]
-    fn descriptor_binding_requirements(
+    pub fn descriptor_binding_requirements(
         &self,
     ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
         &self.descriptor_binding_requirements

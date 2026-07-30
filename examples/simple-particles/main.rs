@@ -32,7 +32,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},

@@ -11,10 +11,7 @@ use vulkano::{
     self,
     buffer::{Buffer, BufferContents, IndexType},
     device::DeviceOwned,
-    pipeline::{
-        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline, Pipeline,
-        PipelineBindPoint, PipelineLayout,
-    },
+    pipeline::{Pipeline, PipelineLayout},
     DeviceSize, Version, VulkanObject,
 };
 
@@ -88,159 +85,75 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
-    /// Binds a compute pipeline for future dispatch calls, panicking on a validation error.
+    /// Binds a pipeline for future dispatch/draw/ray tracing calls, panicking on a validation
+    /// error.
     ///
-    /// This is a shortcut for `try_bind_pipeline_compute().unwrap()`.
+    /// This is a shortcut for `try_bind_pipeline().unwrap()`.
     ///
     /// # Panics
     ///
-    /// - Panics if [`try_bind_pipeline_compute`] returns a [`ValidationError`].
+    /// - Panics if [`try_bind_pipeline`] returns a [`ValidationError`].
     ///
-    /// [`try_bind_pipeline_compute`]: Self::try_bind_pipeline_compute
+    /// [`try_bind_pipeline`]: Self::try_bind_pipeline
     #[track_caller]
-    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &Arc<ComputePipeline>) -> &mut Self {
-        unsafe { self.try_bind_pipeline_compute(pipeline) }.unwrap()
+    pub unsafe fn bind_pipeline<'a>(&mut self, pipeline: impl Into<Pipeline<'a>>) -> &mut Self {
+        unsafe { self.bind_pipeline_inner(pipeline.into()) }
     }
 
-    /// Binds a compute pipeline for future dispatch calls.
-    pub unsafe fn try_bind_pipeline_compute(
+    #[track_caller]
+    unsafe fn bind_pipeline_inner(&mut self, pipeline: Pipeline<'_>) -> &mut Self {
+        unsafe { self.try_bind_pipeline_inner(pipeline) }.unwrap()
+    }
+
+    /// Binds a pipeline for future dispatch/draw/ray tracing calls.
+    pub unsafe fn try_bind_pipeline<'a>(
         &mut self,
-        pipeline: &Arc<ComputePipeline>,
+        pipeline: impl Into<Pipeline<'a>>,
     ) -> Result<&mut Self> {
-        Ok(unsafe { self.bind_pipeline_compute_unchecked(pipeline) })
+        unsafe { self.try_bind_pipeline_inner(pipeline.into()) }
     }
 
-    pub unsafe fn bind_pipeline_compute_unchecked(
+    unsafe fn try_bind_pipeline_inner(&mut self, pipeline: Pipeline<'_>) -> Result<&mut Self> {
+        Ok(unsafe { self.bind_pipeline_unchecked_inner(pipeline) })
+    }
+
+    pub unsafe fn bind_pipeline_unchecked<'a>(
         &mut self,
-        pipeline: &Arc<ComputePipeline>,
+        pipeline: impl Into<Pipeline<'a>>,
     ) -> &mut Self {
+        unsafe { self.bind_pipeline_unchecked_inner(pipeline.into()) }
+    }
+
+    unsafe fn bind_pipeline_unchecked_inner(&mut self, pipeline: Pipeline<'_>) -> &mut Self {
         let fns = self.device().fns();
         unsafe {
             (fns.v1_0.cmd_bind_pipeline)(
                 self.handle(),
-                vk::PipelineBindPoint::COMPUTE,
+                pipeline.bind_point().into(),
                 pipeline.handle(),
             )
         };
 
-        let invalidate_from = self
-            .state
-            .invalidate_descriptor_sets(PipelineBindPoint::Compute, pipeline.layout());
+        let bind_point = pipeline.bind_point();
+        let layout = pipeline.layout();
+
+        let invalidate_from = self.state.invalidate_descriptor_sets(bind_point, layout);
 
         if let Some(first_set) = invalidate_from {
             if first_set <= LOCAL_SET {
-                self.bind_bindless_sets(PipelineBindPoint::Compute, pipeline.layout(), first_set);
+                self.bind_bindless_sets(bind_point, layout, first_set);
             }
         }
 
-        self.deferreds.push(Deferred::destroy(pipeline.clone()));
-
-        self
-    }
-
-    /// Binds a graphics pipeline for future draw calls, panicking on a validation error.
-    ///
-    /// This is a shortcut for `try_bind_pipeline_graphics().unwrap()`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if [`try_bind_pipeline_graphics`] returns a [`ValidationError`].
-    ///
-    /// [`try_bind_pipeline_graphics`]: Self::try_bind_pipeline_graphics
-    #[track_caller]
-    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &Arc<GraphicsPipeline>) -> &mut Self {
-        unsafe { self.try_bind_pipeline_graphics(pipeline) }.unwrap()
-    }
-
-    /// Binds a graphics pipeline for future draw calls.
-    pub unsafe fn try_bind_pipeline_graphics(
-        &mut self,
-        pipeline: &Arc<GraphicsPipeline>,
-    ) -> Result<&mut Self> {
-        Ok(unsafe { self.bind_pipeline_graphics_unchecked(pipeline) })
-    }
-
-    pub unsafe fn bind_pipeline_graphics_unchecked(
-        &mut self,
-        pipeline: &Arc<GraphicsPipeline>,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-        unsafe {
-            (fns.v1_0.cmd_bind_pipeline)(
-                self.handle(),
-                vk::PipelineBindPoint::GRAPHICS,
-                pipeline.handle(),
-            )
+        let deferred = match pipeline {
+            Pipeline::Compute(compute_pipeline) => Deferred::destroy(compute_pipeline.clone()),
+            Pipeline::Graphics(graphics_pipeline) => Deferred::destroy(graphics_pipeline.clone()),
+            Pipeline::RayTracing(ray_tracing_pipeline) => {
+                Deferred::destroy(ray_tracing_pipeline.clone())
+            }
+            _ => unreachable!(),
         };
-
-        let invalidate_from = self
-            .state
-            .invalidate_descriptor_sets(PipelineBindPoint::Graphics, pipeline.layout());
-
-        if let Some(first_set) = invalidate_from {
-            if first_set <= LOCAL_SET {
-                self.bind_bindless_sets(PipelineBindPoint::Graphics, pipeline.layout(), first_set);
-            }
-        }
-
-        self.deferreds.push(Deferred::destroy(pipeline.clone()));
-
-        self
-    }
-
-    /// Binds a ray tracing pipeline for future ray tracing calls, panicking on a validation error.
-    ///
-    /// This is a shortcut for `try_bind_pipeline_ray_tracing().unwrap()`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if [`try_bind_pipeline_ray_tracing`] returns a [`ValidationError`].
-    ///
-    /// [`try_bind_pipeline_ray_tracing`]: Self::try_bind_pipeline_ray_tracing
-    #[track_caller]
-    pub unsafe fn bind_pipeline_ray_tracing(
-        &mut self,
-        pipeline: &Arc<RayTracingPipeline>,
-    ) -> &mut Self {
-        unsafe { self.try_bind_pipeline_ray_tracing(pipeline) }.unwrap()
-    }
-
-    /// Binds a ray tracing pipeline for future ray tracing calls.
-    pub unsafe fn try_bind_pipeline_ray_tracing(
-        &mut self,
-        pipeline: &Arc<RayTracingPipeline>,
-    ) -> Result<&mut Self> {
-        Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
-    }
-
-    pub unsafe fn bind_pipeline_ray_tracing_unchecked(
-        &mut self,
-        pipeline: &Arc<RayTracingPipeline>,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-        unsafe {
-            (fns.v1_0.cmd_bind_pipeline)(
-                self.handle(),
-                vk::PipelineBindPoint::RAY_TRACING_KHR,
-                pipeline.handle(),
-            )
-        };
-
-        let invalidate_from = self
-            .state
-            .invalidate_descriptor_sets(PipelineBindPoint::RayTracing, pipeline.layout());
-
-        if let Some(first_set) = invalidate_from {
-            if first_set <= LOCAL_SET {
-                self.bind_bindless_sets(
-                    PipelineBindPoint::RayTracing,
-                    pipeline.layout(),
-                    first_set,
-                );
-            }
-        }
-
-        self.deferreds.push(Deferred::destroy(pipeline.clone()));
+        self.deferreds.push(deferred);
 
         self
     }

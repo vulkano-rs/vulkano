@@ -11,7 +11,7 @@ use vulkano::{
             viewport::ViewportState,
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
 };
@@ -82,7 +82,7 @@ impl Task for TonemapTask {
         rcx: &Self::World,
     ) -> TaskResult {
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport));
-        cbf.bind_pipeline_graphics(self.pipeline.as_ref().unwrap());
+        cbf.bind_pipeline(self.pipeline.as_ref().unwrap());
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
