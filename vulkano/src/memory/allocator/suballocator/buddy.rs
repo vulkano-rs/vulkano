@@ -101,38 +101,27 @@ unsafe impl Suballocator for BuddyAllocator {
         assert!(region.size().is_power_of_two());
         assert!(region.size() >= BuddyAllocator::MIN_NODE_SIZE);
 
+        // The division can't discard any bits because `region.size()` is a power of two.
         let max_order = (region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
 
         assert!(max_order < BuddyAllocator::MAX_ORDERS);
 
-        let node_allocator = slabbin::SlabAllocator::new(32);
-        let root_ptr = node_allocator.allocate();
-        // The root node has the lowest offset and highest order, so it's the whole region.
-        let root = SuballocationTreeNode {
-            parent_ptr: NonNull::dangling(),
-            ty: NodeType::new_leaf(Leaf {
-                tag: NodeTag::Leaf,
-                prev_ptr: None,
-                next_ptr: None,
-                compressed_offset: 0,
-                order: max_order as u8,
-                allocation_type: SuballocationType::Free,
-            }),
-        };
-        unsafe { root_ptr.write(root) };
-
         // This can't overflow because `max_order` is less than `BuddyAllocator::MAX_ORDERS`.
         let orders = max_order + 1;
-        let mut free_list = ArrayVec::new(orders, [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS]);
-        free_list[max_order].push(root_ptr);
 
-        let suballocations = SuballocationTree {
+        let mut suballocations = SuballocationTree {
             region,
-            root_ptr,
-            len: 1,
-            free_list,
-            node_allocator,
+            root_ptr: NonNull::dangling(),
+            head_ptr: NonNull::dangling(),
+            tail_ptr: NonNull::dangling(),
+            len: 0,
+            free_list: ArrayVec::new(orders, [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS]),
+            node_allocator: slabbin::SlabAllocator::new(32),
         };
+
+        // This can't discard any bits because `max_order` is confined to the range
+        // [0, BuddyAllocator::MAX_ORDERS).
+        unsafe { suballocations.init(max_order as u8) };
 
         BuddyAllocator {
             free_size: region.size(),
@@ -265,6 +254,8 @@ impl BuddyAllocator {
 struct SuballocationTree {
     region: Region,
     root_ptr: NonNull<SuballocationTreeNode>,
+    head_ptr: NonNull<SuballocationTreeNode>,
+    tail_ptr: NonNull<SuballocationTreeNode>,
     len: usize,
     // Every order has its own free-list. Each free-list is sorted by offset because we want to
     // find the first-fit as this strategy minimizes external fragmentation.
@@ -295,9 +286,9 @@ struct Leaf {
     /// ensures that the offset fits in a `u32`, otherwise `Self` would be wider by a `DeviceSize`.
     compressed_offset: u32,
     /// The previous leaf node.
-    prev_ptr: Option<NonNull<SuballocationTreeNode>>,
+    prev_ptr: NonNull<SuballocationTreeNode>,
     /// The next leaf node.
-    next_ptr: Option<NonNull<SuballocationTreeNode>>,
+    next_ptr: NonNull<SuballocationTreeNode>,
 }
 
 #[derive(Clone, Copy)]
@@ -321,6 +312,61 @@ unsafe impl Send for SuballocationTree {}
 unsafe impl Sync for SuballocationTree {}
 
 impl SuballocationTree {
+    unsafe fn init(&mut self, max_order: u8) {
+        let head_ptr = self.node_allocator.allocate();
+        let root_ptr = self.node_allocator.allocate();
+        let tail_ptr = self.node_allocator.allocate();
+
+        let head = SuballocationTreeNode {
+            parent_ptr: NonNull::dangling(),
+            ty: NodeType::new_leaf(Leaf {
+                tag: NodeTag::Leaf,
+                prev_ptr: NonNull::dangling(),
+                next_ptr: root_ptr,
+                compressed_offset: 0,
+                order: 0,
+                allocation_type: SuballocationType::Unknown,
+            }),
+        };
+        unsafe { head_ptr.write(head) };
+
+        // The root node has the lowest offset and highest order, so it's the whole region.
+        let root = SuballocationTreeNode {
+            parent_ptr: NonNull::dangling(),
+            ty: NodeType::new_leaf(Leaf {
+                tag: NodeTag::Leaf,
+                prev_ptr: head_ptr,
+                next_ptr: tail_ptr,
+                compressed_offset: 0,
+                order: max_order,
+                allocation_type: SuballocationType::Free,
+            }),
+        };
+        unsafe { root_ptr.write(root) };
+
+        let tail = SuballocationTreeNode {
+            parent_ptr: NonNull::dangling(),
+            ty: NodeType::new_leaf(Leaf {
+                tag: NodeTag::Leaf,
+                prev_ptr: root_ptr,
+                next_ptr: NonNull::dangling(),
+                // The division can't discard any bits because the region size is a power of two.
+                // The cast can't discard any bits because the region size is at most `1 << 35`,
+                // and `(1 << 35) / BuddyAllocator::MIN_NODE_SIZE` is `1 << 31`.
+                compressed_offset: (self.region.size() / BuddyAllocator::MIN_NODE_SIZE) as u32,
+                order: 0,
+                allocation_type: SuballocationType::Unknown,
+            }),
+        };
+        unsafe { tail_ptr.write(tail) };
+
+        self.root_ptr = root_ptr;
+        self.head_ptr = head_ptr;
+        self.tail_ptr = tail_ptr;
+        self.len = 1;
+        self.free_list[usize::from(max_order)].push(root_ptr);
+    }
+
     #[inline]
     unsafe fn allocate(
         &mut self,
@@ -353,7 +399,7 @@ impl SuballocationTree {
             }
         };
 
-        let prev_ptr = node_ty.prev_ptr;
+        let mut prev_ptr = node_ty.prev_ptr;
         let mut next_ptr = node_ty.next_ptr;
         let compressed_offset = node_ty.compressed_offset;
 
@@ -379,7 +425,7 @@ impl SuballocationTree {
                 ty: NodeType::new_leaf(Leaf {
                     tag: NodeTag::Leaf,
                     prev_ptr,
-                    next_ptr: Some(right_ptr),
+                    next_ptr: right_ptr,
                     compressed_offset,
                     // This can't discard any bits because `order` is confined to the range
                     // [0, BuddyAllocator::MAX_ORDERS).
@@ -393,7 +439,7 @@ impl SuballocationTree {
                 parent_ptr: node_ptr,
                 ty: NodeType::new_leaf(Leaf {
                     tag: NodeTag::Leaf,
-                    prev_ptr: Some(left_ptr),
+                    prev_ptr: left_ptr,
                     next_ptr,
                     // The division can't discard any bits because sizes are aligned to
                     // `BuddyAllocator::MIN_NODE_SIZE`. The cast can't discard any bits because the
@@ -410,12 +456,10 @@ impl SuballocationTree {
             };
             unsafe { right_ptr.write(right) };
 
-            if let Some(mut next_ptr) = next_ptr {
-                let next = unsafe { next_ptr.as_mut() };
+            let next = unsafe { next_ptr.as_mut() };
 
-                // SAFETY: The list of leaf nodes only contains leaf nodes.
-                unsafe { next.ty.leaf_unchecked_mut() }.prev_ptr = Some(right_ptr);
-            }
+            // SAFETY: The list of leaf nodes only contains leaf nodes.
+            unsafe { next.ty.leaf_unchecked_mut() }.prev_ptr = right_ptr;
 
             unsafe { node_ptr.as_mut() }.ty = NodeType::new_branch(Branch {
                 tag: NodeTag::Branch,
@@ -426,19 +470,17 @@ impl SuballocationTree {
             self.len += 1;
 
             node_ptr = left_ptr;
-            next_ptr = Some(right_ptr);
+            next_ptr = right_ptr;
 
             unsafe { add_to_free_list(free_list, right_ptr, compressed_offset) };
 
             // Repeat splitting for the left child if required in the next loop turn.
         }
 
-        if let Some(mut prev_ptr) = prev_ptr {
-            let prev = unsafe { prev_ptr.as_mut() };
+        let prev = unsafe { prev_ptr.as_mut() };
 
-            // SAFETY: The list of leaf nodes only contains leaf nodes.
-            unsafe { prev.ty.leaf_unchecked_mut() }.next_ptr = Some(node_ptr);
-        }
+        // SAFETY: The list of leaf nodes only contains leaf nodes.
+        unsafe { prev.ty.leaf_unchecked_mut() }.next_ptr = node_ptr;
 
         Some((node_ptr, offset, min_order))
     }
@@ -569,41 +611,19 @@ impl SuballocationTree {
         // `log((1 << 35) / BuddyAllocator::MIN_NODE_SIZE)` is 31.
         let max_order = (self.region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as u8;
 
-        let root_ptr = self.node_allocator.allocate();
-        let root = SuballocationTreeNode {
-            parent_ptr: NonNull::dangling(),
-            ty: NodeType::new_leaf(Leaf {
-                tag: NodeTag::Leaf,
-                prev_ptr: None,
-                next_ptr: None,
-                compressed_offset: 0,
-                order: max_order,
-                allocation_type: SuballocationType::Free,
-            }),
-        };
-        unsafe { root_ptr.write(root) };
-
-        self.root_ptr = root_ptr;
-        self.len = 1;
-        self.free_list[usize::from(max_order)].push(root_ptr);
+        unsafe { self.init(max_order) };
     }
 
     fn iter(&self) -> Suballocations<'_> {
-        let mut left_ptr = self.root_ptr;
-        let mut right_ptr = self.root_ptr;
-
-        while let Some(node_ty) = unsafe { left_ptr.as_ref() }.ty.branch() {
-            left_ptr = node_ty.left_ptr;
-        }
-
-        while let Some(node_ty) = unsafe { right_ptr.as_ref() }.ty.branch() {
-            right_ptr = node_ty.right_ptr;
-        }
+        let head = unsafe { self.head_ptr.as_ref() };
+        let tail = unsafe { self.tail_ptr.as_ref() };
+        let head_ptr = unsafe { head.ty.leaf_unchecked() }.next_ptr;
+        let tail_ptr = unsafe { tail.ty.leaf_unchecked() }.prev_ptr;
 
         Suballocations {
             region_offset: self.region.offset(),
-            left_ptr: Some(left_ptr),
-            right_ptr: Some(right_ptr),
+            head_ptr,
+            tail_ptr,
             len: self.len,
             marker: PhantomData,
         }
@@ -785,8 +805,8 @@ impl Leaf {
 #[derive(Clone)]
 pub struct Suballocations<'a> {
     region_offset: DeviceSize,
-    left_ptr: Option<NonNull<SuballocationTreeNode>>,
-    right_ptr: Option<NonNull<SuballocationTreeNode>>,
+    head_ptr: NonNull<SuballocationTreeNode>,
+    tail_ptr: NonNull<SuballocationTreeNode>,
     len: usize,
     marker: PhantomData<&'a SuballocationTree>,
 }
@@ -800,24 +820,20 @@ impl Iterator for Suballocations<'_> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len != 0 {
-            if let Some(left_ptr) = self.left_ptr {
-                let node = unsafe { left_ptr.as_ref() };
+            let head = unsafe { self.head_ptr.as_ref() };
 
-                // SAFETY: We start out with `self.left_ptr` being a leaf node, and upon iteration,
-                // we set it to the next leaf node.
-                let node_ty = unsafe { node.ty.leaf_unchecked() };
+            // SAFETY: We start out with `self.left_ptr` being a leaf node, and upon iteration, we
+            // set it to the next leaf node.
+            let head_ty = unsafe { head.ty.leaf_unchecked() };
 
-                self.left_ptr = node_ty.next_ptr;
-                self.len -= 1;
+            self.head_ptr = head_ty.next_ptr;
+            self.len -= 1;
 
-                Some(SuballocationNode {
-                    offset: node_ty.offset(self.region_offset),
-                    size: BuddyAllocator::MIN_NODE_SIZE << node_ty.order,
-                    allocation_type: node_ty.allocation_type,
-                })
-            } else {
-                None
-            }
+            Some(SuballocationNode {
+                offset: head_ty.offset(self.region_offset),
+                size: BuddyAllocator::MIN_NODE_SIZE << head_ty.order,
+                allocation_type: head_ty.allocation_type,
+            })
         } else {
             None
         }
@@ -843,24 +859,20 @@ impl DoubleEndedIterator for Suballocations<'_> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len != 0 {
-            if let Some(right_ptr) = self.right_ptr {
-                let node = unsafe { right_ptr.as_ref() };
+            let tail = unsafe { self.tail_ptr.as_ref() };
 
-                // SAFETY: We start out with `self.right_ptr` being a leaf node, and upon
-                // iteration, we set it to the previous leaf node.
-                let node_ty = unsafe { node.ty.leaf_unchecked() };
+            // SAFETY: We start out with `self.right_ptr` being a leaf node, and upon iteration, we
+            // set it to the previous leaf node.
+            let tail_ty = unsafe { tail.ty.leaf_unchecked() };
 
-                self.right_ptr = node_ty.prev_ptr;
-                self.len -= 1;
+            self.tail_ptr = tail_ty.prev_ptr;
+            self.len -= 1;
 
-                Some(SuballocationNode {
-                    offset: node_ty.offset(self.region_offset),
-                    size: BuddyAllocator::MIN_NODE_SIZE << node_ty.order,
-                    allocation_type: node_ty.allocation_type,
-                })
-            } else {
-                None
-            }
+            Some(SuballocationNode {
+                offset: tail_ty.offset(self.region_offset),
+                size: BuddyAllocator::MIN_NODE_SIZE << tail_ty.order,
+                allocation_type: tail_ty.allocation_type,
+            })
         } else {
             None
         }
