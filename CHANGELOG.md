@@ -93,6 +93,12 @@ Changes to `Surface`:
 - `Surface::object` now returns a reference to `SurfaceObject`.
 - `Surface::from_handle` now takes a `SurfaceObject` as parameter.
 
+Changes to pipelines:
+- The `Pipeline` trait was replaced by a `Pipeline` enum.
+
+Changes to command buffers:
+- `RecordingCommandBuffer` now only has the single `bind_pipeline` method for binding pipelines.
+
 ### Additions
 
 - `ash` is now re-exported.
