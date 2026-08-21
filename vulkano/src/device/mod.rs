@@ -285,6 +285,42 @@ impl Device {
         ),
         VulkanError,
     > {
+        // either clippy complains or rust complains about unnecessary unsafe blocks
+        #[expect(clippy::multiple_unsafe_ops_per_block)]
+        unsafe {
+            Self::new_custom_unchecked(
+                physical_device,
+                create_info,
+                &mut |create_info_vk| {
+                    let fns = physical_device.instance().fns();
+                    let mut output = MaybeUninit::uninit();
+                    (fns.v1_0.create_device)(
+                        physical_device.handle(),
+                        create_info_vk,
+                        ptr::null(),
+                        output.as_mut_ptr(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+                    Ok(output.assume_init())
+                },
+            )
+        }
+    }
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_custom_unchecked(
+        physical_device: &Arc<PhysicalDevice>,
+        create_info: &DeviceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(
+            &vk::DeviceCreateInfo<'_>,
+        ) -> Result<vk::Device, VulkanError>,
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        VulkanError,
+    > {
         let (enabled_extensions, enabled_features) =
             create_info.enable_dependencies(physical_device);
 
@@ -329,20 +365,7 @@ impl Device {
             let create_info_vk =
                 create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions);
 
-            let fns = physical_device.instance().fns();
-
-            let mut output = MaybeUninit::uninit();
-            unsafe {
-                (fns.v1_0.create_device)(
-                    physical_device.handle(),
-                    &create_info_vk,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)?;
-            unsafe { output.assume_init() }
+            custom_create(&create_info_vk)?
         };
 
         let device = unsafe { Self::from_handle(physical_device, handle, &create_info) };

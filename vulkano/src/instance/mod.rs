@@ -345,6 +345,27 @@ impl Instance {
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
     ) -> Result<Arc<Instance>, VulkanError> {
+        // either clippy complains or rust complains about unnecessary unsafe blocks
+        #[expect(clippy::multiple_unsafe_ops_per_block)]
+        unsafe {
+            Self::new_custom_unchecked(library, create_info, &mut |create_info_vk| {
+                let mut output = MaybeUninit::uninit();
+                let fns = library.fns();
+                (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr())
+                    .result()
+                    .map_err(VulkanError::from)?;
+                Ok(output.assume_init())
+            })
+        }
+    }
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_custom_unchecked(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(
+            &vk::InstanceCreateInfo<'_>,
+        ) -> Result<vk::Instance, VulkanError>,
+    ) -> Result<Arc<Instance>, VulkanError> {
         let mut flags = create_info.flags;
         let max_api_version = create_info.max_api_version.unwrap_or({
             let api_version = library.api_version();
@@ -386,16 +407,7 @@ impl Instance {
         let create_info_vk =
             create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        let handle = {
-            let mut output = MaybeUninit::uninit();
-            let fns = library.fns();
-            unsafe {
-                (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
-            }
-            .result()
-            .map_err(VulkanError::from)?;
-            unsafe { output.assume_init() }
-        };
+        let handle = custom_create(&create_info_vk)?;
 
         Ok(unsafe { Self::from_handle(library, handle, &create_info) })
     }
