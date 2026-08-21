@@ -328,6 +328,41 @@ impl Instance {
         Ok(unsafe { Self::new_unchecked(library, create_info) }?)
     }
 
+    /// See [`Self::new`]
+    /// Creates a new `Instance` using custom create call.
+    /// # Safety
+    /// Closure needs to return valid Instance handle.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new_custom(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(
+            &vk::InstanceCreateInfo<'_>,
+        ) -> Result<vk::Instance, VulkanError>,
+    ) -> Result<Arc<Instance>, VulkanError> {
+        match unsafe { Self::try_new_custom(library, create_info, custom_create) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `Instance` using custom create call.
+    /// # Safety
+    /// Closure needs to return valid Instance handle.
+    #[inline]
+    pub unsafe fn try_new_custom(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(
+            &vk::InstanceCreateInfo<'_>,
+        ) -> Result<vk::Instance, VulkanError>,
+    ) -> Result<Arc<Instance>, Validated<VulkanError>> {
+        Self::validate_new(library, create_info)?;
+
+        Ok(unsafe { Self::new_custom_unchecked(library, create_info, custom_create) }?)
+    }
+
     fn validate_new(
         library: &VulkanLibrary,
         create_info: &InstanceCreateInfo<'_>,
