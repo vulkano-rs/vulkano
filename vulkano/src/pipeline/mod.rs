@@ -648,7 +648,7 @@ impl PipelineExecutableStatistic {
                 let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
                 String::from_utf8_lossy(&bytes[0..end]).into()
             },
-            value: PipelineExecutableStatisticValue::from_vk(format, &value)?,
+            value: PipelineExecutableStatisticValue::from_vk(format, value)?,
         })
     }
 }
@@ -673,7 +673,7 @@ pub enum PipelineExecutableStatisticValue {
 impl PipelineExecutableStatisticValue {
     pub(crate) fn from_vk(
         format_vk: vk::PipelineExecutableStatisticFormatKHR,
-        val_vk: &vk::PipelineExecutableStatisticValueKHR,
+        val_vk: vk::PipelineExecutableStatisticValueKHR,
     ) -> Option<Self> {
         // SAFETY: In each of the arms below, `format_vk` specifies that the field of the union
         // being read is the active one.
