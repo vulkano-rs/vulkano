@@ -462,8 +462,6 @@ impl Pipeline<'_> {
             .result()
             .map_err(VulkanError::from)?;
 
-            // With `p_data` left null, this only retrieves the size of each internal
-            // representation's data.
             let mut internal_representations_vk =
                 vec![vk::PipelineExecutableInternalRepresentationKHR::default(); count as usize];
             let result = unsafe {
@@ -486,7 +484,7 @@ impl Pipeline<'_> {
             }
         };
 
-        // Retrieve the data itself, into buffers sized by the `data_size` values retrieved above.
+        // Retrieve the data itself, into buffers sized by the `data_size` values from above.
         let mut data: Vec<Vec<u8>> = internal_representations_vk
             .iter()
             .map(|val_vk| vec![0u8; val_vk.data_size])
