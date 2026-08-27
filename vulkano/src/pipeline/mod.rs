@@ -199,7 +199,7 @@ impl Pipeline<'_> {
 
             match result {
                 vk::Result::SUCCESS => {
-                    properties_vk.truncate(count as usize);
+                    unsafe { properties_vk.set_len(count as usize) };
                     break properties_vk;
                 }
                 vk::Result::INCOMPLETE => (),
