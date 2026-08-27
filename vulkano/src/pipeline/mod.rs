@@ -12,7 +12,7 @@
 //! *executables*. If the [`pipeline_executable_info`] feature is enabled, then the properties of
 //! these executables can be queried with [`Pipeline::executable_properties`]. Their compile time
 //! statistics and internal representations can be queried with
-//! [`Pipeline::executable_statistics`] and [`Pipeline::executable_internal_representations`]
+//! [`Pipeline::executable_statistics`] and [`Pipeline::executable_internal_representations`],
 //! respectively, provided that the pipeline was created with the matching
 //! [`PipelineCreateFlags::CAPTURE_STATISTICS`] or
 //! [`PipelineCreateFlags::CAPTURE_INTERNAL_REPRESENTATIONS`] flag. This is intended for use by
