@@ -185,7 +185,6 @@ impl Pipeline<'_> {
             .result()
             .map_err(VulkanError::from)?;
 
-            let mut properties_vk =
             let mut properties_vk = Vec::with_capacity(count as usize);
             let result = unsafe {
                 (fns.khr_pipeline_executable_properties

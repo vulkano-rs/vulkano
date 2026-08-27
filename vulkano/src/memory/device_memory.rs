@@ -196,7 +196,7 @@ impl DeviceMemory {
                 .max_memory_allocation_count;
             device
                 .allocation_count
-                .fetch_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
+                .try_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
                     (count < max_allocations).then_some(count + 1)
                 })
                 .map_err(|_| VulkanError::TooManyObjects)?;
