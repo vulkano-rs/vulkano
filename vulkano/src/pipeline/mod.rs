@@ -461,8 +461,7 @@ impl Pipeline<'_> {
             .result()
             .map_err(VulkanError::from)?;
 
-            let mut internal_representations_vk =
-                vec![vk::PipelineExecutableInternalRepresentationKHR::default(); count as usize];
+            let mut internal_representations_vk = Vec::with_capacity(count as usize);
             let result = unsafe {
                 (fns.khr_pipeline_executable_properties
                     .get_pipeline_executable_internal_representations_khr)(
