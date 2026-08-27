@@ -348,7 +348,7 @@ impl Instance {
         // either clippy complains or rust complains about unnecessary unsafe blocks
         #[expect(clippy::multiple_unsafe_ops_per_block)]
         unsafe {
-            Self::new_custom_unchecked(library, create_info, &mut |create_info_vk| {
+            Self::new_with_unchecked(library, create_info, &mut |create_info_vk| {
                 let mut output = MaybeUninit::uninit();
                 let fns = library.fns();
                 (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr())
@@ -365,14 +365,12 @@ impl Instance {
     /// Closure needs to return valid Instance handle.
     #[inline]
     #[track_caller]
-    pub unsafe fn new_custom(
+    pub unsafe fn new_with(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(
-            &vk::InstanceCreateInfo<'_>,
-        ) -> Result<vk::Instance, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, VulkanError> {
-        match unsafe { Self::try_new_custom(library, create_info, custom_create) } {
+        match unsafe { Self::try_new_with(library, create_info, create_fn) } {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
         }
@@ -382,25 +380,21 @@ impl Instance {
     /// # Safety
     /// Closure needs to return valid Instance handle.
     #[inline]
-    pub unsafe fn try_new_custom(
+    pub unsafe fn try_new_with(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(
-            &vk::InstanceCreateInfo<'_>,
-        ) -> Result<vk::Instance, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, Validated<VulkanError>> {
         Self::validate_new(library, create_info)?;
 
-        Ok(unsafe { Self::new_custom_unchecked(library, create_info, custom_create) }?)
+        Ok(unsafe { Self::new_with_unchecked(library, create_info, create_fn) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_custom_unchecked(
+    pub unsafe fn new_with_unchecked(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(
-            &vk::InstanceCreateInfo<'_>,
-        ) -> Result<vk::Instance, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, VulkanError> {
         let mut flags = create_info.flags;
         let max_api_version = create_info.max_api_version.unwrap_or({
@@ -443,7 +437,7 @@ impl Instance {
         let create_info_vk =
             create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        let handle = custom_create(&create_info_vk)?;
+        let handle = create_fn(&create_info_vk)?;
 
         Ok(unsafe { Self::from_handle(library, handle, &create_info) })
     }

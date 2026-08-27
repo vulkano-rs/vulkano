@@ -288,7 +288,7 @@ impl Device {
         // either clippy complains or rust complains about unnecessary unsafe blocks
         #[expect(clippy::multiple_unsafe_ops_per_block)]
         unsafe {
-            Self::new_custom_unchecked(physical_device, create_info, &mut |create_info_vk| {
+            Self::new_with_unchecked(physical_device, create_info, &mut |create_info_vk| {
                 let fns = physical_device.instance().fns();
                 let mut output = MaybeUninit::uninit();
                 (fns.v1_0.create_device)(
@@ -310,10 +310,10 @@ impl Device {
     /// Closure needs to return valid Device handle.
     #[inline]
     #[track_caller]
-    pub unsafe fn new_custom(
+    pub unsafe fn new_with(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
     ) -> Result<
         (
             Arc<Device>,
@@ -321,7 +321,7 @@ impl Device {
         ),
         VulkanError,
     > {
-        match unsafe { Self::try_new_custom(physical_device, create_info, custom_create) } {
+        match unsafe { Self::try_new_with(physical_device, create_info, create_fn) } {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
         }
@@ -331,10 +331,10 @@ impl Device {
     /// # Safety
     /// Closure needs to return valid Device handle.
     #[inline]
-    pub unsafe fn try_new_custom(
+    pub unsafe fn try_new_with(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
     ) -> Result<
         (
             Arc<Device>,
@@ -344,14 +344,14 @@ impl Device {
     > {
         Self::validate_new(physical_device, create_info)?;
 
-        Ok(unsafe { Self::new_custom_unchecked(physical_device, create_info, custom_create) }?)
+        Ok(unsafe { Self::new_with_unchecked(physical_device, create_info, create_fn) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_custom_unchecked(
+    pub unsafe fn new_with_unchecked(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
     ) -> Result<
         (
             Arc<Device>,
@@ -403,7 +403,7 @@ impl Device {
             let create_info_vk =
                 create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions);
 
-            custom_create(&create_info_vk)?
+            create_fn(&create_info_vk)?
         };
 
         let device = unsafe { Self::from_handle(physical_device, handle, &create_info) };
