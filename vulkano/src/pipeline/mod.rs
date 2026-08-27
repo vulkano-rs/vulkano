@@ -508,7 +508,11 @@ impl Pipeline<'_> {
         Ok(internal_representations_vk
             .iter()
             .zip(data)
-            .map(|(val_vk, data)| PipelineExecutableInternalRepresentation::from_vk(val_vk, data))
+            .map(|(val_vk, mut data)| {
+                unsafe { data.set_len(val_vk.data_size) };
+
+                PipelineExecutableInternalRepresentation::from_vk(val_vk, data)
+            })
             .collect())
     }
 }
