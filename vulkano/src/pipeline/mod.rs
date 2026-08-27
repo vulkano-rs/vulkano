@@ -474,7 +474,7 @@ impl Pipeline<'_> {
 
             match result {
                 vk::Result::SUCCESS => {
-                    internal_representations_vk.truncate(count as usize);
+                    unsafe { internal_representations_vk.set_len(count as usize) };
                     break internal_representations_vk;
                 }
                 vk::Result::INCOMPLETE => (),
