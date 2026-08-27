@@ -304,10 +304,20 @@ impl Device {
         }
     }
 
-    /// See [`Self::new`]
-    /// Creates a new `Device` using custom create call.
+    /// Creates a new `Device` using a custom instance create function, panicking on a validation
+    /// error.
+    ///
+    /// This is a shortcut for `try_new_with().map_err(Validated::unwrap)`.
+    ///
     /// # Safety
-    /// Closure needs to return valid Device handle.
+    ///
+    /// - `create_fn` must return a valid Vulkan object handle created from `physical_device`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_new_with`] returns a [`ValidationError`].
+    ///
+    /// [`try_new_with`]: Self::try_new_with
     #[inline]
     #[track_caller]
     pub unsafe fn new_with(
@@ -327,9 +337,11 @@ impl Device {
         }
     }
 
-    /// Creates a new `Device` using custom create call.
+    /// Creates a new `Device` using a custom instance create function.
+    ///
     /// # Safety
-    /// Closure needs to return valid Device handle.
+    ///
+    /// - `create_fn` must return a valid Vulkan object handle created from `physical_device`.
     #[inline]
     pub unsafe fn try_new_with(
         physical_device: &Arc<PhysicalDevice>,
