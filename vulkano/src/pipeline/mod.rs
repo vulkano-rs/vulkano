@@ -330,7 +330,7 @@ impl Pipeline<'_> {
 
             match result {
                 vk::Result::SUCCESS => {
-                    statistics_vk.truncate(count as usize);
+                    unsafe { statistics_vk.set_len(count as usize) };
                     break statistics_vk;
                 }
                 vk::Result::INCOMPLETE => (),
