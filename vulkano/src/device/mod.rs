@@ -148,7 +148,7 @@ use std::{
     ffi::{c_char, CStr, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     marker::PhantomData,
-    mem::MaybeUninit,
+    mem::{ManuallyDrop, MaybeUninit},
     num::NonZero,
     ops::Deref,
     ptr, slice,
@@ -210,13 +210,7 @@ impl Device {
     pub fn new(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        VulkanError,
-    > {
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError> {
         match Self::try_new(physical_device, create_info) {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
@@ -228,13 +222,7 @@ impl Device {
     pub fn try_new(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        Validated<VulkanError>,
-    > {
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), Validated<VulkanError>> {
         Self::validate_new(physical_device, create_info)?;
 
         Ok(unsafe { Self::new_unchecked(physical_device, create_info) }?)
@@ -278,29 +266,37 @@ impl Device {
     pub unsafe fn new_unchecked(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        VulkanError,
-    > {
-        // either clippy complains or rust complains about unnecessary unsafe blocks
-        #[expect(clippy::multiple_unsafe_ops_per_block)]
-        unsafe {
-            Self::new_with_unchecked(physical_device, create_info, &mut |create_info_vk| {
-                let fns = physical_device.instance().fns();
-                let mut output = MaybeUninit::uninit();
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError> {
+        unsafe fn create_fn_raw(
+            data: *const (),
+            create_info_vk: &vk::DeviceCreateInfo<'_>,
+        ) -> Result<vk::Device, VulkanError> {
+            // SAFETY: The caller must ensure that `data` is the same one we pass below.
+            let physical_device = unsafe { &*data.cast::<Arc<PhysicalDevice>>() };
+
+            let fns = physical_device.instance().fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
                 (fns.v1_0.create_device)(
                     physical_device.handle(),
                     create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
-                Ok(output.assume_init())
-            })
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+
+            Ok(unsafe { output.assume_init() })
+        }
+
+        unsafe {
+            Self::new_with_unchecked_inner(
+                physical_device,
+                create_info,
+                <*const _>::cast(physical_device),
+                create_fn_raw,
+            )
         }
     }
 
@@ -323,14 +319,8 @@ impl Device {
     pub unsafe fn new_with(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        VulkanError,
-    > {
+        create_fn: impl FnOnce(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError> {
         match unsafe { Self::try_new_with(physical_device, create_info, create_fn) } {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
@@ -346,14 +336,8 @@ impl Device {
     pub unsafe fn try_new_with(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        Validated<VulkanError>,
-    > {
+        create_fn: impl FnOnce(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), Validated<VulkanError>> {
         Self::validate_new(physical_device, create_info)?;
 
         Ok(unsafe { Self::new_with_unchecked(physical_device, create_info, create_fn) }?)
@@ -363,14 +347,50 @@ impl Device {
     pub unsafe fn new_with_unchecked(
         physical_device: &Arc<PhysicalDevice>,
         create_info: &DeviceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        VulkanError,
-    > {
+        create_fn: impl FnOnce(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError> {
+        #[inline]
+        unsafe fn helper<F>(
+            physical_device: &Arc<PhysicalDevice>,
+            create_info: &DeviceCreateInfo<'_>,
+            create_fn: ManuallyDrop<F>,
+        ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError>
+        where
+            F: FnOnce(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+        {
+            unsafe fn create_fn_raw<F>(
+                data: *const (),
+                create_info_vk: &vk::DeviceCreateInfo<'_>,
+            ) -> Result<vk::Device, VulkanError>
+            where
+                F: FnOnce(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+            {
+                // SAFETY: The caller must ensure that `data` is the same one we pass below.
+                (unsafe { data.cast::<F>().read() })(create_info_vk)
+            }
+
+            unsafe {
+                Device::new_with_unchecked_inner(
+                    physical_device,
+                    create_info,
+                    (&raw const create_fn).cast(),
+                    create_fn_raw::<F>,
+                )
+            }
+        }
+
+        unsafe { helper(physical_device, create_info, ManuallyDrop::new(create_fn)) }
+    }
+
+    unsafe fn new_with_unchecked_inner(
+        physical_device: &Arc<PhysicalDevice>,
+        create_info: &DeviceCreateInfo<'_>,
+        data: *const (),
+        create_fn_raw: unsafe fn(
+            *const (),
+            &vk::DeviceCreateInfo<'_>,
+        ) -> Result<vk::Device, VulkanError>,
+    ) -> Result<(Arc<Device>, Vec<Arc<Queue>>), VulkanError> {
         let (enabled_extensions, enabled_features) =
             create_info.enable_dependencies(physical_device);
 
@@ -415,7 +435,9 @@ impl Device {
             let create_info_vk =
                 create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions);
 
-            create_fn(&create_info_vk)?
+            // SAFETY: We only call the function once, and `data` is the same as what was passed to
+            // us.
+            unsafe { create_fn_raw(data, &create_info_vk) }?
         };
 
         let device = unsafe { Self::from_handle(physical_device, handle, &create_info) };
@@ -441,14 +463,12 @@ impl Device {
             }));
         }
 
-        let queues_iter = {
-            let device = device.clone();
-            queues_to_get
-                .into_iter()
-                .map(move |queue_info| unsafe { Queue::new(&device, &queue_info) })
-        };
+        let queues = queues_to_get
+            .into_iter()
+            .map(|queue_info| unsafe { Queue::new(&device, &queue_info) })
+            .collect();
 
-        Ok((device, queues_iter))
+        Ok((device, queues))
     }
 
     /// Creates a new `Device` from a raw object handle.

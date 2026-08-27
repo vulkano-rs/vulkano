@@ -1149,7 +1149,7 @@ mod tests {
 
             (
                 $crate::resource::Resources::new(&device, &Default::default()).unwrap(),
-                queues.collect::<Vec<_>>(),
+                queues,
             )
         }};
     }

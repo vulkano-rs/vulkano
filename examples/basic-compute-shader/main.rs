@@ -112,7 +112,7 @@ fn main() {
     );
 
     // Now initializing the device.
-    let (device, mut queues) = Device::new(
+    let (device, queues) = Device::new(
         &physical_device,
         &DeviceCreateInfo {
             enabled_extensions: &device_extensions,
@@ -126,10 +126,9 @@ fn main() {
     )
     .unwrap();
 
-    // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retrieve the first and only element of the
-    // iterator and throw it away.
-    let queue = queues.next().unwrap();
+    // Since we can request multiple queues, the `queues` variable is in fact a vector. We only use
+    // one queue in this example, so we just retrieve the one and only element of the vector.
+    let [queue] = queues.try_into().unwrap();
 
     // Now let's get to the actual example.
     //

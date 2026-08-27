@@ -197,8 +197,8 @@ impl App {
 
         // Now initializing the device. This is probably the most important object of Vulkan.
         //
-        // An iterator of created queues is returned by the function alongside the device.
-        let (device, mut queues) = Device::new(
+        // A vector of created queues is returned by the function alongside the device.
+        let (device, queues) = Device::new(
             // Which physical device to connect to.
             &physical_device,
             &DeviceCreateInfo {
@@ -231,10 +231,10 @@ impl App {
         )
         .unwrap();
 
-        // Since we can request multiple queues, the `queues` variable is in fact an iterator. We
-        // only use one queue in this example, so we just retrieve the first and only element of
-        // the iterator.
-        let queue = queues.next().unwrap();
+        // Since we can request multiple queues, the `queues` variable is in fact a vector. We only
+        // use one queue in this example, so we just retrieve the one and only element of the
+        // vector.
+        let [queue] = queues.try_into().unwrap();
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 

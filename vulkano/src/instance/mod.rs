@@ -96,7 +96,7 @@ use std::{
     cmp,
     ffi::{c_char, CStr, CString},
     fmt::{Debug, Error as FmtError, Formatter},
-    mem::MaybeUninit,
+    mem::{ManuallyDrop, MaybeUninit},
     num::NonZero,
     ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
@@ -345,17 +345,29 @@ impl Instance {
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
     ) -> Result<Arc<Instance>, VulkanError> {
-        // either clippy complains or rust complains about unnecessary unsafe blocks
-        #[expect(clippy::multiple_unsafe_ops_per_block)]
+        unsafe fn create_fn_raw(
+            data: *const (),
+            create_info_vk: &vk::InstanceCreateInfo<'_>,
+        ) -> Result<vk::Instance, VulkanError> {
+            // SAFETY: The caller must ensure that `data` is the same one we pass below.
+            let library = unsafe { &*data.cast::<Arc<VulkanLibrary>>() };
+
+            let mut output = MaybeUninit::uninit();
+            let fns = library.fns();
+            unsafe { (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr()) }
+                .result()
+                .map_err(VulkanError::from)?;
+
+            Ok(unsafe { output.assume_init() })
+        }
+
         unsafe {
-            Self::new_with_unchecked(library, create_info, &mut |create_info_vk| {
-                let mut output = MaybeUninit::uninit();
-                let fns = library.fns();
-                (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr())
-                    .result()
-                    .map_err(VulkanError::from)?;
-                Ok(output.assume_init())
-            })
+            Self::new_with_unchecked_inner(
+                library,
+                create_info,
+                <*const _>::cast(library),
+                create_fn_raw,
+            )
         }
     }
 
@@ -378,7 +390,7 @@ impl Instance {
     pub unsafe fn new_with(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+        create_fn: impl FnOnce(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, VulkanError> {
         match unsafe { Self::try_new_with(library, create_info, create_fn) } {
             Ok(res) => Ok(res),
@@ -395,7 +407,7 @@ impl Instance {
     pub unsafe fn try_new_with(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+        create_fn: impl FnOnce(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, Validated<VulkanError>> {
         Self::validate_new(library, create_info)?;
 
@@ -406,7 +418,49 @@ impl Instance {
     pub unsafe fn new_with_unchecked(
         library: &Arc<VulkanLibrary>,
         create_info: &InstanceCreateInfo<'_>,
-        create_fn: &mut dyn FnMut(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+        create_fn: impl FnOnce(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+    ) -> Result<Arc<Instance>, VulkanError> {
+        #[inline]
+        unsafe fn helper<F>(
+            library: &Arc<VulkanLibrary>,
+            create_info: &InstanceCreateInfo<'_>,
+            create_fn: ManuallyDrop<F>,
+        ) -> Result<Arc<Instance>, VulkanError>
+        where
+            F: FnOnce(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+        {
+            unsafe fn create_fn_raw<F>(
+                data: *const (),
+                create_info_vk: &vk::InstanceCreateInfo<'_>,
+            ) -> Result<vk::Instance, VulkanError>
+            where
+                F: FnOnce(&vk::InstanceCreateInfo<'_>) -> Result<vk::Instance, VulkanError>,
+            {
+                // SAFETY: The caller must ensure that `data` is the same one we pass below.
+                (unsafe { data.cast::<F>().read() })(create_info_vk)
+            }
+
+            unsafe {
+                Instance::new_with_unchecked_inner(
+                    library,
+                    create_info,
+                    (&raw const create_fn).cast(),
+                    create_fn_raw::<F>,
+                )
+            }
+        }
+
+        unsafe { helper(library, create_info, ManuallyDrop::new(create_fn)) }
+    }
+
+    unsafe fn new_with_unchecked_inner(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+        data: *const (),
+        create_fn_raw: unsafe fn(
+            *const (),
+            &vk::InstanceCreateInfo<'_>,
+        ) -> Result<vk::Instance, VulkanError>,
     ) -> Result<Arc<Instance>, VulkanError> {
         let mut flags = create_info.flags;
         let max_api_version = create_info.max_api_version.unwrap_or({
@@ -449,7 +503,8 @@ impl Instance {
         let create_info_vk =
             create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        let handle = create_fn(&create_info_vk)?;
+        // SAFETY: We only call the function once, and `data` is the same as what was passed to us.
+        let handle = unsafe { create_fn_raw(data, &create_info_vk) }?;
 
         Ok(unsafe { Self::from_handle(library, handle, &create_info) })
     }

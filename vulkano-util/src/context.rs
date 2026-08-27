@@ -244,7 +244,7 @@ impl VulkanoContext {
         .flatten()
         .collect();
 
-        let (device, mut queues) = {
+        let (device, queues) = {
             Device::new(
                 physical_device,
                 &DeviceCreateInfo {
@@ -256,6 +256,8 @@ impl VulkanoContext {
             )
             .expect("failed to create device")
         };
+
+        let mut queues = queues.into_iter();
 
         let graphics_queue = queues.next().unwrap();
         let compute_queue = if queue_family_compute.is_some() {

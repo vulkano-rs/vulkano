@@ -380,7 +380,7 @@ mod tests {
             None => return,
         };
 
-        let (device, mut queues) = Device::new(
+        let (device, queues) = Device::new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {
@@ -392,7 +392,8 @@ mod tests {
         )
         .unwrap();
 
-        let queue = queues.next().unwrap();
+        let [queue] = queues.try_into().unwrap();
+
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
 
         let source = Buffer::from_iter(
@@ -621,7 +622,7 @@ mod tests {
             None => return, // skips the test if no device supported protected_memory
         };
 
-        let (device, mut queues) = Device::new(
+        let (device, queues) = Device::new(
             &physical_device,
             &DeviceCreateInfo {
                 enabled_features: &DeviceFeatures {
@@ -638,7 +639,7 @@ mod tests {
         )
         .unwrap();
 
-        let queue = queues.next().unwrap();
+        let [queue] = queues.try_into().unwrap();
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new(&device, &Default::default()));
         let my_buffer = Buffer::new_slice::<u32>(

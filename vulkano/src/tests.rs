@@ -72,7 +72,7 @@ macro_rules! gfx_dev_and_queue {
             None => return,
         };
 
-        let (device, mut queues) = match Device::new(
+        let (device, queues) = match Device::new(
             &physical_device,
             &DeviceCreateInfo {
                 queue_create_infos: &[QueueCreateInfo {
@@ -88,7 +88,9 @@ macro_rules! gfx_dev_and_queue {
             Err(_) => return,
         };
 
-        (device, queues.next().unwrap())
+        let [queue] = queues.try_into().unwrap();
+
+        (device, queue)
     });
 }
 

@@ -197,7 +197,7 @@ impl App {
             .unwrap()
             .0 as u32;
 
-        let (device, mut queues) = {
+        let (device, queues) = {
             let mut queue_create_infos = vec![QueueCreateInfo {
                 queue_family_index: graphics_family_index,
                 ..Default::default()
@@ -234,6 +234,8 @@ impl App {
             )
             .unwrap()
         };
+
+        let mut queues = queues.into_iter();
 
         let graphics_queue = queues.next().unwrap();
 

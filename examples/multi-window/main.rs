@@ -116,7 +116,7 @@ impl App {
             physical_device.properties().device_type,
         );
 
-        let (device, mut queues) = Device::new(
+        let (device, queues) = Device::new(
             &physical_device,
             &DeviceCreateInfo {
                 enabled_extensions: &device_extensions,
@@ -129,7 +129,7 @@ impl App {
         )
         .unwrap();
 
-        let queue = queues.next().unwrap();
+        let [queue] = queues.try_into().unwrap();
 
         let resources = Resources::new(&device, &Default::default()).unwrap();
 
