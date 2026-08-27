@@ -720,17 +720,14 @@ pub struct PipelineExecutableInternalRepresentation {
 impl PipelineExecutableInternalRepresentation {
     pub(crate) fn from_vk(
         val_vk: &vk::PipelineExecutableInternalRepresentationKHR<'_>,
-        mut data: Vec<u8>,
+        data: Vec<u8>,
     ) -> Self {
         let &vk::PipelineExecutableInternalRepresentationKHR {
             name,
             description,
             is_text,
-            data_size,
             ..
         } = val_vk;
-
-        data.truncate(data_size);
 
         Self {
             name: {
