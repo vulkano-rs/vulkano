@@ -239,48 +239,6 @@ impl Device {
 
         Ok(unsafe { Self::new_unchecked(physical_device, create_info) }?)
     }
-    /// See [`Self::new`]
-    /// Creates a new `Device` using custom create call.
-    /// # Safety
-    /// Closure needs to return valid Device handle.
-    #[inline]
-    #[track_caller]
-    pub unsafe fn new_custom(
-        physical_device: &Arc<PhysicalDevice>,
-        create_info: &DeviceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        VulkanError,
-    > {
-        match unsafe { Self::try_new_custom(physical_device, create_info, custom_create) } {
-            Ok(res) => Ok(res),
-            Err(err) => Err(err.unwrap()),
-        }
-    }
-
-    /// Creates a new `Device` using custom create call.
-    /// # Safety
-    /// Closure needs to return valid Device handle.
-    #[inline]
-    pub unsafe fn try_new_custom(
-        physical_device: &Arc<PhysicalDevice>,
-        create_info: &DeviceCreateInfo<'_>,
-        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
-    ) -> Result<
-        (
-            Arc<Device>,
-            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
-        ),
-        Validated<VulkanError>,
-    > {
-        Self::validate_new(physical_device, create_info)?;
-
-        Ok(unsafe { Self::new_custom_unchecked(physical_device, create_info, custom_create) }?)
-    }
 
     fn validate_new(
         physical_device: &PhysicalDevice,
@@ -345,6 +303,50 @@ impl Device {
             })
         }
     }
+
+    /// See [`Self::new`]
+    /// Creates a new `Device` using custom create call.
+    /// # Safety
+    /// Closure needs to return valid Device handle.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new_custom(
+        physical_device: &Arc<PhysicalDevice>,
+        create_info: &DeviceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        VulkanError,
+    > {
+        match unsafe { Self::try_new_custom(physical_device, create_info, custom_create) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Creates a new `Device` using custom create call.
+    /// # Safety
+    /// Closure needs to return valid Device handle.
+    #[inline]
+    pub unsafe fn try_new_custom(
+        physical_device: &Arc<PhysicalDevice>,
+        create_info: &DeviceCreateInfo<'_>,
+        custom_create: &mut dyn FnMut(&vk::DeviceCreateInfo<'_>) -> Result<vk::Device, VulkanError>,
+    ) -> Result<
+        (
+            Arc<Device>,
+            impl ExactSizeIterator<Item = Arc<Queue>> + use<>,
+        ),
+        Validated<VulkanError>,
+    > {
+        Self::validate_new(physical_device, create_info)?;
+
+        Ok(unsafe { Self::new_custom_unchecked(physical_device, create_info, custom_create) }?)
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_custom_unchecked(
         physical_device: &Arc<PhysicalDevice>,

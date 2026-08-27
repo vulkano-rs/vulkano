@@ -328,6 +328,37 @@ impl Instance {
         Ok(unsafe { Self::new_unchecked(library, create_info) }?)
     }
 
+    fn validate_new(
+        library: &VulkanLibrary,
+        create_info: &InstanceCreateInfo<'_>,
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkCreateInstance-pCreateInfo-parameter
+        create_info
+            .validate(library)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        library: &Arc<VulkanLibrary>,
+        create_info: &InstanceCreateInfo<'_>,
+    ) -> Result<Arc<Instance>, VulkanError> {
+        // either clippy complains or rust complains about unnecessary unsafe blocks
+        #[expect(clippy::multiple_unsafe_ops_per_block)]
+        unsafe {
+            Self::new_custom_unchecked(library, create_info, &mut |create_info_vk| {
+                let mut output = MaybeUninit::uninit();
+                let fns = library.fns();
+                (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr())
+                    .result()
+                    .map_err(VulkanError::from)?;
+                Ok(output.assume_init())
+            })
+        }
+    }
+
     /// See [`Self::new`]
     /// Creates a new `Instance` using custom create call.
     /// # Safety
@@ -363,36 +394,6 @@ impl Instance {
         Ok(unsafe { Self::new_custom_unchecked(library, create_info, custom_create) }?)
     }
 
-    fn validate_new(
-        library: &VulkanLibrary,
-        create_info: &InstanceCreateInfo<'_>,
-    ) -> Result<(), Box<ValidationError>> {
-        // VUID-vkCreateInstance-pCreateInfo-parameter
-        create_info
-            .validate(library)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_unchecked(
-        library: &Arc<VulkanLibrary>,
-        create_info: &InstanceCreateInfo<'_>,
-    ) -> Result<Arc<Instance>, VulkanError> {
-        // either clippy complains or rust complains about unnecessary unsafe blocks
-        #[expect(clippy::multiple_unsafe_ops_per_block)]
-        unsafe {
-            Self::new_custom_unchecked(library, create_info, &mut |create_info_vk| {
-                let mut output = MaybeUninit::uninit();
-                let fns = library.fns();
-                (fns.v1_0.create_instance)(create_info_vk, ptr::null(), output.as_mut_ptr())
-                    .result()
-                    .map_err(VulkanError::from)?;
-                Ok(output.assume_init())
-            })
-        }
-    }
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_custom_unchecked(
         library: &Arc<VulkanLibrary>,
