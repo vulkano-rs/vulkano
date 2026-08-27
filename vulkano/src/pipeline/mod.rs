@@ -485,7 +485,7 @@ impl Pipeline<'_> {
         // Retrieve the data itself, into buffers sized by the `data_size` values from above.
         let mut data: Vec<Vec<u8>> = internal_representations_vk
             .iter()
-            .map(|val_vk| vec![0u8; val_vk.data_size])
+            .map(|val_vk| Vec::with_capacity(val_vk.data_size))
             .collect();
 
         for (val_vk, data_vk) in internal_representations_vk.iter_mut().zip(&mut data) {
