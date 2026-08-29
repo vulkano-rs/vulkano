@@ -1527,7 +1527,8 @@ impl<T> Deref for InstanceOwnedDebugWrapper<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::instance::InstanceExtensions;
+    use super::*;
+    use std::panic::{catch_unwind, resume_unwind};
 
     #[test]
     fn empty_extensions() {
@@ -1553,5 +1554,53 @@ mod tests {
     #[test]
     fn create_instance() {
         let _ = instance!();
+    }
+
+    #[test]
+    fn create_with() {
+        let library = match unsafe { VulkanLibrary::new() } {
+            Ok(x) => x,
+            Err(_) => return,
+        };
+
+        let arc = Arc::new(42);
+        let _arc2 = arc.clone();
+
+        let library_ref = &library;
+        let arc3 = arc.clone();
+        let create_fn = move |create_info_vk: &vk::InstanceCreateInfo<'_>| {
+            // Move one clone to the closure without consuming it in the closure.
+            let _ = &arc3;
+
+            let fns = library_ref.fns();
+            let mut instance_vk = vk::Instance::null();
+            unsafe { (fns.v1_0.create_instance)(create_info_vk, ptr::null(), &mut instance_vk) }
+                .result()
+                .map_err(VulkanError::from)?;
+
+            Ok(instance_vk)
+        };
+
+        let _ = unsafe { Instance::new_with(&library, &Default::default(), create_fn) };
+
+        // The closure should have been dropped exactly once, not zero or two times.
+        assert_eq!(Arc::strong_count(&arc), 2);
+
+        struct OurPayload;
+
+        let arc3 = arc.clone();
+        let create_fn = move |_create_info_vk: &vk::InstanceCreateInfo<'_>| {
+            let _ = &arc3;
+
+            resume_unwind(Box::new(OurPayload))
+        };
+
+        catch_unwind(|| unsafe { Instance::new_with(&library, &Default::default(), create_fn) })
+            .unwrap_err()
+            .downcast::<OurPayload>()
+            .unwrap();
+
+        // The closure should have been dropped exactly once even in the face of panics.
+        assert_eq!(Arc::strong_count(&arc), 2);
     }
 }

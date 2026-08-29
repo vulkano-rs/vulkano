@@ -2678,10 +2678,8 @@ impl PhysicalDeviceFeatures2ExtensionsVk {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::{
-        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, QueueCreateInfo,
-    };
-    use std::sync::Arc;
+    use super::*;
+    use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 
     #[test]
     fn empty_extensions() {
@@ -2815,5 +2813,89 @@ mod tests {
             },
         )
         .is_err());
+    }
+
+    #[test]
+    fn create_with() {
+        let instance = instance!();
+
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(x) => x,
+            Err(_) => return,
+        }
+        .next()
+        .unwrap();
+
+        let arc = Arc::new(42);
+        let _arc2 = arc.clone();
+
+        let instance_ref = &instance;
+        let physical_device_ref = &physical_device;
+        let arc3 = arc.clone();
+        let create_fn = move |create_info_vk: &vk::DeviceCreateInfo<'_>| {
+            // Move one clone to the closure without consuming it in the closure.
+            let _ = &arc3;
+
+            let fns = instance_ref.fns();
+            let mut device_vk = vk::Device::null();
+            unsafe {
+                (fns.v1_0.create_device)(
+                    physical_device_ref.handle(),
+                    create_info_vk,
+                    ptr::null(),
+                    &mut device_vk,
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+
+            Ok(device_vk)
+        };
+
+        let _ = unsafe {
+            Device::new_with(
+                &physical_device,
+                &DeviceCreateInfo {
+                    queue_create_infos: &[QueueCreateInfo {
+                        queues: &[1.0],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                create_fn,
+            )
+        };
+
+        // The closure should have been dropped exactly once, not zero or two times.
+        assert_eq!(Arc::strong_count(&arc), 2);
+
+        struct OurPayload;
+
+        let arc3 = arc.clone();
+        let create_fn = move |_create_info_vk: &vk::DeviceCreateInfo<'_>| {
+            let _ = &arc3;
+
+            resume_unwind(Box::new(OurPayload))
+        };
+
+        catch_unwind(AssertUnwindSafe(|| unsafe {
+            Device::new_with(
+                &physical_device,
+                &DeviceCreateInfo {
+                    queue_create_infos: &[QueueCreateInfo {
+                        queues: &[1.0],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                create_fn,
+            )
+        }))
+        .unwrap_err()
+        .downcast::<OurPayload>()
+        .unwrap();
+
+        // The closure should have been dropped exactly once even in the face of panics.
+        assert_eq!(Arc::strong_count(&arc), 2);
     }
 }
