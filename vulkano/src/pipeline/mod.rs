@@ -448,7 +448,7 @@ impl Pipeline<'_> {
             .executable_index(executable_index);
         let fns = device.fns();
 
-        let mut internal_representations_vk = loop {
+        let (internal_representations_vk, data) = loop {
             let mut count = 0;
             unsafe {
                 (fns.khr_pipeline_executable_properties
@@ -477,35 +477,42 @@ impl Pipeline<'_> {
             match result {
                 vk::Result::SUCCESS => {
                     unsafe { internal_representations_vk.set_len(count as usize) };
-                    break internal_representations_vk;
+                }
+                vk::Result::INCOMPLETE => continue,
+                err => return Err(VulkanError::from(err)),
+            }
+
+            // Retrieve the data itself, into buffers sized by the `data_size` values from above.
+            let mut data: Vec<Vec<u8>> = internal_representations_vk
+                .iter()
+                .map(|val_vk| Vec::with_capacity(val_vk.data_size))
+                .collect();
+
+            for (val_vk, data_vk) in internal_representations_vk.iter_mut().zip(&mut data) {
+                val_vk.p_data = data_vk.as_mut_ptr().cast();
+            }
+
+            let mut count = internal_representations_vk.len() as u32;
+            let result = unsafe {
+                (fns.khr_pipeline_executable_properties
+                    .get_pipeline_executable_internal_representations_khr)(
+                    device.handle(),
+                    &executable_info_vk,
+                    &mut count,
+                    internal_representations_vk.as_mut_ptr(),
+                )
+            };
+
+            match result {
+                vk::Result::SUCCESS => {
+                    unsafe { internal_representations_vk.set_len(count as usize) };
+                    unsafe { data.set_len(count as usize) };
+                    break (internal_representations_vk, data);
                 }
                 vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
-
-        // Retrieve the data itself, into buffers sized by the `data_size` values from above.
-        let mut data: Vec<Vec<u8>> = internal_representations_vk
-            .iter()
-            .map(|val_vk| Vec::with_capacity(val_vk.data_size))
-            .collect();
-
-        for (val_vk, data_vk) in internal_representations_vk.iter_mut().zip(&mut data) {
-            val_vk.p_data = data_vk.as_mut_ptr().cast();
-        }
-
-        let mut count = internal_representations_vk.len() as u32;
-        unsafe {
-            (fns.khr_pipeline_executable_properties
-                .get_pipeline_executable_internal_representations_khr)(
-                device.handle(),
-                &executable_info_vk,
-                &mut count,
-                internal_representations_vk.as_mut_ptr(),
-            )
-        }
-        .result()
-        .map_err(VulkanError::from)?;
 
         Ok(internal_representations_vk
             .iter()
