@@ -1622,6 +1622,41 @@ mod tests {
     };
     use std::{slice, sync::Arc};
 
+    #[test]
+    fn executable_queries_require_capture_flags() {
+        let (device, _queue) =
+            gfx_dev_and_queue!(pipeline_executable_info; khr_pipeline_executable_properties);
+
+        let compute_pipeline = new_compute_pipeline(&device, PipelineCreateFlags::empty());
+        let pipeline = Pipeline::from(&compute_pipeline);
+
+        assert!(pipeline.try_executable_statistics(0).is_err());
+        assert!(pipeline.try_executable_internal_representations(0).is_err());
+    }
+
+    #[test]
+    fn executable_queries_succeed() {
+        let (device, _queue) =
+            gfx_dev_and_queue!(pipeline_executable_info; khr_pipeline_executable_properties);
+
+        let compute_pipeline = new_compute_pipeline(
+            &device,
+            PipelineCreateFlags::CAPTURE_STATISTICS
+                | PipelineCreateFlags::CAPTURE_INTERNAL_REPRESENTATIONS,
+        );
+        let pipeline = Pipeline::from(&compute_pipeline);
+
+        // A pipeline is compiled into zero or more executables, and an implementation is allowed
+        // to provide no statistics or internal representations for any of them. The only thing
+        // that can be asserted is that each query succeeds for every executable that is reported.
+        let properties = pipeline.executable_properties().unwrap();
+
+        for index in 0..properties.len() as u32 {
+            pipeline.executable_statistics(index).unwrap();
+            pipeline.executable_internal_representations(index).unwrap();
+        }
+    }
+
     fn new_compute_pipeline(
         device: &Arc<Device>,
         flags: PipelineCreateFlags,
@@ -1656,40 +1691,5 @@ mod tests {
             },
         )
         .unwrap()
-    }
-
-    #[test]
-    fn executable_queries_require_capture_flags() {
-        let (device, _queue) =
-            gfx_dev_and_queue!(pipeline_executable_info; khr_pipeline_executable_properties);
-
-        let compute_pipeline = new_compute_pipeline(&device, PipelineCreateFlags::empty());
-        let pipeline = Pipeline::from(&compute_pipeline);
-
-        assert!(pipeline.try_executable_statistics(0).is_err());
-        assert!(pipeline.try_executable_internal_representations(0).is_err());
-    }
-
-    #[test]
-    fn executable_queries_succeed() {
-        let (device, _queue) =
-            gfx_dev_and_queue!(pipeline_executable_info; khr_pipeline_executable_properties);
-
-        let compute_pipeline = new_compute_pipeline(
-            &device,
-            PipelineCreateFlags::CAPTURE_STATISTICS
-                | PipelineCreateFlags::CAPTURE_INTERNAL_REPRESENTATIONS,
-        );
-        let pipeline = Pipeline::from(&compute_pipeline);
-
-        // A pipeline is compiled into zero or more executables, and an implementation is allowed
-        // to provide no statistics or internal representations for any of them. The only thing
-        // that can be asserted is that each query succeeds for every executable that is reported.
-        let properties = pipeline.executable_properties().unwrap();
-
-        for index in 0..properties.len() as u32 {
-            pipeline.executable_statistics(index).unwrap();
-            pipeline.executable_internal_representations(index).unwrap();
-        }
     }
 }
