@@ -128,6 +128,7 @@ struct SwapchainSyncState {
     current_acquire_fence: Option<Fence>,
     current_pre_present_semaphore: Option<Semaphore>,
     current_present_semaphore: Option<Semaphore>,
+    current_present_fence: Option<Fence>,
     present_queue: VecDeque<SwapchainPresentOperation>,
     garbage_queue: VecDeque<SwapchainGarbage>,
     semaphore_pool: Vec<Semaphore>,
@@ -168,6 +169,7 @@ impl SwapchainState {
                 current_acquire_fence: None,
                 current_pre_present_semaphore: None,
                 current_present_semaphore: None,
+                current_present_fence: None,
                 present_queue: VecDeque::new(),
                 garbage_queue: VecDeque::new(),
                 semaphore_pool: Vec::new(),
@@ -222,14 +224,23 @@ impl SwapchainState {
         unsafe { self.sync_state.unlock() };
     }
 
-    pub(crate) unsafe fn acquire_next_image(&self) -> Result<(), VulkanError> {
+    pub(crate) unsafe fn acquire_next_image(
+        &self,
+        use_swapchain_maintenance1: bool,
+    ) -> Result<(), VulkanError> {
         // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
         // the global lock has been locked sharingly, which ensures correct synchronization. We
         // also don't create additional references.
         let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
 
         let semaphore = sync_state.allocate_semaphore()?;
-        let fence = sync_state.allocate_fence()?;
+
+        // With `swapchain_maintenance1`, we don't need the acquire fence.
+        let fence = if use_swapchain_maintenance1 {
+            None
+        } else {
+            Some(sync_state.allocate_fence()?)
+        };
 
         // This should not panic because our swapchain lock prevents using a swapchain after it has
         // been recreated. However, this will panic if the user circumvents that by calling
@@ -237,7 +248,7 @@ impl SwapchainState {
         let res = unsafe {
             self.swapchain.acquire_next_image(&AcquireNextImageInfo {
                 semaphore: Some(&semaphore),
-                fence: Some(&fence),
+                fence: fence.as_ref(),
                 ..Default::default()
             })
         };
@@ -247,7 +258,7 @@ impl SwapchainState {
                 assert!(sync_state.current_acquire_semaphore.is_none());
                 assert!(sync_state.current_acquire_fence.is_none());
                 sync_state.current_acquire_semaphore = Some(semaphore);
-                sync_state.current_acquire_fence = Some(fence);
+                sync_state.current_acquire_fence = fence;
 
                 self.current_image_index.store(image_index, Relaxed);
 
@@ -255,7 +266,10 @@ impl SwapchainState {
             }
             Err(err) => {
                 sync_state.deallocate_semaphore(semaphore);
-                sync_state.deallocate_fence(fence);
+
+                if let Some(fence) = fence {
+                    sync_state.deallocate_fence(fence);
+                }
 
                 Err(err)
             }
@@ -325,6 +339,21 @@ impl SwapchainState {
         Some(semaphore.handle())
     }
 
+    pub(crate) unsafe fn init_present_fence(&self) -> Result<vk::Fence, VulkanError> {
+        // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
+        // the global lock has been locked sharingly, which ensures correct synchronization. We
+        // also don't create additional references.
+        let sync_state = unsafe { self.sync_state.get_mut_unchecked() };
+
+        let fence = sync_state.allocate_fence()?;
+        let handle = fence.handle();
+
+        assert!(sync_state.current_present_fence.is_none());
+        sync_state.current_present_fence = Some(fence);
+
+        Ok(handle)
+    }
+
     pub(crate) unsafe fn handle_presentation(&self) {
         // SAFETY: The caller must ensure that the swapchain has been locked for execution and that
         // the global lock has been locked sharingly, which ensures correct synchronization. We
@@ -334,6 +363,10 @@ impl SwapchainState {
         let generation = self.generation;
         let image_index = self.current_image_index().unwrap();
 
+        // Without `swapchain_maintenance1`, the only way we can know if a swapchain image is no
+        // longer in use by the Presentation Engine is when that same image index is acquired
+        // again, so we have to associate the acquire fence with a previous present operation.
+        //
         // The acquire fence isn't set if an image index has already been acquired but not used in
         // a previous task graph execution.
         if let Some(acquire_fence) = sync_state.current_acquire_fence.take() {
@@ -356,6 +389,9 @@ impl SwapchainState {
 
         self.current_image_index.store(u32::MAX, Relaxed);
 
+        // With `swapchain_maintenance1`, we can use the fence from the present operation directly.
+        let cleanup_fence = sync_state.current_present_fence.take();
+
         sync_state
             .present_queue
             .push_back(SwapchainPresentOperation {
@@ -364,7 +400,7 @@ impl SwapchainState {
                 image_index,
                 pre_present_semaphore,
                 present_semaphore: Some(present_semaphore),
-                cleanup_fence: None,
+                cleanup_fence,
             });
     }
 
@@ -465,13 +501,15 @@ impl SwapchainState {
 
         let generation = self.generation;
         let image_index = self.current_image_index().unwrap();
-        let acquire_fence = sync_state.current_acquire_fence.take().unwrap();
 
-        sync_state.associate_acquire_fence_with_present_operation(
-            generation,
-            image_index,
-            acquire_fence,
-        );
+        // With `swapchain_maintenance1`, the acquire fence isn't set since we don't need it.
+        if let Some(acquire_fence) = sync_state.current_acquire_fence.take() {
+            sync_state.associate_acquire_fence_with_present_operation(
+                generation,
+                image_index,
+                acquire_fence,
+            );
+        }
 
         // If the acquire semaphore wasn't waited on, we have to keep it and wait on it in the next
         // task graph execution. Otherwise, we don't need an acquire semaphore at all in the next
@@ -532,6 +570,7 @@ impl SwapchainState {
         assert!(sync_state.current_acquire_fence.is_none());
         assert!(sync_state.current_pre_present_semaphore.is_none());
         assert!(sync_state.current_present_semaphore.is_none());
+        assert!(sync_state.current_present_fence.is_none());
     }
 
     pub(super) unsafe fn validate_recreate(&self) -> Result<(), Box<ValidationError>> {
@@ -661,13 +700,15 @@ impl SwapchainState {
 
         let generation = self.generation;
 
-        // The acquire semaphore and fence are set if an image has been acquired but not used in a
-        // previous task graph execution.
+        // The acquire semaphore is set if an image has been acquired but not used in a previous
+        // task graph execution.
         if let Some(semaphore) = sync_state.current_acquire_semaphore.take() {
             garbage.semaphores.push(semaphore);
 
-            let fence = sync_state.current_acquire_fence.take().unwrap();
-            garbage.fences.push(fence);
+            // The acquire fence is set if we don't have `swapchain_maintenance1`.
+            if let Some(fence) = sync_state.current_acquire_fence.take() {
+                garbage.fences.push(fence);
+            }
         }
 
         let has_present_operations = sync_state

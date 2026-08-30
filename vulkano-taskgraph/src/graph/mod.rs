@@ -1215,6 +1215,7 @@ impl AttachmentInfo<'_> {
 pub struct ExecutableTaskGraph<W: ?Sized> {
     graph: ManuallyDrop<TaskGraph<W>>,
     flight_id: Id<Flight>,
+    use_swapchain_maintenance1: bool,
     instructions: Vec<Instruction>,
     submissions: Vec<Submission>,
     barriers: Vec<MemoryBarrier>,

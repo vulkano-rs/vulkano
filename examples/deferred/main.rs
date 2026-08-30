@@ -87,22 +87,28 @@ pub struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop);
+
+        let mut instance_extensions = Surface::required_extensions(event_loop);
+
+        if library.supported_extensions().ext_surface_maintenance1 {
+            instance_extensions.ext_surface_maintenance1 = true;
+        }
+
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: &required_extensions,
+                enabled_extensions: &instance_extensions,
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let device_extensions = DeviceExtensions {
+        let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..BindlessContext::required_extensions(&instance)
         };
-        let device_features = BindlessContext::required_features(&instance);
+        let mut device_features = BindlessContext::required_features(&instance);
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
@@ -135,6 +141,17 @@ impl App {
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
+
+        if physical_device
+            .supported_extensions()
+            .ext_swapchain_maintenance1
+        {
+            device_extensions.ext_swapchain_maintenance1 = true;
+
+            if physical_device.supported_features().swapchain_maintenance1 {
+                device_features.swapchain_maintenance1 = true;
+            }
+        }
 
         let (device, mut queues) = Device::new(
             &physical_device,
@@ -430,13 +447,15 @@ impl ApplicationHandler for App {
                         })
                         .expect("failed to recreate swapchain");
 
-                    rcx.viewport.extent = window_size.into();
-
                     self.resources
                         .create_deferred_batch()
                         .destroy_image(rcx.diffuse_image_id)
                         .destroy_image(rcx.normals_image_id)
                         .destroy_image(rcx.depth_image_id);
+
+                    if !self.device.enabled_features().swapchain_maintenance1 {
+                        self.resources.wait_idle().unwrap();
+                    }
 
                     (
                         rcx.diffuse_image_id,
@@ -444,6 +463,7 @@ impl ApplicationHandler for App {
                         rcx.depth_image_id,
                     ) = window_size_dependent_setup(&self.resources, rcx.swapchain_id);
 
+                    rcx.viewport.extent = window_size.into();
                     rcx.recreate_swapchain = false;
                 }
 

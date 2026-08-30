@@ -58,21 +58,27 @@ pub struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop);
+
+        let mut instance_extensions = Surface::required_extensions(event_loop);
+
+        if library.supported_extensions().ext_surface_maintenance1 {
+            instance_extensions.ext_surface_maintenance1 = true;
+        }
+
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: &InstanceExtensions {
                     ext_swapchain_colorspace: true,
-                    ..required_extensions
+                    ..instance_extensions
                 },
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let device_extensions = DeviceExtensions {
+        let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             khr_ray_tracing_pipeline: true,
             khr_ray_tracing_maintenance1: true,
@@ -81,7 +87,7 @@ impl App {
             khr_acceleration_structure: true,
             ..BindlessContext::required_extensions(&instance)
         };
-        let device_features = DeviceFeatures {
+        let mut device_features = DeviceFeatures {
             acceleration_structure: true,
             ray_tracing_pipeline: true,
             buffer_device_address: true,
@@ -123,6 +129,17 @@ impl App {
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
+
+        if physical_device
+            .supported_extensions()
+            .ext_swapchain_maintenance1
+        {
+            device_extensions.ext_swapchain_maintenance1 = true;
+
+            if physical_device.supported_features().swapchain_maintenance1 {
+                device_features.swapchain_maintenance1 = true;
+            }
+        }
 
         let (device, mut queues) = Device::new(
             &physical_device,
@@ -308,6 +325,10 @@ impl ApplicationHandler for App {
                     }
 
                     batch.enqueue();
+
+                    if !self.device.enabled_features().swapchain_maintenance1 {
+                        self.resources.wait_idle().unwrap();
+                    }
 
                     rcx.swapchain_storage_image_ids =
                         window_size_dependent_setup(&self.resources, rcx.swapchain_id);

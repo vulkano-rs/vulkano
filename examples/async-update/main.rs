@@ -115,22 +115,28 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop);
+
+        let mut instance_extensions = Surface::required_extensions(event_loop);
+
+        if library.supported_extensions().ext_surface_maintenance1 {
+            instance_extensions.ext_surface_maintenance1 = true;
+        }
+
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: &required_extensions,
+                enabled_extensions: &instance_extensions,
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let device_extensions = DeviceExtensions {
+        let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..BindlessContext::required_extensions(&instance)
         };
-        let device_features = BindlessContext::required_features(&instance);
+        let mut device_features = BindlessContext::required_features(&instance);
         let (physical_device, graphics_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
@@ -196,6 +202,17 @@ impl App {
             .min_by_key(|(_, q)| q.queue_flags.count())
             .unwrap()
             .0 as u32;
+
+        if physical_device
+            .supported_extensions()
+            .ext_swapchain_maintenance1
+        {
+            device_extensions.ext_swapchain_maintenance1 = true;
+
+            if physical_device.supported_features().swapchain_maintenance1 {
+                device_features.swapchain_maintenance1 = true;
+            }
+        }
 
         let (device, mut queues) = {
             let mut queue_create_infos = vec![QueueCreateInfo {
@@ -616,6 +633,11 @@ impl ApplicationHandler for App {
                             ..*create_info
                         })
                         .expect("failed to recreate swapchain");
+
+                    if !self.device.enabled_features().swapchain_maintenance1 {
+                        self.resources.wait_idle().unwrap();
+                    }
+
                     rcx.viewport.extent = window_size.into();
                     rcx.recreate_swapchain = false;
                 }

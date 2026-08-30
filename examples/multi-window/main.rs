@@ -2,8 +2,8 @@ use std::{collections::HashMap, error::Error, slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-        QueueCreateInfo, QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
+        Queue, QueueCreateInfo, QueueFlags,
     },
     image::ImageUsage,
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
@@ -71,18 +71,24 @@ struct RenderContext {
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
         let library = unsafe { VulkanLibrary::new() }.unwrap();
-        let required_extensions = Surface::required_extensions(event_loop);
+
+        let mut instance_extensions = Surface::required_extensions(event_loop);
+
+        if library.supported_extensions().ext_surface_maintenance1 {
+            instance_extensions.ext_surface_maintenance1 = true;
+        }
+
         let instance = Instance::new(
             &library,
             &InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: &required_extensions,
+                enabled_extensions: &instance_extensions,
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let device_extensions = DeviceExtensions {
+        let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
@@ -116,10 +122,24 @@ impl App {
             physical_device.properties().device_type,
         );
 
+        let mut device_features = DeviceFeatures::empty();
+
+        if physical_device
+            .supported_extensions()
+            .ext_swapchain_maintenance1
+        {
+            device_extensions.ext_swapchain_maintenance1 = true;
+
+            if physical_device.supported_features().swapchain_maintenance1 {
+                device_features.swapchain_maintenance1 = true;
+            }
+        }
+
         let (device, mut queues) = Device::new(
             &physical_device,
             &DeviceCreateInfo {
                 enabled_extensions: &device_extensions,
+                enabled_features: &device_features,
                 queue_create_infos: &[QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
@@ -442,6 +462,11 @@ impl ApplicationHandler for App {
                             ..*create_info
                         })
                         .expect("failed to recreate swapchain");
+
+                    if !self.device.enabled_features().swapchain_maintenance1 {
+                        self.resources.wait_idle().unwrap();
+                    }
+
                     rcx.viewport.extent = window_size.into();
                     rcx.recreate_swapchain = false;
                 }

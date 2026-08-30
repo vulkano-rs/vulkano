@@ -8,8 +8,8 @@ use std::{error::Error, slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-        QueueCreateInfo, QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
+        Queue, QueueCreateInfo, QueueFlags,
     },
     image::ImageUsage,
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
@@ -82,7 +82,14 @@ impl App {
         // All the window-drawing functionalities are part of non-core extensions that we need to
         // enable manually. To do so, we ask `Surface` for the list of extensions required to draw
         // to a window.
-        let required_extensions = Surface::required_extensions(event_loop);
+        let mut instance_extensions = Surface::required_extensions(event_loop);
+
+        // The `ext_surface_maintenance1` instance extension is a dependency of the
+        // `ext_swapchain_maintenance1` device extension. See below for why we enable the latter
+        // when it's available.
+        if library.supported_extensions().ext_surface_maintenance1 {
+            instance_extensions.ext_surface_maintenance1 = true;
+        }
 
         // Now creating the instance.
         let instance = Instance::new(
@@ -91,7 +98,7 @@ impl App {
                 // Enable enumerating devices that use non-conformant Vulkan implementations (e.g.,
                 // MoltenVK).
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                enabled_extensions: &required_extensions,
+                enabled_extensions: &instance_extensions,
                 ..Default::default()
             },
         )
@@ -99,7 +106,7 @@ impl App {
 
         // Choose the device extensions that we're going to use. In order to present images to a
         // surface, we need a `Swapchain`, which is provided by the `khr_swapchain` extension.
-        let device_extensions = DeviceExtensions {
+        let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
@@ -172,6 +179,29 @@ impl App {
             physical_device.properties().device_type,
         );
 
+        let mut device_features = DeviceFeatures::empty();
+
+        // We don't *need* the `ext_swapchain_maintenance1` device extension in the sense that
+        // vulkano-taskgraph has a fallback for when this extension isn't present. However, it is
+        // impossible to have sensible synchronization without this extension. vulkano-taskgraph
+        // does the best that's possible, but it can't do miracles. The Vulkan specification is
+        // hilariously broken when it comes to swapchains. That's why you should enable this
+        // extension, which fixes those specification bugs, whenever possible.
+        if physical_device
+            .supported_extensions()
+            .ext_swapchain_maintenance1
+        {
+            device_extensions.ext_swapchain_maintenance1 = true;
+
+            // Some device extensions also have associated device features, and you have to enable
+            // the device feature(s) in order to use the extension. `ext_swapchain_maintenance1` is
+            // one such extension. From this arises an "amusing" possibility of a device supporting
+            // the extension but none of its features, so we have to check for feature support.
+            if physical_device.supported_features().swapchain_maintenance1 {
+                device_features.swapchain_maintenance1 = true;
+            }
+        }
+
         // Now initializing the device. This is probably the most important object of Vulkan.
         //
         // An iterator of created queues is returned by the function alongside the device.
@@ -184,6 +214,7 @@ impl App {
                 // manually at device creation. In this example, the only thing we are going to
                 // need is the `khr_swapchain` extension that allows us to draw to a window.
                 enabled_extensions: &device_extensions,
+                enabled_features: &device_features,
 
                 // The list of queues that we are going to use. Here we only use one queue from the
                 // previously chosen queue family.
@@ -574,6 +605,20 @@ impl ApplicationHandler for App {
                             ..*create_info
                         })
                         .expect("failed to recreate swapchain");
+
+                    // Without the `swapchain_maintenance1` device feature, the task graph does the
+                    // best fallback available, which doesn't involve any blocking on the CPU just
+                    // like with `swapchain_maintenance1`. However, the drawback is that when the
+                    // user resizes the window fast enough so that there is only one frame drawn
+                    // per resize event, the old swapchains accumulate and can't be destroyed until
+                    // the user stops. This is impossible to avoid without `swapchain_maintenance1`
+                    // or a wait for device idle. So you have the choice of using
+                    // `swapchain_maintenance1`, using the fallback with a wait for device idle, or
+                    // using the fallback and ignoring the possible degenerate scenario. All of
+                    // them work, but only `swapchain_maintenance1` has no drawbacks.
+                    if !self.device.enabled_features().swapchain_maintenance1 {
+                        self.resources.wait_idle().unwrap();
+                    }
 
                     rcx.viewport.extent = window_size.into();
 

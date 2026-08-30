@@ -277,6 +277,7 @@ impl<W: ?Sized> TaskGraph<W> {
         Ok(ExecutableTaskGraph {
             graph: ManuallyDrop::new(self),
             flight_id,
+            use_swapchain_maintenance1: device.enabled_features().swapchain_maintenance1,
             instructions: builder.instructions,
             submissions: builder.submissions,
             barriers: builder.barriers,

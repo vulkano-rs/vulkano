@@ -262,7 +262,9 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 continue;
             }
 
-            if let Err(error) = unsafe { swapchain_state.acquire_next_image() } {
+            if let Err(error) =
+                unsafe { swapchain_state.acquire_next_image(self.use_swapchain_maintenance1) }
+            {
                 return Err(Validated::Error(ExecuteError::Swapchain {
                     swapchain_id,
                     error,
@@ -660,33 +662,48 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         }
 
         let swapchain_count = self.swapchains.len();
-        let mut semaphores = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
-        let mut swapchains = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut semaphores_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut swapchains_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
         let mut image_indices = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
-        let mut results = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut results_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut fences_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
 
         for &swapchain_id in &self.swapchains {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
             let semaphore_vk = unsafe { swapchain_state.current_present_semaphore() }.unwrap();
-            semaphores.push(semaphore_vk);
-            swapchains.push(swapchain_state.swapchain().handle());
+            semaphores_vk.push(semaphore_vk);
+            swapchains_vk.push(swapchain_state.swapchain().handle());
             image_indices.push(swapchain_state.current_image_index().unwrap());
-            results.push(vk::Result::SUCCESS);
+            results_vk.push(vk::Result::SUCCESS);
+
+            if self.use_swapchain_maintenance1 {
+                let fence_vk = unsafe { swapchain_state.init_present_fence() }
+                    .map_err(ExecuteError::VulkanError)?;
+                fences_vk.push(fence_vk);
+            }
         }
 
-        let present_info = vk::PresentInfoKHR::default()
-            .wait_semaphores(&semaphores)
-            .swapchains(&swapchains)
+        let mut present_info_vk = vk::PresentInfoKHR::default()
+            .wait_semaphores(&semaphores_vk)
+            .swapchains(&swapchains_vk)
             .image_indices(&image_indices)
-            .results(&mut results);
+            .results(&mut results_vk);
+
+        let mut fence_info_vk = self
+            .use_swapchain_maintenance1
+            .then(|| vk::SwapchainPresentFenceInfoEXT::default().fences(&fences_vk));
+
+        if let Some(fence_info_vk) = fence_info_vk.as_mut() {
+            present_info_vk = present_info_vk.push_next(fence_info_vk);
+        }
 
         let fns = self.device().fns();
         let queue_present_khr = fns.khr_swapchain.queue_present_khr;
-        let _ = unsafe { queue_present_khr(present_queue.handle(), &present_info) };
+        let _ = unsafe { queue_present_khr(present_queue.handle(), &present_info_vk) };
 
         let mut res = Ok(());
 
-        for (&result, &swapchain_id) in results.iter().zip(&self.swapchains) {
+        for (&result, &swapchain_id) in results_vk.iter().zip(&self.swapchains) {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
 
             // In case of these error codes, the semaphore wait operation is not executed.
@@ -703,15 +720,15 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             if !matches!(result, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR) {
                 // Return the first error for consistency with the acquisition logic.
                 if res.is_ok() {
-                    res = Err(ExecuteError::Swapchain {
+                    res = Err(Validated::Error(ExecuteError::Swapchain {
                         swapchain_id,
                         error: result.into(),
-                    });
+                    }));
                 }
             }
         }
 
-        res.map_err(Validated::Error)
+        res
     }
 
     unsafe fn update_resource_state(
