@@ -1320,3 +1320,1676 @@ impl Drop for GlobalLockExclusiveGuard<'_> {
 }
 
 pub(crate) struct GlobalLockError;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        command_buffer::RecordingCommandBuffer,
+        graph::{CompileInfo, ExecuteError, TaskGraph},
+        resource::{AccessTypes, ImageLayoutType},
+        resource_map,
+        tests::test_queues,
+        QueueFamilyType, Task, TaskContext, TaskResult,
+    };
+    use std::{
+        marker::PhantomData,
+        panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+        sync::{atomic::AtomicBool, Arc, Barrier},
+        thread,
+    };
+    use vulkano::{
+        buffer::{BufferCreateInfo, BufferUsage},
+        device::{DeviceOwned, Queue, QueueFlags},
+        format::Format,
+        image::{ImageCreateInfo, ImageLayout, ImageUsage},
+        memory::allocator::{AllocationCreateInfo, DeviceLayout},
+        swapchain::{Surface, SwapchainCreateInfo},
+        sync::{AccessFlags, PipelineStages},
+    };
+
+    const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+    const MIN_SWAPCHAIN_IMAGES: u32 = MAX_FRAMES_IN_FLIGHT + 1;
+
+    struct PanickingTask {
+        trigger: Arc<Trigger>,
+    }
+
+    impl Task for PanickingTask {
+        type World = ();
+
+        unsafe fn execute(
+            &self,
+            _cbf: &mut RecordingCommandBuffer<'_>,
+            _tcx: &mut TaskContext<'_>,
+            _world: &Self::World,
+        ) -> TaskResult {
+            if !self.trigger.is_armed() {
+                return Ok(());
+            }
+
+            resume_unwind(Box::new(OurPayload))
+        }
+    }
+
+    struct WaitingAndPanickingTask {
+        trigger: Arc<Trigger>,
+        barrier: Arc<Barrier>,
+    }
+
+    impl Task for WaitingAndPanickingTask {
+        type World = ();
+
+        unsafe fn execute(
+            &self,
+            _cbf: &mut RecordingCommandBuffer<'_>,
+            _tcx: &mut TaskContext<'_>,
+            _world: &Self::World,
+        ) -> TaskResult {
+            if !self.trigger.is_armed() {
+                return Ok(());
+            }
+
+            // The only way we can signal the spawned thread to start waiting on the global lock is
+            // in a task as it's the only callback we have after the task graph executor acquires
+            // the global lock guard and before our thread panics. Once our thread panics, the
+            // spawned thread will have been waiting on the lock, and so will lock it exclusively
+            // before our thread locks it exclusively.
+            self.barrier.wait();
+
+            // This is scuffed, yes, but we have no other option.
+            thread::sleep(Duration::from_millis(1));
+
+            resume_unwind(Box::new(OurPayload))
+        }
+    }
+
+    struct Trigger {
+        inner: AtomicBool,
+    }
+
+    impl Trigger {
+        fn new() -> Self {
+            Trigger {
+                inner: AtomicBool::new(false),
+            }
+        }
+
+        fn is_armed(&self) -> bool {
+            self.inner.load(Relaxed)
+        }
+
+        fn arm(&self) {
+            self.inner.store(true, Relaxed);
+        }
+
+        fn disarm(&self) {
+            self.inner.store(false, Relaxed);
+        }
+    }
+
+    struct OurPayload;
+
+    #[test]
+    fn acquisition_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate an acquisition failure by ensuring that tasks A and B are on the
+                // same queue. This way, there is only one submission, and as such no submissions
+                // get made since task B panics.
+                queues: &[graphics_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(0));
+            assert_eq!(flight.current_frame(), 0);
+            assert_eq!(flight.biased_complete_frame(), bias(0));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(resources.buffer(buffer_id).access(), BufferAccess::NONE);
+
+            assert_eq!(resources.image(image_id).access(), ImageAccess::NONE);
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.present_queue.is_empty());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(swapchain_state.access(), ImageAccess::NONE);
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(0));
+            assert!(flight.fences[1].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn submission_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate a submission failure by ensuring that tasks A and B are on different
+                // queues. This way, there have to be 2 submissions, and as such an unfinished
+                // submission since task B panics.
+                queues: &[graphics_queue, compute_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(0));
+            assert_eq!(flight.current_frame(), 0);
+            assert_eq!(flight.biased_complete_frame(), bias(0));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(1));
+            assert!(flight.fences[1].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn presentation_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let b_task = PhantomData;
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                queues: &[graphics_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        catch_our_unwind(|| unsafe {
+            // We simulate a presentation failure by panicking in `pre_present_notify` since it is
+            // called after executing tasks and before presentation.
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(1));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        catch_our_unwind(|| unsafe {
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(3));
+            assert_eq!(flight.current_frame(), 3);
+            assert_eq!(flight.biased_complete_frame(), bias(3));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn acquisition_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate an acquisition failure by ensuring that tasks A and B are on the
+                // same queue. This way, there is only one submission, and as such no submissions
+                // get made since task B panics.
+                queues: &[graphics_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.present_queue.is_empty());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(swapchain_state.access(), ImageAccess::NONE);
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn submission_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate a submission failure by ensuring that tasks A and B are on different
+                // queues. This way, there have to be 2 submissions, and as such an unfinished
+                // submission since task B panics.
+                queues: &[graphics_queue, compute_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn presentation_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let b_task = PhantomData;
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                queues: &[graphics_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        catch_our_unwind(|| unsafe {
+            // We simulate a presentation failure by panicking in `pre_present_notify` since it is
+            // called after executing tasks and before presentation.
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        catch_our_unwind(|| unsafe {
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_acquisition_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate an acquisition failure by ensuring that tasks A and B are on the
+                // same queue. This way, there is only one submission, and as such no submissions
+                // get made since task B panics.
+                queues: &[graphics_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        // On acquisition failure, we don't acquire an exclusive global lock guard, so we can wait
+        // on idle after executing the task graph.
+        resources.wait_idle().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(0));
+            assert_eq!(flight.current_frame(), 0);
+            assert_eq!(flight.biased_complete_frame(), bias(0));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(resources.buffer(buffer_id).access(), BufferAccess::NONE);
+
+            assert_eq!(resources.image(image_id).access(), ImageAccess::NONE);
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.present_queue.is_empty());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(swapchain_state.access(), ImageAccess::NONE);
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        resources.wait_idle().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(1));
+            assert!(flight.fences[1].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_submission_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let barrier = Arc::new(Barrier::new(2));
+        let b_task = WaitingAndPanickingTask {
+            trigger: trigger.clone(),
+            barrier: barrier.clone(),
+        };
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate a submission failure by ensuring that tasks A and B are on different
+                // queues. This way, there have to be 2 submissions, and as such an unfinished
+                // submission since task B panics.
+                queues: &[graphics_queue, compute_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        join_handle.join().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(0));
+            assert_eq!(flight.current_frame(), 0);
+            assert_eq!(flight.biased_complete_frame(), bias(0));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        let resources2 = resources.clone();
+        let join_handle = thread::spawn(move || {
+            barrier.wait();
+            resources2.wait_idle().unwrap();
+        });
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        join_handle.join().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(1));
+            assert!(flight.fences[1].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_presentation_failure() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let (buffer_id, image_id, swapchain_id) = create_resources(&resources);
+
+        let b_task = PhantomData;
+        let graph = create_task_graph(&resources, buffer_id, image_id, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                queues: &[graphics_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        catch_our_unwind(|| unsafe {
+            // We simulate a presentation failure by panicking in `pre_present_notify` since it is
+            // called after executing tasks and before presentation.
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                barrier.wait();
+
+                thread::sleep(Duration::from_millis(1));
+
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        join_handle.join().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(1));
+            assert_eq!(flight.current_frame(), 1);
+            assert_eq!(flight.biased_complete_frame(), bias(1));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        catch_our_unwind(|| unsafe {
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                barrier.wait();
+
+                thread::sleep(Duration::from_millis(1));
+
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        join_handle.join().unwrap();
+        {
+            let flight = resources.flight(flight_id);
+            assert_eq!(flight.biased_started_frame(), bias(3));
+            assert_eq!(flight.current_frame(), 3);
+            assert_eq!(flight.biased_complete_frame(), bias(3));
+            assert!(flight.fences[0].read().is_signaled().unwrap());
+
+            assert_eq!(
+                resources.buffer(buffer_id).access(),
+                BufferAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_READ,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            assert_eq!(
+                resources.image(image_id).access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::FRAGMENT_SHADER,
+                    access_mask: AccessFlags::SHADER_SAMPLED_READ,
+                    image_layout: ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_acquisition_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let b_task = PanickingTask {
+            trigger: trigger.clone(),
+        };
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate an acquisition failure by ensuring that tasks A and B are on the
+                // same queue. This way, there is only one submission, and as such no submissions
+                // get made since task B panics.
+                queues: &[graphics_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        // On acquisition failure, we don't acquire an exclusive global lock guard, so we can wait
+        // on idle after executing the task graph.
+        resources.wait_idle().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.present_queue.is_empty());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(swapchain_state.access(), ImageAccess::NONE);
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        resources.wait_idle().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_some());
+            assert!(swapchain_sync_state.current_acquire_fence.is_some());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_submission_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let trigger = Arc::new(Trigger::new());
+        let barrier = Arc::new(Barrier::new(2));
+        let b_task = WaitingAndPanickingTask {
+            trigger: trigger.clone(),
+            barrier: barrier.clone(),
+        };
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                // We simulate a submission failure by ensuring that tasks A and B are on different
+                // queues. This way, there have to be 2 submissions, and as such an unfinished
+                // submission since task B panics.
+                queues: &[graphics_queue, compute_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        join_handle.join().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+
+        trigger.disarm();
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        let resources2 = resources.clone();
+        let join_handle = thread::spawn(move || {
+            barrier.wait();
+            resources2.wait_idle().unwrap();
+        });
+        trigger.arm();
+        catch_our_unwind(|| unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) });
+        join_handle.join().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COMPUTE_SHADER,
+                    access_mask: AccessFlags::SHADER_STORAGE_WRITE,
+                    image_layout: ImageLayout::General,
+                    queue_family_index: compute_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn wait_idle_on_presentation_failure_with_pre_present_semaphore() {
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let Some(compute_queue) = get_compute_only_queue(&queues) else {
+            return;
+        };
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let b_task = PhantomData;
+        let graph = create_task_graph(&resources, Id::INVALID, Id::INVALID, swapchain_id, b_task);
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                queues: &[graphics_queue],
+                // We force a pre-present semaphore by presenting on a different queue than the
+                // preceding graphics work.
+                present_queue: Some(compute_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        catch_our_unwind(|| unsafe {
+            // We simulate a presentation failure by panicking in `pre_present_notify` since it is
+            // called after executing tasks and before presentation.
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                barrier.wait();
+
+                thread::sleep(Duration::from_millis(1));
+
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        join_handle.join().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+
+        let resources2 = resources.clone();
+        let barrier2 = barrier.clone();
+        let join_handle = thread::spawn(move || {
+            barrier2.wait();
+            resources2.wait_idle().unwrap();
+        });
+        catch_our_unwind(|| unsafe {
+            graph.execute(resource_map!(&graph).unwrap(), &(), || {
+                barrier.wait();
+
+                thread::sleep(Duration::from_millis(1));
+
+                resume_unwind(Box::new(OurPayload))
+            })
+        });
+        join_handle.join().unwrap();
+        {
+            let swapchain_state = resources.swapchain(swapchain_id);
+            // SAFETY: There are no other references.
+            let swapchain_sync_state = unsafe { swapchain_state.sync_state.get_mut_unchecked() };
+            assert!(swapchain_sync_state.current_acquire_semaphore.is_none());
+            assert!(swapchain_sync_state.current_acquire_fence.is_none());
+            assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
+            assert!(swapchain_sync_state.current_present_semaphore.is_none());
+            assert!(swapchain_sync_state.garbage_queue.is_empty());
+            assert!(swapchain_state.is_image_acquired());
+            assert_eq!(
+                swapchain_state.access(),
+                ImageAccess {
+                    stage_mask: PipelineStages::COLOR_ATTACHMENT_OUTPUT,
+                    access_mask: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    image_layout: ImageLayout::ColorAttachmentOptimal,
+                    queue_family_index: graphics_queue.queue_family_index(),
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn nonreentrant_functions() {
+        struct ReentrantTask {
+            graphics_queue: Arc<Queue>,
+            flight_id: Id<Flight>,
+            swapchain_id: Id<Swapchain>,
+        }
+
+        impl Task for ReentrantTask {
+            type World = ();
+
+            unsafe fn execute(
+                &self,
+                _cbf: &mut RecordingCommandBuffer<'_>,
+                tcx: &mut TaskContext<'_>,
+                _world: &Self::World,
+            ) -> TaskResult {
+                let graphics_queue = &self.graphics_queue;
+                let resources = tcx.resource_map.resources();
+                let flight_id = self.flight_id;
+                let swapchain_id = self.swapchain_id;
+
+                catch_unwind(AssertUnwindSafe(|| {
+                    resources.recreate_swapchain(swapchain_id, |crate_info| crate_info.clone())
+                }))
+                .unwrap_err();
+
+                catch_unwind(AssertUnwindSafe(|| {
+                    resources.remove_swapchain(swapchain_id)
+                }))
+                .unwrap_err();
+
+                catch_unwind(AssertUnwindSafe(|| resources.wait_idle())).unwrap_err();
+
+                let mut graph = TaskGraph::<()>::new(resources);
+
+                graph
+                    .create_task_node(
+                        "",
+                        QueueFamilyType::Graphics,
+                        ReentrantTask {
+                            graphics_queue: graphics_queue.clone(),
+                            flight_id,
+                            swapchain_id,
+                        },
+                    )
+                    .image_access(
+                        swapchain_id.current_image_id(),
+                        AccessTypes::COLOR_ATTACHMENT_WRITE,
+                        ImageLayoutType::Optimal,
+                    );
+
+                let graph = unsafe {
+                    graph.compile(&CompileInfo {
+                        queues: &[graphics_queue],
+                        present_queue: Some(graphics_queue),
+                        flight_id,
+                        ..Default::default()
+                    })
+                }
+                .unwrap();
+
+                catch_unwind(AssertUnwindSafe(|| {
+                    unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap()
+                }))
+                .unwrap_err();
+
+                Ok(())
+            }
+        }
+
+        let (resources, queues) = test_queues!(; khr_swapchain; ext_headless_surface);
+        let graphics_queue = get_graphics_queue(&queues).unwrap();
+        let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+
+        let swapchain_id = create_swapchain(&resources);
+
+        let mut graph = TaskGraph::<()>::new(&resources);
+
+        graph
+            .create_task_node(
+                "",
+                QueueFamilyType::Graphics,
+                ReentrantTask {
+                    graphics_queue: graphics_queue.clone(),
+                    flight_id,
+                    swapchain_id,
+                },
+            )
+            .image_access(
+                swapchain_id.current_image_id(),
+                AccessTypes::COLOR_ATTACHMENT_WRITE,
+                ImageLayoutType::Optimal,
+            );
+
+        let graph = unsafe {
+            graph.compile(&CompileInfo {
+                queues: &[graphics_queue],
+                present_queue: Some(graphics_queue),
+                flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        unsafe { graph.execute(resource_map!(&graph).unwrap(), &(), || {}) }.unwrap();
+    }
+
+    fn get_graphics_queue(queues: &[Arc<Queue>]) -> Option<&Arc<Queue>> {
+        let queue_family_properties = queues[0]
+            .device()
+            .physical_device()
+            .queue_family_properties();
+
+        queues.iter().find(|q| {
+            let queue_flags = queue_family_properties[q.queue_family_index() as usize].queue_flags;
+
+            queue_flags.contains(QueueFlags::GRAPHICS)
+        })
+    }
+
+    fn get_compute_only_queue(queues: &[Arc<Queue>]) -> Option<&Arc<Queue>> {
+        let queue_family_properties = queues[0]
+            .device()
+            .physical_device()
+            .queue_family_properties();
+
+        queues.iter().find(|q| {
+            let queue_flags = queue_family_properties[q.queue_family_index() as usize].queue_flags;
+
+            queue_flags.contains(QueueFlags::COMPUTE) && !queue_flags.contains(QueueFlags::GRAPHICS)
+        })
+    }
+
+    fn create_resources(resources: &Arc<Resources>) -> (Id<Buffer>, Id<Image>, Id<Swapchain>) {
+        let buffer_id = resources
+            .create_buffer(
+                &BufferCreateInfo {
+                    usage: BufferUsage::STORAGE_BUFFER,
+                    ..Default::default()
+                },
+                &AllocationCreateInfo::default(),
+                DeviceLayout::new_sized::<u32>(),
+            )
+            .unwrap();
+
+        let image_id = resources
+            .create_image(
+                &ImageCreateInfo {
+                    format: Format::R8G8B8A8_UNORM,
+                    extent: [100, 100, 1],
+                    usage: ImageUsage::SAMPLED | ImageUsage::STORAGE,
+                    ..Default::default()
+                },
+                &AllocationCreateInfo::default(),
+            )
+            .unwrap();
+
+        let swapchain_id = create_swapchain(resources);
+
+        (buffer_id, image_id, swapchain_id)
+    }
+
+    fn create_swapchain(resources: &Arc<Resources>) -> Id<Swapchain> {
+        let surface = Surface::headless(resources.device().instance(), None).unwrap();
+        let surface_capabilities = resources
+            .device()
+            .physical_device()
+            .surface_capabilities(&surface, &Default::default())
+            .unwrap();
+        let (image_format, _) = resources
+            .device()
+            .physical_device()
+            .surface_formats(&surface, &Default::default())
+            .unwrap()[0];
+
+        resources
+            .create_swapchain(
+                &surface,
+                &SwapchainCreateInfo {
+                    min_image_count: surface_capabilities
+                        .min_image_count
+                        .max(MIN_SWAPCHAIN_IMAGES),
+                    image_format,
+                    image_extent: [100, 100],
+                    image_usage: ImageUsage::STORAGE | ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    }
+
+    fn create_task_graph(
+        resources: &Arc<Resources>,
+        buffer_id: Id<Buffer>,
+        image_id: Id<Image>,
+        swapchain_id: Id<Swapchain>,
+        b_task: impl Task<World = ()>,
+    ) -> TaskGraph<()> {
+        let mut graph = TaskGraph::<()>::new(resources);
+
+        let mut a_node = graph.create_task_node("A", QueueFamilyType::Compute, PhantomData);
+
+        if buffer_id != Id::INVALID {
+            a_node.buffer_access(buffer_id, AccessTypes::COMPUTE_SHADER_STORAGE_WRITE);
+        }
+
+        if image_id != Id::INVALID {
+            a_node.image_access(
+                image_id,
+                AccessTypes::COMPUTE_SHADER_STORAGE_WRITE,
+                ImageLayoutType::Optimal,
+            );
+        }
+
+        a_node.image_access(
+            swapchain_id.current_image_id(),
+            AccessTypes::COMPUTE_SHADER_STORAGE_WRITE,
+            ImageLayoutType::Optimal,
+        );
+
+        let a_node_id = a_node.build();
+
+        let mut b_node = graph.create_task_node("B", QueueFamilyType::Graphics, b_task);
+
+        if buffer_id != Id::INVALID {
+            b_node.buffer_access(buffer_id, AccessTypes::FRAGMENT_SHADER_STORAGE_READ);
+        }
+
+        if image_id != Id::INVALID {
+            b_node.image_access(
+                image_id,
+                AccessTypes::FRAGMENT_SHADER_SAMPLED_READ,
+                ImageLayoutType::Optimal,
+            );
+        }
+
+        b_node.image_access(
+            swapchain_id.current_image_id(),
+            AccessTypes::COLOR_ATTACHMENT_WRITE,
+            ImageLayoutType::Optimal,
+        );
+
+        let b_node_id = b_node.build();
+
+        graph.add_edge(a_node_id, b_node_id).unwrap();
+
+        graph
+    }
+
+    #[track_caller]
+    fn catch_our_unwind(f: impl FnOnce() -> Result<(), ExecuteError>) {
+        catch_unwind(AssertUnwindSafe(f))
+            .unwrap_err()
+            .downcast::<OurPayload>()
+            .unwrap();
+    }
+
+    fn bias(x: u64) -> u64 {
+        u64::from(MAX_FRAMES_IN_FLIGHT) + x
+    }
+}
