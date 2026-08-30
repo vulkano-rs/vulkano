@@ -495,7 +495,6 @@ impl Swapchain {
     /// # Panics
     ///
     /// - Panics if [`try_recreate`] returns a [`ValidationError`].
-    /// - Panics if `create_info.usage` is empty.
     ///
     /// [`try_recreate`]: Self::try_recreate
     #[track_caller]
@@ -512,10 +511,6 @@ impl Swapchain {
     /// Creates a new swapchain from this one.
     ///
     /// Use this when a swapchain has become invalidated, such as due to window resizes.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.usage` is empty.
     pub fn try_recreate(
         self: &Arc<Self>,
         create_info: &SwapchainCreateInfo<'_>,

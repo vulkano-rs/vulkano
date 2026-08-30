@@ -1,6 +1,6 @@
 //! Synchronization state tracking of all resources.
 
-use self::state::{ReentrantRwLock, ReentrantRwLockReadGuard};
+use self::state::{GlobalLock, GlobalLockError, GlobalLockExclusiveGuard};
 use crate::{
     assert_unsafe_precondition,
     collector::{self, DeferredBatch},
@@ -11,8 +11,8 @@ use ash::vk;
 use concurrent_slotmap::{hyaline, SlotMap};
 use parking_lot::Mutex;
 use smallvec::SmallVec;
-pub(crate) use state::SwapchainSyncStage;
 pub use state::{BufferState, Flight, ImageState, SwapchainState};
+pub(crate) use state::{GlobalLockSharedGuard, SwapchainSyncStage};
 use std::{
     hash::Hash,
     mem,
@@ -46,7 +46,7 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 pub struct Resources {
     storage: Arc<ResourceStorage>,
     bindless_context: Option<BindlessContext>,
-    wait_idle_lock: ReentrantRwLock<()>,
+    global_lock: GlobalLock,
 }
 
 #[derive(Debug)]
@@ -184,7 +184,7 @@ impl Resources {
         Ok(Arc::new(Resources {
             storage,
             bindless_context,
-            wait_idle_lock: ReentrantRwLock::new(()),
+            global_lock: GlobalLock::new(),
         }))
     }
 
@@ -517,16 +517,20 @@ impl Resources {
         unsafe { id.parametrize() }
     }
 
-    /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
-    /// swapchain to the collection, panicking on a validation error. The old swapchain will be
-    /// cleaned up as soon as possible.
+    /// Creates a new swapchain from the swapchain corresponding to `id` and adds the new swapchain
+    /// to the collection, panicking on a validation error. The old swapchain will be cleaned up as
+    /// soon as possible.
     ///
     /// This is a shortcut for `try_recreate_swapchain().map_err(Validated::unwrap)`.
     ///
     /// # Panics
     ///
     /// - Panics if [`try_recreate_swapchain`] returns a [`ValidationError`].
-    /// - Panics if [`try_recreate_swapchain`] panics.
+    /// - Panics if called from within a task.
+    /// - Panics if a task graph using the swapchain is being executed on another thread.
+    /// - Panics if the swapchain has already been recreated or removed.
+    /// - Panics if the swapchain is being recreated on another thread.
+    /// - Panics if `f` panics.
     ///
     /// # Errors
     ///
@@ -545,26 +549,30 @@ impl Resources {
         }
     }
 
-    /// Calls [`Swapchain::recreate`] on the swapchain corresponding to `id` and adds the new
-    /// swapchain to the collection. The old swapchain will be cleaned up as soon as possible.
+    /// Creates a new swapchain from the swapchain corresponding to `id` and adds the new swapchain
+    /// to the collection. The old swapchain will be cleaned up as soon as possible.
     ///
     /// # Panics
     ///
-    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if called from within a task.
+    /// - Panics if a task graph using the swapchain is being executed on another thread.
     /// - Panics if the swapchain has already been recreated or removed.
+    /// - Panics if the swapchain is being recreated on another thread.
     /// - Panics if `f` panics.
-    /// - Panics if [`Swapchain::recreate`] panics.
     ///
     /// # Errors
     ///
-    /// - Returns an error when [`Swapchain::recreate`] returns an error.
+    /// - Returns an error when a swapchain image is still acquired.
+    /// - Returns an error when [`Swapchain::try_recreate`] returns an error.
     #[track_caller]
     pub fn try_recreate_swapchain(
         &self,
         id: Id<Swapchain>,
         f: impl for<'a> FnOnce(&SwapchainCreateInfo<'a>) -> SwapchainCreateInfo<'a>,
     ) -> Result<Id<Swapchain>, Validated<VulkanError>> {
-        let _wait_idle_lock_guard = self.lock_wait_idle();
+        let Ok(_global_lock_guard) = self.lock_global_shared() else {
+            panic!("a swapchain cannot be recreated from within a task");
+        };
 
         let guard = &self.storage.pin();
 
@@ -574,8 +582,10 @@ impl Resources {
             .try_recreate()
             .expect("failed to lock the swapchain for recreation");
 
+        unsafe { state.validate_recreate() }?;
+
         let swapchain = state.swapchain();
-        let (new_swapchain, new_images) = swapchain.recreate(&f(&swapchain.create_info()))?;
+        let (new_swapchain, new_images) = swapchain.try_recreate(&f(&swapchain.create_info()))?;
 
         let new_state = unsafe { SwapchainState::with_old_state(new_swapchain, new_images, state) };
 
@@ -654,8 +664,8 @@ impl Resources {
         };
     }
 
-    /// Removes the swapchain corresponding to `id` from the collection, panicking on an invalid
-    /// slot error.
+    /// Removes the swapchain corresponding to `id` from the collection, panicking on a validation
+    /// error or an invalid slot error.
     ///
     /// Note that if there are any pending present operations then the swapchain cannot be
     /// collected until it's certain that the presentation engine is no longer using the swapchain
@@ -666,12 +676,15 @@ impl Resources {
     ///
     /// # Panics
     ///
-    /// - Panics if [`try_remove_swapchain`] returns an [`InvalidSlotError`].
-    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if [`try_remove_swapchain`] returns a [`ValidationError`] or an
+    ///   [`InvalidSlotError`].
+    /// - Panics if a task graph using the swapchain is being executed on another thread.
     /// - Panics if the swapchain has already been recreated or removed.
+    /// - Panics if the swapchain is being recreated on another thread.
     ///
     /// [`wait_idle`]: Self::wait_idle
     /// [`try_remove_swapchain`]: Self::try_remove_swapchain
+    /// [`ValidationError`]: vulkano::ValidationError
     #[track_caller]
     pub fn remove_swapchain(&self, id: Id<Swapchain>) -> Ref<'_, SwapchainState> {
         self.try_remove_swapchain(id).unwrap()
@@ -686,13 +699,17 @@ impl Resources {
     ///
     /// # Panics
     ///
-    /// - Panics if a task graph using the swapchain is being executed.
+    /// - Panics if called from within a task.
+    /// - Panics if a task graph using the swapchain is being executed on another thread.
     /// - Panics if the swapchain has already been recreated or removed.
+    /// - Panics if the swapchain is being recreated on another thread.
     ///
     /// [`wait_idle`]: Self::wait_idle
     #[track_caller]
     pub fn try_remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
-        let _wait_idle_lock_guard = self.lock_wait_idle();
+        let Ok(_global_lock_guard) = self.lock_global_shared() else {
+            panic!("a swapchain cannot be removed from within a task");
+        };
 
         let guard = self.storage.pin();
 
@@ -876,10 +893,14 @@ impl Resources {
     /// additionally collects outstanding garbage.
     #[track_caller]
     pub fn wait_idle(&self) -> Result<(), VulkanError> {
-        let Ok(_lock_guard) = self.wait_idle_lock.write() else {
+        let Ok(_global_lock_guard) = self.lock_global_exclusive() else {
             panic!("`Resources::wait_idle` cannot be called from within a task");
         };
 
+        unsafe { self.wait_idle_inner() }
+    }
+
+    pub(crate) unsafe fn wait_idle_inner(&self) -> Result<(), VulkanError> {
         let guard = &self.storage.pin();
         let mut frames = SmallVec::<[_; 8]>::new();
 
@@ -917,8 +938,14 @@ impl Resources {
         Ok(())
     }
 
-    pub(crate) fn lock_wait_idle(&self) -> ReentrantRwLockReadGuard<'_, ()> {
-        self.wait_idle_lock.read()
+    pub(crate) fn lock_global_shared(&self) -> Result<GlobalLockSharedGuard<'_>, GlobalLockError> {
+        self.global_lock.lock_shared()
+    }
+
+    pub(crate) fn lock_global_exclusive(
+        &self,
+    ) -> Result<GlobalLockExclusiveGuard<'_>, GlobalLockError> {
+        self.global_lock.lock_exclusive()
     }
 
     pub(crate) fn pin(&self) -> hyaline::Guard<'_> {
