@@ -1124,6 +1124,9 @@ mod tests {
                 $($instance_extension: true,)*
                 ..Default::default()
             };
+            if !library.supported_extensions().contains(&instance_extensions) {
+                return;
+            }
             let Ok(instance) = vulkano::instance::Instance::new(
                 &library,
                 &vulkano::instance::InstanceCreateInfo {
