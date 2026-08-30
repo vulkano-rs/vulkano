@@ -1518,7 +1518,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -1562,7 +1561,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
@@ -1877,7 +1875,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -1896,7 +1893,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
@@ -2117,7 +2113,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_none());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -2136,7 +2131,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_none());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
@@ -2367,7 +2361,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -2412,7 +2405,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
@@ -2769,7 +2761,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -2789,7 +2780,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_some());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert_eq!(swapchain_sync_state.present_queue.len(), 1);
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
@@ -3052,7 +3042,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_none());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(swapchain_state.access(), ImageAccess::NONE);
@@ -3072,7 +3061,6 @@ mod tests {
             assert!(swapchain_sync_state.current_acquire_fence.is_none());
             assert!(swapchain_sync_state.current_pre_present_semaphore.is_none());
             assert!(swapchain_sync_state.current_present_semaphore.is_none());
-            assert!(swapchain_sync_state.present_queue.is_empty());
             assert!(swapchain_sync_state.garbage_queue.is_empty());
             assert!(swapchain_state.is_image_acquired());
             assert_eq!(
