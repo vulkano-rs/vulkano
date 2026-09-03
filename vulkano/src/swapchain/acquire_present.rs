@@ -505,9 +505,10 @@ impl PresentInfo {
             let &SwapchainPresentInfo {
                 swapchain: _,
                 image_index: _,
-                present_id: _,
-                present_mode,
                 present_region: _,
+                present_id: _,
+                fence: _,
+                present_mode,
                 _ne: _,
             } = swapchain_info;
 
@@ -558,14 +559,16 @@ impl PresentInfo {
             wait_semaphores_vk,
             swapchains_vk,
             image_indices_vk,
-            present_ids_vk: _,
-            present_modes_vk: _,
             present_regions_vk: _,
+            present_ids_vk: _,
+            fences_vk: _,
+            present_modes_vk: _,
         } = fields1_vk;
         let PresentInfoExtensionsVk {
-            present_id_vk,
-            present_mode_vk,
             present_regions_vk,
+            present_id_vk,
+            present_fence_vk,
+            present_mode_vk,
         } = extensions_vk;
 
         let mut val_vk = vk::PresentInfoKHR::default()
@@ -574,15 +577,19 @@ impl PresentInfo {
             .image_indices(image_indices_vk)
             .results(results_vk);
 
+        if let Some(next) = present_regions_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
         if let Some(next) = present_id_vk {
             val_vk = val_vk.push_next(next);
         }
 
-        if let Some(next) = present_mode_vk {
+        if let Some(next) = present_fence_vk {
             val_vk = val_vk.push_next(next);
         }
 
-        if let Some(next) = present_regions_vk {
+        if let Some(next) = present_mode_vk {
             val_vk = val_vk.push_next(next);
         }
 
@@ -601,41 +608,48 @@ impl PresentInfo {
             wait_semaphores_vk: _,
             swapchains_vk: _,
             image_indices_vk: _,
-            present_ids_vk,
-            present_modes_vk,
             present_regions_vk,
+            present_ids_vk,
+            fences_vk,
+            present_modes_vk,
         } = fields1_vk;
 
-        let mut has_present_ids = false;
+        let mut has_fences = false;
         let mut has_present_modes = false;
         let mut has_present_regions = false;
+        let mut has_present_ids = false;
 
         for swapchain_info in &self.swapchain_infos {
             let &SwapchainPresentInfo {
                 swapchain: _,
                 image_index: _,
-                present_id,
-                present_mode,
                 ref present_region,
+                present_id,
+                ref fence,
+                present_mode,
                 _ne: _,
             } = swapchain_info;
 
-            has_present_ids |= present_id.is_some();
-            has_present_modes |= present_mode.is_some();
             has_present_regions |= !present_region.is_empty();
+            has_present_ids |= present_id.is_some();
+            has_fences |= fence.is_some();
+            has_present_modes |= present_mode.is_some();
         }
 
-        let present_id_vk =
-            has_present_ids.then(|| vk::PresentIdKHR::default().present_ids(present_ids_vk));
-        let present_mode_vk = has_present_modes
-            .then(|| vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk));
         let present_regions_vk = has_present_regions
             .then(|| vk::PresentRegionsKHR::default().regions(present_regions_vk));
+        let present_id_vk =
+            has_present_ids.then(|| vk::PresentIdKHR::default().present_ids(present_ids_vk));
+        let present_fence_vk =
+            has_fences.then(|| vk::SwapchainPresentFenceInfoEXT::default().fences(fences_vk));
+        let present_mode_vk = has_present_modes
+            .then(|| vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk));
 
         PresentInfoExtensionsVk {
-            present_id_vk,
-            present_mode_vk,
             present_regions_vk,
+            present_id_vk,
+            present_fence_vk,
+            present_mode_vk,
         }
     }
 
@@ -659,17 +673,19 @@ impl PresentInfo {
 
         let mut swapchains_vk = SmallVec::with_capacity(swapchain_infos.len());
         let mut image_indices_vk = SmallVec::with_capacity(swapchain_infos.len());
-        let mut present_ids_vk = SmallVec::with_capacity(swapchain_infos.len());
-        let mut present_modes_vk = SmallVec::with_capacity(swapchain_infos.len());
         let mut present_regions_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_ids_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut fences_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_modes_vk = SmallVec::with_capacity(swapchain_infos.len());
 
         for (swapchain_info, fields1_vk) in swapchain_infos.iter().zip(swapchain_infos_fields1_vk) {
             let &SwapchainPresentInfo {
                 ref swapchain,
                 image_index,
-                present_id,
-                present_mode,
                 present_region: _,
+                present_id,
+                ref fence,
+                present_mode,
                 _ne: _,
             } = swapchain_info;
 
@@ -679,19 +695,21 @@ impl PresentInfo {
 
             swapchains_vk.push(swapchain.handle());
             image_indices_vk.push(image_index);
-            present_ids_vk.push(present_id.map_or(0, u64::from));
-            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
             present_regions_vk
                 .push(vk::PresentRegionKHR::default().rectangles(present_region_rectangles_vk));
+            present_ids_vk.push(present_id.map_or(0, u64::from));
+            fences_vk.push(fence.as_ref().map_or_else(Default::default, |f| f.handle()));
+            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
         }
 
         PresentInfoFields1Vk {
             wait_semaphores_vk,
             swapchains_vk,
             image_indices_vk,
-            present_ids_vk,
-            present_modes_vk,
             present_regions_vk,
+            present_ids_vk,
+            fences_vk,
+            present_modes_vk,
         }
     }
 
@@ -709,18 +727,20 @@ impl PresentInfo {
 }
 
 pub(crate) struct PresentInfoExtensionsVk<'a> {
-    pub(crate) present_id_vk: Option<vk::PresentIdKHR<'a>>,
-    pub(crate) present_mode_vk: Option<vk::SwapchainPresentModeInfoEXT<'a>>,
     pub(crate) present_regions_vk: Option<vk::PresentRegionsKHR<'a>>,
+    pub(crate) present_id_vk: Option<vk::PresentIdKHR<'a>>,
+    pub(crate) present_fence_vk: Option<vk::SwapchainPresentFenceInfoEXT<'a>>,
+    pub(crate) present_mode_vk: Option<vk::SwapchainPresentModeInfoEXT<'a>>,
 }
 
 pub(crate) struct PresentInfoFields1Vk<'a> {
     pub(crate) wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
     pub(crate) swapchains_vk: SmallVec<[vk::SwapchainKHR; 4]>,
     pub(crate) image_indices_vk: SmallVec<[u32; 4]>,
-    pub(crate) present_ids_vk: SmallVec<[u64; 4]>,
-    pub(crate) present_modes_vk: SmallVec<[vk::PresentModeKHR; 4]>,
     pub(crate) present_regions_vk: SmallVec<[vk::PresentRegionKHR<'a>; 4]>,
+    pub(crate) present_ids_vk: SmallVec<[u64; 4]>,
+    pub(crate) fences_vk: SmallVec<[vk::Fence; 4]>,
+    pub(crate) present_modes_vk: SmallVec<[vk::PresentModeKHR; 4]>,
 }
 
 pub(crate) struct PresentInfoFields2Vk {
@@ -743,37 +763,6 @@ pub struct SwapchainPresentInfo {
     /// There is no default value.
     pub image_index: u32,
 
-    /* TODO: enable
-    /// The fence to signal when the presentation has completed.
-    ///
-    /// If this is not `None`, then the
-    /// [`ext_swapchain_maintenance1`](crate::device::DeviceExtensions::ext_swapchain_maintenance1)
-    /// extension must be enabled on the device.
-    ///
-    /// The default value is `None`.
-    pub fence: Option<Arc<Fence>>,
-     */
-    /// An id used to identify this present operation.
-    ///
-    /// If `present_id` is `Some`, the [`present_id`](crate::device::DeviceFeatures::present_id)
-    /// feature must be enabled on the device. The id must be greater than any id previously
-    /// used for `swapchain`. If a swapchain is recreated, this resets.
-    ///
-    /// The default value is `None`.
-    pub present_id: Option<NonZero<u64>>,
-
-    /// The new present mode to use for presenting. This mode will be used for the current
-    /// present, and any future presents where this value is `None`.
-    ///
-    /// If this is not `None`, then the provided present mode must be one of the present modes
-    /// specified with [`present_modes`] when creating the
-    /// swapchain.
-    ///
-    /// The default value is `None`.
-    ///
-    /// [`present_modes`]: crate::swapchain::SwapchainCreateInfo::present_modes
-    pub present_mode: Option<PresentMode>,
-
     /// An optimization hint to the implementation, that only some parts of the swapchain image are
     /// going to be updated by the present operation.
     ///
@@ -789,6 +778,36 @@ pub struct SwapchainPresentInfo {
     /// The default value is empty.
     pub present_region: Vec<RectangleLayer>,
 
+    /// An id used to identify this present operation.
+    ///
+    /// If `present_id` is `Some`, the [`present_id`](crate::device::DeviceFeatures::present_id)
+    /// feature must be enabled on the device. The id must be greater than any id previously
+    /// used for `swapchain`. If a swapchain is recreated, this resets.
+    ///
+    /// The default value is `None`.
+    pub present_id: Option<NonZero<u64>>,
+
+    /// The fence to signal when the presentation has completed.
+    ///
+    /// If this is not `None`, then the
+    /// [`ext_swapchain_maintenance1`](crate::device::DeviceExtensions::ext_swapchain_maintenance1)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is `None`.
+    pub fence: Option<Arc<Fence>>,
+
+    /// The new present mode to use for presenting. This mode will be used for the current
+    /// present, and any future presents where this value is `None`.
+    ///
+    /// If this is not `None`, then the provided present mode must be one of the present modes
+    /// specified with [`present_modes`] when creating the
+    /// swapchain.
+    ///
+    /// The default value is `None`.
+    ///
+    /// [`present_modes`]: crate::swapchain::SwapchainCreateInfo::present_modes
+    pub present_mode: Option<PresentMode>,
+
     pub _ne: crate::NonExhaustive<'static>,
 }
 
@@ -799,9 +818,10 @@ impl SwapchainPresentInfo {
         Self {
             swapchain,
             image_index,
-            present_id: None,
-            present_mode: None,
             present_region: Vec::new(),
+            present_id: None,
+            fence: None,
+            present_mode: None,
             _ne: crate::NE,
         }
     }
@@ -816,9 +836,10 @@ impl SwapchainPresentInfo {
         let &Self {
             ref swapchain,
             image_index,
-            present_id,
-            present_mode,
             ref present_region,
+            present_id,
+            ref fence,
+            present_mode,
             _ne: _,
         } = self;
 
@@ -842,16 +863,6 @@ impl SwapchainPresentInfo {
                 )])]),
                 vuids: &["VUID-VkPresentInfoKHR-pNext-06235"],
             }));
-        }
-
-        if let Some(present_mode) = present_mode {
-            if !swapchain.present_modes().contains(&present_mode) {
-                return Err(Box::new(ValidationError {
-                    problem: "`swapchain.present_modes()` does not contain `present_mode`".into(),
-                    vuids: &["VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761"],
-                    ..Default::default()
-                }));
-            }
         }
 
         if !present_region.is_empty() && !device.enabled_extensions().khr_incremental_present {
@@ -907,6 +918,38 @@ impl SwapchainPresentInfo {
                     )
                     .into(),
                     vuids: &["VUID-VkRectLayerKHR-layer-01262"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if fence.is_some() && !device.enabled_features().swapchain_maintenance1 {
+            return Err(Box::new(ValidationError {
+                context: "fence".into(),
+                problem: "is `Some`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "swapchain_maintenance1",
+                )])]),
+                vuids: &["VUID-VkPresentInfoKHR-swapchainMaintenance1-10158"],
+            }));
+        }
+
+        if let Some(present_mode) = present_mode {
+            if !device.enabled_features().swapchain_maintenance1 {
+                return Err(Box::new(ValidationError {
+                    context: "present_mode".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "swapchain_maintenance1",
+                    )])]),
+                    vuids: &["VUID-VkPresentInfoKHR-swapchainMaintenance1-10158"],
+                }));
+            }
+
+            if !swapchain.present_modes().contains(&present_mode) {
+                return Err(Box::new(ValidationError {
+                    problem: "`swapchain.present_modes()` does not contain `present_mode`".into(),
+                    vuids: &["VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761"],
                     ..Default::default()
                 }));
             }
@@ -1157,8 +1200,9 @@ where
                     let &SwapchainPresentInfo {
                         ref swapchain,
                         image_index: _,
-                        present_id,
                         present_region: _,
+                        present_id,
+                        fence: _,
                         present_mode: _,
                         _ne: _,
                     } = swapchain_info;

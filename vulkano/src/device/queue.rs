@@ -597,9 +597,10 @@ impl<'a> QueueGuard<'a> {
             let SwapchainPresentInfo {
                 swapchain,
                 image_index: _,
-                present_id: _,
-                present_mode: _,
                 present_region: _,
+                present_id: _,
+                fence: _,
+                present_mode: _,
                 _ne: _,
             } = swapchain_info;
 

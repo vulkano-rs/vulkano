@@ -8,22 +8,15 @@ use crate::{
     command_buffer::{CommandBufferState, RecordingCommandBuffer},
     linear_map::LinearMap,
     resource::{
-        BufferAccess, BufferState, Flight, ImageAccess, ImageState, Resources, SwapchainState,
-        SwapchainSyncStage,
+        BufferAccess, BufferState, Flight, GlobalLockSharedGuard, ImageAccess, ImageState,
+        Resources, SwapchainState, SwapchainSyncStage,
     },
     ClearValues, Id, InvalidSlotError, ObjectType, TaskContext, TaskError,
 };
 use ash::vk;
 use concurrent_slotmap::hyaline;
 use smallvec::{smallvec, SmallVec};
-use std::{
-    error::Error,
-    fmt, iter,
-    mem::{self, ManuallyDrop},
-    ops::Range,
-    ptr,
-    sync::Arc,
-};
+use std::{error::Error, fmt, iter, mem, ops::Range, ptr, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferMemory},
     command_buffer as raw,
@@ -64,6 +57,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     /// - Panics if another thread is already executing a task graph using any of the swapchains
     ///   used by the task graph.
     /// - Panics if any swapchain used by the task graph has already been recreated or removed.
+    /// - Panics if any swapchain used by the task graph is being recreated on another thread.
     /// - Panics if the oldest frame of the flight wasn't [waited] on.
     ///
     /// [`try_execute`]: Self::try_execute
@@ -97,6 +91,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     /// - Panics if another thread is already executing a task graph using any of the swapchains
     ///   used by the task graph.
     /// - Panics if any swapchain used by the task graph has already been recreated or removed.
+    /// - Panics if any swapchain used by the task graph is being recreated on another thread.
     /// - Panics if the oldest frame of the flight wasn't [waited] on.
     ///
     /// [waited]: crate::resource::Flight::wait
@@ -113,7 +108,10 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         ));
         assert!(resource_map.is_exhaustive());
 
-        let _wait_idle_lock_guard = resource_map.physical_resources.lock_wait_idle();
+        let Ok(global_lock_guard) = resource_map.physical_resources.lock_global_shared() else {
+            panic!("a task graph cannot be executed from within a task");
+        };
+        let mut global_lock_guard = Some(global_lock_guard);
 
         let flight_id = self.flight_id;
 
@@ -122,11 +120,11 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             .try_flight_protected(flight_id, &resource_map.guard)
             .expect("invalid flight ID");
 
-        let _flight_lock_guard = flight.try_lock().unwrap_or_else(|| {
+        let Some(_flight_lock_guard) = flight.try_lock() else {
             panic!(
                 "another thread is already executing a task graph using the flight {flight_id:?}",
             );
-        });
+        };
 
         assert!(
             flight.is_oldest_frame_complete(),
@@ -152,12 +150,14 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         unsafe { flight.start_next_frame() };
 
+        let mut deferred_batch = Some(resource_map.resources().create_deferred_batch());
         let mut state_guard = StateGuard {
             executable: self,
             resource_map: &resource_map,
+            global_lock_guard: &mut global_lock_guard,
             flight,
             current_fence: &mut current_fence,
-            deferred_batch: Some(resource_map.resources().create_deferred_batch()),
+            deferred_batch: &mut deferred_batch,
             submission_count: 0,
         };
         let deferreds = state_guard.deferred_batch.as_mut().unwrap().deferreds_mut();
@@ -180,24 +180,38 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             )
         }?;
 
-        let mut state_guard = ManuallyDrop::new(state_guard);
-
         self.last_frame.set(Some(flight.current_frame()));
 
         unsafe { flight.next_frame() };
 
         pre_present_notify();
 
-        let mut deferred_batch = state_guard.deferred_batch.take().unwrap();
+        if let Err(err) = unsafe { self.present_images_khr(&resource_map) } {
+            if matches!(err, Validated::Error(ExecuteError::Swapchain { error, .. }) if !matches!(
+                error,
+                VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory,
+            )) {
+                // Any `vkQueuePresentKHR` error code except `VK_ERROR_OUT_OF_HOST_MEMORY` and
+                // `VK_ERROR_OUT_OF_DEVICE_MEMORY` means that the semaphore wait operation was
+                // executed, so we don't have to handle the failure. Otherwise, either one of those
+                // two errors or another variant of `ExecuteError` is returned and the state guard
+                // runs, which ensures that our swapchain state stays intact.
+                mem::forget(state_guard);
+            }
 
-        let res = unsafe { self.present_images_khr(&resource_map, &mut deferred_batch) };
+            return Err(err);
+        }
+
+        mem::forget(state_guard);
 
         unsafe { self.update_resource_state(&resource_map, &self.last_accesses) };
+
+        let deferred_batch = deferred_batch.take().unwrap();
 
         // SAFETY: We only defer the destruction of objects that are frame-local.
         unsafe { deferred_batch.enqueue_with_flights(iter::once(self.flight_id)) };
 
-        res
+        Ok(())
     }
 
     #[track_caller]
@@ -248,7 +262,9 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 continue;
             }
 
-            if let Err(error) = unsafe { swapchain_state.acquire_next_image() } {
+            if let Err(error) =
+                unsafe { swapchain_state.acquire_next_image(self.use_swapchain_maintenance1) }
+            {
                 return Err(Validated::Error(ExecuteError::Swapchain {
                     swapchain_id,
                     error,
@@ -636,11 +652,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         Ok(())
     }
 
-    unsafe fn present_images_khr(
-        &self,
-        resource_map: &ResourceMap<'_>,
-        deferred_batch: &mut DeferredBatch<'_>,
-    ) -> Result {
+    unsafe fn present_images_khr(&self, resource_map: &ResourceMap<'_>) -> Result {
         let Some(present_queue) = &self.present_queue else {
             return Ok(());
         };
@@ -650,36 +662,57 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         }
 
         let swapchain_count = self.swapchains.len();
-        let mut semaphores = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
-        let mut swapchains = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut semaphores_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut swapchains_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
         let mut image_indices = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
-        let mut results = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut results_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
+        let mut fences_vk = SmallVec::<[_; 1]>::with_capacity(swapchain_count);
 
         for &swapchain_id in &self.swapchains {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
             let semaphore_vk = unsafe { swapchain_state.current_present_semaphore() }.unwrap();
-            semaphores.push(semaphore_vk);
-            swapchains.push(swapchain_state.swapchain().handle());
+            semaphores_vk.push(semaphore_vk);
+            swapchains_vk.push(swapchain_state.swapchain().handle());
             image_indices.push(swapchain_state.current_image_index().unwrap());
-            results.push(vk::Result::SUCCESS);
+            results_vk.push(vk::Result::SUCCESS);
+
+            if self.use_swapchain_maintenance1 {
+                let fence_vk = unsafe { swapchain_state.init_present_fence() }
+                    .map_err(ExecuteError::VulkanError)?;
+                fences_vk.push(fence_vk);
+            }
         }
 
-        let present_info = vk::PresentInfoKHR::default()
-            .wait_semaphores(&semaphores)
-            .swapchains(&swapchains)
+        let mut present_info_vk = vk::PresentInfoKHR::default()
+            .wait_semaphores(&semaphores_vk)
+            .swapchains(&swapchains_vk)
             .image_indices(&image_indices)
-            .results(&mut results);
+            .results(&mut results_vk);
+
+        let mut fence_info_vk = self
+            .use_swapchain_maintenance1
+            .then(|| vk::SwapchainPresentFenceInfoEXT::default().fences(&fences_vk));
+
+        if let Some(fence_info_vk) = fence_info_vk.as_mut() {
+            present_info_vk = present_info_vk.push_next(fence_info_vk);
+        }
 
         let fns = self.device().fns();
         let queue_present_khr = fns.khr_swapchain.queue_present_khr;
-        let _ = unsafe { queue_present_khr(present_queue.handle(), &present_info) };
+        let _ = unsafe { queue_present_khr(present_queue.handle(), &present_info_vk) };
 
         let mut res = Ok(());
 
-        for (&result, &swapchain_id) in results.iter().zip(&self.swapchains) {
+        for (&result, &swapchain_id) in results_vk.iter().zip(&self.swapchains) {
             let swapchain_state = unsafe { resource_map.swapchain_unchecked(swapchain_id) };
 
-            unsafe { swapchain_state.handle_presentation(result, deferred_batch) };
+            // In case of these error codes, the semaphore wait operation is not executed.
+            if !matches!(
+                result,
+                vk::Result::ERROR_OUT_OF_HOST_MEMORY | vk::Result::ERROR_OUT_OF_DEVICE_MEMORY,
+            ) {
+                unsafe { swapchain_state.handle_presentation() };
+            }
 
             // TODO: Could there be a use case for keeping the old image contents?
             unsafe { swapchain_state.set_access(ImageAccess::NONE) };
@@ -687,15 +720,15 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
             if !matches!(result, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR) {
                 // Return the first error for consistency with the acquisition logic.
                 if res.is_ok() {
-                    res = Err(ExecuteError::Swapchain {
+                    res = Err(Validated::Error(ExecuteError::Swapchain {
                         swapchain_id,
                         error: result.into(),
-                    });
+                    }));
                 }
             }
         }
 
-        res.map_err(Validated::Error)
+        res
     }
 
     unsafe fn update_resource_state(
@@ -1090,9 +1123,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
     fn wait_acquire(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
 
-        // The acquire semaphore isn't set if an image index has already been acquired but not
-        // presented in the previous task graph execution and the semaphore has already been waited
-        // on.
+        // The acquire semaphore isn't set if an image index has already been acquired but not used
+        // in a previous task graph execution and the semaphore has already been waited on.
         let Some(semaphore_vk) = (unsafe { swapchain_state.current_acquire_semaphore() }) else {
             return;
         };
@@ -1709,9 +1741,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
     fn wait_acquire(&mut self, swapchain_id: Id<Swapchain>, stage_mask: PipelineStages) {
         let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
 
-        // The acquire semaphore isn't set if an image index has already been acquired but not
-        // presented in the previous task graph execution and the semaphore has already been waited
-        // on.
+        // The acquire semaphore isn't set if an image index has already been acquired but not used
+        // in a previous task graph execution and the semaphore has already been waited on.
         let Some(semaphore_vk) = (unsafe { swapchain_state.current_acquire_semaphore() }) else {
             return;
         };
@@ -2293,51 +2324,63 @@ fn convert_access_mask(mut access_mask: AccessFlags) -> vk::AccessFlags {
     access_mask.into()
 }
 
-struct StateGuard<'a, W: ?Sized + 'static> {
+struct StateGuard<'a, 'b, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
+    global_lock_guard: &'a mut Option<GlobalLockSharedGuard<'b>>,
     flight: &'a Flight,
     current_fence: &'a mut Fence,
-    deferred_batch: Option<DeferredBatch<'a>>,
+    deferred_batch: &'a mut Option<DeferredBatch<'b>>,
     submission_count: usize,
 }
 
-impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
+impl<W: ?Sized + 'static> Drop for StateGuard<'_, '_, W> {
     #[cold]
     fn drop(&mut self) {
-        // Make sure that the started frame cannot outrun the current frame.
-        unsafe { self.flight.undo_start_next_frame() };
+        let resources = self.resource_map.resources();
+        let device = resources.device();
 
-        let device = self.executable.device();
+        let has_unfinished_submissions = self.submission_count < self.executable.submissions.len();
 
-        // SAFETY: The parameters are valid.
-        match unsafe {
-            Fence::new_unchecked(
-                device,
-                &FenceCreateInfo {
-                    flags: FenceCreateFlags::SIGNALED,
-                    ..Default::default()
-                },
-            )
-        } {
-            Ok(new_fence) => {
-                *self.current_fence = new_fence;
-            }
-            Err(err) => {
-                // Device loss is already a form of poisoning built into Vulkan. There's no invalid
-                // state that can be observed by design.
-                if err == VulkanError::DeviceLost {
-                    return;
+        if has_unfinished_submissions {
+            // Make sure that the started frame cannot outrun the current frame.
+            unsafe { self.flight.undo_start_next_frame() };
+        }
+
+        // If at least one submission failed, the fence was never submitted, so it's not in use.
+        // Since it's still unsignaled, we have to recreate it.
+        if has_unfinished_submissions {
+            // SAFETY: The parameters are valid.
+            match unsafe {
+                Fence::new_unchecked(
+                    device,
+                    &FenceCreateInfo {
+                        flags: FenceCreateFlags::SIGNALED,
+                        ..Default::default()
+                    },
+                )
+            } {
+                Ok(new_fence) => {
+                    *self.current_fence = new_fence;
                 }
+                Err(err) => {
+                    // Device loss is already a form of poisoning built into Vulkan. There's no
+                    // invalid state that can be observed by design.
+                    if err == VulkanError::DeviceLost {
+                        return;
+                    }
 
-                eprintln!(
-                    "failed to recreate the current fence after failed execution rendering \
-                    recovery impossible: {err}; aborting",
-                );
-                std::process::abort();
+                    eprintln!(
+                        "failed to recreate the current fence after failed execution rendering \
+                        recovery impossible: {err}; aborting",
+                    );
+                    std::process::abort();
+                }
             }
         }
 
+        // If no submissions succeeded, the only thing that succeeded was acquiring swapchain
+        // images. We keep those acquired for the next task graph execution.
         if self.submission_count == 0 {
             let deferred_batch = self.deferred_batch.take().unwrap();
 
@@ -2348,49 +2391,73 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             return;
         }
 
-        let submissions = &self.executable.submissions;
+        // At this point, we have to enter an exclusive critical section of the global lock because
+        // of the following `wait_idle_inner` call. But first, we have to exit our shared section.
+        // Any other option is out of the question: we can't upgrade the shared guard to an
+        // exclusive guard because that would either be mutual exclusion rendering multi-threading
+        // pointless or lead to deadlocks.
+        //
+        // Note that this is only sound because our resources are still locked between leaving the
+        // shared section and entering the exclusive section. This prevents another thread from
+        // executing a task graph that uses any of our resources (just as if our thread was still
+        // executing our task graph) and prevents another thread from recreating or removing any of
+        // our swapchains. If the aforementioned were allowed, another thread would see our
+        // resources in an invalid state because we haven't updated their state yet. In order to do
+        // so, we must first wait for device idle. One thing the shared section protects against is
+        // a device wait idle from another thread sneaking in between 2 submits of ours, which
+        // would be UB because semaphores and fences have to be in the unsignaled state when
+        // submitting. That's fine, however, since we are done with submissions, and we need to do
+        // a device wait idle ourselves. The other thing the shared section protects against is
+        // that a device wait idle, by virtue of being inside an exclusive section, can mutably
+        // access swapchain state. This too is fine, however, since we don't hold any references to
+        // any swapchain state at this point. We must only access swapchain state in a critical
+        // section of the global lock.
+        let _ = self.global_lock_guard.take().unwrap();
+        let _global_lock_guard = resources.lock_global_exclusive();
 
         // We must make sure that invalid state cannot be observed, because if at least one
         // submission succeeded while one failed, that means that there are pending semaphore
-        // signal operations.
-        for submission in &submissions[0..self.submission_count] {
-            if let Err(err) = submission.queue.with(|mut guard| guard.wait_idle()) {
-                if err == VulkanError::DeviceLost {
-                    return;
-                }
-
-                eprintln!(
-                    "failed to wait on queue idle after partly failed submissions rendering \
-                    recovery impossible: {err}; aborting",
-                );
-                std::process::abort();
+        // signal operations. And if all submissions succeeded, presenting failed.
+        //
+        // SAFETY: We have locked the global lock exclusively above.
+        if let Err(err) = unsafe { resources.wait_idle_inner() } {
+            if err == VulkanError::DeviceLost {
+                return;
             }
+
+            eprintln!(
+                "failed to wait on device idle after partly failed submissions rendering recovery \
+                impossible: {err}; aborting",
+            );
+            std::process::abort();
         }
 
         let deferred_batch = self.deferred_batch.take().unwrap();
 
-        // SAFETY: We waited for idle on all queues that could access any objects being destroyed,
-        // so it's safe to collect the deferred batch immediately.
+        // SAFETY: We have waited for device idle, so it's safe to collect the deferred batch
+        // immediately.
         unsafe { deferred_batch.enqueue_with_flights(iter::empty()) };
 
-        // But even after waiting for idle, the state of the graph is invalid because some
-        // semaphores are still signaled, so we have to recreate them.
-        for semaphore in self.executable.semaphores.borrow_mut().iter_mut() {
-            // SAFETY: The parameters are valid.
-            match unsafe { Semaphore::new_unchecked(device, &Default::default()) } {
-                Ok(new_semaphore) => {
-                    *semaphore = new_semaphore;
-                }
-                Err(err) => {
-                    if err == VulkanError::DeviceLost {
-                        return;
+        // If at least one submission failed while one succeeded, the state of the graph is invalid
+        // because some semaphores are still signaled, so we have to recreate them.
+        if has_unfinished_submissions {
+            for semaphore in self.executable.semaphores.borrow_mut().iter_mut() {
+                // SAFETY: The parameters are valid.
+                match unsafe { Semaphore::new_unchecked(device, &Default::default()) } {
+                    Ok(new_semaphore) => {
+                        *semaphore = new_semaphore;
                     }
+                    Err(err) => {
+                        if err == VulkanError::DeviceLost {
+                            return;
+                        }
 
-                    eprintln!(
-                        "failed to recreate semaphores after partly failed submissions rendering \
-                        recovery impossible: {err}; aborting",
-                    );
-                    std::process::abort();
+                        eprintln!(
+                            "failed to recreate semaphores after partly failed submissions \
+                            rendering recovery impossible: {err}; aborting",
+                        );
+                        std::process::abort();
+                    }
                 }
             }
         }
@@ -2405,6 +2472,7 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             .iter()
             .map(|&swapchain_id| (swapchain_id, SwapchainSyncStage::SignalAcquire))
             .collect::<LinearMap<_, _>>();
+        let submissions = &self.executable.submissions;
         let instruction_range = 0..submissions[self.submission_count - 1].instruction_range.end;
 
         // Determine the last accesses of resources up until before the failed submission.
@@ -2476,6 +2544,9 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
             let swapchain_state = unsafe { self.resource_map.swapchain_unchecked(swapchain_id) };
             unsafe { swapchain_state.handle_execution_failure(sync_stage) };
         }
+
+        // It is fine to exit the exclusive section here as we won't be touching any resources
+        // after this point.
     }
 }
 
@@ -2922,6 +2993,7 @@ impl Resource for Swapchain {
 macro_rules! resource_map {
     ($executable:expr $(, $virtual_id:expr => $physical_id:expr)* $(,)?) => {
         match $crate::graph::ResourceMap::new($executable) {
+            #[allow(unused_mut)]
             ::std::result::Result::Ok(mut map) => {
                 $(if let ::std::result::Result::Err(err) = map.insert($virtual_id, $physical_id) {
                     ::std::result::Result::Err(err)

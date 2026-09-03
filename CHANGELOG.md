@@ -118,12 +118,15 @@ Changes to command buffers:
 - Implemented `BuddyAllocator::suballocations`.
 - Added support for the `ext_memory_budget` extension.
 - Added support for the `ray_tracing_pipeline_trace_rays_indirect` device feature.
+- Added the `Window` trait for windows that can be passed to `Surface::from_window`.
+- Added `SurfaceObject`.
+- Added support for the `khr_pipeline_executable_properties` extension via `Pipeline::executable_properties`, `Pipeline::executable_statistics` and `Pipeline::executable_internal_representations`.
+- Added `Pipeline::flags`.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
-- Added the `Window` trait for windows that can be passed to `Surface::from_window`.
-- Added `SurfaceObject`.
+- Added support for the rest of the `ext_swapchain_maintenance1` extension.
 
 ### Bugs fixed
 

@@ -168,7 +168,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             // HACK: This works around Rust issue #48214, which makes it impossible to put these
             // bounds in the where clause of the trait implementation where they actually belong
             // until that is resolved.
-            let _: ::vulkano::buffer::AssertParamIsBufferContents<#ty>;
+            let _: ::#crate_ident::buffer::AssertParamIsBufferContents<#ty>;
         }
     });
 

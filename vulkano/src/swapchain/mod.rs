@@ -352,8 +352,8 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::{OwnedSharing, Sharing},
-    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
-    VulkanObject,
+    NonExhaustive, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk;
 use parking_lot::Mutex;
@@ -495,7 +495,6 @@ impl Swapchain {
     /// # Panics
     ///
     /// - Panics if [`try_recreate`] returns a [`ValidationError`].
-    /// - Panics if `create_info.usage` is empty.
     ///
     /// [`try_recreate`]: Self::try_recreate
     #[track_caller]
@@ -512,10 +511,6 @@ impl Swapchain {
     /// Creates a new swapchain from this one.
     ///
     /// Use this when a swapchain has become invalidated, such as due to window resizes.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.usage` is empty.
     pub fn try_recreate(
         self: &Arc<Self>,
         create_info: &SwapchainCreateInfo<'_>,
@@ -1357,18 +1352,48 @@ impl Swapchain {
     /// when creating the swapchain. The image will not be available immediately after the function
     /// returns successfully.
     ///
-    /// When the image becomes available, a semaphore or fence will be signaled. The image can then
-    /// be accessed by the host or device. After this, the image must be *presented* back to the
-    /// swapchain, using the [`present`] queue command.
+    /// When the image becomes available, a semaphore and/or fence will be signaled. The image can
+    /// then be accessed by the host and/or device. After this, the image must be *presented* back
+    /// to the swapchain using the [`present`] queue command or *released* using the
+    /// [`release_images`] method.
     ///
     /// This is a shortcut for `try_acquire_next_image().map_err(Validated::unwrap)`.
+    ///
+    /// # Forward progress
+    ///
+    /// For the purposes of forward progress of acquiring swapchain images, Vulkan defines an
+    /// overall minimum number of swapchain images like so:
+    /// - If [`present_modes`] is not empty, the maximum of
+    ///   [`SurfaceCapabilities::min_image_count`] returned by
+    ///   [`PhysicalDevice::surface_capabilities`] called with a [`SurfaceInfo::present_mode`] set
+    ///   to each of the present modes in [`present_modes`].
+    /// - Otherwise, the [`SurfaceCapabilities::min_image_count`] returned with
+    ///   [`SurfaceInfo::present_mode`] unset.
+    ///
+    /// Vulkan also defines a surplus of swapchain images as [`image_count`] minus the above
+    /// overall minimum number of swapchain images.
+    ///
+    /// The forward progress guarantee, then, is upheld when the number of currently acquired
+    /// images is less than or equal to the surplus of images and acquiring another image returns
+    /// in finite time. "Currently acquired" only includes images that were merely acquired but not
+    /// yet presented or released. The forward progress guarantee exists to prevent deadlocks, and
+    /// it is undefined behavior if it isn't upheld. You should not acquire another image if the
+    /// number of currently acquired images exceeds the surplus of images.
+    ///
+    /// The most practical way to guarantee forward progress is to:
+    /// - have a *frames in flight system* to ensure only one image is ever currently acquired, and
+    /// - have one more swapchain image than the overall minimum defined above.
+    ///
+    /// Besides guaranteeing forward progress, this also guarantees that acquiring another image
+    /// never blocks on the host, and so this is a standard solution that everyone already employs
+    /// for this alone.
     ///
     /// # Safety
     ///
     /// - `self` must be kept alive until either `acquire_info.semaphore` or `acquire_info.fence`
     ///   is signaled.
-    /// - If all images from `self` are currently acquired, and have not been presented yet, then
-    ///   `acquire_info.timeout` must not be `None`.
+    /// - If [forward progress] cannot be guaranteed then `acquire_info.timeout` must not be
+    ///   `None`.
     ///
     /// If `acquire_info.semaphore` is `Some`:
     /// - The semaphore must be kept alive until it is signaled.
@@ -1384,6 +1409,13 @@ impl Swapchain {
     /// - Panics if [`try_acquire_next_image`] returns a [`ValidationError`].
     ///
     /// [`present`]: crate::device::QueueGuard::present
+    /// [`release_images`]: Self::release_images
+    /// [`present_modes`]: Self::present_modes
+    /// [`SurfaceCapabilities::min_image_count`]: crate::swapchain::surface::SurfaceCapabilities::min_image_count
+    /// [`PhysicalDevice::surface_capabilities`]: crate::device::physical::PhysicalDevice::surface_capabilities
+    /// [`SurfaceInfo::present_mode`]: crate::swapchain::surface::SurfaceInfo::present_mode
+    /// [`image_count`]: Self::image_count
+    /// [forward progress]: Self#forward-progress
     /// [`try_acquire_next_image`]: Self::try_acquire_next_image
     #[inline]
     #[track_caller]
@@ -1403,16 +1435,46 @@ impl Swapchain {
     /// when creating the swapchain. The image will not be available immediately after the function
     /// returns successfully.
     ///
-    /// When the image becomes available, a semaphore or fence will be signaled. The image can then
-    /// be accessed by the host or device. After this, the image must be *presented* back to the
-    /// swapchain, using the [`present`] queue command.
+    /// When the image becomes available, a semaphore and/or fence will be signaled. The image can
+    /// then be accessed by the host and/or device. After this, the image must be *presented* back
+    /// to the swapchain using the [`present`] queue command or *released* using the
+    /// [`release_images`] method.
+    ///
+    /// # Forward progress
+    ///
+    /// For the purposes of forward progress of acquiring swapchain images, Vulkan defines an
+    /// overall minimum number of swapchain images like so:
+    /// - If [`present_modes`] is not empty, the maximum of
+    ///   [`SurfaceCapabilities::min_image_count`] returned by
+    ///   [`PhysicalDevice::surface_capabilities`] called with a [`SurfaceInfo::present_mode`] set
+    ///   to each of the present modes in [`present_modes`].
+    /// - Otherwise, the [`SurfaceCapabilities::min_image_count`] returned with
+    ///   [`SurfaceInfo::present_mode`] unset.
+    ///
+    /// Vulkan also defines a surplus of swapchain images as [`image_count`] minus the above
+    /// overall minimum number of swapchain images.
+    ///
+    /// The forward progress guarantee, then, is upheld when the number of currently acquired
+    /// images is less than or equal to the surplus of images and acquiring another image returns
+    /// in finite time. "Currently acquired" only includes images that were merely acquired but not
+    /// yet presented or released. The forward progress guarantee exists to prevent deadlocks, and
+    /// it is undefined behavior if it isn't upheld. You should not acquire another image if the
+    /// number of currently acquired images exceeds the surplus of images.
+    ///
+    /// The most practical way to guarantee forward progress is to:
+    /// - have a *frames in flight system* to ensure only one image is ever currently acquired, and
+    /// - have one more swapchain image than the overall minimum defined above.
+    ///
+    /// Besides guaranteeing forward progress, this also guarantees that acquiring another image
+    /// never blocks on the host, and so this is a standard solution that everyone already employs
+    /// for this alone.
     ///
     /// # Safety
     ///
     /// - `self` must be kept alive until either `acquire_info.semaphore` or `acquire_info.fence`
     ///   is signaled.
-    /// - If all images from `self` are currently acquired, and have not been presented yet, then
-    ///   `acquire_info.timeout` must not be `None`.
+    /// - If [forward progress] cannot be guaranteed then `acquire_info.timeout` must not be
+    ///   `None`.
     ///
     /// If `acquire_info.semaphore` is `Some`:
     /// - The semaphore must be kept alive until it is signaled.
@@ -1424,6 +1486,13 @@ impl Swapchain {
     ///   still executing.
     ///
     /// [`present`]: crate::device::QueueGuard::present
+    /// [`release_images`]: Self::release_images
+    /// [`present_modes`]: Self::present_modes
+    /// [`SurfaceCapabilities::min_image_count`]: crate::swapchain::surface::SurfaceCapabilities::min_image_count
+    /// [`PhysicalDevice::surface_capabilities`]: crate::device::physical::PhysicalDevice::surface_capabilities
+    /// [`SurfaceInfo::present_mode`]: crate::swapchain::surface::SurfaceInfo::present_mode
+    /// [`image_count`]: Self::image_count
+    /// [forward progress]: Self#forward-progress-1
     #[inline]
     pub unsafe fn try_acquire_next_image(
         &self,
@@ -1518,6 +1587,115 @@ impl Swapchain {
             image_index,
             is_suboptimal,
         })
+    }
+
+    /// Releases ownership of a set of swapchain images, panicking on a validation error.
+    ///
+    /// This method is very useful to avoid having to present an acquired image, which is
+    /// especially useful when an image of an old swapchain is currently acquired and the swapchain
+    /// has been recreated.
+    ///
+    /// See the [`acquire_next_image`] method for more information about image acquiring.
+    ///
+    /// This is a shortcut for `try_release_images().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - `release_info.image_indices` must only contain indices of images that are currently
+    ///   acquired. "Currently acquired" only includes images that have merely been acquired but
+    ///   not yet presented or released.
+    /// - `release_info.image_indices` must only contain indices of images that are not in use.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_release_images`] returns a [`ValidationError`].
+    ///
+    /// [`acquire_next_image`]: Self::acquire_next_image
+    /// [`try_release_images`]: Self::try_release_images
+    #[inline]
+    #[track_caller]
+    pub unsafe fn release_images(
+        &self,
+        release_info: &ReleaseSwapchainImagesInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        unsafe { self.try_release_images(release_info) }.map_err(Validated::unwrap)
+    }
+
+    /// Releases ownership of a set of swapchain images.
+    ///
+    /// This method is very useful to avoid having to present an acquired image, which is
+    /// especially useful when an image of an old swapchain is currently acquired and the swapchain
+    /// has been recreated.
+    ///
+    /// See the [`acquire_next_image`] method for more information about image acquiring.
+    ///
+    /// # Safety
+    ///
+    /// - `release_info.image_indices` must only contain indices of images that are currently
+    ///   acquired. "Currently acquired" only includes images that have merely been acquired but
+    ///   not yet presented or released.
+    /// - `release_info.image_indices` must only contain indices of images that are not in use.
+    ///
+    /// [`acquire_next_image`]: Self::acquire_next_image
+    #[inline]
+    pub unsafe fn try_release_images(
+        &self,
+        release_info: &ReleaseSwapchainImagesInfo<'_>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_release_images(release_info)?;
+
+        Ok(unsafe { self.release_images_unchecked(release_info) }?)
+    }
+
+    fn validate_release_images(
+        &self,
+        release_info: &ReleaseSwapchainImagesInfo<'_>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device.enabled_features().swapchain_maintenance1 {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "swapchain_maintenance1",
+                )])]),
+                vuids: &["VUID-vkReleaseSwapchainImagesKHR-swapchainMaintenance1-10159"],
+                ..Default::default()
+            }));
+        }
+
+        for &image_index in release_info.image_indices {
+            if image_index >= self.image_count() {
+                return Err(Box::new(ValidationError {
+                    context: format!("release_info.image_indices[{}]", image_index).into(),
+                    problem: "is not less than `self.image_count()`".into(),
+                    vuids: &["VUID-VkReleaseSwapchainImagesInfoKHR-pImageIndices-07785"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // unsafe
+        // VUID-VkReleaseSwapchainImagesInfoKHR-pImageIndices-07785
+        // VUID-VkReleaseSwapchainImagesInfoKHR-pImageIndices-07786
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn release_images_unchecked(
+        &self,
+        release_info: &ReleaseSwapchainImagesInfo<'_>,
+    ) -> Result<(), VulkanError> {
+        let release_info_vk = release_info.to_vk(self.handle());
+
+        let fns = self.device().fns();
+
+        unsafe {
+            (fns.ext_swapchain_maintenance1.release_swapchain_images_ext)(
+                self.device().handle(),
+                &release_info_vk,
+            )
+        }
+        .result()
+        .map_err(VulkanError::from)
     }
 
     /// Waits for a swapchain image with a specific present ID to be presented to the user,
@@ -2101,6 +2279,19 @@ impl<'a> SwapchainCreateInfo<'a> {
                 .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-flags-parameter"])
         })?;
 
+        if flags.intersects(SwapchainCreateFlags::DEFERRED_MEMORY_ALLOCATION)
+            && !device.enabled_features().swapchain_maintenance1
+        {
+            return Err(Box::new(ValidationError {
+                context: "flags".into(),
+                problem: "contains `SwapchainCreateFlags::DEFERRED_MEMORY_ALLOCATION`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "swapchain_maintenance1",
+                )])]),
+                vuids: &["VUID-VkSwapchainCreateInfoKHR-swapchainMaintenance1-10157"],
+            }));
+        }
+
         image_format.validate_device(device).map_err(|err| {
             err.add_context("image_format")
                 .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter"])
@@ -2616,11 +2807,12 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(khr_swapchain_mutable_format)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
-    DEFERRED_MEMORY_ALLOCATION = DEFERRED_MEMORY_ALLOCATION_EXT {
-        device_extensions: [ext_swapchain_maintenance1],
-    },*/
+    /// Allows the implementation to defer the allocation of a swapchain image until its image
+    /// index is acquired for the first time.
+    DEFERRED_MEMORY_ALLOCATION = DEFERRED_MEMORY_ALLOCATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_swapchain_maintenance1)]),
+    ]),
 }
 
 impl From<SwapchainCreateFlags> for ImageCreateFlags {
@@ -2735,3 +2927,35 @@ impl Win32Monitor {
 // Winit's `MonitorHandle` is Send on Win32, so this seems safe.
 unsafe impl Send for Win32Monitor {}
 unsafe impl Sync for Win32Monitor {}
+
+/// Parameters to release swapchain images.
+#[derive(Clone, Debug)]
+pub struct ReleaseSwapchainImagesInfo<'a> {
+    /// The indices of currently acquired swapchain images that should be released.
+    ///
+    /// The default value is empty.
+    pub image_indices: &'a [u32],
+
+    pub _ne: NonExhaustive<'a>,
+}
+
+impl Default for ReleaseSwapchainImagesInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            image_indices: &[],
+            _ne: crate::NE,
+        }
+    }
+}
+
+impl<'a> ReleaseSwapchainImagesInfo<'a> {
+    pub(crate) fn to_vk(
+        &self,
+        swapchain_vk: vk::SwapchainKHR,
+    ) -> vk::ReleaseSwapchainImagesInfoEXT<'a> {
+        vk::ReleaseSwapchainImagesInfoEXT::default()
+            .swapchain(swapchain_vk)
+            .image_indices(self.image_indices)
+    }
+}

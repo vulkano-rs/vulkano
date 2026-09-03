@@ -1109,23 +1109,56 @@ fn panic_nounwind(message: &'static str) -> ! {
 #[cfg(test)]
 mod tests {
     macro_rules! test_queues {
-        () => {{
+        () => {
+            test_queues!(;;)
+        };
+        (
+            $($device_feature:ident),*;
+            $($device_extension:ident),*;
+            $($instance_extension:ident),* $(;)?
+        ) => {{
             let Ok(library) = (unsafe { vulkano::VulkanLibrary::new() }) else {
                 return;
             };
-            let Ok(instance) = vulkano::instance::Instance::new(&library, &Default::default())
-            else {
+            let instance_extensions = vulkano::instance::InstanceExtensions {
+                $($instance_extension: true,)*
+                ..Default::default()
+            };
+            if !library.supported_extensions().contains(&instance_extensions) {
+                return;
+            }
+            let Ok(instance) = vulkano::instance::Instance::new(
+                &library,
+                &vulkano::instance::InstanceCreateInfo {
+                    enabled_extensions: &instance_extensions,
+                    ..Default::default()
+                },
+            ) else {
                 return;
             };
-            let Ok(mut physical_devices) = instance.enumerate_physical_devices() else {
+            let Ok(physical_devices) = instance.enumerate_physical_devices() else {
                 return;
             };
-            let Some(physical_device) = physical_devices.find(|p| {
-                p.queue_family_properties().iter().any(|q| {
-                    q.queue_flags
-                        .contains(vulkano::device::QueueFlags::GRAPHICS)
+            let device_extensions = vulkano::device::DeviceExtensions {
+                $($device_extension: true,)*
+                ..Default::default()
+            };
+            let device_features = vulkano::device::DeviceFeatures {
+                $($device_feature: true,)*
+                ..Default::default()
+            };
+            let Some(physical_device) = physical_devices
+                .filter(|p|
+                    p.supported_extensions().contains(&device_extensions)
+                        && p.supported_features().contains(&device_features)
+                )
+                .find(|p| {
+                    p.queue_family_properties().iter().any(|q| {
+                        q.queue_flags
+                            .contains(vulkano::device::QueueFlags::GRAPHICS)
+                    })
                 })
-            }) else {
+            else {
                 return;
             };
             let queue_create_infos = physical_device
@@ -1141,6 +1174,8 @@ mod tests {
                 &physical_device,
                 &vulkano::device::DeviceCreateInfo {
                     queue_create_infos: &queue_create_infos,
+                    enabled_extensions: &device_extensions,
+                    enabled_features: &device_features,
                     ..Default::default()
                 },
             ) else {
