@@ -673,7 +673,7 @@ mod tests {
     use super::*;
     use crossbeam_queue::ArrayQueue;
     use parking_lot::Mutex;
-    use std::thread;
+    use std::{sync::Barrier, thread};
 
     const fn unwrap<T: Copy>(opt: Option<T>) -> T {
         match opt {
@@ -695,6 +695,8 @@ mod tests {
         let allocator = Mutex::new(FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap()));
         let allocs = ArrayQueue::new((ALLOCATIONS_PER_THREAD * THREADS) as usize);
 
+        let barrier = &Barrier::new(THREADS as usize);
+
         // Using threads to randomize allocation order.
         thread::scope(|scope| {
             for i in 1..=THREADS {
@@ -703,15 +705,14 @@ mod tests {
                 scope.spawn(move || {
                     let layout = DeviceLayout::from_size_alignment(i * ALLOCATION_STEP, 1).unwrap();
 
+                    barrier.wait();
+
                     for _ in 0..ALLOCATIONS_PER_THREAD {
-                        allocs
-                            .push(
-                                allocator
-                                    .lock()
-                                    .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
-                                    .unwrap(),
-                            )
+                        let mut allocator = allocator.lock();
+                        let alloc = allocator
+                            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
                             .unwrap();
+                        allocs.push(alloc).unwrap();
                     }
                 });
             }
@@ -723,12 +724,27 @@ mod tests {
             .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
         assert_eq!(allocator.free_size(), 0);
+        assert_eq!(
+            allocator.suballocations().count(),
+            (ALLOCATIONS_PER_THREAD * THREADS) as usize,
+        );
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
-        for alloc in allocs {
+        let mut free_size = 0;
+
+        for (index, alloc) in allocs.into_iter().enumerate() {
             unsafe { allocator.deallocate(alloc) };
+
+            free_size += alloc.size;
+
+            assert_eq!(allocator.free_size(), free_size);
+            assert_eq!(
+                allocator.suballocations().count(),
+                (ALLOCATIONS_PER_THREAD * THREADS) as usize - index,
+            );
+            assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
         }
 
-        assert_eq!(allocator.free_size(), REGION_SIZE);
         let alloc = allocator
             .allocate(
                 DeviceLayout::from_size_alignment(REGION_SIZE, 1).unwrap(),
@@ -737,6 +753,10 @@ mod tests {
             )
             .unwrap();
         unsafe { allocator.deallocate(alloc) };
+
+        assert_eq!(allocator.free_size(), REGION_SIZE);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
     }
 
     #[test]
@@ -849,6 +869,8 @@ mod tests {
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
             assert_eq!(allocator.free_size(), 0);
+            assert_eq!(allocator.suballocations().count(), 1 << (MAX_ORDER - order));
+            assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
             let mut last_offset = 0;
 
@@ -861,8 +883,22 @@ mod tests {
                 last_offset = alloc.offset;
             }
 
-            for alloc in allocs.drain(..) {
+            let mut free_size = 0;
+
+            for (index, alloc) in allocs.drain(..).enumerate() {
                 unsafe { allocator.deallocate(alloc) };
+
+                free_size += alloc.size;
+
+                let deallocated_allocs = index + 1;
+                let allocated_allocs = (1 << (MAX_ORDER - order)) - deallocated_allocs;
+
+                assert_eq!(allocator.free_size(), free_size);
+                assert_eq!(
+                    allocator.suballocations().count(),
+                    deallocated_allocs.count_ones() as usize + allocated_allocs,
+                );
+                assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
             }
         }
 
@@ -890,6 +926,8 @@ mod tests {
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
             assert_eq!(allocator.free_size(), 0);
+            assert_eq!(allocator.suballocations().count(), MAX_ORDER + 1);
+            assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
             let mut last_offset = 0;
 
@@ -902,11 +940,23 @@ mod tests {
                 last_offset = alloc.offset;
             }
 
+            let mut free_size = 0;
+
             for alloc in allocs.drain(..) {
                 unsafe { allocator.deallocate(alloc) };
+
+                free_size += alloc.size;
+
+                assert_eq!(allocator.free_size(), free_size);
+                assert_eq!(allocator.suballocations().count(), MAX_ORDER + 1);
+                assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
             }
 
             unsafe { allocator.deallocate(alloc) };
+
+            assert_eq!(allocator.free_size(), REGION_SIZE);
+            assert_eq!(allocator.suballocations().count(), 1);
+            assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
         }
     }
 
@@ -1135,5 +1185,12 @@ mod tests {
 
         allocator.reset();
         assert_eq!(allocator.free_size(), REGION_SIZE);
+    }
+
+    fn suballocation_size_sum(allocator: &impl Suballocator) -> DeviceSize {
+        allocator
+            .suballocations()
+            .map(|n| n.size)
+            .sum::<DeviceSize>()
     }
 }
