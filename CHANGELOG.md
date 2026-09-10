@@ -139,6 +139,7 @@ Changes to command buffers:
 - `Device::set_debug_utils_object_name` and `DeviceOwnedVulkanObject::set_debug_utils_object_name` not validating that the `ext_debug_utils` extension is enabled on the instance.
 - Image creation when `drm_format_modifiers` is provided, but `drm_format_modifier_plane_layouts` isn't.
 - `RawImage::subresource_layout` validation incorrectly rejected valid `MemoryPlane` aspects for DRM format modifier images.
+- `FreeListAllocator` could place a suballocation on the same buffer-image granularity page as the suballocation following it, aliasing a linear resource with a non-linear one on devices where `bufferImageGranularity` is greater than 1.
 
 # Version 0.33.1, 0.34.2 and 0.35.2 (2025-08-16)
 
