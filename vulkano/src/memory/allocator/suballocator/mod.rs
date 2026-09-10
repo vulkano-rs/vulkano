@@ -685,6 +685,65 @@ mod tests {
     const DUMMY_LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 1));
 
     #[test]
+    fn are_blocks_on_same_page_literal_edge_cases() {
+        const PAGE_SIZE: DeviceAlignment = DeviceAlignment::new(16).unwrap();
+        const LAST_PAGE_OFFSET: DeviceSize = align_down(DeviceSize::MAX, PAGE_SIZE);
+
+        assert!(!are_blocks_on_same_page(0, 0, 0, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 0, 1, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(0, 15, 15, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 15, 16, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 16, 16, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 16, 17, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(0, 17, 17, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(16, 15, 31, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 15, 32, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 16, 32, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 16, 33, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(16, 17, 33, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            15,
+            LAST_PAGE_OFFSET - 1,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            15,
+            LAST_PAGE_OFFSET,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            16,
+            LAST_PAGE_OFFSET,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            16,
+            LAST_PAGE_OFFSET + 1,
+            PAGE_SIZE,
+        ));
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            17,
+            LAST_PAGE_OFFSET + 1,
+            PAGE_SIZE,
+        ));
+
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET,
+            15,
+            LAST_PAGE_OFFSET + 15,
+            PAGE_SIZE,
+        ));
+    }
+
+    #[test]
     fn free_list_allocator_capacity() {
         const THREADS: DeviceSize = 12;
         const ALLOCATIONS_PER_THREAD: DeviceSize = 100;
@@ -1111,6 +1170,9 @@ mod tests {
         assert!(allocator
             .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
+        assert_eq!(allocator.free_size(), ALIGNMENT - 1);
+        assert_eq!(allocator.suballocations().count(), 2);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
         for _ in 0..ALIGNMENT - 1 {
             allocator
@@ -1122,9 +1184,13 @@ mod tests {
             .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
         assert_eq!(allocator.free_size(), 0);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
         allocator.reset();
         assert_eq!(allocator.free_size(), REGION_SIZE);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
     }
 
     #[test]
@@ -1179,5 +1245,12 @@ mod tests {
 
         allocator.reset();
         assert_eq!(allocator.free_size(), REGION_SIZE);
+    }
+
+    fn suballocation_size_sum(allocator: &impl Suballocator) -> DeviceSize {
+        allocator
+            .suballocations()
+            .map(|n| n.size)
+            .sum::<DeviceSize>()
     }
 }
