@@ -130,6 +130,7 @@ pub use library::{LoadingError, VulkanLibrary};
 use std::{
     borrow::Cow,
     error::Error,
+    ffi::CStr,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     marker::PhantomData,
     num::NonZero,
@@ -314,6 +315,13 @@ impl<T> Deref for DebugWrapper<T> {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+#[inline]
+unsafe fn c_str_to_string_unchecked(s: &CStr) -> String {
+    debug_assert!(s.to_str().is_ok());
+
+    unsafe { String::from_utf8_unchecked(s.to_bytes().to_owned()) }
 }
 
 include!(crate::autogen_output!("errors.rs"));

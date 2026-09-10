@@ -31,9 +31,8 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ash::vk;
-use bytemuck::cast_slice;
 use foldhash::HashMap;
-use std::{ptr, sync::Arc};
+use std::{ffi::CStr, ptr, sync::Arc};
 
 pub mod cache;
 pub mod compute;
@@ -599,23 +598,15 @@ impl PipelineExecutableProperties {
     pub(crate) fn from_vk(val_vk: &vk::PipelineExecutablePropertiesKHR<'_>) -> Self {
         let &vk::PipelineExecutablePropertiesKHR {
             stages,
-            name,
-            description,
             subgroup_size,
             ..
         } = val_vk;
 
         Self {
             stages: stages.into(),
-            name: {
-                let bytes = cast_slice(name.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
-            },
-            description: {
-                let bytes = cast_slice(description.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            name: unsafe { crate::c_str_to_string_unchecked(val_vk.name_as_c_str().unwrap()) },
+            description: unsafe {
+                crate::c_str_to_string_unchecked(val_vk.description_as_c_str().unwrap())
             },
             subgroup_size,
         }
@@ -640,24 +631,12 @@ pub struct PipelineExecutableStatistic {
 
 impl PipelineExecutableStatistic {
     pub(crate) fn from_vk(val_vk: &vk::PipelineExecutableStatisticKHR<'_>) -> Option<Self> {
-        let &vk::PipelineExecutableStatisticKHR {
-            name,
-            description,
-            format,
-            value,
-            ..
-        } = val_vk;
+        let &vk::PipelineExecutableStatisticKHR { format, value, .. } = val_vk;
 
         Some(Self {
-            name: {
-                let bytes = cast_slice(name.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
-            },
-            description: {
-                let bytes = cast_slice(description.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            name: unsafe { crate::c_str_to_string_unchecked(val_vk.name_as_c_str().unwrap()) },
+            description: unsafe {
+                crate::c_str_to_string_unchecked(val_vk.description_as_c_str().unwrap())
             },
             value: PipelineExecutableStatisticValue::from_vk(format, value)?,
         })
@@ -731,29 +710,17 @@ impl PipelineExecutableInternalRepresentation {
         val_vk: &vk::PipelineExecutableInternalRepresentationKHR<'_>,
         data: Vec<u8>,
     ) -> Self {
-        let &vk::PipelineExecutableInternalRepresentationKHR {
-            name,
-            description,
-            is_text,
-            ..
-        } = val_vk;
+        let &vk::PipelineExecutableInternalRepresentationKHR { is_text, .. } = val_vk;
 
         Self {
-            name: {
-                let bytes = cast_slice(name.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
-            },
-            description: {
-                let bytes = cast_slice(description.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            name: unsafe { crate::c_str_to_string_unchecked(val_vk.name_as_c_str().unwrap()) },
+            description: unsafe {
+                crate::c_str_to_string_unchecked(val_vk.description_as_c_str().unwrap())
             },
             data: if is_text != vk::FALSE {
-                let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-                PipelineExecutableInternalRepresentationData::Text(
-                    String::from_utf8_lossy(&data[0..end]).into(),
-                )
+                PipelineExecutableInternalRepresentationData::Text(unsafe {
+                    crate::c_str_to_string_unchecked(CStr::from_bytes_until_nul(&data).unwrap())
+                })
             } else {
                 PipelineExecutableInternalRepresentationData::Binary(data)
             },

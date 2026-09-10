@@ -24,7 +24,6 @@ use crate::{
     ValidationError, Version, VulkanError, VulkanObject,
 };
 use ash::vk;
-use bytemuck::cast_slice;
 use parking_lot::RwLock;
 #[cfg(feature = "raw_window_handle")]
 use raw_window_handle::{HandleError, HasDisplayHandle, RawDisplayHandle};
@@ -3761,37 +3760,18 @@ pub struct ToolProperties {
 
 impl ToolProperties {
     pub(crate) fn from_vk(val_vk: &vk::PhysicalDeviceToolProperties<'_>) -> Self {
-        let &vk::PhysicalDeviceToolProperties {
-            name,
-            version,
-            purposes,
-            description,
-            layer,
-            ..
-        } = val_vk;
+        let &vk::PhysicalDeviceToolProperties { purposes, .. } = val_vk;
 
         Self {
-            name: {
-                let bytes = cast_slice(name.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
-            },
-            version: {
-                let bytes = cast_slice(version.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            name: unsafe { crate::c_str_to_string_unchecked(val_vk.name_as_c_str().unwrap()) },
+            version: unsafe {
+                crate::c_str_to_string_unchecked(val_vk.version_as_c_str().unwrap())
             },
             purposes: purposes.into(),
-            description: {
-                let bytes = cast_slice(description.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            description: unsafe {
+                crate::c_str_to_string_unchecked(val_vk.description_as_c_str().unwrap())
             },
-            layer: {
-                let bytes = cast_slice(layer.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
-            },
+            layer: unsafe { crate::c_str_to_string_unchecked(val_vk.layer_as_c_str().unwrap()) },
         }
     }
 }

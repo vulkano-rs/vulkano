@@ -1,5 +1,4 @@
 use ash::vk;
-use bytemuck::cast_slice;
 
 /// Properties of an extension in the loader or a physical device.
 #[derive(Clone, Debug)]
@@ -15,10 +14,8 @@ impl From<vk::ExtensionProperties> for ExtensionProperties {
     #[inline]
     fn from(val: vk::ExtensionProperties) -> Self {
         Self {
-            extension_name: {
-                let bytes = cast_slice(val.extension_name.as_slice());
-                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                String::from_utf8_lossy(&bytes[0..end]).into()
+            extension_name: unsafe {
+                crate::c_str_to_string_unchecked(val.extension_name_as_c_str().unwrap())
             },
             spec_version: val.spec_version,
         }
