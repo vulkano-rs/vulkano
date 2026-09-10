@@ -258,10 +258,8 @@ impl VulkanLibrary {
 
     /// Returns the list of layers that are available when creating an instance.
     ///
-    /// On success, this function returns an iterator that produces
-    /// [`LayerProperties`] objects. In order to enable a layer,
-    /// you need to pass its name (returned by `LayerProperties::name()`) when creating the
-    /// [`Instance`](crate::instance::Instance).
+    /// In order to enable a layer, you need to pass its name (returned by
+    /// `LayerProperties::name()`) when creating the [`Instance`].
     ///
     /// <div class="vulkano-alert-note">
     ///
@@ -285,35 +283,41 @@ impl VulkanLibrary {
     ///     println!("Available layer: {}", layer.name());
     /// }
     /// ```
-    pub fn layer_properties(
-        &self,
-    ) -> Result<impl ExactSizeIterator<Item = LayerProperties> + use<>, VulkanError> {
+    ///
+    /// [`Instance`]: crate::instance::Instance
+    pub fn layer_properties(&self) -> Result<Vec<LayerProperties>, VulkanError> {
         let fns = self.fns();
 
-        let layer_properties = loop {
+        let layer_properties_vk = loop {
             let mut count = 0;
             unsafe { (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut()) }
                 .result()
                 .map_err(VulkanError::from)?;
 
-            let mut properties = Vec::with_capacity(count as usize);
+            let mut properties_vk = Vec::with_capacity(count as usize);
             let result = unsafe {
-                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, properties.as_mut_ptr())
+                (fns.v1_0.enumerate_instance_layer_properties)(
+                    &mut count,
+                    properties_vk.as_mut_ptr(),
+                )
             };
 
             match result {
                 vk::Result::SUCCESS => {
-                    unsafe { properties.set_len(count as usize) };
-                    break properties;
+                    unsafe { properties_vk.set_len(count as usize) };
+                    break properties_vk;
                 }
                 vk::Result::INCOMPLETE => (),
                 err => return Err(VulkanError::from(err)),
             }
         };
 
-        Ok(layer_properties
+        let layer_properties = layer_properties_vk
             .into_iter()
-            .map(|p| LayerProperties { props: p }))
+            .map(|p| LayerProperties { props: p })
+            .collect();
+
+        Ok(layer_properties)
     }
 
     /// Returns the extension properties that are reported by the given layer.

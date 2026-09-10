@@ -219,7 +219,7 @@ impl CommandPool {
     pub fn allocate_command_buffers(
         &self,
         allocate_info: &CommandBufferAllocateInfo<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, VulkanError> {
+    ) -> Result<Vec<CommandPoolAlloc>, VulkanError> {
         match self.try_allocate_command_buffers(allocate_info) {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
@@ -231,8 +231,7 @@ impl CommandPool {
     pub fn try_allocate_command_buffers(
         &self,
         allocate_info: &CommandBufferAllocateInfo<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, Validated<VulkanError>>
-    {
+    ) -> Result<Vec<CommandPoolAlloc>, Validated<VulkanError>> {
         self.validate_allocate_command_buffers(allocate_info)?;
 
         Ok(unsafe { self.allocate_command_buffers_unchecked(allocate_info) }?)
@@ -249,7 +248,7 @@ impl CommandPool {
     pub unsafe fn allocate_command_buffers_unchecked(
         &self,
         allocate_info: &CommandBufferAllocateInfo<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc> + use<>, VulkanError> {
+    ) -> Result<Vec<CommandPoolAlloc>, VulkanError> {
         let &CommandBufferAllocateInfo {
             level,
             command_buffer_count,
@@ -257,9 +256,11 @@ impl CommandPool {
         } = allocate_info;
 
         // VUID-vkAllocateCommandBuffers-pAllocateInfo::commandBufferCount-arraylength
-        let out = if command_buffer_count == 0 {
-            vec![]
-        } else {
+        if command_buffer_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let output = {
             let allocate_info_vk = allocate_info.to_vk(self.handle);
             let command_buffer_count = command_buffer_count as usize;
 
@@ -280,14 +281,17 @@ impl CommandPool {
             out
         };
 
-        let device = self.device.clone();
+        let command_pool_allocs = output
+            .into_iter()
+            .map(|command_buffer| CommandPoolAlloc {
+                handle: command_buffer,
+                device: InstanceOwnedDebugWrapper(self.device.clone()),
+                id: CommandPoolAlloc::next_id(),
+                level,
+            })
+            .collect();
 
-        Ok(out.into_iter().map(move |command_buffer| CommandPoolAlloc {
-            handle: command_buffer,
-            device: InstanceOwnedDebugWrapper(device.clone()),
-            id: CommandPoolAlloc::next_id(),
-            level,
-        }))
+        Ok(command_pool_allocs)
     }
 
     /// Frees individual command buffers, panicking on a validation error.
@@ -747,13 +751,13 @@ mod tests {
             },
         )
         .unwrap();
-        let iter = pool
+        let vec = pool
             .allocate_command_buffers(&CommandBufferAllocateInfo {
                 level: CommandBufferLevel::Primary,
                 command_buffer_count: 12,
                 ..Default::default()
             })
             .unwrap();
-        assert_eq!(iter.count(), 12);
+        assert_eq!(vec.len(), 12);
     }
 }

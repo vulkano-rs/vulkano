@@ -49,6 +49,7 @@ fn main() {
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
         .unwrap()
+        .into_iter()
         // No need for swapchain extension support.
         .filter_map(|p| {
             p.queue_family_properties()

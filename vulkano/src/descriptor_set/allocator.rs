@@ -673,13 +673,13 @@ impl VariableEntry {
             }
         }
 
-        let allocate_info = [DescriptorSetAllocateInfo {
+        let allocate_info = DescriptorSetAllocateInfo {
             variable_descriptor_count,
             ..DescriptorSetAllocateInfo::new(layout)
-        }];
+        };
 
-        let mut sets = match unsafe { self.pool.try_allocate_descriptor_sets(&allocate_info) } {
-            Ok(sets) => sets,
+        let inner = match unsafe { self.pool.try_allocate_descriptor_set(&allocate_info) } {
+            Ok(set) => set,
             Err(Validated::Error(err)) => match err {
                 VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
                     return Err(Validated::Error(err));
@@ -697,7 +697,7 @@ impl VariableEntry {
         self.allocations += 1;
 
         Ok(DescriptorSetAlloc {
-            inner: sets.next().unwrap(),
+            inner,
             pool: self.pool.clone(),
             handle: AllocationHandle::from_ptr(Arc::into_raw(self.reserve.clone()) as _),
         })
@@ -746,18 +746,18 @@ impl VariableEntry {
             }
         }
 
-        let allocate_info = [DescriptorSetAllocateInfo {
+        let allocate_info = DescriptorSetAllocateInfo {
             variable_descriptor_count,
             ..DescriptorSetAllocateInfo::new(layout)
-        }];
+        };
 
         // SAFETY: Enforced by the caller.
-        let mut sets = unsafe { self.pool.allocate_descriptor_sets_unchecked(&allocate_info) }?;
+        let inner = unsafe { self.pool.allocate_descriptor_set_unchecked(&allocate_info) }?;
 
         self.allocations += 1;
 
         Ok(DescriptorSetAlloc {
-            inner: sets.next().unwrap(),
+            inner,
             pool: self.pool.clone(),
             handle: AllocationHandle::from_ptr(Arc::into_raw(self.reserve.clone()) as _),
         })

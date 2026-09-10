@@ -1148,6 +1148,7 @@ mod tests {
                 ..Default::default()
             };
             let Some(physical_device) = physical_devices
+                .into_iter()
                 .filter(|p|
                     p.supported_extensions().contains(&device_extensions)
                         && p.supported_features().contains(&device_features)

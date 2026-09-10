@@ -158,6 +158,7 @@ impl VulkanoContext {
         let physical_device = instance
             .enumerate_physical_devices()
             .expect("failed to enumerate physical devices")
+            .into_iter()
             .filter(|p| (config.device_filter_fn)(p))
             .min_by_key(|p| (config.device_priority_fn)(p))
             .expect("failed to create physical device");

@@ -117,6 +117,7 @@ impl App {
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
+            .into_iter()
             .filter(|p| {
                 // Some devices may not support the extensions or features that your application
                 // requires, or report properties and limits that are not sufficient. These are

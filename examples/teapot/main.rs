@@ -111,6 +111,7 @@ impl App {
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
+            .into_iter()
             .filter(|p| p.supported_extensions().contains(&device_extensions))
             .filter_map(|p| {
                 p.queue_family_properties()
