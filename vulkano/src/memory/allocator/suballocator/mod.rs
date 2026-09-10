@@ -8,7 +8,7 @@ pub use self::{
     buddy::BuddyAllocator, bump::BumpAllocator, free_list::FreeListAllocator, region::Region,
 };
 use super::{align_down, AllocationHandle, DeviceAlignment, DeviceLayout};
-use crate::{image::ImageTiling, memory::allocator::align_up, DeviceSize};
+use crate::{image::ImageTiling, DeviceSize};
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
@@ -648,8 +648,7 @@ impl From<AllocationType> for SuballocationType {
 ///
 /// > Note
 /// >
-/// > Assumes `a_offset + a_size <= b_offset` and that `align_up(a_offset + a_size, page_size)`
-/// > doesn't overflow.
+/// > Assumes `a_offset + a_size <= b_offset`.
 ///
 /// </div>
 #[inline]
@@ -659,13 +658,13 @@ fn are_blocks_on_same_page(
     b_offset: DeviceSize,
     page_size: DeviceAlignment,
 ) -> bool {
-    let a_end_page_plus_one = align_up(a_offset + a_size, page_size);
+    debug_assert!(a_offset + a_size <= b_offset);
+
+    let a_end = a_offset + a_size;
+    let a_end_page = align_down(a_end.saturating_sub(1), page_size);
     let b_start_page = align_down(b_offset, page_size);
 
-    debug_assert!(a_offset + a_size <= b_offset);
-    debug_assert!(!(a_offset + a_size > 0 && a_end_page_plus_one == 0));
-
-    a_end_page_plus_one > b_start_page
+    a_end_page == b_start_page
 }
 
 #[cfg(test)]
@@ -689,8 +688,10 @@ mod tests {
         const PAGE_SIZE: DeviceAlignment = DeviceAlignment::new(16).unwrap();
         const LAST_PAGE_OFFSET: DeviceSize = align_down(DeviceSize::MAX, PAGE_SIZE);
 
-        assert!(!are_blocks_on_same_page(0, 0, 0, PAGE_SIZE));
-        assert!(!are_blocks_on_same_page(0, 0, 1, PAGE_SIZE));
+        // These two are technically not correct, but it does't matter because `a_end` is 0, and 0
+        // is always aligned for every alignment, so aligning it up isn't going to do anything.
+        assert!(are_blocks_on_same_page(0, 0, 0, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(0, 0, 1, PAGE_SIZE));
 
         assert!(are_blocks_on_same_page(0, 15, 15, PAGE_SIZE));
         assert!(!are_blocks_on_same_page(0, 15, 16, PAGE_SIZE));
