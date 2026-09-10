@@ -825,6 +825,50 @@ mod tests {
     }
 
     #[test]
+    fn free_list_allocator_respects_granularity_backwards() {
+        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(1024));
+        const REGION_SIZE: DeviceSize = 4 * GRANULARITY.as_devicesize();
+        const HALF_PAGE: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(512, 1));
+        const PAGE_ALIGNED_HALF_PAGE: DeviceLayout =
+            unwrap(DeviceLayout::from_size_alignment(512, 1024));
+
+        let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+
+        // Occupy the upper half of the first page, leaving the lower half free.
+        let lower = allocator
+            .allocate(HALF_PAGE, AllocationType::Linear, GRANULARITY)
+            .unwrap();
+        let upper = allocator
+            .allocate(HALF_PAGE, AllocationType::Linear, GRANULARITY)
+            .unwrap();
+        assert_eq!(upper.offset, 512);
+        unsafe { allocator.deallocate(lower) };
+
+        // A conflicting type must not take the free half, as that would put it on the same
+        // page as `upper`.
+        let nonlinear = allocator
+            .allocate(
+                PAGE_ALIGNED_HALF_PAGE,
+                AllocationType::NonLinear,
+                GRANULARITY,
+            )
+            .unwrap();
+        assert_eq!(nonlinear.offset, GRANULARITY.as_devicesize());
+
+        // The same type may.
+        let linear = allocator
+            .allocate(HALF_PAGE, AllocationType::Linear, GRANULARITY)
+            .unwrap();
+        assert_eq!(linear.offset, 0);
+
+        for suballoc in [upper, nonlinear, linear] {
+            unsafe { allocator.deallocate(suballoc) };
+        }
+
+        assert_eq!(allocator.free_size(), REGION_SIZE);
+    }
+
+    #[test]
     fn buddy_allocator_capacity() {
         const MAX_ORDER: usize = 10;
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;

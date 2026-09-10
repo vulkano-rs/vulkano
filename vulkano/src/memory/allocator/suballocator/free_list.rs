@@ -175,6 +175,20 @@ unsafe impl Suballocator for FreeListAllocator {
                     //
                     // `node.offset + node.size` can't overflow for the same reason as above.
                     if offset + size <= node.offset + node.size {
+                        if buffer_image_granularity != DeviceAlignment::MIN {
+                            let next = unsafe { node.next_ptr.as_ref() };
+
+                            if are_blocks_on_same_page(
+                                offset,
+                                size,
+                                next.offset,
+                                buffer_image_granularity,
+                            ) && has_granularity_conflict(next.allocation_type, allocation_type)
+                            {
+                                continue;
+                            }
+                        }
+
                         self.suballocations.free_list.remove(index);
 
                         // SAFETY:
