@@ -675,14 +675,7 @@ mod tests {
     use parking_lot::Mutex;
     use std::thread;
 
-    const fn unwrap<T: Copy>(opt: Option<T>) -> T {
-        match opt {
-            Some(x) => x,
-            None => panic!(),
-        }
-    }
-
-    const DUMMY_LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 1));
+    const DUMMY_LAYOUT: DeviceLayout = DeviceLayout::from_size_alignment(1, 1).unwrap();
 
     #[test]
     fn free_list_allocator_capacity() {
@@ -742,7 +735,7 @@ mod tests {
     #[test]
     fn free_list_allocator_respects_alignment() {
         const REGION_SIZE: DeviceSize = 10 * 256;
-        const LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 256));
+        const LAYOUT: DeviceLayout = DeviceLayout::from_size_alignment(1, 256).unwrap();
 
         let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut allocs = Vec::with_capacity(10);
@@ -767,7 +760,7 @@ mod tests {
 
     #[test]
     fn free_list_allocator_respects_granularity() {
-        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(16));
+        const GRANULARITY: DeviceAlignment = DeviceAlignment::new(16).unwrap();
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
         let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
@@ -826,11 +819,11 @@ mod tests {
 
     #[test]
     fn free_list_allocator_respects_granularity_backwards() {
-        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(1024));
+        const GRANULARITY: DeviceAlignment = DeviceAlignment::new(1024).unwrap();
         const REGION_SIZE: DeviceSize = 4 * GRANULARITY.as_devicesize();
-        const HALF_PAGE: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(512, 1));
+        const HALF_PAGE: DeviceLayout = DeviceLayout::from_size_alignment(512, 1).unwrap();
         const PAGE_ALIGNED_HALF_PAGE: DeviceLayout =
-            unwrap(DeviceLayout::from_size_alignment(512, 1024));
+            DeviceLayout::from_size_alignment(512, 1024).unwrap();
 
         let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
@@ -1022,7 +1015,7 @@ mod tests {
 
     #[test]
     fn buddy_allocator_respects_granularity() {
-        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(256));
+        const GRANULARITY: DeviceAlignment = DeviceAlignment::new(256).unwrap();
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
         let mut allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
@@ -1071,7 +1064,7 @@ mod tests {
         const MAX_ORDER: usize = 31;
         const REGION_OFFSET: DeviceSize = align_down(
             DeviceLayout::MAX_SIZE - REGION_SIZE,
-            unwrap(DeviceAlignment::new(BuddyAllocator::MIN_NODE_SIZE)),
+            DeviceAlignment::new(BuddyAllocator::MIN_NODE_SIZE).unwrap(),
         );
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
 
@@ -1130,7 +1123,7 @@ mod tests {
     #[test]
     fn bump_allocator_respects_granularity() {
         const ALLOCATIONS: DeviceSize = 10;
-        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(1024));
+        const GRANULARITY: DeviceAlignment = DeviceAlignment::new(1024).unwrap();
         const REGION_SIZE: DeviceSize = ALLOCATIONS * GRANULARITY.as_devicesize();
 
         let mut allocator = BumpAllocator::new(Region::new(0, REGION_SIZE).unwrap());
