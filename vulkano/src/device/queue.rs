@@ -528,7 +528,7 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn present(
         &mut self,
         present_info: &PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, VulkanError> {
+    ) -> Result<Vec<Result<bool, VulkanError>>, VulkanError> {
         match unsafe { self.try_present(present_info) } {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
@@ -562,10 +562,7 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn try_present(
         &mut self,
         present_info: &PresentInfo,
-    ) -> Result<
-        impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>,
-        Validated<VulkanError>,
-    > {
+    ) -> Result<Vec<Result<bool, VulkanError>>, Validated<VulkanError>> {
         self.validate_present(present_info)?;
 
         Ok(unsafe { self.present_unchecked(present_info) }?)
@@ -637,7 +634,7 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: &PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, VulkanError> {
+    ) -> Result<Vec<Result<bool, VulkanError>>, VulkanError> {
         let present_info_fields2_vk = present_info.to_vk_fields2();
         let present_info_fields1_vk = present_info.to_vk_fields1(&present_info_fields2_vk);
         let mut results_vk = present_info.to_vk_results();
@@ -667,11 +664,16 @@ impl<'a> QueueGuard<'a> {
             return Err(VulkanError::from(result));
         }
 
-        Ok(results_vk.into_iter().map(|result| match result {
-            vk::Result::SUCCESS => Ok(false),
-            vk::Result::SUBOPTIMAL_KHR => Ok(true),
-            err => Err(VulkanError::from(err)),
-        }))
+        let results = results_vk
+            .into_iter()
+            .map(|result| match result {
+                vk::Result::SUCCESS => Ok(false),
+                vk::Result::SUBOPTIMAL_KHR => Ok(true),
+                err => Err(VulkanError::from(err)),
+            })
+            .collect();
+
+        Ok(results)
     }
 
     /// Submits command buffers to a queue to be executed, panicking on a validation error.

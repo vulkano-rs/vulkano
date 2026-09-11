@@ -608,9 +608,7 @@ pub(crate) unsafe fn queue_present(
     present_info: PresentInfo,
 ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>> + use<>, Validated<VulkanError>>
 {
-    let results: SmallVec<[_; 1]> = queue
-        .with(|mut queue_guard| unsafe { queue_guard.present(&present_info) })?
-        .collect();
+    let results = queue.with(|mut queue_guard| unsafe { queue_guard.present(&present_info) })?;
 
     let PresentInfo {
         wait_semaphores: _,

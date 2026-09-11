@@ -2521,7 +2521,7 @@ mod tests {
         };
 
         let physical_device = match instance.enumerate_physical_devices() {
-            Ok(mut x) => x.next().unwrap(),
+            Ok(x) => x.into_iter().next().unwrap(),
             Err(_) => return,
         };
 

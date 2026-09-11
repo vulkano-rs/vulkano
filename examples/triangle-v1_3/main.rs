@@ -118,6 +118,7 @@ impl App {
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
+            .into_iter()
             .filter(|p| {
                 // For this example, we require at least Vulkan 1.3, or a device that has the
                 // `khr_dynamic_rendering` extension available.

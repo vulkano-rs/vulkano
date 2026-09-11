@@ -1081,9 +1081,7 @@ unsafe impl DescriptorSetAllocator for GlobalDescriptorSetAllocator {
 
         let allocate_info = DescriptorSetAllocateInfo::new(layout);
 
-        let inner = unsafe { pool.try_allocate_descriptor_sets(slice::from_ref(&allocate_info)) }?
-            .next()
-            .unwrap();
+        let inner = unsafe { pool.try_allocate_descriptor_set(&allocate_info) }?;
 
         Ok(DescriptorSetAlloc {
             inner,

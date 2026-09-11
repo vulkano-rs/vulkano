@@ -256,10 +256,11 @@ include!(crate::autogen_output!("instance_extensions.rs"));
 ///
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
-/// let layers: Vec<_> = library
+/// let layers = library
 ///     .layer_properties()?
+///     .into_iter()
 ///     .filter(|l| l.description().contains("foo"))
-///     .collect();
+///     .collect::<Vec<_>>();
 ///
 /// let instance = Instance::new(
 ///     &library,
@@ -647,7 +648,7 @@ impl Instance {
         &self.enabled_layers
     }
 
-    /// Returns an iterator that enumerates the physical devices available.
+    /// Returns an enumeration of the physical devices available.
     ///
     /// # Examples
     ///
@@ -669,7 +670,7 @@ impl Instance {
     /// ```
     pub fn enumerate_physical_devices(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>> + use<>, VulkanError> {
+    ) -> Result<Vec<Arc<PhysicalDevice>>, VulkanError> {
         let fns = self.fns();
 
         let handles = loop {
@@ -695,7 +696,7 @@ impl Instance {
             }
         };
 
-        let physical_devices: SmallVec<[_; 4]> = handles
+        let physical_devices = handles
             .into_iter()
             .map(|handle| {
                 self.physical_devices
@@ -703,18 +704,18 @@ impl Instance {
                         PhysicalDevice::from_handle(self, handle)
                     })
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(physical_devices.into_iter())
+        Ok(physical_devices)
     }
 
-    /// Returns an iterator that enumerates the groups of physical devices available, panicking on
-    /// a validation error. All physical devices in a group can be used to create a single logical
+    /// Returns an enumeration of the groups of physical devices available, panicking on a
+    /// validation error. All physical devices in a group can be used to create a single logical
     /// device. They are guaranteed have the same [properties], and support the same [extensions]
     /// and [features].
     ///
-    /// Every physical device will be returned exactly once;
-    /// physical devices that are not part of any group will be returned as a group of size 1.
+    /// Every physical device will be returned exactly once; physical devices that are not part of
+    /// any group will be returned as a group of size 1.
     ///
     /// The instance API version must be at least 1.1, or the [`khr_device_group_creation`]
     /// extension must be enabled on the instance.
@@ -735,20 +736,19 @@ impl Instance {
     #[track_caller]
     pub fn enumerate_physical_device_groups(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>, VulkanError>
-    {
+    ) -> Result<Vec<PhysicalDeviceGroupProperties>, VulkanError> {
         match self.try_enumerate_physical_device_groups() {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
         }
     }
 
-    /// Returns an iterator that enumerates the groups of physical devices available. All
-    /// physical devices in a group can be used to create a single logical device. They are
-    /// guaranteed have the same [properties], and support the same [extensions] and [features].
+    /// Returns an enumeration of the groups of physical devices available. All physical devices in
+    /// a group can be used to create a single logical device. They are guaranteed have the same
+    /// [properties], and support the same [extensions] and [features].
     ///
-    /// Every physical device will be returned exactly once;
-    /// physical devices that are not part of any group will be returned as a group of size 1.
+    /// Every physical device will be returned exactly once; physical devices that are not part of
+    /// any group will be returned as a group of size 1.
     ///
     /// The instance API version must be at least 1.1, or the [`khr_device_group_creation`]
     /// extension must be enabled on the instance.
@@ -761,10 +761,7 @@ impl Instance {
     #[inline]
     pub fn try_enumerate_physical_device_groups(
         self: &Arc<Self>,
-    ) -> Result<
-        impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>,
-        Validated<VulkanError>,
-    > {
+    ) -> Result<Vec<PhysicalDeviceGroupProperties>, Validated<VulkanError>> {
         self.validate_enumerate_physical_device_groups()?;
 
         Ok(unsafe { self.enumerate_physical_device_groups_unchecked() }?)
@@ -789,8 +786,7 @@ impl Instance {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn enumerate_physical_device_groups_unchecked(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties> + use<>, VulkanError>
-    {
+    ) -> Result<Vec<PhysicalDeviceGroupProperties>, VulkanError> {
         let fns = self.fns();
         let enumerate_physical_device_groups = if self.api_version() >= Version::V1_1 {
             fns.v1_1.enumerate_physical_device_groups
@@ -821,8 +817,8 @@ impl Instance {
             }
         };
 
-        let mut properties: SmallVec<[_; 4]> = SmallVec::with_capacity(properties_vk.len());
-        let mut properties_raw: Vec<_> = Vec::with_capacity(properties_vk.len());
+        let mut properties = Vec::with_capacity(properties_vk.len());
+        let mut properties_raw = Vec::with_capacity(properties_vk.len());
 
         for properties_vk in properties_vk {
             let &vk::PhysicalDeviceGroupProperties {
@@ -853,7 +849,7 @@ impl Instance {
 
         *self.physical_device_groups.write() = (true, properties_raw);
 
-        Ok(properties.into_iter())
+        Ok(properties)
     }
 
     /// Returns whether the given physical devices all belong to the same device group.

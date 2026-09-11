@@ -532,16 +532,18 @@ impl RawImage {
     pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
-    ) -> Result<
-        Image,
-        (
-            VulkanError,
-            RawImage,
-            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
-            impl ExactSizeIterator<Item = ResourceMemory>,
-        ),
-    > {
-        match self.try_bind_memory(allocations) {
+    ) -> Result<Image, (VulkanError, RawImage, Vec<ResourceMemory>)> {
+        let allocations = allocations.into_iter().collect();
+
+        self.bind_memory_inner(allocations)
+    }
+
+    #[track_caller]
+    fn bind_memory_inner(
+        self,
+        allocations: SmallVec<[ResourceMemory; 4]>,
+    ) -> Result<Image, (VulkanError, RawImage, Vec<ResourceMemory>)> {
+        match self.try_bind_memory_inner(allocations) {
             Ok(res) => Ok(res),
             Err((err, raw_image, allocations)) => Err((err.unwrap(), raw_image, allocations)),
         }
@@ -560,31 +562,22 @@ impl RawImage {
     pub fn try_bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
-    ) -> Result<
-        Image,
-        (
-            Validated<VulkanError>,
-            RawImage,
-            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
-            impl ExactSizeIterator<Item = ResourceMemory>,
-        ),
-    > {
-        let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
+    ) -> Result<Image, (Validated<VulkanError>, RawImage, Vec<ResourceMemory>)> {
+        let allocations = allocations.into_iter().collect();
 
+        self.try_bind_memory_inner(allocations)
+    }
+
+    fn try_bind_memory_inner(
+        self,
+        allocations: SmallVec<[ResourceMemory; 4]>,
+    ) -> Result<Image, (Validated<VulkanError>, RawImage, Vec<ResourceMemory>)> {
         if let Err(err) = self.validate_bind_memory(&allocations) {
-            return Err((err.into(), self, allocations.into_iter()));
+            return Err((err.into(), self, allocations.into_vec()));
         }
 
-        unsafe { self.bind_memory_unchecked(allocations) }.map_err(|(err, image, allocations)| {
-            (
-                err.into(),
-                image,
-                allocations
-                    .into_iter()
-                    .collect::<SmallVec<[_; 4]>>()
-                    .into_iter(),
-            )
-        })
+        unsafe { self.bind_memory_unchecked_inner(allocations) }
+            .map_err(|(err, image, allocations)| (err.into(), image, allocations))
     }
 
     fn validate_bind_memory(
@@ -953,17 +946,16 @@ impl RawImage {
     pub unsafe fn bind_memory_unchecked(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
-    ) -> Result<
-        Image,
-        (
-            VulkanError,
-            RawImage,
-            // TODO: add `use<>` to not capture the type of `allocations`, once allowed
-            impl ExactSizeIterator<Item = ResourceMemory>,
-        ),
-    > {
-        let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
+    ) -> Result<Image, (VulkanError, RawImage, Vec<ResourceMemory>)> {
+        let allocations = allocations.into_iter().collect();
 
+        unsafe { self.bind_memory_unchecked_inner(allocations) }
+    }
+
+    unsafe fn bind_memory_unchecked_inner(
+        self,
+        allocations: SmallVec<[ResourceMemory; 4]>,
+    ) -> Result<Image, (VulkanError, RawImage, Vec<ResourceMemory>)> {
         const PLANE_ASPECTS_VK_NORMAL: &[vk::ImageAspectFlags] = &[
             vk::ImageAspectFlags::PLANE_0,
             vk::ImageAspectFlags::PLANE_1,
@@ -1057,7 +1049,7 @@ impl RawImage {
         .result();
 
         if let Err(err) = result {
-            return Err((VulkanError::from(err), self, allocations.into_iter()));
+            return Err((VulkanError::from(err), self, allocations.into_vec()));
         }
 
         let layout = self.default_layout();

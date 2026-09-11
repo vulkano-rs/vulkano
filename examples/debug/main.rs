@@ -123,6 +123,7 @@ fn main() {
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()
         .unwrap()
+        .into_iter()
         .filter(|p| p.supported_extensions().contains(&device_extensions))
         .map(|p| {
             (!p.queue_family_properties().is_empty())

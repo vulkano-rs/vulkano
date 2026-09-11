@@ -375,9 +375,9 @@ mod tests {
     fn copy_buffer_dimensions() {
         let instance = instance!();
 
-        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
-            Some(p) => p,
-            None => return,
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(x) => x.into_iter().next().unwrap(),
+            Err(_) => return,
         };
 
         let (device, queues) = Device::new(
@@ -596,7 +596,7 @@ mod tests {
             ..DeviceFeatures::empty()
         };
         let select = match instance.enumerate_physical_devices() {
-            Ok(x) => x,
+            Ok(x) => x.into_iter(),
             Err(_) => return,
         }
         .filter(|p| p.supported_features().contains(&protected_memory_feature))

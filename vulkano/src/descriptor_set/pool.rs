@@ -11,7 +11,7 @@ use crate::{
 };
 use ash::vk;
 use smallvec::SmallVec;
-use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZero, ptr, slice, sync::Arc};
 
 /// Pool that descriptors are allocated from.
 ///
@@ -178,8 +178,80 @@ impl DescriptorPool {
         self.max_inline_uniform_block_bindings
     }
 
+    /// Allocates a descriptor set from the pool, panicking on a validation error.
+    ///
+    /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
+    /// you should just create a new pool.
+    ///
+    /// This is a shortcut for `try_allocate_descriptor_set().map_err(Validated::unwrap)`.
+    ///
+    /// # Safety
+    ///
+    /// - When the pool is dropped, the returned descriptor set must not be in use by either the
+    ///   host or device.
+    /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
+    ///   enabled on the device, then there must be a descriptor set remaining in the pool, and the
+    ///   total number of descriptors of each type being allocated must not be greater than the
+    ///   number of descriptors of that type remaining in the pool.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if [`try_allocate_descriptor_set`] returns a [`ValidationError`].
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    /// [`try_allocate_descriptor_set`]: Self::try_allocate_descriptor_set
+    #[inline]
+    #[track_caller]
+    pub unsafe fn allocate_descriptor_set(
+        &self,
+        allocate_info: &DescriptorSetAllocateInfo<'_>,
+    ) -> Result<DescriptorPoolAlloc, VulkanError> {
+        match unsafe { self.try_allocate_descriptor_set(allocate_info) } {
+            Ok(res) => Ok(res),
+            Err(err) => Err(err.unwrap()),
+        }
+    }
+
+    /// Allocates a descriptor set from the pool.
+    ///
+    /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
+    /// you should just create a new pool.
+    ///
+    /// # Safety
+    ///
+    /// - When the pool is dropped, the returned descriptor set must not be in use by either the
+    ///   host or device.
+    /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
+    ///   enabled on the device, then there must be a descriptor set remaining in the pool, and the
+    ///   total number of descriptors of each type being allocated must not be greater than the
+    ///   number of descriptors of that type remaining in the pool.
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    #[inline]
+    pub unsafe fn try_allocate_descriptor_set(
+        &self,
+        allocate_info: &DescriptorSetAllocateInfo<'_>,
+    ) -> Result<DescriptorPoolAlloc, Validated<VulkanError>> {
+        self.validate_allocate_descriptor_sets(slice::from_ref(allocate_info))?;
+
+        Ok(unsafe { self.allocate_descriptor_set_unchecked(allocate_info) }?)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_descriptor_set_unchecked(
+        &self,
+        allocate_info: &DescriptorSetAllocateInfo<'_>,
+    ) -> Result<DescriptorPoolAlloc, VulkanError> {
+        unsafe { self.allocate_descriptor_sets_unchecked_inner(slice::from_ref(allocate_info)) }
+            .map(|allocs| {
+                let [alloc] = allocs.into_inner().unwrap();
+
+                alloc
+            })
+    }
+
     /// Allocates descriptor sets from the pool, one for each element in `allocate_info`, panicking
-    /// on a validation error. Returns an iterator to the allocated sets, or an error.
+    /// on a validation error.
     ///
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
     /// you should just create a new pool.
@@ -207,7 +279,7 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
-    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, VulkanError> {
+    ) -> Result<Vec<DescriptorPoolAlloc>, VulkanError> {
         match unsafe { self.try_allocate_descriptor_sets(allocate_infos) } {
             Ok(res) => Ok(res),
             Err(err) => Err(err.unwrap()),
@@ -215,7 +287,6 @@ impl DescriptorPool {
     }
 
     /// Allocates descriptor sets from the pool, one for each element in `allocate_info`.
-    /// Returns an iterator to the allocated sets, or an error.
     ///
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
     /// you should just create a new pool.
@@ -235,8 +306,7 @@ impl DescriptorPool {
     pub unsafe fn try_allocate_descriptor_sets(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
-    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, Validated<VulkanError>>
-    {
+    ) -> Result<Vec<DescriptorPoolAlloc>, Validated<VulkanError>> {
         self.validate_allocate_descriptor_sets(allocate_infos)?;
 
         Ok(unsafe { self.allocate_descriptor_sets_unchecked(allocate_infos) }?)
@@ -285,7 +355,15 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets_unchecked(
         &self,
         allocate_infos: &[DescriptorSetAllocateInfo<'_>],
-    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc> + use<>, VulkanError> {
+    ) -> Result<Vec<DescriptorPoolAlloc>, VulkanError> {
+        unsafe { self.allocate_descriptor_sets_unchecked_inner(allocate_infos) }
+            .map(SmallVec::into_vec)
+    }
+
+    unsafe fn allocate_descriptor_sets_unchecked_inner(
+        &self,
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
+    ) -> Result<SmallVec<[DescriptorPoolAlloc; 1]>, VulkanError> {
         let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(allocate_infos.len());
         let mut variable_descriptor_counts: SmallVec<[_; 1]> =
             SmallVec::with_capacity(allocate_infos.len());
@@ -348,18 +426,21 @@ impl DescriptorPool {
             unsafe { output.set_len(layouts_vk.len()) };
         }
 
-        Ok(output
+        let descriptor_pool_allocs = output
             .into_iter()
             .zip(layouts)
             .zip(variable_descriptor_counts)
             .map(
-                move |((handle, layout), variable_descriptor_count)| DescriptorPoolAlloc {
+                |((handle, layout), variable_descriptor_count)| DescriptorPoolAlloc {
                     handle,
                     id: DescriptorPoolAlloc::next_id(),
                     layout: DeviceOwnedDebugWrapper(layout),
                     variable_descriptor_count,
                 },
-            ))
+            )
+            .collect();
+
+        Ok(descriptor_pool_allocs)
     }
 
     /// Frees some descriptor sets, panicking on a validation error.

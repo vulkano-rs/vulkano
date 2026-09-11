@@ -98,6 +98,7 @@ impl App {
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
+            .into_iter()
             .filter(|p| p.api_version() >= Version::V1_3)
             .filter(|p| {
                 p.supported_extensions().contains(&device_extensions)

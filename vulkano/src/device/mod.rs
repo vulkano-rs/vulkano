@@ -26,6 +26,7 @@
 //! let physical_device = instance
 //!     .enumerate_physical_devices()
 //!     .unwrap_or_else(|err| panic!("couldn't enumerate physical devices: {:?}", err))
+//!     .into_iter()
 //!     .next()
 //!     .expect("no physical device");
 //!
@@ -2726,9 +2727,9 @@ mod tests {
     #[test]
     fn too_many_queues() {
         let instance = instance!();
-        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
-            Some(p) => p,
-            None => return,
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(x) => x.into_iter().next().unwrap(),
+            Err(_) => return,
         };
 
         let queue_family_index = 0;
@@ -2755,9 +2756,9 @@ mod tests {
     #[test]
     fn unsupported_features() {
         let instance = instance!();
-        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
-            Some(p) => p,
-            None => return,
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(x) => x.into_iter().next().unwrap(),
+            Err(_) => return,
         };
 
         let features = DeviceFeatures::all();
@@ -2783,9 +2784,9 @@ mod tests {
     #[test]
     fn priority_out_of_range() {
         let instance = instance!();
-        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
-            Some(p) => p,
-            None => return,
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(x) => x.into_iter().next().unwrap(),
+            Err(_) => return,
         };
 
         assert!(Device::try_new(
@@ -2820,11 +2821,9 @@ mod tests {
         let instance = instance!();
 
         let physical_device = match instance.enumerate_physical_devices() {
-            Ok(x) => x,
+            Ok(x) => x.into_iter().next().unwrap(),
             Err(_) => return,
-        }
-        .next()
-        .unwrap();
+        };
 
         let arc = Arc::new(42);
         let _arc2 = arc.clone();

@@ -45,7 +45,7 @@ macro_rules! gfx_dev_and_queue {
         };
 
         let select = match instance.enumerate_physical_devices() {
-            Ok(x) => x,
+            Ok(x) => x.into_iter(),
             Err(_) => return,
         }
         .filter(|p| {
