@@ -56,6 +56,7 @@ use std::iter::FusedIterator;
 pub struct BumpAllocator {
     region: Region,
     free_start: DeviceSize,
+    free_end: DeviceSize,
     prev_allocation_type: AllocationType,
 }
 
@@ -64,14 +65,14 @@ impl BumpAllocator {
         if part == 0 {
             SuballocationNode {
                 offset: self.region.offset(),
-                size: self.free_start,
+                size: self.free_start - self.region.offset(),
                 allocation_type: self.prev_allocation_type.into(),
             }
         } else {
             debug_assert_eq!(part, 1);
 
             SuballocationNode {
-                offset: self.region.offset() + self.free_start,
+                offset: self.free_start,
                 size: self.free_size(),
                 allocation_type: SuballocationType::Free,
             }
@@ -88,7 +89,8 @@ unsafe impl Suballocator for BumpAllocator {
     fn new(region: Region) -> Self {
         BumpAllocator {
             region,
-            free_start: 0,
+            free_start: region.offset(),
+            free_end: region.offset() + region.size(),
             prev_allocation_type: AllocationType::Unknown,
         }
     }
@@ -107,24 +109,25 @@ unsafe impl Suballocator for BumpAllocator {
         let size = layout.size();
         let alignment = layout.alignment();
 
-        // These can't overflow because suballocation offsets are bounded by the region, whose end
+        // This can't overflow because suballocation offsets are bounded by the region, whose end
         // can itself not exceed `DeviceLayout::MAX_SIZE`.
-        let prev_end = self.region.offset() + self.free_start;
-        let mut offset = align_up(prev_end, alignment);
+        let mut offset = align_up(self.free_start, alignment);
 
         if buffer_image_granularity != DeviceAlignment::MIN
-            && prev_end > 0
-            && are_blocks_on_same_page(0, prev_end, offset, buffer_image_granularity)
+            && are_blocks_on_same_page(0, self.free_start, offset, buffer_image_granularity)
             && has_granularity_conflict(self.prev_allocation_type, allocation_type)
         {
+            // This can't overflow for the same reason as above.
             offset = align_up(offset, buffer_image_granularity);
         }
 
-        let relative_offset = offset - self.region.offset();
+        // `offset`, no matter the alignment, can't end up as more than `DeviceAlignment::MAX` for
+        // the same reason as above. `DeviceLayout` guarantees that `size` doesn't exceed
+        // `DeviceLayout::MAX_SIZE`. `DeviceAlignment::MAX.as_devicesize() + DeviceLayout::MAX_SIZE`
+        // is equal to `DeviceSize::MAX`. Therefore, `offset + size` can't overflow.
+        let free_start = offset + size;
 
-        let free_start = relative_offset + size;
-
-        if free_start > self.region.size() {
+        if free_start > self.free_end {
             return Err(SuballocatorError::OutOfRegionMemory);
         }
 
@@ -149,19 +152,23 @@ unsafe impl Suballocator for BumpAllocator {
     /// [region]: Suballocator#regions
     #[inline]
     fn reset(&mut self) {
-        self.free_start = 0;
+        self.free_start = self.region.offset();
         self.prev_allocation_type = AllocationType::Unknown;
     }
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.region.size() - self.free_start
+        self.free_end - self.free_start
     }
 
     #[inline]
     fn suballocations(&self) -> Self::Suballocations<'_> {
-        let start = if self.free_start == 0 { 1 } else { 0 };
-        let end = if self.free_start == self.region.size() {
+        let start = if self.free_start == self.region.offset() {
+            1
+        } else {
+            0
+        };
+        let end = if self.free_start == self.free_end {
             1
         } else {
             2

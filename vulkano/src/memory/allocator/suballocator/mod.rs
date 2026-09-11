@@ -8,7 +8,7 @@ pub use self::{
     buddy::BuddyAllocator, bump::BumpAllocator, free_list::FreeListAllocator, region::Region,
 };
 use super::{align_down, AllocationHandle, DeviceAlignment, DeviceLayout};
-use crate::{image::ImageTiling, memory::allocator::align_up, DeviceSize};
+use crate::{image::ImageTiling, DeviceSize};
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
@@ -648,8 +648,7 @@ impl From<AllocationType> for SuballocationType {
 ///
 /// > Note
 /// >
-/// > Assumes `a_offset + a_size <= b_offset` and that `align_up(a_offset + a_size, page_size)`
-/// > doesn't overflow.
+/// > Assumes `a_offset + a_size <= b_offset`.
 ///
 /// </div>
 #[inline]
@@ -659,13 +658,13 @@ fn are_blocks_on_same_page(
     b_offset: DeviceSize,
     page_size: DeviceAlignment,
 ) -> bool {
-    let a_end_page_plus_one = align_up(a_offset + a_size, page_size);
+    debug_assert!(a_offset + a_size <= b_offset);
+
+    let a_end = a_offset + a_size;
+    let a_end_page = align_down(a_end.saturating_sub(1), page_size);
     let b_start_page = align_down(b_offset, page_size);
 
-    debug_assert!(a_offset + a_size <= b_offset);
-    debug_assert!(!(a_offset + a_size > 0 && a_end_page_plus_one == 0));
-
-    a_end_page_plus_one > b_start_page
+    a_end_page == b_start_page
 }
 
 #[cfg(test)]
@@ -683,6 +682,67 @@ mod tests {
     }
 
     const DUMMY_LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 1));
+
+    #[test]
+    fn are_blocks_on_same_page_literal_edge_cases() {
+        const PAGE_SIZE: DeviceAlignment = DeviceAlignment::new(16).unwrap();
+        const LAST_PAGE_OFFSET: DeviceSize = align_down(DeviceSize::MAX, PAGE_SIZE);
+
+        // These two are technically not correct, but it does't matter because `a_end` is 0, and 0
+        // is always aligned for every alignment, so aligning it up isn't going to do anything.
+        assert!(are_blocks_on_same_page(0, 0, 0, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(0, 0, 1, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(0, 15, 15, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 15, 16, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 16, 16, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(0, 16, 17, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(0, 17, 17, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(16, 15, 31, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 15, 32, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 16, 32, PAGE_SIZE));
+        assert!(!are_blocks_on_same_page(16, 16, 33, PAGE_SIZE));
+        assert!(are_blocks_on_same_page(16, 17, 33, PAGE_SIZE));
+
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            15,
+            LAST_PAGE_OFFSET - 1,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            15,
+            LAST_PAGE_OFFSET,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            16,
+            LAST_PAGE_OFFSET,
+            PAGE_SIZE,
+        ));
+        assert!(!are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            16,
+            LAST_PAGE_OFFSET + 1,
+            PAGE_SIZE,
+        ));
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET - 16,
+            17,
+            LAST_PAGE_OFFSET + 1,
+            PAGE_SIZE,
+        ));
+
+        assert!(are_blocks_on_same_page(
+            LAST_PAGE_OFFSET,
+            15,
+            LAST_PAGE_OFFSET + 15,
+            PAGE_SIZE,
+        ));
+    }
 
     #[test]
     fn free_list_allocator_capacity() {
@@ -1161,6 +1221,9 @@ mod tests {
         assert!(allocator
             .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
+        assert_eq!(allocator.free_size(), ALIGNMENT - 1);
+        assert_eq!(allocator.suballocations().count(), 2);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
         for _ in 0..ALIGNMENT - 1 {
             allocator
@@ -1172,9 +1235,13 @@ mod tests {
             .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
         assert_eq!(allocator.free_size(), 0);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
 
         allocator.reset();
         assert_eq!(allocator.free_size(), REGION_SIZE);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
     }
 
     #[test]
