@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{codegen::reflect, structs::TypeRegistry, MacroInput};
+    use crate::{codegen::reflect, structs::TypeRegistry, MacroOptions};
     use proc_macro2::Span;
     use syn::LitStr;
 
@@ -16,7 +16,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
             None,
             &insts,
@@ -32,7 +32,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
             None,
             &insts,

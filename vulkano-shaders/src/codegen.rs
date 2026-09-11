@@ -1,6 +1,6 @@
 use crate::{
     structs::{self, TypeRegistry},
-    EnvVersion, MacroInput, ShaderKind, SourceLanguage, SpirvVersion,
+    EnvVersion, MacroOptions, ShaderKind, SourceLanguage, SpirvVersion,
 };
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
@@ -400,25 +400,25 @@ fn normalize_str(path: impl AsRef<Path>) -> String {
 }
 
 pub(super) fn compile(
-    input: &MacroInput,
+    options: &MacroOptions,
     source: &str,
     working_dir: &Path,
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    let source_language = input.source_language.unwrap_or(SourceLanguage::Glsl);
+    let source_language = options.source_language.unwrap_or(SourceLanguage::Glsl);
     let mut compile_options = CompileOptions::new();
 
     compile_options.source_language = source_language;
-    compile_options.target_env = input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
-    compile_options.target_spirv = input.spirv_version;
-    compile_options.macro_definitions = input
+    compile_options.target_env = options.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
+    compile_options.target_spirv = options.spirv_version;
+    compile_options.macro_definitions = options
         .global_macro_defines
         .iter()
         .chain(macro_defines.iter())
         .cloned()
         .collect();
-    compile_options.include_directories = input.include_directories.clone();
+    compile_options.include_directories = options.include_directories.clone();
     compile_options.debug = cfg!(feature = "shaderc-debug");
 
     match source_language {
@@ -433,7 +433,7 @@ pub(super) fn compile(
 }
 
 pub(super) fn reflect(
-    input: &MacroInput,
+    options: &MacroOptions,
     source: LitStr,
     name: Option<String>,
     words: &[u32],
@@ -525,7 +525,7 @@ pub(super) fn reflect(
         name: name.unwrap_or_default(),
         spirv,
     };
-    let structs = structs::write_structs(input, &shader, type_registry)?;
+    let structs = structs::write_structs(options, &shader, type_registry)?;
 
     Ok((shader_code, structs))
 }
@@ -541,12 +541,12 @@ mod tests {
     use vulkano::shader::reflect;
 
     fn compile_inline(
-        input: &MacroInput,
+        options: &MacroOptions,
         source: &str,
         shader_kind: ShaderKind,
         macro_defines: &[(String, String)],
     ) -> Result<(Vec<u32>, Vec<String>), String> {
-        compile(input, source, Path::new("."), shader_kind, macro_defines)
+        compile(options, source, Path::new("."), shader_kind, macro_defines)
     }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> HashSet<String> {
@@ -570,7 +570,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new("../tests/frag.spv", Span::call_site()),
             None,
             &insts,
@@ -590,13 +590,13 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv, includes) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![
                     root_path.join("include_dir_a"),
                     root_path.join("include_dir_b"),
                 ],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -642,10 +642,10 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv2, includes2) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
                 include_directories: vec![root_path.join("include_dir_a")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #version 450
@@ -675,9 +675,9 @@ mod tests {
             .expect("cannot run tests in a folder with non unicode characters")
             .replace('\\', "/");
         let (_spirv3, includes3) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -700,13 +700,13 @@ mod tests {
         );
 
         let (_spirv4, includes4) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
                 include_directories: vec![
                     root_path.join("include_dir_b"),
                     root_path.join("include_dir_c"),
                 ],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #version 450
@@ -736,10 +736,10 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv2, includes2) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_a")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #include <target_a.glsl>
@@ -768,9 +768,9 @@ mod tests {
             .expect("cannot run tests in a folder with non unicode characters")
             .replace('\\', "/");
         let (_spirv3, includes3) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -792,13 +792,13 @@ mod tests {
         );
 
         let (_spirv4, includes4) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![
                     root_path.join("include_dir_b"),
                     root_path.join("include_dir_c"),
                 ],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #include <target_c.glsl>
@@ -830,9 +830,9 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv, includes) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -879,9 +879,9 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv2, includes2) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #version 450
@@ -907,10 +907,10 @@ mod tests {
         );
 
         let (_spirv3, includes3) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
                 include_directories: vec![root_path.join("include_dir_b")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #version 450
@@ -941,9 +941,9 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv2, includes2) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #include "target_a.glsl"
@@ -968,10 +968,10 @@ mod tests {
         );
 
         let (_spirv3, includes3) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_b")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #include "include_dir_c/target_c.glsl"
@@ -1004,10 +1004,10 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1023,10 +1023,10 @@ mod tests {
         assert!(err.contains("expected a file extension"));
 
         let (_spirv, includes) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1049,10 +1049,10 @@ mod tests {
         );
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1069,10 +1069,10 @@ mod tests {
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1089,9 +1089,9 @@ mod tests {
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1109,9 +1109,9 @@ mod tests {
         assert!(err.contains("expected a file extension"));
 
         let (_spirv2, includes2) = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1135,9 +1135,9 @@ mod tests {
         );
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1155,9 +1155,9 @@ mod tests {
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1189,10 +1189,10 @@ mod tests {
         let shader_suffix = "float4 main() : SV_Position { return float4(0, 0, 0, 1); }";
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1209,10 +1209,10 @@ mod tests {
         assert!(err.contains("include file not found"));
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1229,10 +1229,10 @@ mod tests {
         assert!(err.contains("include file not found"));
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1249,10 +1249,10 @@ mod tests {
         assert!(err.contains("include file not found"));
 
         let err = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
                 include_directories: vec![root_path.join("include_dir_spaces")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1269,9 +1269,9 @@ mod tests {
         assert!(err.contains("include file not found"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1290,9 +1290,9 @@ mod tests {
         assert!(err.contains("failed to parse dependencies file"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1310,9 +1310,9 @@ mod tests {
         assert!(err.contains("failed to parse dependencies file"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1330,9 +1330,9 @@ mod tests {
         assert!(err.contains("failed to parse dependencies file"));
 
         let err = compile(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1363,10 +1363,10 @@ mod tests {
             .join("\n");
 
         let (_spirv, includes) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 include_directories: vec![root_path.join("tests").join("include_dir_many")],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &format!(
                 "
@@ -1426,9 +1426,9 @@ mod tests {
         );
 
         let compile_no_defines = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &need_defines,
             ShaderKind::Vertex,
@@ -1437,13 +1437,13 @@ mod tests {
         assert!(compile_no_defines.is_err());
 
         compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 global_macro_defines: vec![
                     ("NAME1".into(), "".into()),
                     ("NAME2".into(), "58".into()),
                 ],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &need_defines,
             ShaderKind::Vertex,
@@ -1452,10 +1452,10 @@ mod tests {
         .expect("setting global shader macros did not work");
 
         compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(source_language),
                 global_macro_defines: vec![("NAME1".into(), "".into())],
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             &need_defines,
             ShaderKind::Vertex,
@@ -1590,7 +1590,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new("../tests/multiple_entrypoints.spv", Span::call_site()),
             None,
             &insts,
@@ -1630,11 +1630,11 @@ mod tests {
 
     fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>) {
         compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
                 spirv_version: Some(SpirvVersion::V1_6),
                 vulkan_version: Some(EnvVersion::Vulkan1_3),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 #version 460
@@ -1696,7 +1696,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new(
                 "descriptor_calculation_with_multiple_functions_shader",
                 Span::call_site(),
@@ -1740,9 +1740,9 @@ mod tests {
     #[test]
     fn slangc_compile_simple_compute() {
         let (words, _includes) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 [vk::binding(0, 0)] RWStructuredBuffer<float> output;
@@ -1770,9 +1770,9 @@ mod tests {
     #[test]
     fn reflect_slangc_multiple_structured_buffers() {
         let (words, _includes) = compile_inline(
-            &MacroInput {
+            &MacroOptions {
                 source_language: Some(SourceLanguage::Slang),
-                ..MacroInput::empty()
+                ..MacroOptions::empty()
             },
             r#"
                 [vk::binding(0, 0)] RWStructuredBuffer<float> output_1;
@@ -1793,7 +1793,7 @@ mod tests {
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
-            &MacroInput::empty(),
+            &MacroOptions::empty(),
             LitStr::new("slangc_multiple_structured_buffers", Span::call_site()),
             None,
             &words,

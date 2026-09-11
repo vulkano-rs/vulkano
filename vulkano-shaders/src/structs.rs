@@ -1,4 +1,4 @@
-use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
+use crate::{bail, codegen::Shader, LinAlgType, MacroOptions};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
@@ -86,11 +86,11 @@ impl RegisteredType {
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub(super) fn write_structs(
-    input: &MacroInput,
+    options: &MacroOptions,
     shader: &Shader,
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
-    if !input.generate_structs {
+    if !options.generate_structs {
         return Ok(TokenStream::new());
     }
 
@@ -121,11 +121,11 @@ pub(super) fn write_structs(
         }
 
         let custom_derives = if struct_ty.size().is_some() {
-            input.custom_derives.as_slice()
+            options.custom_derives.as_slice()
         } else {
             &[]
         };
-        let struct_ser = Serializer(&struct_ty, input);
+        let struct_ser = Serializer(&struct_ty, options);
 
         structs.extend(quote! {
             #[allow(non_camel_case_types, non_snake_case)]
@@ -958,8 +958,8 @@ impl PartialEq for Member {
 
 impl Eq for Member {}
 
-/// Helper for serializing a type to tokens with respect to macro input.
-struct Serializer<'a, T>(&'a T, &'a MacroInput);
+/// Helper for serializing a type to tokens with respect to macro options.
+struct Serializer<'a, T>(&'a T, &'a MacroOptions);
 
 impl ToTokens for Serializer<'_, Type> {
     fn to_tokens(&self, tokens: &mut TokenStream) {

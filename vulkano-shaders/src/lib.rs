@@ -249,7 +249,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::{
     env, fs,
-    mem::{self, ManuallyDrop},
+    mem::ManuallyDrop,
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
@@ -282,12 +282,12 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .into()
 }
 
-fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
-    let shaders = mem::take(&mut input.shaders); // yoink
+fn shader_inner(input: MacroInput) -> Result<TokenStream> {
+    let MacroInput { shaders, options } = input;
 
-    let mut state = MacroState::new(&input)?;
+    let mut state = MacroState::new(&options)?;
 
-    match shaders.unwrap() {
+    match shaders {
         Shaders::Single(shader_fields) => {
             state.process_shader(None, shader_fields)?;
         }
@@ -300,16 +300,16 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 
     let result = state.finalize();
 
-    if input.dump.value {
+    if options.dump.value {
         println!("{}", result);
-        bail!(input.dump, "`shader!` Rust codegen dumped");
+        bail!(options.dump, "`shader!` Rust codegen dumped");
     }
 
     Ok(result)
 }
 
 struct MacroState<'a> {
-    input: &'a MacroInput,
+    options: &'a MacroOptions,
     root_path: PathBuf,
     relative_path_error_message: String,
     shaders_code: TokenStream,
@@ -318,14 +318,14 @@ struct MacroState<'a> {
 }
 
 impl<'a> MacroState<'a> {
-    fn new(input: &'a MacroInput) -> Result<Self> {
-        let (root_path, relative_path_error_message) = match input.root_path_env.as_ref() {
+    fn new(options: &'a MacroOptions) -> Result<Self> {
+        let (root_path, relative_path_error_message) = match options.root_path_env.as_ref() {
             None => root_path_from_call_site(),
             Some(root_path_env) => root_path_from_env_var(root_path_env),
         }?;
 
         Ok(MacroState {
-            input,
+            options,
             root_path,
             relative_path_error_message,
             shaders_code: TokenStream::new(),
@@ -374,7 +374,7 @@ impl<'a> MacroState<'a> {
                 };
 
                 let (words, mut input_paths) = codegen::compile(
-                    self.input,
+                    self.options,
                     &source_code,
                     working_dir,
                     shader_kind.unwrap(),
@@ -406,7 +406,7 @@ impl<'a> MacroState<'a> {
         };
 
         let (shaders_code, structs_code) = codegen::reflect(
-            self.input,
+            self.options,
             lit,
             shader_name,
             &words,
@@ -724,17 +724,8 @@ impl TryFrom<&str> for ShaderKind {
 }
 
 struct MacroInput {
-    root_path_env: Option<LitStr>,
-    include_directories: Vec<PathBuf>,
-    global_macro_defines: Vec<(String, String)>,
-    shaders: Option<Shaders>,
-    source_language: Option<SourceLanguage>,
-    spirv_version: Option<SpirvVersion>,
-    vulkan_version: Option<EnvVersion>,
-    generate_structs: bool,
-    custom_derives: Vec<SynPath>,
-    linalg_type: LinAlgType,
-    dump: LitBool,
+    shaders: Shaders,
+    options: MacroOptions,
 }
 
 enum Shaders {
@@ -749,23 +740,17 @@ struct ShaderFields {
     macro_defines: Vec<(String, String)>,
 }
 
-impl MacroInput {
-    #[cfg(test)]
-    fn empty() -> Self {
-        MacroInput {
-            root_path_env: None,
-            include_directories: Vec::new(),
-            global_macro_defines: Vec::new(),
-            shaders: None,
-            vulkan_version: None,
-            spirv_version: None,
-            generate_structs: true,
-            custom_derives: Vec::new(),
-            linalg_type: LinAlgType::default(),
-            dump: LitBool::new(false, Span::call_site()),
-            source_language: None,
-        }
-    }
+struct MacroOptions {
+    root_path_env: Option<LitStr>,
+    include_directories: Vec<PathBuf>,
+    global_macro_defines: Vec<(String, String)>,
+    source_language: Option<SourceLanguage>,
+    spirv_version: Option<SpirvVersion>,
+    vulkan_version: Option<EnvVersion>,
+    generate_structs: bool,
+    custom_derives: Vec<SynPath>,
+    linalg_type: LinAlgType,
+    dump: LitBool,
 }
 
 impl Parse for MacroInput {
@@ -1155,11 +1140,12 @@ impl Parse for MacroInput {
             }
         }
 
-        Ok(MacroInput {
+        let shaders = shaders.unwrap();
+
+        let options = MacroOptions {
             root_path_env,
             include_directories,
             global_macro_defines,
-            shaders,
             vulkan_version,
             spirv_version,
             generate_structs: generate_structs.unwrap_or(true),
@@ -1172,7 +1158,27 @@ impl Parse for MacroInput {
             linalg_type: linalg_type.unwrap_or_default(),
             dump: dump.unwrap_or_else(|| LitBool::new(false, Span::call_site())),
             source_language,
-        })
+        };
+
+        Ok(MacroInput { shaders, options })
+    }
+}
+
+impl MacroOptions {
+    #[cfg(test)]
+    fn empty() -> Self {
+        MacroOptions {
+            root_path_env: None,
+            include_directories: Vec::new(),
+            global_macro_defines: Vec::new(),
+            vulkan_version: None,
+            spirv_version: None,
+            generate_structs: true,
+            custom_derives: Vec::new(),
+            linalg_type: LinAlgType::default(),
+            dump: LitBool::new(false, Span::call_site()),
+            source_language: None,
+        }
     }
 }
 
