@@ -393,9 +393,10 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 fn root_path_from_call_site() -> Result<(PathBuf, String)> {
     let Some(file_path) = Span::call_site().unwrap().local_file() else {
         bail!(
-            "failed to get the file invoking the macro from the compiler; you can use the \
-            `root_path_env: \"CARGO_MANIFEST_DIR\"` option to search relative to your Cargo.toml \
-            instead",
+            "failed to get the file invoking the macro from the compiler; this only happens when \
+            using rust-analyzer with the file with this macro invocation open, and you can ignore \
+            this error; if you can't live with it, you can use the `root_path_env: \
+            \"CARGO_MANIFEST_DIR\"` option to search relative to your Cargo.toml instead",
         );
     };
 
