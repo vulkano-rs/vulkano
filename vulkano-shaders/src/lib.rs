@@ -247,7 +247,12 @@
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use std::{env, fs, mem, path::PathBuf};
+use std::{
+    env, fs,
+    mem::{self, ManuallyDrop},
+    path::{Path, PathBuf},
+    result::Result as StdResult,
+};
 use structs::TypeRegistry;
 use syn::{
     braced, bracketed, parenthesized,
@@ -262,9 +267,10 @@ mod structs;
 #[proc_macro]
 pub fn include_vulkano_glsl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     parse_macro_input!(input as syn::parse::Nothing);
+
     let include_string = include_str!("../include/vulkano.glsl");
-    let expanded = quote! { #include_string };
-    expanded.into()
+
+    quote! { #include_string }.into()
 }
 
 #[proc_macro]
@@ -277,110 +283,15 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
-    let (root_path, relative_path_error_msg) = match input.root_path_env.as_ref() {
-        None => root_path_from_call_site(),
-        Some(root_path_env) => root_path_from_env_var(root_path_env),
-    }?;
-
     let shaders = mem::take(&mut input.shaders); // yoink
 
-    let mut shaders_code = Vec::with_capacity(shaders.len());
-    let mut types_code = Vec::with_capacity(shaders.len());
-    let mut type_registry = TypeRegistry::default();
+    let mut state = MacroState::new(&input)?;
 
-    for (
-        name,
-        ShaderFields {
-            shader_kind,
-            source_kind,
-            macro_defines,
-        },
-    ) in shaders
-    {
-        let (code, types) = match source_kind {
-            SourceKind::Src(source) => {
-                let (artifact, includes) = codegen::compile(
-                    &input,
-                    &source.value(),
-                    &root_path,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
-                .map_err(|err| Error::new_spanned(&source, err))?;
-
-                codegen::reflect(
-                    &input,
-                    source,
-                    name,
-                    &artifact,
-                    includes,
-                    &mut type_registry,
-                )?
-            }
-            SourceKind::Path(path) => {
-                let full_path = root_path.join(path.value());
-
-                if !full_path.is_file() {
-                    bail!(
-                        path,
-                        "file `{full_path:?}` was not found, note that the path must be relative \
-                        {relative_path_error_msg}",
-                    );
-                }
-
-                let source = fs::read_to_string(&full_path).map_err(|err| {
-                    Error::new_spanned(
-                        &path,
-                        format_args!("failed to read shader source `{full_path:?}`: {err}"),
-                    )
-                })?;
-
-                let working_dir = full_path.parent().unwrap();
-
-                let (artifact, mut includes) = codegen::compile(
-                    &input,
-                    &source,
-                    working_dir,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
-                .map_err(|err| Error::new_spanned(&path, err))?;
-
-                includes.push(full_path.into_os_string().into_string().unwrap());
-
-                codegen::reflect(&input, path, name, &artifact, includes, &mut type_registry)?
-            }
-            SourceKind::Bytes(path) => {
-                let full_path = root_path.join(path.value());
-
-                if !full_path.is_file() {
-                    bail!(
-                        path,
-                        "file `{full_path:?}` was not found, note that the path must be relative \
-                        {relative_path_error_msg}",
-                    );
-                }
-
-                let bytes = fs::read(&full_path)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
-
-                let words = vulkano::shader::spirv::bytes_to_words(&bytes)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
-
-                let includes = vec![full_path.into_os_string().into_string().unwrap()];
-
-                codegen::reflect(&input, path, name, &words, includes, &mut type_registry)?
-            }
-        };
-
-        shaders_code.push(code);
-        types_code.push(types);
+    for (shader_name, shader_fields) in shaders {
+        state.process_shader(shader_name, shader_fields)?;
     }
 
-    let result = quote! {
-        #( #shaders_code )*
-        #( #types_code )*
-    };
+    let result = state.finalize();
 
     if input.dump.value {
         println!("{}", result);
@@ -388,6 +299,138 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     }
 
     Ok(result)
+}
+
+struct MacroState<'a> {
+    input: &'a MacroInput,
+    root_path: PathBuf,
+    relative_path_error_message: String,
+    shaders_code: TokenStream,
+    structs_code: TokenStream,
+    type_registry: TypeRegistry,
+}
+
+impl<'a> MacroState<'a> {
+    fn new(input: &'a MacroInput) -> Result<Self> {
+        let (root_path, relative_path_error_message) = match input.root_path_env.as_ref() {
+            None => root_path_from_call_site(),
+            Some(root_path_env) => root_path_from_env_var(root_path_env),
+        }?;
+
+        Ok(MacroState {
+            input,
+            root_path,
+            relative_path_error_message,
+            shaders_code: TokenStream::new(),
+            structs_code: TokenStream::new(),
+            type_registry: TypeRegistry::default(),
+        })
+    }
+
+    fn process_shader(&mut self, shader_name: String, shader_fields: ShaderFields) -> Result<()> {
+        let ShaderFields {
+            shader_kind,
+            source_kind,
+            macro_defines,
+        } = shader_fields;
+
+        let (lit, words, input_paths) = match source_kind {
+            source_kind @ (SourceKind::Src(_) | SourceKind::Path(_)) => {
+                let source_path;
+                let source_code;
+                let working_dir;
+
+                let lit = match source_kind {
+                    SourceKind::Path(lit) => {
+                        source_path = Some(self.root_path.join(lit.value()));
+                        let path = source_path.as_deref().unwrap();
+
+                        self.check_file_exists(&lit, path)?;
+
+                        source_code = read_file_to_string(&lit, path)?;
+                        working_dir = path.parent().unwrap();
+
+                        lit
+                    }
+                    SourceKind::Src(lit) => {
+                        source_path = None;
+                        source_code = lit.value();
+                        working_dir = &self.root_path;
+
+                        lit
+                    }
+                    SourceKind::Bytes(_) => unreachable!(),
+                };
+
+                let (words, mut input_paths) = codegen::compile(
+                    self.input,
+                    &source_code,
+                    working_dir,
+                    shader_kind.unwrap(),
+                    &macro_defines,
+                )
+                .map_err(|err| Error::new_spanned(&lit, err))?;
+
+                if let Some(source_path) = source_path {
+                    input_paths.push(source_path.into_os_string().into_string().unwrap());
+                }
+
+                (lit, words, input_paths)
+            }
+            SourceKind::Bytes(lit) => {
+                let path = self.root_path.join(lit.value());
+
+                self.check_file_exists(&lit, &path)?;
+
+                let bytes = read_file(&lit, &path)?;
+
+                let words = spirv_bytes_to_words(bytes).map_err(|err| {
+                    Error::new_spanned(&lit, format!("failed to read source `{path:?}`: {err}"))
+                })?;
+
+                let input_paths = vec![path.into_os_string().into_string().unwrap()];
+
+                (lit, words, input_paths)
+            }
+        };
+
+        let (shaders_code, structs_code) = codegen::reflect(
+            self.input,
+            lit,
+            shader_name,
+            &words,
+            input_paths,
+            &mut self.type_registry,
+        )?;
+
+        self.shaders_code.extend(shaders_code);
+        self.structs_code.extend(structs_code);
+
+        Ok(())
+    }
+
+    fn check_file_exists(&self, lit: &LitStr, path: &Path) -> Result<()> {
+        if !path.is_file() {
+            let msg = &self.relative_path_error_message;
+
+            bail!(
+                lit,
+                "file `{path:?}` was not found; note that the path must be relative {msg}",
+            );
+        }
+
+        Ok(())
+    }
+
+    fn finalize(self) -> TokenStream {
+        let shaders_code = self.shaders_code;
+        let structs_code = self.structs_code;
+
+        quote! {
+            #shaders_code
+            #structs_code
+        }
+    }
 }
 
 fn root_path_from_call_site() -> Result<(PathBuf, String)> {
@@ -448,6 +491,40 @@ fn root_path_from_env_var(root_path_env: &LitStr) -> Result<(PathBuf, String)> {
     let error = format!("to the path `{root}` specified by the env variable `{env:?}`");
 
     Ok((root.into(), error))
+}
+
+fn read_file_to_string(lit: &LitStr, path: &Path) -> Result<String> {
+    fs::read_to_string(path).map_err(|err| {
+        Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
+    })
+}
+
+fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).map_err(|err| {
+        Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
+    })
+}
+
+fn spirv_bytes_to_words(bytes: Vec<u8>) -> StdResult<Vec<u32>, String> {
+    if !bytes.len().is_multiple_of(size_of::<u32>()) {
+        return Err("the length of the bytes is not a multiple of 4".into());
+    }
+
+    #[cfg(target_endian = "little")]
+    if bytes.as_ptr().addr().is_multiple_of(align_of::<u32>()) {
+        let mut bytes = ManuallyDrop::new(bytes);
+        let len = bytes.len() / size_of::<u32>();
+        let cap = bytes.capacity();
+        let ptr = bytes.as_mut_ptr().cast::<u32>();
+
+        // SAFETY: We checked that the pointer is 4-byte aligned and that the size divides evenly.
+        return Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) });
+    }
+
+    // SAFETY: We checked that the size divides evenly.
+    let words = unsafe { bytes.as_chunks_unchecked::<{ size_of::<u32>() }>() };
+
+    Ok(words.iter().copied().map(u32::from_le_bytes).collect())
 }
 
 enum SourceKind {
