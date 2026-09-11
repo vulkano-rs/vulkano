@@ -18,7 +18,7 @@ mod tests {
         let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
-            String::new(),
+            None,
             &insts,
             Vec::new(),
             &mut type_registry,
@@ -34,7 +34,7 @@ mod tests {
         let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
-            String::new(),
+            None,
             &insts,
             Vec::new(),
             &mut type_registry,

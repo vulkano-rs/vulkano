@@ -287,8 +287,15 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
 
     let mut state = MacroState::new(&input)?;
 
-    for (shader_name, shader_fields) in shaders {
-        state.process_shader(shader_name, shader_fields)?;
+    match shaders.unwrap() {
+        Shaders::Single(shader_fields) => {
+            state.process_shader(None, shader_fields)?;
+        }
+        Shaders::Multiple(shaders) => {
+            for (shader_name, shader_fields) in shaders {
+                state.process_shader(Some(shader_name), shader_fields)?;
+            }
+        }
     }
 
     let result = state.finalize();
@@ -327,14 +334,18 @@ impl<'a> MacroState<'a> {
         })
     }
 
-    fn process_shader(&mut self, shader_name: String, shader_fields: ShaderFields) -> Result<()> {
+    fn process_shader(
+        &mut self,
+        shader_name: Option<String>,
+        shader_fields: ShaderFields,
+    ) -> Result<()> {
         let ShaderFields {
             shader_kind,
             source_kind,
             macro_defines,
         } = shader_fields;
 
-        let (lit, words, input_paths) = match source_kind {
+        let (lit, words, input_paths) = match source_kind.unwrap() {
             source_kind @ (SourceKind::Src(_) | SourceKind::Path(_)) => {
                 let source_path;
                 let source_code;
@@ -716,7 +727,7 @@ struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
-    shaders: HashMap<String, ShaderFields>,
+    shaders: Option<Shaders>,
     source_language: Option<SourceLanguage>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
@@ -726,9 +737,15 @@ struct MacroInput {
     dump: LitBool,
 }
 
+enum Shaders {
+    Single(ShaderFields),
+    Multiple(HashMap<String, ShaderFields>),
+}
+
+#[derive(Default)]
 struct ShaderFields {
     shader_kind: Option<ShaderKind>,
-    source_kind: SourceKind,
+    source_kind: Option<SourceKind>,
     macro_defines: Vec<(String, String)>,
 }
 
@@ -739,7 +756,7 @@ impl MacroInput {
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
-            shaders: HashMap::default(),
+            shaders: None,
             vulkan_version: None,
             spirv_version: None,
             generate_structs: true,
@@ -755,17 +772,10 @@ impl Parse for MacroInput {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
 
-        #[derive(Default)]
-        struct MaybeShaderFields {
-            shader_kind: Option<ShaderKind>,
-            source_kind: Option<SourceKind>,
-            macro_defines: Vec<(String, String)>,
-        }
-
         let mut root_path_env = None;
         let mut include_directories = Vec::new();
         let mut global_macro_defines = Vec::new();
-        let mut shaders = HashMap::default();
+        let mut shaders = None;
         let mut vulkan_version = None;
         let mut spirv_version = None;
         let mut generate_structs = None;
@@ -775,7 +785,7 @@ impl Parse for MacroInput {
         let mut source_language = None;
 
         fn parse_shader_fields(
-            output: &mut MaybeShaderFields,
+            output: &mut ShaderFields,
             name: &str,
             input: ParseStream<'_>,
         ) -> Result<()> {
@@ -855,22 +865,36 @@ impl Parse for MacroInput {
 
             match field.as_str() {
                 "bytes" | "src" | "path" | "ty" => {
-                    if shaders.len() > 1 || (shaders.len() == 1 && !shaders.contains_key("")) {
+                    if matches!(&shaders, Some(Shaders::Multiple(_))) {
                         bail!(
                             field_ident,
                             "only one of `src`, `path`, `bytes` or `shaders` can be defined",
                         );
                     }
 
-                    parse_shader_fields(shaders.entry(String::new()).or_default(), &field, input)?;
+                    if shaders.is_none() {
+                        shaders = Some(Shaders::Single(ShaderFields::default()));
+                    }
+
+                    let Some(Shaders::Single(output)) = &mut shaders else {
+                        unreachable!();
+                    };
+
+                    parse_shader_fields(output, &field, input)?;
                 }
                 "shaders" => {
-                    if !shaders.is_empty() {
+                    if !shaders.is_none() {
                         bail!(
                             field_ident,
                             "only one of `src`, `path`, `bytes` or `shaders` can be defined",
                         );
                     }
+
+                    shaders = Some(Shaders::Multiple(HashMap::default()));
+
+                    let Some(Shaders::Multiple(shaders)) = &mut shaders else {
+                        unreachable!();
+                    };
 
                     let in_braces;
                     braced!(in_braces in input);
@@ -918,12 +942,12 @@ impl Parse for MacroInput {
                         }
 
                         match shaders.get(&name).unwrap() {
-                            MaybeShaderFields {
+                            ShaderFields {
                                 shader_kind: None, ..
                             } => bail!(
                                 "please specify a type for shader `{name}` e.g. `ty: \"vertex\"`",
                             ),
-                            MaybeShaderFields {
+                            ShaderFields {
                                 source_kind: None, ..
                             } => bail!(
                                 "please specify a source for shader `{name}` e.g. \
@@ -1095,18 +1119,20 @@ impl Parse for MacroInput {
             }
         }
 
-        if shaders.is_empty() {
+        if shaders.is_none()
+            || matches!(&shaders, Some(Shaders::Multiple(shaders)) if shaders.is_empty())
+        {
             bail!(r#"please specify at least one shader e.g. `ty: "vertex", src: "<GLSL code>"`"#);
         }
 
-        if let Some(fields) = shaders.get("") {
+        if let Some(Shaders::Single(fields)) = &shaders {
             match fields {
-                MaybeShaderFields {
+                ShaderFields {
                     shader_kind: None,
                     source_kind: Some(SourceKind::Bytes(_)),
                     ..
                 } => {}
-                MaybeShaderFields {
+                ShaderFields {
                     shader_kind: Some(_),
                     source_kind: Some(SourceKind::Bytes(_)),
                     ..
@@ -1115,12 +1141,12 @@ impl Parse for MacroInput {
                         r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
                     );
                 }
-                MaybeShaderFields {
+                ShaderFields {
                     shader_kind: None, ..
                 } => {
                     bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
                 }
-                MaybeShaderFields {
+                ShaderFields {
                     source_kind: None, ..
                 } => {
                     bail!(r#"please specify the source of the shader e.g. `src: "<GLSLcode>"`"#);
@@ -1133,19 +1159,7 @@ impl Parse for MacroInput {
             root_path_env,
             include_directories,
             global_macro_defines,
-            shaders: shaders
-                .into_iter()
-                .map(|(key, fields)| {
-                    (
-                        key,
-                        ShaderFields {
-                            shader_kind: fields.shader_kind,
-                            source_kind: fields.source_kind.unwrap(),
-                            macro_defines: fields.macro_defines,
-                        },
-                    )
-                })
-                .collect(),
+            shaders,
             vulkan_version,
             spirv_version,
             generate_structs: generate_structs.unwrap_or(true),

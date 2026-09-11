@@ -435,20 +435,11 @@ pub(super) fn compile(
 pub(super) fn reflect(
     input: &MacroInput,
     source: LitStr,
-    name: String,
+    name: Option<String>,
     words: &[u32],
     input_paths: Vec<String>,
     type_registry: &mut TypeRegistry,
 ) -> Result<(TokenStream, TokenStream), Error> {
-    let spirv = Spirv::new(words).map_err(|err| {
-        Error::new_spanned(&source, format_args!("failed to parse SPIR-V words: {err}"))
-    })?;
-    let shader = Shader {
-        source,
-        name,
-        spirv,
-    };
-
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
             // Using `include_bytes` here ensures that changing the shader will force recompilation.
@@ -457,10 +448,10 @@ pub(super) fn reflect(
         }
     });
 
-    let load_name = if shader.name.is_empty() {
-        format_ident!("load")
+    let load_name = if let Some(name) = &name {
+        format_ident!("load_{}", name.to_snake_case())
     } else {
-        format_ident!("load_{}", shader.name.to_snake_case())
+        format_ident!("load")
     };
     let try_load_name = format_ident!("try_{load_name}");
     let load_unchecked_name = format_ident!("{load_name}_unchecked");
@@ -526,6 +517,14 @@ pub(super) fn reflect(
         }
     };
 
+    let spirv = Spirv::new(words).map_err(|err| {
+        Error::new_spanned(&source, format_args!("failed to parse SPIR-V words: {err}"))
+    })?;
+    let shader = Shader {
+        source,
+        name: name.unwrap_or_default(),
+        spirv,
+    };
     let structs = structs::write_structs(input, &shader, type_registry)?;
 
     Ok((shader_code, structs))
@@ -573,7 +572,7 @@ mod tests {
         let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
             LitStr::new("../tests/frag.spv", Span::call_site()),
-            String::new(),
+            None,
             &insts,
             Vec::new(),
             &mut type_registry,
@@ -1593,7 +1592,7 @@ mod tests {
         let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
             LitStr::new("../tests/multiple_entrypoints.spv", Span::call_site()),
-            String::new(),
+            None,
             &insts,
             Vec::new(),
             &mut type_registry,
@@ -1702,7 +1701,7 @@ mod tests {
                 "descriptor_calculation_with_multiple_functions_shader",
                 Span::call_site(),
             ),
-            String::new(),
+            None,
             &artifact,
             Vec::new(),
             &mut type_registry,
@@ -1796,7 +1795,7 @@ mod tests {
         let (_shader_code, _structs) = reflect(
             &MacroInput::empty(),
             LitStr::new("slangc_multiple_structured_buffers", Span::call_site()),
-            String::new(),
+            None,
             &words,
             Vec::new(),
             &mut type_registry,
