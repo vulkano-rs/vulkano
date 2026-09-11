@@ -259,9 +259,7 @@ impl<S: Suballocator> AliasableBox<BufferMemoryBlock<S>> {
         let layout = layout
             .align_to(cmp::max(self.atom_size, buffer_alignment))
             .unwrap();
-        let mut suballocation =
-            self.suballocator
-                .allocate(layout, AllocationType::Linear, DeviceAlignment::MIN)?;
+        let mut suballocation = self.suballocator.allocate_buffer(layout)?;
 
         suballocation.offset -= self.offset;
 

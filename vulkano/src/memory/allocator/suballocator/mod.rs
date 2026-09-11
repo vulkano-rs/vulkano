@@ -106,11 +106,7 @@ mod free_list;
 /// // We can then allocate whatever type of data we need and reinterpret the bytes to that type.
 /// # let index_count = return;
 /// let index_buffer_allocation = allocator
-///     .allocate(
-///         DeviceLayout::new_unsized::<[u32]>(index_count).unwrap(),
-///         AllocationType::Linear,
-///         DeviceAlignment::MIN,
-///     )
+///     .allocate_buffer(DeviceLayout::new_unsized::<[u32]>(index_count).unwrap())
 ///     .unwrap();
 /// let index_buffer = buffer
 ///     .slice(index_buffer_allocation.as_range())
@@ -120,11 +116,7 @@ mod free_list;
 /// #
 /// # let vertex_count = return;
 /// let vertex_buffer_allocation = allocator
-///     .allocate(
-///         DeviceLayout::new_unsized::<[MyVertex]>(vertex_count).unwrap(),
-///         AllocationType::Linear,
-///         DeviceAlignment::MIN,
-///     )
+///     .allocate_buffer(DeviceLayout::new_unsized::<[MyVertex]>(vertex_count).unwrap())
 ///     .unwrap();
 /// let vertex_buffer = buffer
 ///     .slice(vertex_buffer_allocation.as_range())
@@ -185,11 +177,7 @@ mod free_list;
 /// // nonsensical.
 /// # let vertex_count = return;
 /// let allocation = allocator
-///     .allocate(
-///         DeviceLayout::from_size_alignment(vertex_count, 1).unwrap(),
-///         AllocationType::Linear,
-///         DeviceAlignment::MIN,
-///     )
+///     .allocate_buffer(DeviceLayout::from_size_alignment(vertex_count, 1).unwrap())
 ///     .unwrap();
 /// let vertex_subbuffer = vertex_buffer.slice(allocation.as_range());
 ///
@@ -271,9 +259,7 @@ mod free_list;
 /// // suballocation relative to the buffer rather than the parent `DeviceMemory` block. Don't
 /// // forget to add the offset back when you deallocate!
 /// # let layout: DeviceLayout = return;
-/// let mut allocation = allocator
-///     .allocate(layout, AllocationType::Linear, DeviceAlignment::MIN)
-///     .unwrap();
+/// let mut allocation = allocator.allocate_buffer(layout).unwrap();
 /// allocation.offset -= offset;
 /// let subbuffer = buffer.slice(allocation.as_range());
 ///
@@ -335,6 +321,27 @@ pub unsafe trait Suballocator {
     fn new(region: Region) -> Self
     where
         Self: Sized;
+
+    /// Creates a new suballocation within the [region], assuming that only buffers are being
+    /// allocated from it.
+    ///
+    /// This is **not to be used when both buffers and images are being allocated from the
+    /// region**. It's strictly a shortcut for the most common use case: suballocating a buffer
+    /// into smaller buffers. In other words, you shouldn't use this function when this isn't your
+    /// use case. Instead, you should use [`allocate`], where you get to fill in the allocation
+    /// type and buffer-image granularity. This method hard-codes them as
+    /// [`AllocationType::Linear`] and [`DeviceAlignment::MIN`], respectively.
+    ///
+    /// See [`allocate`] for more info.
+    ///
+    /// [region]: Self#regions
+    /// [`allocate`]: Self::allocate
+    fn allocate_buffer(
+        &mut self,
+        layout: DeviceLayout,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate(layout, AllocationType::Linear, DeviceAlignment::MIN)
+    }
 
     /// Creates a new suballocation within the [region].
     ///
