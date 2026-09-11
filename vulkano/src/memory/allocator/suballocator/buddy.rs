@@ -496,6 +496,8 @@ impl SuballocationTree {
         let mut parent_ptr = node.parent_ptr;
         let mut compressed_offset = node_ty.compressed_offset;
         let mut node_order = usize::from(node_ty.order);
+        let mut prev_ptr = node_ty.prev_ptr;
+        let mut next_ptr = node_ty.next_ptr;
         debug_assert_ne!(node_ty.allocation_type, SuballocationType::Free);
         node_ty.allocation_type = SuballocationType::Free;
 
@@ -540,7 +542,16 @@ impl SuballocationTree {
             // If the buddy isn't a free node, we can't coalesce, so we add the node to the
             // free-list.
             if !buddy.ty.is_free() {
+                let prev = unsafe { prev_ptr.as_mut() };
+                let prev_ty = unsafe { prev.ty.leaf_unchecked_mut() };
+                prev_ty.next_ptr = node_ptr;
+
+                let next = unsafe { next_ptr.as_mut() };
+                let next_ty = unsafe { next.ty.leaf_unchecked_mut() };
+                next_ty.prev_ptr = node_ptr;
+
                 unsafe { add_to_free_list(free_list, node_ptr, compressed_offset) };
+
                 return min_order;
             };
 
@@ -568,7 +579,7 @@ impl SuballocationTree {
             // it to a leaf node.
             let node_ty = unsafe { node.ty.leaf_unchecked() };
 
-            let (prev_ptr, next_ptr) = if is_left {
+            (prev_ptr, next_ptr) = if is_left {
                 (node_ty.prev_ptr, buddy_ty.next_ptr)
             } else {
                 (buddy_ty.prev_ptr, node_ty.next_ptr)
@@ -595,6 +606,14 @@ impl SuballocationTree {
             node_ptr = parent_ptr;
             parent_ptr = parent.parent_ptr;
         }
+
+        let prev = unsafe { prev_ptr.as_mut() };
+        let prev_ty = unsafe { prev.ty.leaf_unchecked_mut() };
+        prev_ty.next_ptr = node_ptr;
+
+        let next = unsafe { next_ptr.as_mut() };
+        let next_ty = unsafe { next.ty.leaf_unchecked_mut() };
+        next_ty.prev_ptr = node_ptr;
 
         let free_list = unsafe { self.free_list.get_unchecked_mut(node_order) };
         unsafe { add_to_free_list(free_list, node_ptr, compressed_offset) };
