@@ -23,6 +23,7 @@ Global changes:
 - All structs containing `ImageSubresourceLayers` and `ImageSubresourceRange` now use `Default::default()` as the default value for that field, instead of an empty value (all zeroes).
 - `DeviceFeatures`, `DeviceExtensions` and `InstanceExtensions` now implement `IntoIterator` by reference instead of by value and the `IntoIter` associated type is now an opaque type.
 - Where the Vulkan API accepts `VK_WHOLE_SIZE`, `VK_REMAINING_*` and `LOD_CLAMP_NONE`, vulkano now accepts an `Option` for the end of the range with `None` meaning that it is unbounded.
+- Methods that previously returned `impl ExactSizeIterator<Item = T>` now return `Vec<T>`.
 
 Changes to Vulkan initialization:
 - `VulkanLibrary::new` is now marked unsafe. It has always been unsafe, but marked incorrectly.
@@ -129,6 +130,7 @@ Changes to command buffers:
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
 - Added support for the rest of the `ext_swapchain_maintenance1` extension.
+- Added `Suballocator::allocate_buffer`, a shortcut for suballocating buffers into smaller buffers.
 
 ### Bugs fixed
 
