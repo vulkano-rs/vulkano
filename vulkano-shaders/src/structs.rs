@@ -1,9 +1,9 @@
-use crate::{bail, LinAlgType, MacroOptions};
+use crate::{bail, LinAlgType, MacroOptions, Result};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZero};
-use syn::{Error, Ident, LitStr, Result};
+use syn::{Error, Ident, LitStr};
 use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
@@ -145,7 +145,7 @@ struct RegisteredType {
 }
 
 impl RegisteredType {
-    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result<()> {
+    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result {
         let (shader, struct_ident) = (&self.shader, &self.ty.ident);
 
         if self.ty.members.len() > other_ty.members.len() {

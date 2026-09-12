@@ -251,12 +251,11 @@ use std::{
     env, fs,
     mem::ManuallyDrop,
     path::{Path, PathBuf},
-    result::Result as StdResult,
 };
 use structs::TypeRegistry;
 use syn::{
     braced, bracketed, parenthesized,
-    parse::{Parse, ParseStream, Result},
+    parse::{Parse, ParseStream},
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
@@ -337,7 +336,7 @@ impl<'a> MacroState<'a> {
         &mut self,
         shader_name: Option<String>,
         shader_fields: ShaderFields,
-    ) -> Result<()> {
+    ) -> Result {
         let ShaderFields {
             shader_kind,
             source_kind,
@@ -418,7 +417,7 @@ impl<'a> MacroState<'a> {
         Ok(())
     }
 
-    fn check_file_exists(&self, lit: &LitStr, path: &Path) -> Result<()> {
+    fn check_file_exists(&self, lit: &LitStr, path: &Path) -> Result {
         if !path.is_file() {
             let msg = &self.relative_path_error_message;
 
@@ -514,7 +513,7 @@ fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
     })
 }
 
-fn spirv_bytes_to_words(bytes: Vec<u8>) -> StdResult<Vec<u32>, String> {
+fn spirv_bytes_to_words(bytes: Vec<u8>) -> Result<Vec<u32>, String> {
     if !bytes.len().is_multiple_of(size_of::<u32>()) {
         return Err("the length of the bytes is not a multiple of 4".into());
     }
@@ -659,7 +658,7 @@ impl MacroInputParser {
         }
     }
 
-    fn parse(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse(&mut self, input: ParseStream<'_>) -> Result {
         while !input.is_empty() {
             let field_ident = input.parse::<Ident>()?;
             input.parse::<Token![:]>()?;
@@ -716,7 +715,7 @@ impl MacroInputParser {
         input: ParseStream<'_>,
         field_ident: &Ident,
         field_name: &str,
-    ) -> Result<()> {
+    ) -> Result {
         if matches!(&self.shaders, Some(Shaders::Multiple(_))) {
             bail!(
                 field_ident,
@@ -735,7 +734,7 @@ impl MacroInputParser {
         shader_fields.parse_shader_field(input, field_name)
     }
 
-    fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result<()> {
+    fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result {
         if !self.shaders.is_none() {
             bail!(
                 field_ident,
@@ -813,7 +812,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_root_path_env(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_root_path_env(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.root_path_env.is_some() {
@@ -825,7 +824,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_include(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_include(&mut self, input: ParseStream<'_>) -> Result {
         let in_brackets;
         bracketed!(in_brackets in input);
 
@@ -843,7 +842,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_define(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
         let array_input;
         bracketed!(array_input in input);
 
@@ -865,7 +864,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.source_language.is_some() {
@@ -882,7 +881,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_vulkan_version(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_vulkan_version(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.vulkan_version.is_some() {
@@ -900,7 +899,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_spirv_version(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_spirv_version(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.spirv_version.is_some() {
@@ -924,7 +923,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_generate_structs(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_generate_structs(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitBool>()?;
 
         if self.generate_structs.is_some() {
@@ -936,7 +935,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_custom_derives(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_custom_derives(&mut self, input: ParseStream<'_>) -> Result {
         let in_brackets;
         bracketed!(in_brackets in input);
 
@@ -958,7 +957,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_types_meta(&mut self, _input: ParseStream<'_>, field_ident: &Ident) -> Result<()> {
+    fn parse_types_meta(&mut self, _input: ParseStream<'_>, field_ident: &Ident) -> Result {
         bail!(
             field_ident,
             "you no longer need to add any derives to use the generated structs in buffers, and you
@@ -968,7 +967,7 @@ impl MacroInputParser {
         );
     }
 
-    fn parse_linalg_type(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_linalg_type(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.linalg_type.is_some() {
@@ -985,7 +984,7 @@ impl MacroInputParser {
         Ok(())
     }
 
-    fn parse_dump(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_dump(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitBool>()?;
 
         if self.dump.is_some() {
@@ -999,7 +998,7 @@ impl MacroInputParser {
 }
 
 impl ShaderFields {
-    fn parse_shader_field(&mut self, input: ParseStream<'_>, field_name: &str) -> Result<()> {
+    fn parse_shader_field(&mut self, input: ParseStream<'_>, field_name: &str) -> Result {
         match field_name {
             "ty" => self.parse_ty(input)?,
             "path" => self.parse_path(input)?,
@@ -1012,7 +1011,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_ty(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_ty(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if self.shader_kind.is_some() {
@@ -1052,7 +1051,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_path(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_path(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if let Some(source_kind) = &self.source_kind {
@@ -1076,7 +1075,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_src(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_src(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if let Some(source_kind) = &self.source_kind {
@@ -1100,7 +1099,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_bytes(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_bytes(&mut self, input: ParseStream<'_>) -> Result {
         let lit = input.parse::<LitStr>()?;
 
         if let Some(source_kind) = &self.source_kind {
@@ -1129,7 +1128,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_define(&mut self, input: ParseStream<'_>) -> Result<()> {
+    fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
         let array_input;
         bracketed!(array_input in input);
 
@@ -1150,7 +1149,7 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn check_valid(&self, span: Span) -> Result<()> {
+    fn check_valid(&self, span: Span) -> Result {
         let Some(source_kind) = &self.source_kind else {
             return Err(Error::new(
                 span,
@@ -1318,6 +1317,8 @@ enum LinAlgType {
     CgMath,
     Nalgebra,
 }
+
+type Result<T = (), E = syn::Error> = ::std::result::Result<T, E>;
 
 macro_rules! bail {
     ($msg:literal $(,)?) => {

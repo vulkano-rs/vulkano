@@ -1,4 +1,4 @@
-use crate::{MacroOptions, ShaderKind, SourceLanguage, SpirvVersion, VulkanVersion};
+use crate::{MacroOptions, Result, ShaderKind, SourceLanguage, SpirvVersion, VulkanVersion};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -10,7 +10,6 @@ use std::{
     process::{Command, Stdio},
     sync::atomic::{AtomicU32, Ordering},
 };
-use syn::Error;
 
 pub(super) fn compile(
     options: &MacroOptions,
@@ -423,7 +422,7 @@ pub(super) fn generate_shaders(
     name: Option<&str>,
     words: &[u32],
     input_paths: Vec<String>,
-) -> Result<TokenStream, Error> {
+) -> Result<TokenStream> {
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
             // Using `include_bytes` here ensures that changing the shader will force recompilation.
@@ -1877,7 +1876,7 @@ mod tests {
         words: &[u32],
         input_paths: Vec<String>,
         type_registry: &mut TypeRegistry,
-    ) -> Result<(TokenStream, TokenStream), Error> {
+    ) -> Result<(TokenStream, TokenStream)> {
         let shaders_code = generate_shaders(name.as_deref(), words, input_paths)?;
         let structs_code = generate_structs(options, source, name, words, type_registry)?;
 
