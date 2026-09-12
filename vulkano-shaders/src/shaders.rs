@@ -399,7 +399,10 @@ mod tests {
     use quote::ToTokens;
     use std::collections::HashSet;
     use syn::{File, Item, LitStr};
-    use vulkano::shader::{reflect, spirv::Spirv};
+    use vulkano::shader::{
+        reflect,
+        spirv::{self, Spirv},
+    };
 
     fn compile_inline(
         options: &MacroOptions,
@@ -419,22 +422,20 @@ mod tests {
 
     #[test]
     fn spirv_parse() {
-        let insts =
-            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
-        Spirv::new(&insts).unwrap();
+        let words = spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
+        Spirv::new(&words).unwrap();
     }
 
     #[test]
     fn spirv_reflect() {
-        let insts =
-            vulkano::shader::spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
+        let words = spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
             &MacroOptions::empty(),
             LitStr::new("../tests/frag.spv", Span::call_site()),
             None,
-            &insts,
+            &words,
             Vec::new(),
             &mut type_registry,
         )
@@ -1404,11 +1405,9 @@ mod tests {
     /// ```
     #[test]
     fn descriptor_calculation_with_multiple_entrypoints() {
-        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
-            "../tests/multiple_entrypoints.spv"
-        ))
-        .unwrap();
-        let spirv = Spirv::new(&insts).unwrap();
+        let words =
+            spirv::bytes_to_words(include_bytes!("../tests/multiple_entrypoints.spv")).unwrap();
+        let spirv = Spirv::new(&words).unwrap();
 
         let mut descriptors = Vec::new();
         for (_, info) in reflect::entry_points(&spirv) {
@@ -1444,17 +1443,15 @@ mod tests {
 
     #[test]
     fn reflect_descriptor_calculation_with_multiple_entrypoints() {
-        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
-            "../tests/multiple_entrypoints.spv"
-        ))
-        .unwrap();
+        let words =
+            spirv::bytes_to_words(include_bytes!("../tests/multiple_entrypoints.spv")).unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
             &MacroOptions::empty(),
             LitStr::new("../tests/multiple_entrypoints.spv", Span::call_site()),
             None,
-            &insts,
+            &words,
             Vec::new(),
             &mut type_registry,
         )
@@ -1718,17 +1715,16 @@ mod tests {
 
     #[test]
     fn rust_gpu_reflect_vertex() {
-        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
-            "../tests/rust-gpu/test_shader-vertex.spv",
-        ))
-        .unwrap();
+        let words =
+            spirv::bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-vertex.spv"))
+                .unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
             &MacroOptions::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
             None,
-            &insts,
+            &words,
             Vec::new(),
             &mut type_registry,
         )
@@ -1737,17 +1733,16 @@ mod tests {
 
     #[test]
     fn rust_gpu_reflect_fragment() {
-        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
-            "../tests/rust-gpu/test_shader-fragment.spv",
-        ))
-        .unwrap();
+        let words =
+            spirv::bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-fragment.spv"))
+                .unwrap();
 
         let mut type_registry = TypeRegistry::default();
         let (_shader_code, _structs) = reflect(
             &MacroOptions::empty(),
             LitStr::new("rust-gpu vertex shader", Span::call_site()),
             None,
-            &insts,
+            &words,
             Vec::new(),
             &mut type_registry,
         )
