@@ -261,6 +261,8 @@ use syn::{
 
 mod shaders;
 mod structs;
+#[cfg(test)]
+mod tests;
 
 #[proc_macro]
 pub fn include_vulkano_glsl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
