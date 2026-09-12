@@ -566,9 +566,9 @@ struct MacroOptions {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
-    source_language: Option<SourceLanguage>,
-    spirv_version: Option<SpirvVersion>,
-    vulkan_version: Option<VulkanVersion>,
+    source_language: SourceLanguage,
+    spirv_version: SpirvVersion,
+    vulkan_version: VulkanVersion,
     generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
@@ -583,12 +583,15 @@ impl Parse for MacroInput {
 
         let shaders = parser.shaders.unwrap();
 
+        let vulkan_version = parser.vulkan_version.unwrap_or_default();
         let options = MacroOptions {
             root_path_env: parser.root_path_env,
             include_directories: parser.include_directories,
             global_macro_defines: parser.global_macro_defines,
-            vulkan_version: parser.vulkan_version,
-            spirv_version: parser.spirv_version,
+            vulkan_version,
+            spirv_version: parser
+                .spirv_version
+                .unwrap_or(vulkan_version.to_spirv_version()),
             generate_structs: parser.generate_structs.unwrap_or(true),
             custom_derives: parser.custom_derives.unwrap_or_else(|| {
                 vec![
@@ -600,7 +603,7 @@ impl Parse for MacroInput {
             dump: parser
                 .dump
                 .unwrap_or_else(|| LitBool::new(false, Span::call_site())),
-            source_language: parser.source_language,
+            source_language: parser.source_language.unwrap_or_default(),
         };
 
         Ok(MacroInput { shaders, options })
@@ -614,13 +617,13 @@ impl MacroOptions {
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
-            vulkan_version: None,
-            spirv_version: None,
+            vulkan_version: VulkanVersion::V1_0,
+            spirv_version: SpirvVersion::V1_0,
             generate_structs: true,
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
-            source_language: None,
+            source_language: SourceLanguage::Glsl,
         }
     }
 }
@@ -1228,8 +1231,9 @@ impl ShaderKind {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 enum SourceLanguage {
+    #[default]
     Glsl,
     Hlsl,
     Slang,
@@ -1245,8 +1249,24 @@ impl SourceLanguage {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
+enum Compiler {
+    Glslc,
+    Slangc,
+}
+
+impl Compiler {
+    fn as_command(self) -> &'static str {
+        match self {
+            Compiler::Glslc => "glslc",
+            Compiler::Slangc => "slangc",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default)]
 enum VulkanVersion {
+    #[default]
     V1_0,
     V1_1,
     V1_2,

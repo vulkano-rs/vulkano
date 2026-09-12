@@ -1,4 +1,4 @@
-use crate::{MacroOptions, Result, ShaderKind, SourceLanguage, SpirvVersion, VulkanVersion};
+use crate::{Compiler, MacroOptions, Result, ShaderKind, SourceLanguage};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -18,125 +18,88 @@ pub(super) fn compile(
     shader_kind: ShaderKind,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    let source_language = options.source_language.unwrap_or(SourceLanguage::Glsl);
-    let mut compile_options = CompileOptions::new();
+    let compiler = match options.source_language {
+        SourceLanguage::Glsl | SourceLanguage::Hlsl => Compiler::Glslc,
+        SourceLanguage::Slang => Compiler::Slangc,
+    };
+    let entry_point = "main";
 
-    compile_options.source_language = source_language;
-    compile_options.vulkan_version = options.vulkan_version.unwrap_or(VulkanVersion::V1_0);
-    compile_options.spirv_version = options.spirv_version;
-    compile_options.macro_definitions = options
-        .global_macro_defines
-        .iter()
-        .chain(macro_defines.iter())
-        .cloned()
-        .collect();
-    compile_options.include_directories = options.include_directories.clone();
-    compile_options.debug = cfg!(feature = "shaderc-debug");
+    let mut command = Command::new(compiler.as_command());
 
-    match source_language {
-        SourceLanguage::Glsl | SourceLanguage::Hlsl => {
-            compile_into_spirv_glslc(shader_kind, source, "main", working_dir, &compile_options)
-        }
-        SourceLanguage::Slang => {
-            compile_into_spirv_slangc(shader_kind, source, "main", working_dir, &compile_options)
-        }
-    }
-    .map_err(|e| e.replace("(s): ", "(s):\n"))
-}
+    command.current_dir(working_dir);
 
-struct CompileOptions {
-    source_language: SourceLanguage,
-    vulkan_version: VulkanVersion,
-    spirv_version: Option<SpirvVersion>,
-    macro_definitions: Vec<(String, String)>,
-    include_directories: Vec<PathBuf>,
-    debug: bool,
-}
-
-impl CompileOptions {
-    fn new() -> Self {
-        CompileOptions {
-            source_language: SourceLanguage::Glsl,
-            vulkan_version: VulkanVersion::V1_0,
-            spirv_version: None,
-            macro_definitions: Vec::new(),
-            include_directories: Vec::new(),
-            debug: false,
-        }
-    }
-}
-
-fn compile_into_spirv_glslc(
-    shader_kind: ShaderKind,
-    source: &str,
-    entry_point_name: &str,
-    working_dir: &Path,
-    options: &CompileOptions,
-) -> Result<(Vec<u32>, Vec<String>), String> {
-    let mut command = Command::new("glslc");
     let vulkano_temp_dir = create_vulkano_dir()?;
     let vulkano_dir = &vulkano_temp_dir.0;
-
     let dependencies_file = vulkano_dir.join("deps.d");
 
-    command
-        .current_dir(working_dir)
-        .arg("-x")
-        .arg(options.source_language.as_str())
-        .arg(format!(
-            "--target-env={}",
-            options.vulkan_version.as_glslc_target_env(),
-        ));
+    match compiler {
+        Compiler::Glslc => {
+            command.arg("-x").arg(options.source_language.as_str());
+            command.arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()));
+            command.arg(format!("-fentry-point={}", entry_point));
+            let target_env = options.vulkan_version.as_glslc_target_env();
+            command.arg(format!("--target-env={}", target_env));
+            let target_spv = options.spirv_version.as_glslc_target_spv();
+            command.arg(format!("--target-spv={}", target_spv));
 
-    if let Some(spirv_version) = options.spirv_version {
-        command.arg(format!(
-            "--target-spv={}",
-            spirv_version.as_glslc_target_spv(),
-        ));
+            // vulkano.glsl dir first, then user include directories.
+            command.arg("-I").arg(vulkano_dir);
+            set_common_options(&mut command, options, macro_defines);
+
+            command.arg("-MD");
+            command.arg("-MF").arg(&dependencies_file);
+            command.arg("-o").arg("-");
+            command.arg("-");
+        }
+        Compiler::Slangc => {
+            command.arg("-lang").arg(options.source_language.as_str());
+            command.arg("-stage").arg(shader_kind.as_slangc_stage());
+            command.arg("-entry").arg(entry_point);
+            command.arg("-target").arg("spirv");
+            let profile = options.spirv_version.as_slangc_profile();
+            command.arg("-profile").arg(profile);
+
+            // vulkano.glsl dir first, working dir for module imports, then user include
+            // directories.
+            command.arg("-I").arg(vulkano_dir);
+            command.arg("-I").arg(working_dir);
+            set_common_options(&mut command, options, macro_defines);
+
+            command.arg("-depfile").arg(&dependencies_file);
+            command.arg("--");
+            command.arg("-");
+        }
     }
 
-    // vulkano.glsl dir first, then user include directories.
-    command.arg(format!("-I{}", vulkano_dir.display()));
-    set_common_options(&mut command, options);
-
-    command
-        .arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()))
-        .arg(format!("-fentry-point={}", entry_point_name))
-        .arg("-MD")
-        .arg("-MF")
-        .arg(&dependencies_file)
-        .arg("-o")
-        .arg("-")
-        .arg("-")
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = command
+        .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to call glslc: {e}"))?;
+        .map_err(|e| format!("failed to call {}: {e}", compiler.as_command()))?;
 
     child
         .stdin
         .take()
-        .ok_or("failed to open glslc stdin")?
+        .ok_or_else(|| format!("failed to open {} stdin", compiler.as_command()))?
         .write_all(source.as_bytes())
-        .map_err(|e| format!("failed to write to glslc stdin: {e}"))?;
+        .map_err(|e| format!("failed to write to {} stdin: {e}", compiler.as_command()))?;
 
     let output = child
         .wait_with_output()
-        .map_err(|e| format!("failed to wait for glslc: {e}"))?;
+        .map_err(|e| format!("failed to wait for {}: {e}", compiler.as_command()))?;
 
     if !output.status.success() {
         return Err(format!(
-            "glslc failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+            "{} failed:\n{}",
+            compiler.as_command(),
+            String::from_utf8_lossy(&output.stderr),
         ));
     }
 
     let content = &fs::read_to_string(&dependencies_file)
         .map_err(|e| format!("failed to read dependencies file: {e}"))?;
-    let includes = parse_deps_file(content, vulkano_dir, working_dir).map_err(|e| {
+    let input_files = parse_deps_file(content, vulkano_dir, working_dir).map_err(|e| {
         let content = content
             .lines()
             .flat_map(|line| ["    ", line])
@@ -145,96 +108,10 @@ fn compile_into_spirv_glslc(
         format!("failed to parse dependencies file: {e}\nfile content:\n{content}")
     })?;
 
-    let words = vulkano::shader::spirv::bytes_to_words(&output.stdout)
-        .map(|w| w.into_owned())
-        .map_err(|e| format!("malformed SPIR-V: {e}"))?;
+    let words =
+        crate::spirv_bytes_to_words(output.stdout).map_err(|e| format!("malformed SPIR-V: {e}"))?;
 
-    Ok((words, includes))
-}
-
-fn compile_into_spirv_slangc(
-    shader_kind: ShaderKind,
-    source: &str,
-    entry_point_name: &str,
-    working_dir: &Path,
-    options: &CompileOptions,
-) -> Result<(Vec<u32>, Vec<String>), String> {
-    let mut command = Command::new("slangc");
-    let vulkano_temp_dir = create_vulkano_dir()?;
-    let vulkano_dir = &vulkano_temp_dir.0;
-
-    let dependencies_file = vulkano_dir.join("deps.d");
-
-    command
-        .current_dir(working_dir)
-        .arg("-lang")
-        .arg(options.source_language.as_str())
-        .arg("-target")
-        .arg("spirv");
-
-    let spirv_version = options
-        .spirv_version
-        .unwrap_or_else(|| options.vulkan_version.to_spirv_version());
-    command
-        .arg("-profile")
-        .arg(spirv_version.as_slangc_profile());
-
-    // vulkano.glsl dir first, working dir for module imports, then user include directories.
-    command.arg(format!("-I{}", vulkano_dir.display()));
-    command.arg(format!("-I{}", working_dir.display()));
-    set_common_options(&mut command, options);
-
-    command
-        .arg("-stage")
-        .arg(shader_kind.as_slangc_stage())
-        .arg("-entry")
-        .arg(entry_point_name)
-        .arg("-depfile")
-        .arg(&dependencies_file)
-        .arg("--")
-        .arg("-")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("failed to call slangc: {e}"))?;
-
-    child
-        .stdin
-        .take()
-        .ok_or("failed to open slangc stdin")?
-        .write_all(source.as_bytes())
-        .map_err(|e| format!("failed to write to slangc stdin: {e}"))?;
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("failed to wait for slangc: {e}"))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "slangc failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    let content = &fs::read_to_string(&dependencies_file)
-        .map_err(|e| format!("failed to read dependencies file: {e}"))?;
-    let includes = parse_deps_file(content, vulkano_dir, working_dir).map_err(|e| {
-        let content = content
-            .lines()
-            .flat_map(|line| ["    ", line])
-            .collect::<String>();
-
-        format!("failed to parse dependencies file: {e}\nfile content:\n{content}")
-    })?;
-
-    let words = vulkano::shader::spirv::bytes_to_words(&output.stdout)
-        .map(|w| w.into_owned())
-        .map_err(|e| format!("malformed SPIR-V: {e}"))?;
-
-    Ok((words, includes))
+    Ok((words, input_files))
 }
 
 fn create_vulkano_dir() -> Result<TempDir, String> {
@@ -265,16 +142,24 @@ impl Drop for TempDir {
     }
 }
 
-fn set_common_options(command: &mut Command, options: &CompileOptions) {
-    if options.debug {
+fn set_common_options(
+    command: &mut Command,
+    options: &MacroOptions,
+    macro_defines: &[(String, String)],
+) {
+    if cfg!(feature = "shaderc-debug") {
         command.arg("-g");
     }
 
     for dir in &options.include_directories {
-        command.arg(format!("-I{}", dir.display()));
+        command.arg("-I").arg(dir);
     }
 
-    for (name, value) in &options.macro_definitions {
+    for (name, value) in &options.global_macro_defines {
+        command.arg(format!("-D{name}={value}"));
+    }
+
+    for (name, value) in macro_defines {
         command.arg(format!("-D{name}={value}"));
     }
 }
@@ -508,7 +393,7 @@ mod tests {
     use super::*;
     use crate::{
         structs::{generate_structs, TypeRegistry},
-        VulkanVersion,
+        SpirvVersion, VulkanVersion,
     };
     use proc_macro2::Span;
     use quote::ToTokens;
@@ -567,7 +452,7 @@ mod tests {
 
         let (_spirv, includes) = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![
                     root_path.join("include_dir_a"),
                     root_path.join("include_dir_b"),
@@ -619,7 +504,7 @@ mod tests {
 
         let (_spirv2, includes2) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
+                source_language: SourceLanguage::Glsl,
                 include_directories: vec![root_path.join("include_dir_a")],
                 ..MacroOptions::empty()
             },
@@ -652,7 +537,7 @@ mod tests {
             .replace('\\', "/");
         let (_spirv3, includes3) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
+                source_language: SourceLanguage::Glsl,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -677,7 +562,7 @@ mod tests {
 
         let (_spirv4, includes4) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
+                source_language: SourceLanguage::Glsl,
                 include_directories: vec![
                     root_path.join("include_dir_b"),
                     root_path.join("include_dir_c"),
@@ -713,7 +598,7 @@ mod tests {
 
         let (_spirv2, includes2) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_a")],
                 ..MacroOptions::empty()
             },
@@ -745,7 +630,7 @@ mod tests {
             .replace('\\', "/");
         let (_spirv3, includes3) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -769,7 +654,7 @@ mod tests {
 
         let (_spirv4, includes4) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![
                     root_path.join("include_dir_b"),
                     root_path.join("include_dir_c"),
@@ -807,7 +692,7 @@ mod tests {
 
         let (_spirv, includes) = compile(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -856,7 +741,7 @@ mod tests {
 
         let (_spirv2, includes2) = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
+                source_language: SourceLanguage::Glsl,
                 ..MacroOptions::empty()
             },
             r#"
@@ -884,7 +769,7 @@ mod tests {
 
         let (_spirv3, includes3) = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
+                source_language: SourceLanguage::Glsl,
                 include_directories: vec![root_path.join("include_dir_b")],
                 ..MacroOptions::empty()
             },
@@ -918,7 +803,7 @@ mod tests {
 
         let (_spirv2, includes2) = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             r#"
@@ -945,7 +830,7 @@ mod tests {
 
         let (_spirv3, includes3) = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_b")],
                 ..MacroOptions::empty()
             },
@@ -981,7 +866,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1000,7 +885,7 @@ mod tests {
 
         let (_spirv, includes) = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1026,7 +911,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1046,7 +931,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1066,7 +951,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1086,7 +971,7 @@ mod tests {
 
         let (_spirv2, includes2) = compile(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1112,7 +997,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1132,7 +1017,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1166,7 +1051,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1186,7 +1071,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1206,7 +1091,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1226,7 +1111,7 @@ mod tests {
 
         let err = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_spaces")],
                 ..MacroOptions::empty()
             },
@@ -1246,7 +1131,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1267,7 +1152,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1287,7 +1172,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1307,7 +1192,7 @@ mod tests {
 
         let err = compile(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             &format!(
@@ -1340,7 +1225,7 @@ mod tests {
 
         let (_spirv, includes) = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 include_directories: vec![root_path.join("tests").join("include_dir_many")],
                 ..MacroOptions::empty()
             },
@@ -1403,7 +1288,7 @@ mod tests {
 
         let compile_no_defines = compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 ..MacroOptions::empty()
             },
             &need_defines,
@@ -1414,7 +1299,7 @@ mod tests {
 
         compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 global_macro_defines: vec![
                     ("NAME1".into(), "".into()),
                     ("NAME2".into(), "58".into()),
@@ -1429,7 +1314,7 @@ mod tests {
 
         compile_inline(
             &MacroOptions {
-                source_language: Some(source_language),
+                source_language,
                 global_macro_defines: vec![("NAME1".into(), "".into())],
                 ..MacroOptions::empty()
             },
@@ -1607,9 +1492,9 @@ mod tests {
     fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>) {
         compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Glsl),
-                spirv_version: Some(SpirvVersion::V1_6),
-                vulkan_version: Some(VulkanVersion::V1_3),
+                source_language: SourceLanguage::Glsl,
+                spirv_version: SpirvVersion::V1_6,
+                vulkan_version: VulkanVersion::V1_3,
                 ..MacroOptions::empty()
             },
             r#"
@@ -1717,7 +1602,7 @@ mod tests {
     fn slangc_compile_simple_compute() {
         let (words, _includes) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             r#"
@@ -1747,7 +1632,7 @@ mod tests {
     fn reflect_slangc_multiple_structured_buffers() {
         let (words, _includes) = compile_inline(
             &MacroOptions {
-                source_language: Some(SourceLanguage::Slang),
+                source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
             },
             r#"
