@@ -702,37 +702,7 @@ impl MacroInputParser {
         }
 
         if let Some(Shaders::Single(shader_fields)) = &self.shaders {
-            match shader_fields {
-                ShaderFields {
-                    shader_kind: None,
-                    source_kind: Some(SourceKind::Bytes(_)),
-                    ..
-                } => {}
-                ShaderFields {
-                    shader_kind: Some(_),
-                    source_kind: Some(SourceKind::Bytes(_)),
-                    ..
-                } => {
-                    bail!(
-                        "one may not specify a shader type when including precompiled SPIR-V \
-                        binaries; please remove the `ty` declaration",
-                    );
-                }
-                ShaderFields {
-                    shader_kind: None, ..
-                } => {
-                    bail!("please specify the type of the shader (e.g., `ty: \"vertex\"`)");
-                }
-                ShaderFields {
-                    source_kind: None, ..
-                } => {
-                    bail!(
-                        "please specify the source of the shader (e.g., `path: \
-                        \"entry_point.glsl\"`)",
-                    );
-                }
-                _ => {}
-            }
+            shader_fields.check_valid(Span::call_site())?;
         }
 
         Ok(())
@@ -823,24 +793,18 @@ impl MacroInputParser {
                 in_braces.parse::<Token![,]>()?;
             }
 
-            match shaders.get(&shader_name).unwrap() {
-                ShaderFields {
-                    shader_kind: None, ..
-                } => bail!(
-                    "please specify a type for shader `{shader_name}` (e.g., `ty: \"vertex\"`)",
-                ),
-                ShaderFields {
-                    source_kind: None, ..
-                } => bail!(
-                    "please specify a source for shader `{shader_name}` (e.g., `path: \
-                    \"entry_point.glsl\"`)",
-                ),
-                _ => {}
-            }
+            shaders
+                .get(&shader_name)
+                .unwrap()
+                .check_valid(shader_ident.span())?;
         }
 
         if shaders.is_empty() {
-            bail!("at least one shader entry must be defined");
+            bail!(
+                field_ident,
+                "please specify at least one shader entry (e.g, `shaders: {{ `ty: \"vertex\", \
+                path: \"entry_point.glsl\" }}`)",
+            );
         }
 
         Ok(())
@@ -1052,6 +1016,13 @@ impl ShaderFields {
             bail!(lit, "field `ty` is already defined");
         }
 
+        if matches!(self.source_kind, Some(SourceKind::Bytes(_))) {
+            bail!(
+                lit,
+                "fields `ty` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
         self.shader_kind = Some(match lit.value().as_str() {
             "vertex" => ShaderKind::Vertex,
             "tess_ctrl" => ShaderKind::TessControl,
@@ -1081,11 +1052,18 @@ impl ShaderFields {
     fn parse_src(&mut self, input: ParseStream<'_>) -> Result<()> {
         let lit = input.parse::<LitStr>()?;
 
-        if self.source_kind.is_some() {
-            bail!(
-                lit,
-                "only one of `src`, `path` or `bytes` can be defined per shader entry",
-            );
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Src(_) => "field `src` is already defined",
+                SourceKind::Path(_) => {
+                    "fields `src` and `path` cannot be defined in the same shader entry"
+                }
+                SourceKind::Bytes(_) => {
+                    "fields `src` and `bytes` cannot be defined in the same shader entry"
+                }
+            };
+
+            bail!(lit, "{msg}");
         }
 
         self.source_kind = Some(SourceKind::Src(lit));
@@ -1096,11 +1074,18 @@ impl ShaderFields {
     fn parse_path(&mut self, input: ParseStream<'_>) -> Result<()> {
         let lit = input.parse::<LitStr>()?;
 
-        if self.source_kind.is_some() {
-            bail!(
-                lit,
-                "only one of `src`, `path` or `bytes` can be defined per shader entry",
-            );
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Src(_) => {
+                    "fields `path` and `src` cannot be defined in the same shader entry"
+                }
+                SourceKind::Path(_) => "field `path` is already defined",
+                SourceKind::Bytes(_) => {
+                    "fields `path` and `bytes` cannot be defined in the same shader entry"
+                }
+            };
+
+            bail!(lit, "{msg}");
         }
 
         self.source_kind = Some(SourceKind::Path(lit));
@@ -1111,10 +1096,24 @@ impl ShaderFields {
     fn parse_bytes(&mut self, input: ParseStream<'_>) -> Result<()> {
         let lit = input.parse::<LitStr>()?;
 
-        if self.source_kind.is_some() {
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Src(_) => {
+                    "fields `bytes` and `src` cannot be defined in the same shader entry"
+                }
+                SourceKind::Path(_) => {
+                    "fields `bytes` and `path` cannot be defined in the same shader entry"
+                }
+                SourceKind::Bytes(_) => "field `bytes` is already defined",
+            };
+
+            bail!(lit, "{msg}");
+        }
+
+        if self.shader_kind.is_some() {
             bail!(
                 lit,
-                "only one of `src`, `path` or `bytes` can be defined per shader entry",
+                "fields `bytes` and `ty` cannot be defined in the same shader entry",
             );
         }
 
@@ -1138,6 +1137,26 @@ impl ShaderFields {
 
             if !array_input.is_empty() {
                 array_input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_valid(&self, span: Span) -> Result<()> {
+        let Some(source_kind) = &self.source_kind else {
+            return Err(Error::new(
+                span,
+                "please specify the shader source (e.g., `path: \"entry_point.glsl\"`)",
+            ));
+        };
+
+        if !matches!(source_kind, SourceKind::Bytes(_)) {
+            if self.shader_kind.is_none() {
+                return Err(Error::new(
+                    span,
+                    "please specify the shader type (e.g., `ty: \"vertex\"`)",
+                ));
             }
         }
 
