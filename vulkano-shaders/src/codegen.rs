@@ -11,7 +11,7 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-pub(super) fn compile(
+pub(super) fn compile_shader(
     options: &MacroOptions,
     source: &str,
     working_dir: &Path,
@@ -19,7 +19,7 @@ pub(super) fn compile(
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
     let compiler = match options.source_language {
-        SourceLanguage::Glsl | SourceLanguage::Hlsl => Compiler::Glslc,
+        SourceLanguage::Glsl | SourceLanguage::Hlsl => Compiler::Shaderc,
         SourceLanguage::Slang => Compiler::Slangc,
     };
     let entry_point = "main";
@@ -33,13 +33,13 @@ pub(super) fn compile(
     let dependencies_file = vulkano_dir.join("deps.d");
 
     match compiler {
-        Compiler::Glslc => {
+        Compiler::Shaderc => {
             command.arg("-x").arg(options.source_language.as_str());
-            command.arg(format!("-fshader-stage={}", shader_kind.as_glslc_stage()));
+            command.arg(format!("-fshader-stage={}", shader_kind.as_shaderc_stage()));
             command.arg(format!("-fentry-point={}", entry_point));
-            let target_env = options.vulkan_version.as_glslc_target_env();
+            let target_env = options.vulkan_version.as_shaderc_target_env();
             command.arg(format!("--target-env={}", target_env));
-            let target_spv = options.spirv_version.as_glslc_target_spv();
+            let target_spv = options.spirv_version.as_shaderc_target_spv();
             command.arg(format!("--target-spv={}", target_spv));
 
             // vulkano.glsl dir first, then user include directories.
@@ -407,7 +407,7 @@ mod tests {
         shader_kind: ShaderKind,
         macro_defines: &[(String, String)],
     ) -> Result<(Vec<u32>, Vec<String>), String> {
-        compile(options, source, Path::new("."), shader_kind, macro_defines)
+        compile_shader(options, source, Path::new("."), shader_kind, macro_defines)
     }
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> HashSet<String> {
@@ -485,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn include_resolution_glslc() {
+    fn include_resolution_shaderc() {
         include_resolution(SourceLanguage::Glsl, "#version 450", "void main() {}");
     }
 
@@ -499,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn include_resolution_dotdot_glslc() {
+    fn include_resolution_dotdot_shaderc() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
         let (_spirv2, includes2) = compile_inline(
@@ -690,7 +690,7 @@ mod tests {
     ) {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-        let (_spirv, includes) = compile(
+        let (_spirv, includes) = compile_shader(
             &MacroOptions {
                 source_language,
                 ..MacroOptions::empty()
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn include_inline_relative_glslc() {
+    fn include_inline_relative_shaderc() {
         include_inline_relative(SourceLanguage::Glsl, "#version 450", "void main() {}");
     }
 
@@ -736,10 +736,10 @@ mod tests {
     }
 
     #[test]
-    fn include_inline_relative_dotdot_glslc() {
+    fn include_inline_relative_dotdot_shaderc() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-        let (_spirv2, includes2) = compile(
+        let (_spirv2, includes2) = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Glsl,
                 ..MacroOptions::empty()
@@ -767,7 +767,7 @@ mod tests {
             ),
         );
 
-        let (_spirv3, includes3) = compile(
+        let (_spirv3, includes3) = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Glsl,
                 include_directories: vec![root_path.join("include_dir_b")],
@@ -801,7 +801,7 @@ mod tests {
     fn include_inline_relative_dotdot_slangc() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-        let (_spirv2, includes2) = compile(
+        let (_spirv2, includes2) = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
@@ -828,7 +828,7 @@ mod tests {
             ),
         );
 
-        let (_spirv3, includes3) = compile(
+        let (_spirv3, includes3) = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 include_directories: vec![root_path.join("include_dir_b")],
@@ -949,7 +949,7 @@ mod tests {
 
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language,
                 ..MacroOptions::empty()
@@ -969,7 +969,7 @@ mod tests {
 
         assert!(err.contains("expected a file extension"));
 
-        let (_spirv2, includes2) = compile(
+        let (_spirv2, includes2) = compile_shader(
             &MacroOptions {
                 source_language,
                 ..MacroOptions::empty()
@@ -995,7 +995,7 @@ mod tests {
             ),
         );
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language,
                 ..MacroOptions::empty()
@@ -1015,7 +1015,7 @@ mod tests {
 
         assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language,
                 ..MacroOptions::empty()
@@ -1037,7 +1037,7 @@ mod tests {
     }
 
     #[test]
-    fn include_paths_with_spaces_glslc() {
+    fn include_paths_with_spaces_shaderc() {
         include_paths_with_spaces(SourceLanguage::Glsl, "#version 450", "void main() {}");
     }
 
@@ -1129,7 +1129,7 @@ mod tests {
 
         assert!(err.contains("include file not found"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
@@ -1150,7 +1150,7 @@ mod tests {
         // slangc preserves spaces in quoted include paths using make-escape (\ ) in the depfile,
         assert!(err.contains("failed to parse dependencies file"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
@@ -1170,7 +1170,7 @@ mod tests {
 
         assert!(err.contains("failed to parse dependencies file"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
@@ -1190,7 +1190,7 @@ mod tests {
 
         assert!(err.contains("failed to parse dependencies file"));
 
-        let err = compile(
+        let err = compile_shader(
             &MacroOptions {
                 source_language: SourceLanguage::Slang,
                 ..MacroOptions::empty()
@@ -1259,7 +1259,7 @@ mod tests {
     }
 
     #[test]
-    fn include_many_paths_glslc() {
+    fn include_many_paths_shaderc() {
         include_many_paths(SourceLanguage::Glsl, "#version 450", "void main() {}");
     }
 
@@ -1326,7 +1326,7 @@ mod tests {
     }
 
     #[test]
-    fn macros_glslc() {
+    fn macros_shaderc() {
         macros(SourceLanguage::Glsl, "#version 450", "void main() {}");
     }
 

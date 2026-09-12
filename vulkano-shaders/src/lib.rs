@@ -370,7 +370,7 @@ impl<'a> MacroState<'a> {
                     }
                 };
 
-                let (words, mut input_paths) = codegen::compile(
+                let (words, mut input_paths) = codegen::compile_shader(
                     self.options,
                     &source_code,
                     working_dir,
@@ -1192,7 +1192,7 @@ enum ShaderKind {
 }
 
 impl ShaderKind {
-    fn as_glslc_stage(self) -> &'static str {
+    fn as_shaderc_stage(self) -> &'static str {
         match self {
             ShaderKind::Vertex => "vert",
             ShaderKind::TessControl => "tesc",
@@ -1251,14 +1251,14 @@ impl SourceLanguage {
 
 #[derive(Clone, Copy, Debug)]
 enum Compiler {
-    Glslc,
+    Shaderc,
     Slangc,
 }
 
 impl Compiler {
     fn as_command(self) -> &'static str {
         match self {
-            Compiler::Glslc => "glslc",
+            Compiler::Shaderc => "glslc",
             Compiler::Slangc => "slangc",
         }
     }
@@ -1274,7 +1274,7 @@ enum VulkanVersion {
 }
 
 impl VulkanVersion {
-    fn as_glslc_target_env(self) -> &'static str {
+    fn as_shaderc_target_env(self) -> &'static str {
         match self {
             VulkanVersion::V1_0 => "vulkan1.0",
             VulkanVersion::V1_1 => "vulkan1.1",
@@ -1305,7 +1305,7 @@ enum SpirvVersion {
 }
 
 impl SpirvVersion {
-    fn as_glslc_target_spv(self) -> &'static str {
+    fn as_shaderc_target_spv(self) -> &'static str {
         match self {
             SpirvVersion::V1_0 => "spv1.0",
             SpirvVersion::V1_1 => "spv1.1",
