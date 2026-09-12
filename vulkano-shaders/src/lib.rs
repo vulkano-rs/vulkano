@@ -566,7 +566,7 @@ struct MacroOptions {
     global_macro_defines: Vec<(String, String)>,
     source_language: Option<SourceLanguage>,
     spirv_version: Option<SpirvVersion>,
-    vulkan_version: Option<EnvVersion>,
+    vulkan_version: Option<VulkanVersion>,
     generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
@@ -630,7 +630,7 @@ struct MacroInputParser {
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
     source_language: Option<SourceLanguage>,
-    vulkan_version: Option<EnvVersion>,
+    vulkan_version: Option<VulkanVersion>,
     spirv_version: Option<SpirvVersion>,
     generate_structs: Option<bool>,
     custom_derives: Option<Vec<SynPath>>,
@@ -923,10 +923,10 @@ impl MacroInputParser {
         }
 
         self.vulkan_version = Some(match lit.value().as_str() {
-            "1.0" => EnvVersion::Vulkan1_0,
-            "1.1" => EnvVersion::Vulkan1_1,
-            "1.2" => EnvVersion::Vulkan1_2,
-            "1.3" => EnvVersion::Vulkan1_3,
+            "1.0" => VulkanVersion::V1_0,
+            "1.1" => VulkanVersion::V1_1,
+            "1.2" => VulkanVersion::V1_2,
+            "1.3" => VulkanVersion::V1_3,
             ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
         });
 
@@ -1203,16 +1203,16 @@ impl ShaderKind {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum SourceLanguage {
     Glsl,
     Hlsl,
     Slang,
 }
 
-impl From<SourceLanguage> for &str {
-    fn from(lang: SourceLanguage) -> Self {
-        match lang {
+impl SourceLanguage {
+    fn as_str(self) -> &'static str {
+        match self {
             SourceLanguage::Glsl => "glsl",
             SourceLanguage::Hlsl => "hlsl",
             SourceLanguage::Slang => "slang",
@@ -1220,34 +1220,31 @@ impl From<SourceLanguage> for &str {
     }
 }
 
-impl std::fmt::Display for SourceLanguage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
+#[derive(Copy, Clone, Debug)]
+enum VulkanVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum EnvVersion {
-    Vulkan1_0,
-    Vulkan1_1,
-    Vulkan1_2,
-    Vulkan1_3,
-}
-
-impl From<EnvVersion> for &str {
-    fn from(version: EnvVersion) -> Self {
-        match version {
-            EnvVersion::Vulkan1_0 => "vulkan1.0",
-            EnvVersion::Vulkan1_1 => "vulkan1.1",
-            EnvVersion::Vulkan1_2 => "vulkan1.2",
-            EnvVersion::Vulkan1_3 => "vulkan1.3",
+impl VulkanVersion {
+    fn as_glslc_target_env(self) -> &'static str {
+        match self {
+            VulkanVersion::V1_0 => "vulkan1.0",
+            VulkanVersion::V1_1 => "vulkan1.1",
+            VulkanVersion::V1_2 => "vulkan1.2",
+            VulkanVersion::V1_3 => "vulkan1.3",
         }
     }
-}
 
-impl std::fmt::Display for EnvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
+    fn to_spirv_version(self) -> SpirvVersion {
+        match self {
+            VulkanVersion::V1_0 => SpirvVersion::V1_0,
+            VulkanVersion::V1_1 => SpirvVersion::V1_3,
+            VulkanVersion::V1_2 => SpirvVersion::V1_5,
+            VulkanVersion::V1_3 => SpirvVersion::V1_6,
+        }
     }
 }
 
@@ -1262,9 +1259,9 @@ enum SpirvVersion {
     V1_6,
 }
 
-impl From<SpirvVersion> for &str {
-    fn from(version: SpirvVersion) -> Self {
-        match version {
+impl SpirvVersion {
+    fn as_glslc_target_spv(self) -> &'static str {
+        match self {
             SpirvVersion::V1_0 => "spv1.0",
             SpirvVersion::V1_1 => "spv1.1",
             SpirvVersion::V1_2 => "spv1.2",
@@ -1274,9 +1271,7 @@ impl From<SpirvVersion> for &str {
             SpirvVersion::V1_6 => "spv1.6",
         }
     }
-}
 
-impl SpirvVersion {
     fn as_slangc_profile(self) -> &'static str {
         match self {
             SpirvVersion::V1_0 => "spirv_1_0",
@@ -1287,12 +1282,6 @@ impl SpirvVersion {
             SpirvVersion::V1_5 => "spirv_1_5",
             SpirvVersion::V1_6 => "spirv_1_6",
         }
-    }
-}
-
-impl std::fmt::Display for SpirvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
     }
 }
 

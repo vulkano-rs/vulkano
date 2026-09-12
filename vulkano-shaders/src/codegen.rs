@@ -1,4 +1,4 @@
-use crate::{EnvVersion, MacroOptions, ShaderKind, SourceLanguage, SpirvVersion};
+use crate::{MacroOptions, ShaderKind, SourceLanguage, SpirvVersion, VulkanVersion};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -23,8 +23,8 @@ pub(super) fn compile(
     let mut compile_options = CompileOptions::new();
 
     compile_options.source_language = source_language;
-    compile_options.target_env = options.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
-    compile_options.target_spirv = options.spirv_version;
+    compile_options.vulkan_version = options.vulkan_version.unwrap_or(VulkanVersion::V1_0);
+    compile_options.spirv_version = options.spirv_version;
     compile_options.macro_definitions = options
         .global_macro_defines
         .iter()
@@ -47,8 +47,8 @@ pub(super) fn compile(
 
 struct CompileOptions {
     source_language: SourceLanguage,
-    target_env: EnvVersion,
-    target_spirv: Option<SpirvVersion>,
+    vulkan_version: VulkanVersion,
+    spirv_version: Option<SpirvVersion>,
     macro_definitions: Vec<(String, String)>,
     include_directories: Vec<PathBuf>,
     debug: bool,
@@ -58,8 +58,8 @@ impl CompileOptions {
     fn new() -> Self {
         CompileOptions {
             source_language: SourceLanguage::Glsl,
-            target_env: EnvVersion::Vulkan1_0,
-            target_spirv: None,
+            vulkan_version: VulkanVersion::V1_0,
+            spirv_version: None,
             macro_definitions: Vec::new(),
             include_directories: Vec::new(),
             debug: false,
@@ -83,11 +83,17 @@ fn compile_into_spirv_glslc(
     command
         .current_dir(working_dir)
         .arg("-x")
-        .arg(options.source_language.to_string())
-        .arg(format!("--target-env={}", options.target_env));
+        .arg(options.source_language.as_str())
+        .arg(format!(
+            "--target-env={}",
+            options.vulkan_version.as_glslc_target_env(),
+        ));
 
-    if let Some(spirv) = options.target_spirv {
-        command.arg(format!("--target-spv={}", spirv));
+    if let Some(spirv_version) = options.spirv_version {
+        command.arg(format!(
+            "--target-spv={}",
+            spirv_version.as_glslc_target_spv(),
+        ));
     }
 
     // vulkano.glsl dir first, then user include directories.
@@ -163,13 +169,13 @@ fn compile_into_spirv_slangc(
     command
         .current_dir(working_dir)
         .arg("-lang")
-        .arg(options.source_language.to_string())
+        .arg(options.source_language.as_str())
         .arg("-target")
         .arg("spirv");
 
     let spirv_version = options
-        .target_spirv
-        .unwrap_or_else(|| vulkan_version_to_spirv(options.target_env));
+        .spirv_version
+        .unwrap_or_else(|| options.vulkan_version.to_spirv_version());
     command
         .arg("-profile")
         .arg(spirv_version.as_slangc_profile());
@@ -257,15 +263,6 @@ struct TempDir(PathBuf);
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn vulkan_version_to_spirv(env: EnvVersion) -> SpirvVersion {
-    match env {
-        EnvVersion::Vulkan1_0 => SpirvVersion::V1_0,
-        EnvVersion::Vulkan1_1 => SpirvVersion::V1_3,
-        EnvVersion::Vulkan1_2 => SpirvVersion::V1_5,
-        EnvVersion::Vulkan1_3 => SpirvVersion::V1_6,
     }
 }
 
@@ -512,7 +509,7 @@ mod tests {
     use super::*;
     use crate::{
         structs::{generate_structs, TypeRegistry},
-        EnvVersion,
+        VulkanVersion,
     };
     use proc_macro2::Span;
     use quote::ToTokens;
@@ -1613,7 +1610,7 @@ mod tests {
             &MacroOptions {
                 source_language: Some(SourceLanguage::Glsl),
                 spirv_version: Some(SpirvVersion::V1_6),
-                vulkan_version: Some(EnvVersion::Vulkan1_3),
+                vulkan_version: Some(VulkanVersion::V1_3),
                 ..MacroOptions::empty()
             },
             r#"
