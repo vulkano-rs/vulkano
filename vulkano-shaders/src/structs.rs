@@ -6,84 +6,6 @@ use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
 
-#[derive(Default)]
-pub struct TypeRegistry {
-    registered_structs: HashMap<Ident, RegisteredType>,
-}
-
-impl TypeRegistry {
-    fn register_struct(&mut self, shader: &Shader, ty: &TypeStruct) -> Result<bool> {
-        // Checking with registry if this struct is already registered by another shader, and if
-        // their signatures match.
-        if let Some(registered) = self.registered_structs.get(&ty.ident) {
-            registered.validate_signatures(&shader.name, ty)?;
-
-            // If the struct is already registered and matches this one, skip the duplicate.
-            Ok(false)
-        } else {
-            self.registered_structs.insert(
-                ty.ident.clone(),
-                RegisteredType {
-                    shader: shader.name.clone(),
-                    ty: ty.clone(),
-                },
-            );
-
-            Ok(true)
-        }
-    }
-}
-
-struct RegisteredType {
-    shader: String,
-    ty: TypeStruct,
-}
-
-impl RegisteredType {
-    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result<()> {
-        let (shader, struct_ident) = (&self.shader, &self.ty.ident);
-
-        if self.ty.members.len() > other_ty.members.len() {
-            let member_ident = &self.ty.members[other_ty.members.len()].ident;
-            bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{shader}` contains an extra field \
-                `{member_ident}`",
-            );
-        }
-
-        if self.ty.members.len() < other_ty.members.len() {
-            let member_ident = &other_ty.members[self.ty.members.len()].ident;
-            bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{other_shader}` contains an extra \
-                field `{member_ident}`",
-            );
-        }
-
-        for (index, (member, other_member)) in self
-            .ty
-            .members
-            .iter()
-            .zip(other_ty.members.iter())
-            .enumerate()
-        {
-            if member.ty != other_member.ty {
-                let (member_ty, other_member_ty) = (&member.ty, &other_member.ty);
-                bail!(
-                    "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                    `{struct_ident}`, but the struct from shader `{shader}` contains a field of \
-                    type `{member_ty:?}` at index `{index}`, whereas the same struct from shader \
-                    `{other_shader}` contains a field of type `{other_member_ty:?}` in the same \
-                    position",
-                );
-            }
-        }
-
-        Ok(())
-    }
-}
-
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub(super) fn write_structs(
     options: &MacroOptions,
@@ -170,6 +92,84 @@ fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
     }
 
     true
+}
+
+#[derive(Default)]
+pub struct TypeRegistry {
+    registered_structs: HashMap<Ident, RegisteredType>,
+}
+
+impl TypeRegistry {
+    fn register_struct(&mut self, shader: &Shader, ty: &TypeStruct) -> Result<bool> {
+        // Checking with registry if this struct is already registered by another shader, and if
+        // their signatures match.
+        if let Some(registered) = self.registered_structs.get(&ty.ident) {
+            registered.validate_signatures(&shader.name, ty)?;
+
+            // If the struct is already registered and matches this one, skip the duplicate.
+            Ok(false)
+        } else {
+            self.registered_structs.insert(
+                ty.ident.clone(),
+                RegisteredType {
+                    shader: shader.name.clone(),
+                    ty: ty.clone(),
+                },
+            );
+
+            Ok(true)
+        }
+    }
+}
+
+struct RegisteredType {
+    shader: String,
+    ty: TypeStruct,
+}
+
+impl RegisteredType {
+    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result<()> {
+        let (shader, struct_ident) = (&self.shader, &self.ty.ident);
+
+        if self.ty.members.len() > other_ty.members.len() {
+            let member_ident = &self.ty.members[other_ty.members.len()].ident;
+            bail!(
+                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
+                `{struct_ident}`, but the struct from shader `{shader}` contains an extra field \
+                `{member_ident}`",
+            );
+        }
+
+        if self.ty.members.len() < other_ty.members.len() {
+            let member_ident = &other_ty.members[self.ty.members.len()].ident;
+            bail!(
+                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
+                `{struct_ident}`, but the struct from shader `{other_shader}` contains an extra \
+                field `{member_ident}`",
+            );
+        }
+
+        for (index, (member, other_member)) in self
+            .ty
+            .members
+            .iter()
+            .zip(other_ty.members.iter())
+            .enumerate()
+        {
+            if member.ty != other_member.ty {
+                let (member_ty, other_member_ty) = (&member.ty, &other_member.ty);
+                bail!(
+                    "shaders `{shader}` and `{other_shader}` declare structs with the same name \
+                    `{struct_ident}`, but the struct from shader `{shader}` contains a field of \
+                    type `{member_ty:?}` at index `{index}`, whereas the same struct from shader \
+                    `{other_shader}` contains a field of type `{other_member_ty:?}` in the same \
+                    position",
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

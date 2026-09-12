@@ -22,6 +22,61 @@ pub struct Shader {
     pub spirv: Spirv,
 }
 
+pub(super) fn compile(
+    options: &MacroOptions,
+    source: &str,
+    working_dir: &Path,
+    shader_kind: ShaderKind,
+    macro_defines: &[(String, String)],
+) -> Result<(Vec<u32>, Vec<String>), String> {
+    let source_language = options.source_language.unwrap_or(SourceLanguage::Glsl);
+    let mut compile_options = CompileOptions::new();
+
+    compile_options.source_language = source_language;
+    compile_options.target_env = options.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
+    compile_options.target_spirv = options.spirv_version;
+    compile_options.macro_definitions = options
+        .global_macro_defines
+        .iter()
+        .chain(macro_defines.iter())
+        .cloned()
+        .collect();
+    compile_options.include_directories = options.include_directories.clone();
+    compile_options.debug = cfg!(feature = "shaderc-debug");
+
+    match source_language {
+        SourceLanguage::Glsl | SourceLanguage::Hlsl => {
+            compile_into_spirv_glslc(shader_kind, source, "main", working_dir, &compile_options)
+        }
+        SourceLanguage::Slang => {
+            compile_into_spirv_slangc(shader_kind, source, "main", working_dir, &compile_options)
+        }
+    }
+    .map_err(|e| e.replace("(s): ", "(s):\n"))
+}
+
+struct CompileOptions {
+    source_language: SourceLanguage,
+    target_env: EnvVersion,
+    target_spirv: Option<SpirvVersion>,
+    macro_definitions: Vec<(String, String)>,
+    include_directories: Vec<PathBuf>,
+    debug: bool,
+}
+
+impl CompileOptions {
+    fn new() -> Self {
+        CompileOptions {
+            source_language: SourceLanguage::Glsl,
+            target_env: EnvVersion::Vulkan1_0,
+            target_spirv: None,
+            macro_definitions: Vec::new(),
+            include_directories: Vec::new(),
+            debug: false,
+        }
+    }
+}
+
 fn compile_into_spirv_glslc(
     shader_kind: ShaderKind,
     source: &str,
@@ -187,51 +242,6 @@ fn compile_into_spirv_slangc(
     Ok((words, includes))
 }
 
-pub(crate) struct CompileOptions {
-    source_language: SourceLanguage,
-    target_env: EnvVersion,
-    target_spirv: Option<SpirvVersion>,
-    macro_definitions: Vec<(String, String)>,
-    include_directories: Vec<PathBuf>,
-    debug: bool,
-}
-
-impl CompileOptions {
-    pub fn new() -> Self {
-        CompileOptions {
-            source_language: SourceLanguage::Glsl,
-            target_env: EnvVersion::Vulkan1_0,
-            target_spirv: None,
-            macro_definitions: Vec::new(),
-            include_directories: Vec::new(),
-            debug: false,
-        }
-    }
-}
-
-fn vulkan_version_to_spirv(env: EnvVersion) -> SpirvVersion {
-    match env {
-        EnvVersion::Vulkan1_0 => SpirvVersion::V1_0,
-        EnvVersion::Vulkan1_1 => SpirvVersion::V1_3,
-        EnvVersion::Vulkan1_2 => SpirvVersion::V1_5,
-        EnvVersion::Vulkan1_3 => SpirvVersion::V1_6,
-    }
-}
-
-fn set_common_options(command: &mut Command, options: &CompileOptions) {
-    if options.debug {
-        command.arg("-g");
-    }
-
-    for dir in &options.include_directories {
-        command.arg(format!("-I{}", dir.display()));
-    }
-
-    for (name, value) in &options.macro_definitions {
-        command.arg(format!("-D{name}={value}"));
-    }
-}
-
 fn create_vulkano_dir() -> Result<TempDir, String> {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let id = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -257,6 +267,29 @@ struct TempDir(PathBuf);
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn vulkan_version_to_spirv(env: EnvVersion) -> SpirvVersion {
+    match env {
+        EnvVersion::Vulkan1_0 => SpirvVersion::V1_0,
+        EnvVersion::Vulkan1_1 => SpirvVersion::V1_3,
+        EnvVersion::Vulkan1_2 => SpirvVersion::V1_5,
+        EnvVersion::Vulkan1_3 => SpirvVersion::V1_6,
+    }
+}
+
+fn set_common_options(command: &mut Command, options: &CompileOptions) {
+    if options.debug {
+        command.arg("-g");
+    }
+
+    for dir in &options.include_directories {
+        command.arg(format!("-I{}", dir.display()));
+    }
+
+    for (name, value) in &options.macro_definitions {
+        command.arg(format!("-D{name}={value}"));
     }
 }
 
@@ -397,39 +430,6 @@ fn normalize_str(path: impl AsRef<Path>) -> String {
     }
 
     inner(path.as_ref())
-}
-
-pub(super) fn compile(
-    options: &MacroOptions,
-    source: &str,
-    working_dir: &Path,
-    shader_kind: ShaderKind,
-    macro_defines: &[(String, String)],
-) -> Result<(Vec<u32>, Vec<String>), String> {
-    let source_language = options.source_language.unwrap_or(SourceLanguage::Glsl);
-    let mut compile_options = CompileOptions::new();
-
-    compile_options.source_language = source_language;
-    compile_options.target_env = options.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0);
-    compile_options.target_spirv = options.spirv_version;
-    compile_options.macro_definitions = options
-        .global_macro_defines
-        .iter()
-        .chain(macro_defines.iter())
-        .cloned()
-        .collect();
-    compile_options.include_directories = options.include_directories.clone();
-    compile_options.debug = cfg!(feature = "shaderc-debug");
-
-    match source_language {
-        SourceLanguage::Glsl | SourceLanguage::Hlsl => {
-            compile_into_spirv_glslc(shader_kind, source, "main", working_dir, &compile_options)
-        }
-        SourceLanguage::Slang => {
-            compile_into_spirv_slangc(shader_kind, source, "main", working_dir, &compile_options)
-        }
-    }
-    .map_err(|e| e.replace("(s): ", "(s):\n"))
 }
 
 pub(super) fn reflect(

@@ -538,163 +538,6 @@ fn spirv_bytes_to_words(bytes: Vec<u8>) -> StdResult<Vec<u32>, String> {
     Ok(words.iter().copied().map(u32::from_le_bytes).collect())
 }
 
-enum SourceKind {
-    Src(LitStr),
-    Path(LitStr),
-    Bytes(LitStr),
-}
-
-#[derive(Copy, Clone)]
-enum SourceLanguage {
-    Glsl,
-    Hlsl,
-    Slang,
-}
-
-impl From<SourceLanguage> for &str {
-    fn from(lang: SourceLanguage) -> Self {
-        match lang {
-            SourceLanguage::Glsl => "glsl",
-            SourceLanguage::Hlsl => "hlsl",
-            SourceLanguage::Slang => "slang",
-        }
-    }
-}
-
-impl std::fmt::Display for SourceLanguage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-enum EnvVersion {
-    Vulkan1_0,
-    Vulkan1_1,
-    Vulkan1_2,
-    Vulkan1_3,
-}
-
-impl From<EnvVersion> for &str {
-    fn from(version: EnvVersion) -> Self {
-        match version {
-            EnvVersion::Vulkan1_0 => "vulkan1.0",
-            EnvVersion::Vulkan1_1 => "vulkan1.1",
-            EnvVersion::Vulkan1_2 => "vulkan1.2",
-            EnvVersion::Vulkan1_3 => "vulkan1.3",
-        }
-    }
-}
-
-impl std::fmt::Display for EnvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum SpirvVersion {
-    V1_0,
-    V1_1,
-    V1_2,
-    V1_3,
-    V1_4,
-    V1_5,
-    V1_6,
-}
-
-impl From<SpirvVersion> for &str {
-    fn from(version: SpirvVersion) -> Self {
-        match version {
-            SpirvVersion::V1_0 => "spv1.0",
-            SpirvVersion::V1_1 => "spv1.1",
-            SpirvVersion::V1_2 => "spv1.2",
-            SpirvVersion::V1_3 => "spv1.3",
-            SpirvVersion::V1_4 => "spv1.4",
-            SpirvVersion::V1_5 => "spv1.5",
-            SpirvVersion::V1_6 => "spv1.6",
-        }
-    }
-}
-
-impl SpirvVersion {
-    fn as_slangc_profile(self) -> &'static str {
-        match self {
-            SpirvVersion::V1_0 => "spirv_1_0",
-            SpirvVersion::V1_1 => "spirv_1_1",
-            SpirvVersion::V1_2 => "spirv_1_2",
-            SpirvVersion::V1_3 => "spirv_1_3",
-            SpirvVersion::V1_4 => "spirv_1_4",
-            SpirvVersion::V1_5 => "spirv_1_5",
-            SpirvVersion::V1_6 => "spirv_1_6",
-        }
-    }
-}
-
-impl std::fmt::Display for SpirvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum ShaderKind {
-    Vertex,
-    TessControl,
-    TessEvaluation,
-    Geometry,
-    Task,
-    Mesh,
-    Fragment,
-    Compute,
-    RayGeneration,
-    AnyHit,
-    ClosestHit,
-    Miss,
-    Intersection,
-    Callable,
-}
-
-impl ShaderKind {
-    fn as_glslc_stage(self) -> &'static str {
-        match self {
-            ShaderKind::Vertex => "vert",
-            ShaderKind::TessControl => "tesc",
-            ShaderKind::TessEvaluation => "tese",
-            ShaderKind::Geometry => "geom",
-            ShaderKind::Task => "task",
-            ShaderKind::Mesh => "mesh",
-            ShaderKind::Fragment => "frag",
-            ShaderKind::Compute => "comp",
-            ShaderKind::RayGeneration => "rgen",
-            ShaderKind::AnyHit => "rahit",
-            ShaderKind::ClosestHit => "rchit",
-            ShaderKind::Miss => "rmiss",
-            ShaderKind::Intersection => "rint",
-            ShaderKind::Callable => "rcall",
-        }
-    }
-
-    fn as_slangc_stage(self) -> &'static str {
-        match self {
-            ShaderKind::Vertex => "vertex",
-            ShaderKind::TessControl => "hull",
-            ShaderKind::TessEvaluation => "domain",
-            ShaderKind::Geometry => "geometry",
-            ShaderKind::Task => "amplification",
-            ShaderKind::Mesh => "mesh",
-            ShaderKind::Fragment => "fragment",
-            ShaderKind::Compute => "compute",
-            ShaderKind::RayGeneration => "raygeneration",
-            ShaderKind::AnyHit => "anyhit",
-            ShaderKind::ClosestHit => "closesthit",
-            ShaderKind::Miss => "miss",
-            ShaderKind::Intersection => "intersection",
-            ShaderKind::Callable => "callable",
-        }
-    }
-}
-
 struct MacroInput {
     shaders: Shaders,
     options: MacroOptions,
@@ -710,6 +553,12 @@ struct ShaderFields {
     shader_kind: Option<ShaderKind>,
     source_kind: Option<SourceKind>,
     macro_defines: Vec<(String, String)>,
+}
+
+enum SourceKind {
+    Src(LitStr),
+    Path(LitStr),
+    Bytes(LitStr),
 }
 
 struct MacroOptions {
@@ -1294,6 +1143,157 @@ impl ShaderFields {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum ShaderKind {
+    Vertex,
+    TessControl,
+    TessEvaluation,
+    Geometry,
+    Task,
+    Mesh,
+    Fragment,
+    Compute,
+    RayGeneration,
+    AnyHit,
+    ClosestHit,
+    Miss,
+    Intersection,
+    Callable,
+}
+
+impl ShaderKind {
+    fn as_glslc_stage(self) -> &'static str {
+        match self {
+            ShaderKind::Vertex => "vert",
+            ShaderKind::TessControl => "tesc",
+            ShaderKind::TessEvaluation => "tese",
+            ShaderKind::Geometry => "geom",
+            ShaderKind::Task => "task",
+            ShaderKind::Mesh => "mesh",
+            ShaderKind::Fragment => "frag",
+            ShaderKind::Compute => "comp",
+            ShaderKind::RayGeneration => "rgen",
+            ShaderKind::AnyHit => "rahit",
+            ShaderKind::ClosestHit => "rchit",
+            ShaderKind::Miss => "rmiss",
+            ShaderKind::Intersection => "rint",
+            ShaderKind::Callable => "rcall",
+        }
+    }
+
+    fn as_slangc_stage(self) -> &'static str {
+        match self {
+            ShaderKind::Vertex => "vertex",
+            ShaderKind::TessControl => "hull",
+            ShaderKind::TessEvaluation => "domain",
+            ShaderKind::Geometry => "geometry",
+            ShaderKind::Task => "amplification",
+            ShaderKind::Mesh => "mesh",
+            ShaderKind::Fragment => "fragment",
+            ShaderKind::Compute => "compute",
+            ShaderKind::RayGeneration => "raygeneration",
+            ShaderKind::AnyHit => "anyhit",
+            ShaderKind::ClosestHit => "closesthit",
+            ShaderKind::Miss => "miss",
+            ShaderKind::Intersection => "intersection",
+            ShaderKind::Callable => "callable",
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum SourceLanguage {
+    Glsl,
+    Hlsl,
+    Slang,
+}
+
+impl From<SourceLanguage> for &str {
+    fn from(lang: SourceLanguage) -> Self {
+        match lang {
+            SourceLanguage::Glsl => "glsl",
+            SourceLanguage::Hlsl => "hlsl",
+            SourceLanguage::Slang => "slang",
+        }
+    }
+}
+
+impl std::fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum EnvVersion {
+    Vulkan1_0,
+    Vulkan1_1,
+    Vulkan1_2,
+    Vulkan1_3,
+}
+
+impl From<EnvVersion> for &str {
+    fn from(version: EnvVersion) -> Self {
+        match version {
+            EnvVersion::Vulkan1_0 => "vulkan1.0",
+            EnvVersion::Vulkan1_1 => "vulkan1.1",
+            EnvVersion::Vulkan1_2 => "vulkan1.2",
+            EnvVersion::Vulkan1_3 => "vulkan1.3",
+        }
+    }
+}
+
+impl std::fmt::Display for EnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum SpirvVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+    V1_4,
+    V1_5,
+    V1_6,
+}
+
+impl From<SpirvVersion> for &str {
+    fn from(version: SpirvVersion) -> Self {
+        match version {
+            SpirvVersion::V1_0 => "spv1.0",
+            SpirvVersion::V1_1 => "spv1.1",
+            SpirvVersion::V1_2 => "spv1.2",
+            SpirvVersion::V1_3 => "spv1.3",
+            SpirvVersion::V1_4 => "spv1.4",
+            SpirvVersion::V1_5 => "spv1.5",
+            SpirvVersion::V1_6 => "spv1.6",
+        }
+    }
+}
+
+impl SpirvVersion {
+    fn as_slangc_profile(self) -> &'static str {
+        match self {
+            SpirvVersion::V1_0 => "spirv_1_0",
+            SpirvVersion::V1_1 => "spirv_1_1",
+            SpirvVersion::V1_2 => "spirv_1_2",
+            SpirvVersion::V1_3 => "spirv_1_3",
+            SpirvVersion::V1_4 => "spirv_1_4",
+            SpirvVersion::V1_5 => "spirv_1_5",
+            SpirvVersion::V1_6 => "spirv_1_6",
+        }
+    }
+}
+
+impl std::fmt::Display for SpirvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(<&str>::from(*self))
     }
 }
 
