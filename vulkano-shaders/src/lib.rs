@@ -261,7 +261,6 @@ use syn::{
 };
 
 mod codegen;
-mod rust_gpu;
 mod structs;
 
 #[proc_macro]
@@ -405,12 +404,12 @@ impl<'a> MacroState<'a> {
             }
         };
 
-        let (shaders_code, structs_code) = codegen::reflect(
+        let shaders_code = codegen::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
+        let structs_code = structs::generate_structs(
             self.options,
             lit,
             shader_name,
             &words,
-            input_paths,
             &mut self.type_registry,
         )?;
 

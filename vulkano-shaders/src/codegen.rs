@@ -1,7 +1,4 @@
-use crate::{
-    structs::{self, TypeRegistry},
-    EnvVersion, MacroOptions, ShaderKind, SourceLanguage, SpirvVersion,
-};
+use crate::{EnvVersion, MacroOptions, ShaderKind, SourceLanguage, SpirvVersion};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -13,14 +10,7 @@ use std::{
     process::{Command, Stdio},
     sync::atomic::{AtomicU32, Ordering},
 };
-use syn::{Error, LitStr};
-use vulkano::shader::spirv::Spirv;
-
-pub struct Shader {
-    pub source: LitStr,
-    pub name: String,
-    pub spirv: Spirv,
-}
+use syn::Error;
 
 pub(super) fn compile(
     options: &MacroOptions,
@@ -432,14 +422,11 @@ fn normalize_str(path: impl AsRef<Path>) -> String {
     inner(path.as_ref())
 }
 
-pub(super) fn reflect(
-    options: &MacroOptions,
-    source: LitStr,
-    name: Option<String>,
+pub(super) fn generate_shaders(
+    name: Option<&str>,
     words: &[u32],
     input_paths: Vec<String>,
-    type_registry: &mut TypeRegistry,
-) -> Result<(TokenStream, TokenStream), Error> {
+) -> Result<TokenStream, Error> {
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
             // Using `include_bytes` here ensures that changing the shader will force recompilation.
@@ -457,7 +444,7 @@ pub(super) fn reflect(
     let load_unchecked_name = format_ident!("{load_name}_unchecked");
     let words_name = format_ident!("{}_WORDS", load_name.to_string().to_uppercase());
 
-    let shader_code = quote! {
+    let shaders_code = quote! {
         const _: &[&[u8]] = &[ #( #include_bytes ),* ];
 
         static #words_name: &[u32] = &[ #( #words ),* ];
@@ -517,28 +504,21 @@ pub(super) fn reflect(
         }
     };
 
-    let spirv = Spirv::new(words).map_err(|err| {
-        Error::new_spanned(&source, format_args!("failed to parse SPIR-V words: {err}"))
-    })?;
-    let shader = Shader {
-        source,
-        name: name.unwrap_or_default(),
-        spirv,
-    };
-    let structs = structs::write_structs(options, &shader, type_registry)?;
-
-    Ok((shader_code, structs))
+    Ok(shaders_code)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EnvVersion;
+    use crate::{
+        structs::{generate_structs, TypeRegistry},
+        EnvVersion,
+    };
     use proc_macro2::Span;
     use quote::ToTokens;
     use std::collections::HashSet;
-    use syn::{File, Item};
-    use vulkano::shader::reflect;
+    use syn::{File, Item, LitStr};
+    use vulkano::shader::{reflect, spirv::Spirv};
 
     fn compile_inline(
         options: &MacroOptions,
@@ -1853,5 +1833,57 @@ mod tests {
             output_2.fields.to_token_stream().to_string(),
             quote!({pub __member0: [u32],}).to_string()
         );
+    }
+
+    #[test]
+    fn rust_gpu_reflect_vertex() {
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/rust-gpu/test_shader-vertex.spv",
+        ))
+        .unwrap();
+
+        let mut type_registry = TypeRegistry::default();
+        let (_shader_code, _structs) = reflect(
+            &MacroOptions::empty(),
+            LitStr::new("rust-gpu vertex shader", Span::call_site()),
+            None,
+            &insts,
+            Vec::new(),
+            &mut type_registry,
+        )
+        .expect("reflecting spv failed");
+    }
+
+    #[test]
+    fn rust_gpu_reflect_fragment() {
+        let insts = vulkano::shader::spirv::bytes_to_words(include_bytes!(
+            "../tests/rust-gpu/test_shader-fragment.spv",
+        ))
+        .unwrap();
+
+        let mut type_registry = TypeRegistry::default();
+        let (_shader_code, _structs) = reflect(
+            &MacroOptions::empty(),
+            LitStr::new("rust-gpu vertex shader", Span::call_site()),
+            None,
+            &insts,
+            Vec::new(),
+            &mut type_registry,
+        )
+        .expect("reflecting spv failed");
+    }
+
+    fn reflect(
+        options: &MacroOptions,
+        source: LitStr,
+        name: Option<String>,
+        words: &[u32],
+        input_paths: Vec<String>,
+        type_registry: &mut TypeRegistry,
+    ) -> Result<(TokenStream, TokenStream), Error> {
+        let shaders_code = generate_shaders(name.as_deref(), words, input_paths)?;
+        let structs_code = generate_structs(options, source, name, words, type_registry)?;
+
+        Ok((shaders_code, structs_code))
     }
 }

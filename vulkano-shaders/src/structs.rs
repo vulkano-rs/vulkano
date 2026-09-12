@@ -1,20 +1,31 @@
-use crate::{bail, codegen::Shader, LinAlgType, MacroOptions};
+use crate::{bail, LinAlgType, MacroOptions};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZero};
-use syn::{Error, Ident, Result};
-use vulkano::shader::spirv::{Decoration, Id, Instruction};
+use syn::{Error, Ident, LitStr, Result};
+use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub(super) fn write_structs(
+pub(super) fn generate_structs(
     options: &MacroOptions,
-    shader: &Shader,
+    lit: LitStr,
+    shader_name: Option<String>,
+    words: &[u32],
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
     if !options.generate_structs {
         return Ok(TokenStream::new());
     }
+
+    let spirv = Spirv::new(words).map_err(|err| {
+        Error::new_spanned(&lit, format_args!("failed to parse SPIR-V words: {err}"))
+    })?;
+    let shader = Shader {
+        lit,
+        name: shader_name.unwrap_or_default(),
+        spirv,
+    };
 
     let mut structs = TokenStream::new();
 
@@ -29,12 +40,12 @@ pub(super) fn write_structs(
             } => Some((result_id, member_types)),
             _ => None,
         })
-        .filter(|&(struct_id, _)| has_defined_layout(shader, struct_id))
+        .filter(|&(struct_id, _)| has_defined_layout(&shader, struct_id))
     {
-        let struct_ty = TypeStruct::new(shader, struct_id, member_type_ids)?;
+        let struct_ty = TypeStruct::new(&shader, struct_id, member_type_ids)?;
 
         // Register the type if needed.
-        if !type_registry.register_struct(shader, &struct_ty)? {
+        if !type_registry.register_struct(&shader, &struct_ty)? {
             continue;
         }
 
@@ -58,6 +69,12 @@ pub(super) fn write_structs(
     }
 
     Ok(structs)
+}
+
+struct Shader {
+    lit: LitStr,
+    name: String,
+    spirv: Spirv,
 }
 
 fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
@@ -232,7 +249,7 @@ impl Type {
         let id_info = shader.spirv.id(type_id);
 
         let ty = match *id_info.instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
+            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
             Instruction::TypeInt {
                 width, signedness, ..
             } => Type::Scalar(TypeScalar::Int(TypeInt::new(shader, width, signedness)?)),
@@ -261,7 +278,7 @@ impl Type {
             Instruction::TypeStruct {
                 ref member_types, ..
             } => Type::Struct(TypeStruct::new(shader, type_id, member_types)?),
-            _ => bail!(shader.source, "type {type_id} was not found"),
+            _ => bail!(shader.lit, "type {type_id} was not found"),
         };
 
         Ok(ty)
@@ -372,13 +389,13 @@ impl TypeInt {
             16 => IntWidth::W16,
             32 => IntWidth::W32,
             64 => IntWidth::W64,
-            _ => bail!(shader.source, "integers must be 8, 16, 32, or 64-bit wide"),
+            _ => bail!(shader.lit, "integers must be 8, 16, 32, or 64-bit wide"),
         };
 
         let signed = match signedness {
             0 => false,
             1 => true,
-            _ => bail!(shader.source, "signedness must be 0 or 1"),
+            _ => bail!(shader.lit, "signedness must be 0 or 1"),
         };
 
         Ok(TypeInt { width, signed })
@@ -436,7 +453,7 @@ impl TypeFloat {
             16 => FloatWidth::W16,
             32 => FloatWidth::W32,
             64 => FloatWidth::W64,
-            _ => bail!(shader.source, "floats must be 16, 32, or 64-bit wide"),
+            _ => bail!(shader.lit, "floats must be 16, 32, or 64-bit wide"),
         };
 
         Ok(TypeFloat { width })
@@ -506,14 +523,14 @@ impl TypeVector {
         let component_count = ComponentCount::new(shader, component_count)?;
 
         let component_type = match *shader.spirv.id(component_type_id).instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
+            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
             Instruction::TypeInt {
                 width, signedness, ..
             } => TypeScalar::Int(TypeInt::new(shader, width, signedness)?),
             Instruction::TypeFloat { width, .. } => {
                 TypeScalar::Float(TypeFloat::new(shader, width)?)
             }
-            _ => bail!(shader.source, "vector components must be scalars"),
+            _ => bail!(shader.lit, "vector components must be scalars"),
         };
 
         Ok(TypeVector {
@@ -550,9 +567,9 @@ impl TypeMatrix {
                     TypeFloat::new(shader, width)?,
                     ComponentCount::new(shader, component_count)?,
                 ),
-                _ => bail!(shader.source, "matrix components must be floats"),
+                _ => bail!(shader.lit, "matrix components must be floats"),
             },
-            _ => bail!(shader.source, "matrix columns must be vectors"),
+            _ => bail!(shader.lit, "matrix columns must be vectors"),
         };
 
         // We can't know these until we get to the members and their decorations, so just use
@@ -612,7 +629,7 @@ impl ComponentCount {
             2 => ComponentCount::C2,
             3 => ComponentCount::C3,
             4 => ComponentCount::C4,
-            _ => bail!(shader.source, "component counts must be 2, 3 or 4"),
+            _ => bail!(shader.lit, "component counts must be 2, 3 or 4"),
         };
 
         Ok(count)
@@ -642,10 +659,10 @@ impl TypeArray {
                     let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
 
                     NonZero::new(len.try_into().unwrap()).ok_or_else(|| {
-                        Error::new_spanned(&shader.source, "arrays must have a non-zero length")
+                        Error::new_spanned(&shader.lit, "arrays must have a non-zero length")
                     })
                 }
-                _ => bail!(shader.source, "failed to find array length"),
+                _ => bail!(shader.lit, "failed to find array length"),
             })
             .transpose()?;
 
@@ -665,28 +682,28 @@ impl TypeArray {
                     });
             let stride = strides.next().ok_or_else(|| {
                 Error::new_spanned(
-                    &shader.source,
+                    &shader.lit,
                     "arrays inside structs must have an `ArrayStride` decoration",
                 )
             })?;
 
             if !strides.all(|s| s == stride) {
-                bail!(shader.source, "found conflicting `ArrayStride` decorations");
+                bail!(shader.lit, "found conflicting `ArrayStride` decorations");
             }
 
             if !is_aligned(stride, element_type.scalar_alignment()) {
                 bail!(
-                    shader.source,
+                    shader.lit,
                     "array strides must be aligned for the element type",
                 );
             }
 
-            let element_size = element_type.size().ok_or_else(|| {
-                Error::new_spanned(&shader.source, "array elements must be sized")
-            })?;
+            let element_size = element_type
+                .size()
+                .ok_or_else(|| Error::new_spanned(&shader.lit, "array elements must be sized"))?;
 
             if stride < element_size {
-                bail!(shader.source, "array elements must not overlap");
+                bail!(shader.lit, "array elements must not overlap");
             }
 
             stride
@@ -793,21 +810,18 @@ impl TypeStruct {
                         );
                     matrix.stride = strides.next().ok_or_else(|| {
                         Error::new_spanned(
-                            &shader.source,
+                            &shader.lit,
                             "matrices inside structs must have a `MatrixStride` decoration",
                         )
                     })?;
 
                     if !strides.all(|s| s == matrix.stride) {
-                        bail!(
-                            shader.source,
-                            "found conflicting `MatrixStride` decorations",
-                        );
+                        bail!(shader.lit, "found conflicting `MatrixStride` decorations");
                     }
 
                     if !is_aligned(matrix.stride, matrix.component_type.alignment()) {
                         bail!(
-                            shader.source,
+                            shader.lit,
                             "matrix strides must be an integer multiple of the size of the \
                             component",
                         );
@@ -828,23 +842,20 @@ impl TypeStruct {
                     );
                     matrix.majorness = majornessess.next().ok_or_else(|| {
                         Error::new_spanned(
-                            &shader.source,
+                            &shader.lit,
                             "matrices inside structs must have a `ColMajor` or `RowMajor` \
                             decoration",
                         )
                     })?;
 
                     if !majornessess.all(|m| m == matrix.majorness) {
-                        bail!(
-                            shader.source,
-                            "found conflicting matrix majorness decorations",
-                        );
+                        bail!(shader.lit, "found conflicting matrix majorness decorations");
                     }
 
                     // NOTE(Marc): It is crucial that we do this check after setting the majorness,
                     // because `TypeMatrix::vector_size` depends on it.
                     if matrix.stride < matrix.vector_size() {
-                        bail!(shader.source, "matrix columns/rows must not overlap");
+                        bail!(shader.lit, "matrix columns/rows must not overlap");
                     }
                 }
             }
@@ -861,14 +872,14 @@ impl TypeStruct {
                 })
                 .ok_or_else(|| {
                     Error::new_spanned(
-                        &shader.source,
+                        &shader.lit,
                         "struct members must have an `Offset` decoration",
                     )
                 })?;
 
             if !is_aligned(offset, ty.scalar_alignment()) {
                 bail!(
-                    shader.source,
+                    shader.lit,
                     "struct member offsets must be aligned for the member type",
                 );
             }
@@ -876,20 +887,20 @@ impl TypeStruct {
             if let Some(last) = members.last() {
                 if !is_aligned(offset, last.ty.scalar_alignment()) {
                     bail!(
-                        shader.source,
+                        shader.lit,
                         "expected struct member offset to be aligned for the preceding member type",
                     );
                 }
 
                 let last_size = last.ty.size().ok_or_else(|| {
                     Error::new_spanned(
-                        &shader.source,
+                        &shader.lit,
                         "all members except the last member of a struct must be sized",
                     )
                 })?;
 
                 if last.offset + last_size > offset {
-                    bail!(shader.source, "struct members must not overlap");
+                    bail!(shader.lit, "struct members must not overlap");
                 }
             }
 
