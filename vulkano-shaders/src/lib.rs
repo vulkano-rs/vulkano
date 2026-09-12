@@ -259,7 +259,7 @@ use syn::{
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
-mod codegen;
+mod shaders;
 mod structs;
 
 #[proc_macro]
@@ -370,7 +370,7 @@ impl<'a> MacroState<'a> {
                     }
                 };
 
-                let (words, mut input_paths) = codegen::compile_shader(
+                let (words, mut input_paths) = shaders::compile_shader(
                     self.options,
                     &source_code,
                     working_dir,
@@ -402,7 +402,7 @@ impl<'a> MacroState<'a> {
             }
         };
 
-        let shaders_code = codegen::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
+        let shaders_code = shaders::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
         let structs_code = structs::generate_structs(
             self.options,
             lit,
