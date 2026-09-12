@@ -123,15 +123,15 @@
 //!
 //! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
 //!
-//! ## `src: "..."`
-//!
-//! Provides the raw shader source to be compiled in the form of a string. Cannot be used in
-//! conjunction with the `path` or `bytes` field.
-//!
 //! ## `path: "..."`
 //!
 //! Provides the path to the shader source to be compiled, relative to the file invoking the macro.
 //! Cannot be used in conjunction with the `src` or `bytes` field.
+//!
+//! ## `src: "..."`
+//!
+//! Provides the raw shader source to be compiled in the form of a string. Cannot be used in
+//! conjunction with the `path` or `bytes` field.
 //!
 //! ## `bytes: "..."`
 //!
@@ -345,13 +345,13 @@ impl<'a> MacroState<'a> {
         } = shader_fields;
 
         let (lit, words, input_paths) = match source_kind.unwrap() {
-            source_kind @ (SourceKind::Src(_) | SourceKind::Path(_)) => {
+            SourceKind::Compiled(compiled_source_kind) => {
                 let source_path;
                 let source_code;
                 let working_dir;
 
-                let lit = match source_kind {
-                    SourceKind::Path(lit) => {
+                let lit = match compiled_source_kind {
+                    CompiledSourceKind::Path(lit) => {
                         source_path = Some(self.root_path.join(lit.value()));
                         let path = source_path.as_deref().unwrap();
 
@@ -362,14 +362,13 @@ impl<'a> MacroState<'a> {
 
                         lit
                     }
-                    SourceKind::Src(lit) => {
+                    CompiledSourceKind::Inline(lit) => {
                         source_path = None;
                         source_code = lit.value();
                         working_dir = &self.root_path;
 
                         lit
                     }
-                    SourceKind::Bytes(_) => unreachable!(),
                 };
 
                 let (words, mut input_paths) = codegen::compile(
@@ -387,7 +386,7 @@ impl<'a> MacroState<'a> {
 
                 (lit, words, input_paths)
             }
-            SourceKind::Bytes(lit) => {
+            SourceKind::Precompiled(lit) => {
                 let path = self.root_path.join(lit.value());
 
                 self.check_file_exists(&lit, &path)?;
@@ -555,9 +554,13 @@ struct ShaderFields {
 }
 
 enum SourceKind {
-    Src(LitStr),
+    Compiled(CompiledSourceKind),
+    Precompiled(LitStr),
+}
+
+enum CompiledSourceKind {
     Path(LitStr),
-    Bytes(LitStr),
+    Inline(LitStr),
 }
 
 struct MacroOptions {
@@ -663,7 +666,7 @@ impl MacroInputParser {
             let field_name = field_ident.to_string();
 
             match field_name.as_str() {
-                "ty" | "src" | "path" | "bytes" => {
+                "ty" | "path" | "src" | "bytes" => {
                     self.parse_shader_field(input, &field_ident, &field_name)?
                 }
                 "shaders" => self.parse_shader_entries(input, &field_ident)?,
@@ -680,7 +683,7 @@ impl MacroInputParser {
                 "dump" => self.parse_dump(input)?,
                 _ => bail!(
                     field_ident,
-                    "expected `ty`, `src`, `path`, `bytes`, `shaders`, `root_path_env`, \
+                    "expected `ty`, `path`, `src`, `bytes`, `shaders`, `root_path_env`, \
                     `include`, `define`, `lang`, `vulkan_version`, `spirv_version`, \
                     `generate_structs`, `custom_derives`, `linalg_type` or `dump` as a field, \
                     found `{field_name}`",
@@ -717,7 +720,7 @@ impl MacroInputParser {
         if matches!(&self.shaders, Some(Shaders::Multiple(_))) {
             bail!(
                 field_ident,
-                "only one of `src`, `path`, `bytes` or `shaders` can be defined",
+                "only one of `path`, `src`, `bytes` or `shaders` can be defined",
             );
         }
 
@@ -736,7 +739,7 @@ impl MacroInputParser {
         if !self.shaders.is_none() {
             bail!(
                 field_ident,
-                "only one of `src`, `path`, `bytes` or `shaders` can be defined",
+                "only one of `path`, `src`, `bytes` or `shaders` can be defined",
             );
         }
 
@@ -771,7 +774,7 @@ impl MacroInputParser {
                 let field_name = field_ident.to_string();
 
                 match field_name.as_str() {
-                    "ty" | "src" | "path" | "bytes" | "define" => {
+                    "ty" | "path" | "src" | "bytes" | "define" => {
                         shaders
                             .entry(shader_name.clone())
                             .or_default()
@@ -779,7 +782,7 @@ impl MacroInputParser {
                     }
                     _ => bail!(
                         field_ident,
-                        "expected `ty`, `src`, `path`, `bytes` or `define` as a field, found \
+                        "expected `ty`, `path`, `src`, `bytes` or `define` as a field, found \
                         `{field_name}`",
                     ),
                 }
@@ -999,8 +1002,8 @@ impl ShaderFields {
     fn parse_shader_field(&mut self, input: ParseStream<'_>, field_name: &str) -> Result<()> {
         match field_name {
             "ty" => self.parse_ty(input)?,
-            "src" => self.parse_src(input)?,
             "path" => self.parse_path(input)?,
+            "src" => self.parse_src(input)?,
             "bytes" => self.parse_bytes(input)?,
             "define" => self.parse_define(input)?,
             _ => unreachable!(),
@@ -1016,7 +1019,7 @@ impl ShaderFields {
             bail!(lit, "field `ty` is already defined");
         }
 
-        if matches!(self.source_kind, Some(SourceKind::Bytes(_))) {
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
             bail!(
                 lit,
                 "fields `ty` and `bytes` cannot be defined in the same shader entry",
@@ -1049,38 +1052,18 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn parse_src(&mut self, input: ParseStream<'_>) -> Result<()> {
-        let lit = input.parse::<LitStr>()?;
-
-        if let Some(source_kind) = &self.source_kind {
-            let msg = match source_kind {
-                SourceKind::Src(_) => "field `src` is already defined",
-                SourceKind::Path(_) => {
-                    "fields `src` and `path` cannot be defined in the same shader entry"
-                }
-                SourceKind::Bytes(_) => {
-                    "fields `src` and `bytes` cannot be defined in the same shader entry"
-                }
-            };
-
-            bail!(lit, "{msg}");
-        }
-
-        self.source_kind = Some(SourceKind::Src(lit));
-
-        Ok(())
-    }
-
     fn parse_path(&mut self, input: ParseStream<'_>) -> Result<()> {
         let lit = input.parse::<LitStr>()?;
 
         if let Some(source_kind) = &self.source_kind {
             let msg = match source_kind {
-                SourceKind::Src(_) => {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
+                    "field `path` is already defined"
+                }
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
                     "fields `path` and `src` cannot be defined in the same shader entry"
                 }
-                SourceKind::Path(_) => "field `path` is already defined",
-                SourceKind::Bytes(_) => {
+                SourceKind::Precompiled(_) => {
                     "fields `path` and `bytes` cannot be defined in the same shader entry"
                 }
             };
@@ -1088,7 +1071,31 @@ impl ShaderFields {
             bail!(lit, "{msg}");
         }
 
-        self.source_kind = Some(SourceKind::Path(lit));
+        self.source_kind = Some(SourceKind::Compiled(CompiledSourceKind::Path(lit)));
+
+        Ok(())
+    }
+
+    fn parse_src(&mut self, input: ParseStream<'_>) -> Result<()> {
+        let lit = input.parse::<LitStr>()?;
+
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
+                    "fields `src` and `path` cannot be defined in the same shader entry"
+                }
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
+                    "field `src` is already defined"
+                }
+                SourceKind::Precompiled(_) => {
+                    "fields `src` and `bytes` cannot be defined in the same shader entry"
+                }
+            };
+
+            bail!(lit, "{msg}");
+        }
+
+        self.source_kind = Some(SourceKind::Compiled(CompiledSourceKind::Inline(lit)));
 
         Ok(())
     }
@@ -1098,13 +1105,13 @@ impl ShaderFields {
 
         if let Some(source_kind) = &self.source_kind {
             let msg = match source_kind {
-                SourceKind::Src(_) => {
-                    "fields `bytes` and `src` cannot be defined in the same shader entry"
-                }
-                SourceKind::Path(_) => {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
                     "fields `bytes` and `path` cannot be defined in the same shader entry"
                 }
-                SourceKind::Bytes(_) => "field `bytes` is already defined",
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
+                    "fields `bytes` and `src` cannot be defined in the same shader entry"
+                }
+                SourceKind::Precompiled(_) => "field `bytes` is already defined",
             };
 
             bail!(lit, "{msg}");
@@ -1117,7 +1124,7 @@ impl ShaderFields {
             );
         }
 
-        self.source_kind = Some(SourceKind::Bytes(lit));
+        self.source_kind = Some(SourceKind::Precompiled(lit));
 
         Ok(())
     }
@@ -1151,7 +1158,7 @@ impl ShaderFields {
             ));
         };
 
-        if !matches!(source_kind, SourceKind::Bytes(_)) {
+        if !matches!(source_kind, SourceKind::Precompiled(_)) {
             if self.shader_kind.is_none() {
                 return Err(Error::new(
                     span,
