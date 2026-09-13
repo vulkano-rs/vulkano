@@ -16,9 +16,11 @@ pub(super) fn compile_shader(
     source: &str,
     working_dir: &Path,
     shader_kind: ShaderKind,
+    source_language: Option<SourceLanguage>,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    let compiler = match options.source_language {
+    let source_language = source_language.unwrap_or(options.global_source_language);
+    let compiler = match source_language {
         SourceLanguage::Glsl | SourceLanguage::Hlsl => Compiler::Shaderc,
         SourceLanguage::Slang => Compiler::Slangc,
     };
@@ -34,7 +36,7 @@ pub(super) fn compile_shader(
 
     match compiler {
         Compiler::Shaderc => {
-            command.arg("-x").arg(options.source_language.as_str());
+            command.arg("-x").arg(source_language.as_str());
             command.arg(format!("-fshader-stage={}", shader_kind.as_shaderc_stage()));
             command.arg(format!("-fentry-point={}", entry_point));
             let target_env = options.vulkan_version.as_shaderc_target_env();
@@ -52,7 +54,7 @@ pub(super) fn compile_shader(
             command.arg("-");
         }
         Compiler::Slangc => {
-            command.arg("-lang").arg(options.source_language.as_str());
+            command.arg("-lang").arg(source_language.as_str());
             command.arg("-stage").arg(shader_kind.as_slangc_stage());
             command.arg("-entry").arg(entry_point);
             command.arg("-target").arg("spirv");

@@ -139,6 +139,23 @@
 //! Cannot be used in conjunction with the `src` or `path` field, and may also not specify a shader
 //! `ty` type. This allows using shaders compiled through a separate build system.
 //!
+//! ## `lang: "..."`
+//!
+//! Provides the language of the shader source. Must be either `glsl` or `hlsl` (defaults to
+//! `glsl`).
+//!
+//! ## `shaders: { first: { src: "...", ty: "..." }, ... }`
+//!
+//! With these options the user can compile several shaders in a single macro invocation. Each
+//! entry key will be the suffix of the generated `load` function (`load_first` in this case).
+//! However, all other Rust structs translated from the shader source will be shared between
+//! shaders. The macro checks that the source structs with the same names between different shaders
+//! have the same declaration signature, and throws a compile-time error if they don't.
+//!
+//! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
+//! An optional `define: [("NAME", "VALUE"), ...]` list sets preprocessor definitions
+//! for just this source file.
+//!
 //! ## `root_path_env: "..."`
 //!
 //! Instead of searching relative to the file invoking the macro, search relative to some other
@@ -153,18 +170,6 @@
 //! println!("cargo:rustc-env=SHADER_OUT_DIR={shader_out_dir}");
 //! ```
 //!
-//! ## `shaders: { first: { src: "...", ty: "..." }, ... }`
-//!
-//! With these options the user can compile several shaders in a single macro invocation. Each
-//! entry key will be the suffix of the generated `load` function (`load_first` in this case).
-//! However, all other Rust structs translated from the shader source will be shared between
-//! shaders. The macro checks that the source structs with the same names between different shaders
-//! have the same declaration signature, and throws a compile-time error if they don't.
-//!
-//! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
-//! An optional `define: [("NAME", "VALUE"), ...]` list sets preprocessor definitions
-//! for just this source file.
-//!
 //! ## `include: ["...", "...", ...]`
 //!
 //! Specifies the standard include directories to be searched through when using the
@@ -177,11 +182,6 @@
 //!
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing the
 //! `-DNAME=VALUE` argument on the command line.
-//!
-//! ## `lang: "..."`
-//!
-//! Provides the language of the shader source. Must be either `glsl` or `hlsl` (defaults to
-//! `glsl`).
 //!
 //! ## `vulkan_version: "major.minor"` and `spirv_version: "major.minor"`
 //!
@@ -342,6 +342,7 @@ impl<'a> MacroState<'a> {
         let ShaderFields {
             shader_kind,
             source_kind,
+            source_language,
             macro_defines,
         } = shader_fields;
 
@@ -377,6 +378,7 @@ impl<'a> MacroState<'a> {
                     &source_code,
                     working_dir,
                     shader_kind.unwrap(),
+                    source_language,
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&lit, err))?;
@@ -551,6 +553,7 @@ enum Shaders {
 struct ShaderFields {
     shader_kind: Option<ShaderKind>,
     source_kind: Option<SourceKind>,
+    source_language: Option<SourceLanguage>,
     macro_defines: Vec<(String, String)>,
 }
 
@@ -565,10 +568,10 @@ enum CompiledSourceKind {
 }
 
 struct MacroOptions {
+    global_source_language: SourceLanguage,
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
-    source_language: SourceLanguage,
     spirv_version: SpirvVersion,
     vulkan_version: VulkanVersion,
     generate_structs: bool,
@@ -587,6 +590,7 @@ impl Parse for MacroInput {
 
         let vulkan_version = parser.vulkan_version.unwrap_or_default();
         let options = MacroOptions {
+            global_source_language: parser.global_source_language.unwrap_or_default(),
             root_path_env: parser.root_path_env,
             include_directories: parser.include_directories,
             global_macro_defines: parser.global_macro_defines,
@@ -605,7 +609,6 @@ impl Parse for MacroInput {
             dump: parser
                 .dump
                 .unwrap_or_else(|| LitBool::new(false, Span::call_site())),
-            source_language: parser.source_language.unwrap_or_default(),
         };
 
         Ok(MacroInput { shaders, options })
@@ -616,6 +619,7 @@ impl MacroOptions {
     #[cfg(test)]
     fn empty() -> Self {
         MacroOptions {
+            global_source_language: SourceLanguage::Glsl,
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
@@ -625,7 +629,6 @@ impl MacroOptions {
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
-            source_language: SourceLanguage::Glsl,
         }
     }
 }
@@ -633,10 +636,10 @@ impl MacroOptions {
 struct MacroInputParser {
     manifest_dir: String,
     shaders: Option<Shaders>,
+    global_source_language: Option<SourceLanguage>,
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
-    source_language: Option<SourceLanguage>,
     vulkan_version: Option<VulkanVersion>,
     spirv_version: Option<SpirvVersion>,
     generate_structs: Option<bool>,
@@ -653,7 +656,7 @@ impl MacroInputParser {
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
-            source_language: None,
+            global_source_language: None,
             vulkan_version: None,
             spirv_version: None,
             generate_structs: None,
@@ -673,11 +676,11 @@ impl MacroInputParser {
                 "ty" | "path" | "src" | "bytes" => {
                     self.parse_shader_field(input, &field_ident, &field_name)?
                 }
+                "lang" => self.parse_lang(input)?,
                 "shaders" => self.parse_shader_entries(input, &field_ident)?,
                 "root_path_env" => self.parse_root_path_env(input)?,
                 "include" => self.parse_include(input)?,
                 "define" => self.parse_define(input)?,
-                "lang" => self.parse_lang(input)?,
                 "vulkan_version" => self.parse_vulkan_version(input)?,
                 "spirv_version" => self.parse_spirv_version(input)?,
                 "generate_structs" => self.parse_generate_structs(input)?,
@@ -686,10 +689,9 @@ impl MacroInputParser {
                 "dump" => self.parse_dump(input)?,
                 _ => bail!(
                     field_ident,
-                    "expected `ty`, `path`, `src`, `bytes`, `shaders`, `root_path_env`, \
-                    `include`, `define`, `lang`, `vulkan_version`, `spirv_version`, \
-                    `generate_structs`, `custom_derives`, `linalg_type` or `dump` as a field, \
-                    found `{field_name}`",
+                    "expected `ty`, `path`, `src`, `bytes`, `lang`, `shaders`, `root_path_env`, \
+                    `include`, `define`, `vulkan_version`, `spirv_version`, `generate_structs`, \
+                    `custom_derives`, `linalg_type` or `dump` as a field, found `{field_name}`",
                 ),
             }
 
@@ -738,6 +740,23 @@ impl MacroInputParser {
         shader_fields.parse_shader_field(input, field_name)
     }
 
+    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.global_source_language.is_some() {
+            bail!(lit, "field `lang` is already defined");
+        }
+
+        self.global_source_language = Some(match lit.value().as_str() {
+            "glsl" => SourceLanguage::Glsl,
+            "hlsl" => SourceLanguage::Hlsl,
+            "slang" => SourceLanguage::Slang,
+            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
+        });
+
+        Ok(())
+    }
+
     fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result {
         if !self.shaders.is_none() {
             bail!(
@@ -777,7 +796,7 @@ impl MacroInputParser {
                 let field_name = field_ident.to_string();
 
                 match field_name.as_str() {
-                    "ty" | "path" | "src" | "bytes" | "define" => {
+                    "ty" | "path" | "src" | "bytes" | "lang" | "define" => {
                         shaders
                             .entry(shader_name.clone())
                             .or_default()
@@ -785,8 +804,8 @@ impl MacroInputParser {
                     }
                     _ => bail!(
                         field_ident,
-                        "expected `ty`, `path`, `src`, `bytes` or `define` as a field, found \
-                        `{field_name}`",
+                        "expected `ty`, `path`, `src`, `bytes`, `lang` or `define` as a field, \
+                        found `{field_name}`",
                     ),
                 }
 
@@ -864,23 +883,6 @@ impl MacroInputParser {
                 array_input.parse::<Token![,]>()?;
             }
         }
-
-        Ok(())
-    }
-
-    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
-        let lit = input.parse::<LitStr>()?;
-
-        if self.source_language.is_some() {
-            bail!(lit, "field `lang` is already defined");
-        }
-
-        self.source_language = Some(match lit.value().as_str() {
-            "glsl" => SourceLanguage::Glsl,
-            "hlsl" => SourceLanguage::Hlsl,
-            "slang" => SourceLanguage::Slang,
-            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
-        });
 
         Ok(())
     }
@@ -998,6 +1000,7 @@ impl ShaderFields {
             "path" => self.parse_path(input)?,
             "src" => self.parse_src(input)?,
             "bytes" => self.parse_bytes(input)?,
+            "lang" => self.parse_lang(input)?,
             "define" => self.parse_define(input)?,
             _ => unreachable!(),
         }
@@ -1117,7 +1120,38 @@ impl ShaderFields {
             );
         }
 
+        if self.source_language.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `lang` cannot be defined in the same shader entry",
+            );
+        }
+
         self.source_kind = Some(SourceKind::Precompiled(lit));
+
+        Ok(())
+    }
+
+    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.source_language.is_some() {
+            bail!(lit, "field `lang` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `lang` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.source_language = Some(match lit.value().as_str() {
+            "glsl" => SourceLanguage::Glsl,
+            "hlsl" => SourceLanguage::Hlsl,
+            "slang" => SourceLanguage::Slang,
+            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
+        });
 
         Ok(())
     }
