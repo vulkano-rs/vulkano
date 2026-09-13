@@ -22,12 +22,31 @@ fn compile_inline(
     source_language: Option<SourceLanguage>,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    compile_shader(
+    compile(
         options,
         source,
         Path::new("."),
         shader_kind,
         source_language,
+        macro_defines,
+    )
+}
+
+fn compile(
+    options: &MacroOptions,
+    source: &str,
+    working_dir: &Path,
+    shader_kind: ShaderKind,
+    source_language: Option<SourceLanguage>,
+    macro_defines: &[(String, String)],
+) -> Result<(Vec<u32>, Vec<String>), String> {
+    compile_shader(
+        options,
+        source,
+        working_dir,
+        shader_kind,
+        source_language,
+        None,
         macro_defines,
     )
 }
@@ -310,7 +329,7 @@ fn include_inline_relative(
 ) {
     let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-    let (_spirv, includes) = compile_shader(
+    let (_spirv, includes) = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -357,7 +376,7 @@ fn include_inline_relative_slangc() {
 fn include_inline_relative_dotdot_shaderc() {
     let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-    let (_spirv2, includes2) = compile_shader(
+    let (_spirv2, includes2) = compile(
         &MacroOptions::empty(),
         r#"
             #version 450
@@ -383,7 +402,7 @@ fn include_inline_relative_dotdot_shaderc() {
         ),
     );
 
-    let (_spirv3, includes3) = compile_shader(
+    let (_spirv3, includes3) = compile(
         &MacroOptions {
             include_directories: vec![root_path.join("include_dir_b")],
             ..MacroOptions::empty()
@@ -417,7 +436,7 @@ fn include_inline_relative_dotdot_shaderc() {
 fn include_inline_relative_dotdot_slangc() {
     let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-    let (_spirv2, includes2) = compile_shader(
+    let (_spirv2, includes2) = compile(
         &MacroOptions::empty(),
         r#"
             #include "target_a.glsl"
@@ -442,7 +461,7 @@ fn include_inline_relative_dotdot_slangc() {
         ),
     );
 
-    let (_spirv3, includes3) = compile_shader(
+    let (_spirv3, includes3) = compile(
         &MacroOptions {
             include_directories: vec![root_path.join("include_dir_b")],
             ..MacroOptions::empty()
@@ -563,7 +582,7 @@ fn include_paths_with_spaces(
 
     assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -581,7 +600,7 @@ fn include_paths_with_spaces(
 
     assert!(err.contains("expected a file extension"));
 
-    let (_spirv2, includes2) = compile_shader(
+    let (_spirv2, includes2) = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -605,7 +624,7 @@ fn include_paths_with_spaces(
         ),
     );
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -623,7 +642,7 @@ fn include_paths_with_spaces(
 
     assert!(err.contains("foo.glsl` to be a file existing on the file system"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -735,7 +754,7 @@ fn include_paths_with_spaces_slangc() {
 
     assert!(err.contains("include file not found"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -754,7 +773,7 @@ fn include_paths_with_spaces_slangc() {
     // slangc preserves spaces in quoted include paths using make-escape (\ ) in the depfile,
     assert!(err.contains("failed to parse dependencies file"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -772,7 +791,7 @@ fn include_paths_with_spaces_slangc() {
 
     assert!(err.contains("failed to parse dependencies file"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "
@@ -790,7 +809,7 @@ fn include_paths_with_spaces_slangc() {
 
     assert!(err.contains("failed to parse dependencies file"));
 
-    let err = compile_shader(
+    let err = compile(
         &MacroOptions::empty(),
         &format!(
             "

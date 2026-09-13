@@ -166,8 +166,9 @@
 //!
 //! Provides the path to precompiled SPIR-V bytecode, relative to the file invoking the macro.
 //!
-//! Cannot be defined alongside the [`src`] or [`path`] option, and may also not specify the [`ty`]
-//! or [`lang`] option. This allows using shaders compiled through a separate build system.
+//! Cannot be defined alongside the [`src`] or [`path`] option, and may also not specify the
+//! [`ty`], [`lang`] or [`compiler`] option. This allows using shaders compiled through a separate
+//! build system.
 //!
 //! ## `lang`
 //!
@@ -185,6 +186,32 @@
 //! - `glsl` (default)
 //! - `hlsl`
 //! - `slang`
+//!
+//! Cannot be defined alongside the [`bytes`] option.
+//!
+//! ## `compiler`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     compiler: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the compiler to invoke. It can be any of the following:
+//!
+//! - `shaderc` (default for GLSL and HLSL)
+//! - `slangc` (default for Slang)
+//!
+//! Here are the source languages supported for each compiler:
+//!
+//! - `shaderc`: GLSL and HLSL
+//! - `slangc`: GLSL, HLSL and Slang
+//!
+//! When using `shaderc`, you must have [`glslc`] available on your `PATH`. When using `slangc`,
+//! you must have [`slangc`] available on your `PATH`. The [Vulkan SDK] comes with both.
 //!
 //! Cannot be defined alongside the [`bytes`] option.
 //!
@@ -236,6 +263,9 @@
 //! Above, the shaders named `first` and `second` will be compiled as HLSL and Slang, respectively.
 //! Without the global `lang` option present, they will be compiled as GLSL and Slang,
 //! respectively.
+//!
+//! If an entry defines the [`compiler`] option, it overrides a potential global `compiler` option
+//! in the same way as the `lang` option does.
 //!
 //! If an entry defines the [`define`] option, it extends a potential global `define` option,
 //! overriding any duplicates:
@@ -460,6 +490,7 @@
 //! [`src`]: self#src
 //! [`bytes`]: self#bytes
 //! [`lang`]: self#lang
+//! [`compiler`]: self#compiler
 //! [`define`]: self#define
 //! [`vulkan_version`]: self#vulkan_version
 
@@ -565,6 +596,7 @@ impl<'a> MacroState<'a> {
             shader_kind,
             source_kind,
             source_language,
+            compiler,
             macro_defines,
         } = shader_fields;
 
@@ -601,6 +633,7 @@ impl<'a> MacroState<'a> {
                     working_dir,
                     shader_kind.unwrap(),
                     source_language,
+                    compiler,
                     &macro_defines,
                 )
                 .map_err(|err| Error::new_spanned(&lit, err))?;
@@ -776,6 +809,7 @@ struct ShaderFields {
     shader_kind: Option<ShaderKind>,
     source_kind: Option<SourceKind>,
     source_language: Option<SourceLanguage>,
+    compiler: Option<Compiler>,
     macro_defines: Vec<(String, String)>,
 }
 
@@ -791,6 +825,7 @@ enum CompiledSourceKind {
 
 struct MacroOptions {
     global_source_language: SourceLanguage,
+    global_compiler: Option<Compiler>,
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
@@ -813,6 +848,7 @@ impl Parse for MacroInput {
         let vulkan_version = parser.vulkan_version.unwrap_or_default();
         let options = MacroOptions {
             global_source_language: parser.global_source_language.unwrap_or_default(),
+            global_compiler: parser.global_compiler,
             root_path_env: parser.root_path_env,
             include_directories: parser.include_directories,
             global_macro_defines: parser.global_macro_defines,
@@ -842,6 +878,7 @@ impl MacroOptions {
     fn empty() -> Self {
         MacroOptions {
             global_source_language: SourceLanguage::Glsl,
+            global_compiler: None,
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
@@ -859,6 +896,7 @@ struct MacroInputParser {
     manifest_dir: String,
     shaders: Option<Shaders>,
     global_source_language: Option<SourceLanguage>,
+    global_compiler: Option<Compiler>,
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     global_macro_defines: Vec<(String, String)>,
@@ -875,10 +913,11 @@ impl MacroInputParser {
         MacroInputParser {
             manifest_dir: env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()),
             shaders: None,
+            global_source_language: None,
+            global_compiler: None,
             root_path_env: None,
             include_directories: Vec::new(),
             global_macro_defines: Vec::new(),
-            global_source_language: None,
             vulkan_version: None,
             spirv_version: None,
             generate_structs: None,
@@ -899,6 +938,7 @@ impl MacroInputParser {
                     self.parse_shader_field(input, &field_ident, &field_name)?
                 }
                 "lang" => self.parse_lang(input)?,
+                "compiler" => self.parse_compiler(input)?,
                 "shaders" => self.parse_shader_entries(input, &field_ident)?,
                 "root_path_env" => self.parse_root_path_env(input)?,
                 "include" => self.parse_include(input)?,
@@ -911,9 +951,10 @@ impl MacroInputParser {
                 "dump" => self.parse_dump(input)?,
                 _ => bail!(
                     field_ident,
-                    "expected `ty`, `path`, `src`, `bytes`, `lang`, `shaders`, `root_path_env`, \
-                    `include`, `define`, `vulkan_version`, `spirv_version`, `generate_structs`, \
-                    `custom_derives`, `linalg_type` or `dump` as a field, found `{field_name}`",
+                    "expected `ty`, `path`, `src`, `bytes`, `lang`, `compiler`, `shaders`, \
+                    `root_path_env`, `include`, `define`, `vulkan_version`, `spirv_version`, \
+                    `generate_structs`, `custom_derives`, `linalg_type` or `dump` as a field, \
+                    found `{field_name}`",
                 ),
             }
 
@@ -932,7 +973,7 @@ impl MacroInputParser {
         }
 
         if let Some(Shaders::Single(shader_fields)) = &self.shaders {
-            shader_fields.check_valid(Span::call_site())?;
+            shader_fields.check_valid(Span::call_site(), None, None)?;
         }
 
         Ok(())
@@ -979,6 +1020,22 @@ impl MacroInputParser {
         Ok(())
     }
 
+    fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.global_compiler.is_some() {
+            bail!(lit, "field `compiler` is already defined");
+        }
+
+        self.global_compiler = Some(match lit.value().as_str() {
+            "shaderc" => Compiler::Shaderc,
+            "slangc" => Compiler::Slangc,
+            compiler => bail!(lit, "expected `shaderc` or `slang`, found `{compiler}`"),
+        });
+
+        Ok(())
+    }
+
     fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result {
         if !self.shaders.is_none() {
             bail!(
@@ -1018,7 +1075,7 @@ impl MacroInputParser {
                 let field_name = field_ident.to_string();
 
                 match field_name.as_str() {
-                    "ty" | "path" | "src" | "bytes" | "lang" | "define" => {
+                    "ty" | "path" | "src" | "bytes" | "lang" | "compiler" | "define" => {
                         shaders
                             .entry(shader_name.clone())
                             .or_default()
@@ -1026,8 +1083,8 @@ impl MacroInputParser {
                     }
                     _ => bail!(
                         field_ident,
-                        "expected `ty`, `path`, `src`, `bytes`, `lang` or `define` as a field, \
-                        found `{field_name}`",
+                        "expected `ty`, `path`, `src`, `bytes`, `lang`, `compiler` or `define` as \
+                        a field, found `{field_name}`",
                     ),
                 }
 
@@ -1040,10 +1097,11 @@ impl MacroInputParser {
                 in_braces.parse::<Token![,]>()?;
             }
 
-            shaders
-                .get(&shader_name)
-                .unwrap()
-                .check_valid(shader_ident.span())?;
+            shaders.get(&shader_name).unwrap().check_valid(
+                shader_ident.span(),
+                self.global_source_language,
+                self.global_compiler,
+            )?;
         }
 
         if shaders.is_empty() {
@@ -1223,6 +1281,7 @@ impl ShaderFields {
             "src" => self.parse_src(input)?,
             "bytes" => self.parse_bytes(input)?,
             "lang" => self.parse_lang(input)?,
+            "compiler" => self.parse_compiler(input)?,
             "define" => self.parse_define(input)?,
             _ => unreachable!(),
         }
@@ -1349,6 +1408,13 @@ impl ShaderFields {
             );
         }
 
+        if self.compiler.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `compiler` cannot be defined in the same shader entry",
+            );
+        }
+
         self.source_kind = Some(SourceKind::Precompiled(lit));
 
         Ok(())
@@ -1378,6 +1444,29 @@ impl ShaderFields {
         Ok(())
     }
 
+    fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.compiler.is_some() {
+            bail!(lit, "field `compiler` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `compiler` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.compiler = Some(match lit.value().as_str() {
+            "shaderc" => Compiler::Shaderc,
+            "slangc" => Compiler::Slangc,
+            compiler => bail!(lit, "expected `shaderc` or `slang`, found `{compiler}`"),
+        });
+
+        Ok(())
+    }
+
     fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
         let array_input;
         bracketed!(array_input in input);
@@ -1399,7 +1488,12 @@ impl ShaderFields {
         Ok(())
     }
 
-    fn check_valid(&self, span: Span) -> Result {
+    fn check_valid(
+        &self,
+        span: Span,
+        global_source_language: Option<SourceLanguage>,
+        global_compiler: Option<Compiler>,
+    ) -> Result {
         let Some(source_kind) = &self.source_kind else {
             return Err(Error::new(
                 span,
@@ -1414,6 +1508,26 @@ impl ShaderFields {
                     "please specify the shader type (e.g., `ty: \"vertex\"`)",
                 ));
             }
+        }
+
+        let source_language = self
+            .source_language
+            .or(global_source_language)
+            .unwrap_or_default();
+        let compiler = self
+            .compiler
+            .or(global_compiler)
+            .unwrap_or(source_language.default_compiler());
+
+        if !compiler.is_valid_for(source_language) {
+            return Err(Error::new(
+                span,
+                format_args!(
+                    "source language `{}` cannot be compiled with compiler `{}`",
+                    source_language.as_str(),
+                    compiler.as_str(),
+                ),
+            ));
         }
 
         Ok(())
@@ -1494,6 +1608,13 @@ impl SourceLanguage {
             SourceLanguage::Slang => "slang",
         }
     }
+
+    fn default_compiler(self) -> Compiler {
+        match self {
+            Self::Glsl | Self::Hlsl => Compiler::Shaderc,
+            Self::Slang => Compiler::Slangc,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1503,10 +1624,31 @@ enum Compiler {
 }
 
 impl Compiler {
+    fn as_str(self) -> &'static str {
+        match self {
+            Compiler::Shaderc => "shaderc",
+            Compiler::Slangc => "slangc",
+        }
+    }
+
     fn as_command(self) -> &'static str {
         match self {
             Compiler::Shaderc => "glslc",
             Compiler::Slangc => "slangc",
+        }
+    }
+
+    fn is_valid_for(self, source_language: SourceLanguage) -> bool {
+        match self {
+            Compiler::Shaderc => {
+                matches!(source_language, SourceLanguage::Glsl | SourceLanguage::Hlsl)
+            }
+            Compiler::Slangc => {
+                matches!(
+                    source_language,
+                    SourceLanguage::Glsl | SourceLanguage::Hlsl | SourceLanguage::Slang,
+                )
+            }
         }
     }
 }

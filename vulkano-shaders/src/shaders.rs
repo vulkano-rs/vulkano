@@ -17,13 +17,13 @@ pub(super) fn compile_shader(
     working_dir: &Path,
     shader_kind: ShaderKind,
     source_language: Option<SourceLanguage>,
+    compiler: Option<Compiler>,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
     let source_language = source_language.unwrap_or(options.global_source_language);
-    let compiler = match source_language {
-        SourceLanguage::Glsl | SourceLanguage::Hlsl => Compiler::Shaderc,
-        SourceLanguage::Slang => Compiler::Slangc,
-    };
+    let compiler = compiler
+        .or(options.global_compiler)
+        .unwrap_or(source_language.default_compiler());
     let entry_point = "main";
 
     let mut command = Command::new(compiler.as_command());
