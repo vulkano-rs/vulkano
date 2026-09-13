@@ -167,8 +167,8 @@
 //! Provides the path to precompiled SPIR-V bytecode, relative to the file invoking the macro.
 //!
 //! Cannot be defined alongside the [`src`] or [`path`] option, and may also not specify the
-//! [`ty`], [`lang`] or [`compiler`] option. This allows using shaders compiled through a separate
-//! build system.
+//! [`ty`], [`lang`], [`entry_point`] or [`compiler`] option. This allows using shaders compiled
+//! through a separate build system.
 //!
 //! ## `lang`
 //!
@@ -186,6 +186,23 @@
 //! - `glsl` (default)
 //! - `hlsl`
 //! - `slang`
+//!
+//! Cannot be defined alongside the [`bytes`] option.
+//!
+//! ## `entry_point`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     entry_point: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the entry point of the shader source to compile.
+//!
+//! By default, `main` is compiled.
 //!
 //! Cannot be defined alongside the [`bytes`] option.
 //!
@@ -237,7 +254,8 @@
 //! shaders. The macro checks that the source structs with the same names between different shaders
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
-//! Each entry accepts [`ty`], [`path`], [`src`] and [`bytes`] options same as above.
+//! Each entry accepts [`ty`], [`path`], [`src`], [`bytes`] and [`entry_point`] options same as
+//! above.
 //!
 //! If an entry defines the [`lang`] option, it overrides a potential global `lang` option:
 //!
@@ -490,6 +508,7 @@
 //! [`src`]: self#src
 //! [`bytes`]: self#bytes
 //! [`lang`]: self#lang
+//! [`entry_point`]: self#entry_point
 //! [`compiler`]: self#compiler
 //! [`define`]: self#define
 //! [`vulkan_version`]: self#vulkan_version
@@ -596,6 +615,7 @@ impl<'a> MacroState<'a> {
             shader_kind,
             source_kind,
             source_language,
+            entry_point,
             compiler,
             macro_defines,
         } = shader_fields;
@@ -633,6 +653,7 @@ impl<'a> MacroState<'a> {
                     working_dir,
                     shader_kind.unwrap(),
                     source_language,
+                    entry_point.as_deref(),
                     compiler,
                     &macro_defines,
                 )
@@ -809,6 +830,7 @@ struct ShaderFields {
     shader_kind: Option<ShaderKind>,
     source_kind: Option<SourceKind>,
     source_language: Option<SourceLanguage>,
+    entry_point: Option<String>,
     compiler: Option<Compiler>,
     macro_defines: Vec<(String, String)>,
 }
@@ -934,7 +956,7 @@ impl MacroInputParser {
             let field_name = field_ident.to_string();
 
             match field_name.as_str() {
-                "ty" | "path" | "src" | "bytes" => {
+                "ty" | "path" | "src" | "bytes" | "entry_point" => {
                     self.parse_shader_field(input, &field_ident, &field_name)?
                 }
                 "lang" => self.parse_lang(input)?,
@@ -951,10 +973,10 @@ impl MacroInputParser {
                 "dump" => self.parse_dump(input)?,
                 _ => bail!(
                     field_ident,
-                    "expected `ty`, `path`, `src`, `bytes`, `lang`, `compiler`, `shaders`, \
-                    `root_path_env`, `include`, `define`, `vulkan_version`, `spirv_version`, \
-                    `generate_structs`, `custom_derives`, `linalg_type` or `dump` as a field, \
-                    found `{field_name}`",
+                    "expected `ty`, `path`, `src`, `bytes`, `entry_point`, `lang`, `compiler`, \
+                    `shaders`, `root_path_env`, `include`, `define`, `vulkan_version`, \
+                    `spirv_version`, `generate_structs`, `custom_derives`, `linalg_type` or \
+                    `dump` as a field, found `{field_name}`",
                 ),
             }
 
@@ -1075,7 +1097,8 @@ impl MacroInputParser {
                 let field_name = field_ident.to_string();
 
                 match field_name.as_str() {
-                    "ty" | "path" | "src" | "bytes" | "lang" | "compiler" | "define" => {
+                    "ty" | "path" | "src" | "bytes" | "lang" | "entry_point" | "compiler"
+                    | "define" => {
                         shaders
                             .entry(shader_name.clone())
                             .or_default()
@@ -1083,8 +1106,8 @@ impl MacroInputParser {
                     }
                     _ => bail!(
                         field_ident,
-                        "expected `ty`, `path`, `src`, `bytes`, `lang`, `compiler` or `define` as \
-                        a field, found `{field_name}`",
+                        "expected `ty`, `path`, `src`, `bytes`, `lang`, `entry_point`, `compiler` \
+                        or `define` as a field, found `{field_name}`",
                     ),
                 }
 
@@ -1281,6 +1304,7 @@ impl ShaderFields {
             "src" => self.parse_src(input)?,
             "bytes" => self.parse_bytes(input)?,
             "lang" => self.parse_lang(input)?,
+            "entry_point" => self.parse_entry_point(input)?,
             "compiler" => self.parse_compiler(input)?,
             "define" => self.parse_define(input)?,
             _ => unreachable!(),
@@ -1408,6 +1432,13 @@ impl ShaderFields {
             );
         }
 
+        if self.entry_point.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `entry_point` cannot be defined in the same shader entry",
+            );
+        }
+
         if self.compiler.is_some() {
             bail!(
                 lit,
@@ -1440,6 +1471,25 @@ impl ShaderFields {
             "slang" => SourceLanguage::Slang,
             lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
         });
+
+        Ok(())
+    }
+
+    fn parse_entry_point(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.entry_point.is_some() {
+            bail!(lit, "field `entry_point` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `entry_point` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.entry_point = Some(lit.value());
 
         Ok(())
     }

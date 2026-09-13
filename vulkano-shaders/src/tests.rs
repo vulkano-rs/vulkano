@@ -47,6 +47,7 @@ fn compile(
         shader_kind,
         source_language,
         None,
+        None,
         macro_defines,
     )
 }

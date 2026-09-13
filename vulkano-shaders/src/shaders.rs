@@ -17,6 +17,7 @@ pub(super) fn compile_shader(
     working_dir: &Path,
     shader_kind: ShaderKind,
     source_language: Option<SourceLanguage>,
+    entry_point: Option<&str>,
     compiler: Option<Compiler>,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
@@ -24,7 +25,7 @@ pub(super) fn compile_shader(
     let compiler = compiler
         .or(options.global_compiler)
         .unwrap_or(source_language.default_compiler());
-    let entry_point = "main";
+    let entry_point = entry_point.unwrap_or("main");
 
     let mut command = Command::new(compiler.as_command());
 
