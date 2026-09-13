@@ -682,7 +682,6 @@ impl MacroInputParser {
                 "spirv_version" => self.parse_spirv_version(input)?,
                 "generate_structs" => self.parse_generate_structs(input)?,
                 "custom_derives" => self.parse_custom_derives(input)?,
-                "types_meta" => self.parse_types_meta(input, &field_ident)?,
                 "linalg_type" => self.parse_linalg_type(input)?,
                 "dump" => self.parse_dump(input)?,
                 _ => bail!(
@@ -960,16 +959,6 @@ impl MacroInputParser {
         }
 
         Ok(())
-    }
-
-    fn parse_types_meta(&mut self, _input: ParseStream<'_>, field_ident: &Ident) -> Result {
-        bail!(
-            field_ident,
-            "you no longer need to add any derives to use the generated structs in buffers, and you
-            also no longer need bytemuck as a dependency, because `BufferContents` is derived
-            automatically for the generated structs; if you need to add additional derives (e.g.,
-            `Debug`, `PartialEq`) then please use the `custom_derives` field of the macro",
-        );
     }
 
     fn parse_linalg_type(&mut self, input: ParseStream<'_>) -> Result {
