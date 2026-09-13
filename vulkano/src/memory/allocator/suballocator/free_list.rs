@@ -92,7 +92,70 @@ unsafe impl Suballocator for FreeListAllocator {
     }
 
     #[inline]
+    fn allocate_buffer(
+        &mut self,
+        layout: DeviceLayout,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, AllocationType::Linear, DeviceAlignment::MIN)
+    }
+
+    #[inline]
     fn allocate(
+        &mut self,
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, allocation_type, buffer_image_granularity)
+    }
+
+    #[inline]
+    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
+        let node_ptr = suballocation
+            .handle
+            .as_ptr()
+            .cast::<SuballocationListNode>();
+
+        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
+        // allocation of `self`, which means that `node_ptr` is the same one we gave out on
+        // allocation, making it a valid pointer.
+        let mut node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
+
+        debug_assert!(self.suballocations.node_allocator.contains(node_ptr));
+
+        let node = unsafe { node_ptr.as_mut() };
+
+        debug_assert_ne!(node.allocation_type, SuballocationType::Free);
+
+        // Suballocation sizes are constrained by the size of the region, so they can't possibly
+        // overflow when added up.
+        self.free_size += node.size;
+
+        node.allocation_type = SuballocationType::Free;
+
+        unsafe { self.suballocations.coalesce(node_ptr) };
+        unsafe { self.suballocations.add_to_free_list(node_ptr) };
+    }
+
+    fn reset(&mut self) {
+        self.suballocations.reset();
+        self.free_size = self.region().size();
+    }
+
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.free_size
+    }
+
+    #[inline]
+    fn suballocations(&self) -> Self::Suballocations<'_> {
+        self.suballocations.iter()
+    }
+}
+
+impl FreeListAllocator {
+    #[inline(always)]
+    fn allocate_inner(
         &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
@@ -226,51 +289,6 @@ unsafe impl Suballocator for FreeListAllocator {
         }
     }
 
-    #[inline]
-    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
-        let node_ptr = suballocation
-            .handle
-            .as_ptr()
-            .cast::<SuballocationListNode>();
-
-        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
-        // allocation of `self`, which means that `node_ptr` is the same one we gave out on
-        // allocation, making it a valid pointer.
-        let mut node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
-
-        debug_assert!(self.suballocations.node_allocator.contains(node_ptr));
-
-        let node = unsafe { node_ptr.as_mut() };
-
-        debug_assert_ne!(node.allocation_type, SuballocationType::Free);
-
-        // Suballocation sizes are constrained by the size of the region, so they can't possibly
-        // overflow when added up.
-        self.free_size += node.size;
-
-        node.allocation_type = SuballocationType::Free;
-
-        unsafe { self.suballocations.coalesce(node_ptr) };
-        unsafe { self.suballocations.add_to_free_list(node_ptr) };
-    }
-
-    fn reset(&mut self) {
-        self.suballocations.reset();
-        self.free_size = self.region().size();
-    }
-
-    #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.free_size
-    }
-
-    #[inline]
-    fn suballocations(&self) -> Self::Suballocations<'_> {
-        self.suballocations.iter()
-    }
-}
-
-impl FreeListAllocator {
     #[inline]
     fn region(&self) -> &Region {
         &self.suballocations.region

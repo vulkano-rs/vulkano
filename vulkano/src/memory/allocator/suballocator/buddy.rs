@@ -130,7 +130,71 @@ unsafe impl Suballocator for BuddyAllocator {
     }
 
     #[inline]
+    fn allocate_buffer(
+        &mut self,
+        layout: DeviceLayout,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, AllocationType::Linear, DeviceAlignment::MIN)
+    }
+
+    #[inline]
     fn allocate(
+        &mut self,
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, allocation_type, buffer_image_granularity)
+    }
+
+    #[inline]
+    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
+        let node_ptr = suballocation
+            .handle
+            .as_ptr()
+            .cast::<SuballocationTreeNode>();
+
+        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
+        // allocation of `self`, which means that `node_ptr` is the same one we gave out on
+        // allocation, making it a valid pointer.
+        let node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
+
+        // SAFETY: Same as the previous.
+        let order = unsafe { self.suballocations.deallocate(node_ptr) };
+
+        // This can't discard any bits because `order` is confined to the range
+        // [0, BuddyAllocator::MAX_ORDERS).
+        let size = BuddyAllocator::MIN_NODE_SIZE << order;
+
+        // The sizes of suballocations allocated by `self` are constrained by that of its region,
+        // so they can't possibly overflow when added up.
+        self.free_size += size;
+    }
+
+    fn reset(&mut self) {
+        self.suballocations.reset();
+        self.free_size = self.region().size();
+    }
+
+    /// Returns the total amount of free space left in the [region] that is available to the
+    /// allocator, which means that [internal fragmentation] is excluded.
+    ///
+    /// [region]: Suballocator#regions
+    /// [internal fragmentation]: super::super#internal-fragmentation
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.free_size
+    }
+
+    #[inline]
+    fn suballocations(&self) -> Self::Suballocations<'_> {
+        self.suballocations.iter()
+    }
+}
+
+impl BuddyAllocator {
+    #[inline(always)]
+    fn allocate_inner(
         &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
@@ -199,52 +263,6 @@ unsafe impl Suballocator for BuddyAllocator {
         }
     }
 
-    #[inline]
-    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
-        let node_ptr = suballocation
-            .handle
-            .as_ptr()
-            .cast::<SuballocationTreeNode>();
-
-        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
-        // allocation of `self`, which means that `node_ptr` is the same one we gave out on
-        // allocation, making it a valid pointer.
-        let node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
-
-        // SAFETY: Same as the previous.
-        let order = unsafe { self.suballocations.deallocate(node_ptr) };
-
-        // This can't discard any bits because `order` is confined to the range
-        // [0, BuddyAllocator::MAX_ORDERS).
-        let size = BuddyAllocator::MIN_NODE_SIZE << order;
-
-        // The sizes of suballocations allocated by `self` are constrained by that of its region,
-        // so they can't possibly overflow when added up.
-        self.free_size += size;
-    }
-
-    fn reset(&mut self) {
-        self.suballocations.reset();
-        self.free_size = self.region().size();
-    }
-
-    /// Returns the total amount of free space left in the [region] that is available to the
-    /// allocator, which means that [internal fragmentation] is excluded.
-    ///
-    /// [region]: Suballocator#regions
-    /// [internal fragmentation]: super::super#internal-fragmentation
-    #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.free_size
-    }
-
-    #[inline]
-    fn suballocations(&self) -> Self::Suballocations<'_> {
-        self.suballocations.iter()
-    }
-}
-
-impl BuddyAllocator {
     #[inline]
     fn region(&self) -> &Region {
         &self.suballocations.region

@@ -60,26 +60,6 @@ pub struct BumpAllocator {
     prev_allocation_type: AllocationType,
 }
 
-impl BumpAllocator {
-    fn suballocation_node(&self, part: usize) -> SuballocationNode {
-        if part == 0 {
-            SuballocationNode {
-                offset: self.region.offset(),
-                size: self.free_start - self.region.offset(),
-                allocation_type: self.prev_allocation_type.into(),
-            }
-        } else {
-            debug_assert_eq!(part, 1);
-
-            SuballocationNode {
-                offset: self.free_start,
-                size: self.free_size(),
-                allocation_type: SuballocationType::Free,
-            }
-        }
-    }
-}
-
 unsafe impl Suballocator for BumpAllocator {
     type Suballocations<'a> = Suballocations<'a>;
 
@@ -96,7 +76,66 @@ unsafe impl Suballocator for BumpAllocator {
     }
 
     #[inline]
+    fn allocate_buffer(
+        &mut self,
+        layout: DeviceLayout,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, AllocationType::Linear, DeviceAlignment::MIN)
+    }
+
+    #[inline]
     fn allocate(
+        &mut self,
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
+        self.allocate_inner(layout, allocation_type, buffer_image_granularity)
+    }
+
+    #[inline]
+    unsafe fn deallocate(&mut self, _suballocation: Suballocation) {
+        // such complex, very wow
+    }
+
+    /// Resets the free-start back to the beginning of the [region].
+    ///
+    /// [region]: Suballocator#regions
+    #[inline]
+    fn reset(&mut self) {
+        self.free_start = self.region.offset();
+        self.prev_allocation_type = AllocationType::Unknown;
+    }
+
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.free_end - self.free_start
+    }
+
+    #[inline]
+    fn suballocations(&self) -> Self::Suballocations<'_> {
+        let start = if self.free_start == self.region.offset() {
+            1
+        } else {
+            0
+        };
+        let end = if self.free_start == self.free_end {
+            1
+        } else {
+            2
+        };
+
+        Suballocations {
+            allocator: self,
+            start,
+            end,
+        }
+    }
+}
+
+impl BumpAllocator {
+    #[inline(always)]
+    fn allocate_inner(
         &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
@@ -142,42 +181,21 @@ unsafe impl Suballocator for BumpAllocator {
         })
     }
 
-    #[inline]
-    unsafe fn deallocate(&mut self, _suballocation: Suballocation) {
-        // such complex, very wow
-    }
-
-    /// Resets the free-start back to the beginning of the [region].
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    fn reset(&mut self) {
-        self.free_start = self.region.offset();
-        self.prev_allocation_type = AllocationType::Unknown;
-    }
-
-    #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.free_end - self.free_start
-    }
-
-    #[inline]
-    fn suballocations(&self) -> Self::Suballocations<'_> {
-        let start = if self.free_start == self.region.offset() {
-            1
+    fn suballocation_node(&self, part: usize) -> SuballocationNode {
+        if part == 0 {
+            SuballocationNode {
+                offset: self.region.offset(),
+                size: self.free_start - self.region.offset(),
+                allocation_type: self.prev_allocation_type.into(),
+            }
         } else {
-            0
-        };
-        let end = if self.free_start == self.free_end {
-            1
-        } else {
-            2
-        };
+            debug_assert_eq!(part, 1);
 
-        Suballocations {
-            allocator: self,
-            start,
-            end,
+            SuballocationNode {
+                offset: self.free_start,
+                size: self.free_size(),
+                allocation_type: SuballocationType::Free,
+            }
         }
     }
 }
