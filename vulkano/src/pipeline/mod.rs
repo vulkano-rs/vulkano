@@ -909,11 +909,11 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(khr_pipeline_executable_properties)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
-    INDIRECT_BINDABLE = INDIRECT_BINDABLE_NV{
-        device_extensions: [nv_device_generated_commands],
-    },*/
+    // The pipeline can be used in combination with Device-Generated Commands.
+    INDIRECT_BINDABLE = INDIRECT_BINDABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_device_generated_commands)]),
+    ]),
 
     /* TODO: enable
     // TODO: document

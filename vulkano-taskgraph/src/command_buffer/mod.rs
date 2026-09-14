@@ -1,7 +1,9 @@
 //! Recording commands to execute on the device.
 
 #[allow(unused_imports)] // everything is exported for future-proofing
-pub use self::commands::{clear::*, copy::*, dynamic_state::*, pipeline::*, sync::*};
+pub use self::commands::{
+    clear::*, copy::*, dynamic_state::*, generated_commands::*, pipeline::*, sync::*,
+};
 use crate::{
     collector::Deferred,
     descriptor_set::{LocalDescriptorSet, GLOBAL_SET, LOCAL_SET},
