@@ -40,7 +40,7 @@ fn compile(
     source_language: Option<SourceLanguage>,
     macro_defines: &[(String, String)],
 ) -> Result<(Vec<u32>, Vec<String>), String> {
-    compile_shader(
+    let (bytes, includes) = compile_shader(
         options,
         source,
         working_dir,
@@ -49,7 +49,10 @@ fn compile(
         None,
         None,
         macro_defines,
-    )
+    )?;
+    let words = spirv::bytes_to_words(&bytes).unwrap().into_owned();
+
+    Ok((words, includes))
 }
 
 fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> HashSet<String> {

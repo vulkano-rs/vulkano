@@ -20,7 +20,7 @@ pub(super) fn compile_shader(
     entry_point: Option<&str>,
     compiler: Option<Compiler>,
     macro_defines: &[(String, String)],
-) -> Result<(Vec<u32>, Vec<String>), String> {
+) -> Result<(Vec<u8>, Vec<String>), String> {
     let source_language = source_language.unwrap_or(options.global_source_language);
     let compiler = compiler
         .or(options.global_compiler)
@@ -111,10 +111,7 @@ pub(super) fn compile_shader(
         format!("failed to parse dependencies file: {e}\nfile content:\n{content}")
     })?;
 
-    let words =
-        crate::spirv_bytes_to_words(output.stdout).map_err(|e| format!("malformed SPIR-V: {e}"))?;
-
-    Ok((words, input_files))
+    Ok((output.stdout, input_files))
 }
 
 fn create_vulkano_dir() -> Result<TempDir, String> {

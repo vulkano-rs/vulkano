@@ -521,7 +521,6 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::{
     env, fs,
-    mem::ManuallyDrop,
     path::{Path, PathBuf},
 };
 use structs::TypeRegistry;
@@ -530,6 +529,7 @@ use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
+use vulkano::shader::spirv;
 
 mod shaders;
 mod structs;
@@ -620,7 +620,7 @@ impl<'a> MacroState<'a> {
             macro_defines,
         } = shader_fields;
 
-        let (lit, words, input_paths) = match source_kind.unwrap() {
+        let (lit, bytes, input_paths) = match source_kind.unwrap() {
             SourceKind::Compiled(compiled_source_kind) => {
                 let source_path;
                 let source_code;
@@ -647,7 +647,7 @@ impl<'a> MacroState<'a> {
                     }
                 };
 
-                let (words, mut input_paths) = shaders::compile_shader(
+                let (bytes, mut input_paths) = shaders::compile_shader(
                     self.options,
                     &source_code,
                     working_dir,
@@ -663,7 +663,7 @@ impl<'a> MacroState<'a> {
                     input_paths.push(source_path.into_os_string().into_string().unwrap());
                 }
 
-                (lit, words, input_paths)
+                (lit, bytes, input_paths)
             }
             SourceKind::Precompiled(lit) => {
                 let path = self.root_path.join(lit.value());
@@ -672,15 +672,14 @@ impl<'a> MacroState<'a> {
 
                 let bytes = read_file(&lit, &path)?;
 
-                let words = spirv_bytes_to_words(bytes).map_err(|err| {
-                    Error::new_spanned(&lit, format!("failed to read source `{path:?}`: {err}"))
-                })?;
-
                 let input_paths = vec![path.into_os_string().into_string().unwrap()];
 
-                (lit, words, input_paths)
+                (lit, bytes, input_paths)
             }
         };
+
+        let words = spirv::bytes_to_words(&bytes)
+            .map_err(|err| Error::new_spanned(&lit, format!("malformed SPIR-V: {err}")))?;
 
         let shaders_code = shaders::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
         let structs_code = structs::generate_structs(
@@ -791,28 +790,6 @@ fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|err| {
         Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
     })
-}
-
-fn spirv_bytes_to_words(bytes: Vec<u8>) -> Result<Vec<u32>, String> {
-    if !bytes.len().is_multiple_of(size_of::<u32>()) {
-        return Err("the length of the bytes is not a multiple of 4".into());
-    }
-
-    #[cfg(target_endian = "little")]
-    if bytes.as_ptr().addr().is_multiple_of(align_of::<u32>()) {
-        let mut bytes = ManuallyDrop::new(bytes);
-        let len = bytes.len() / size_of::<u32>();
-        let cap = bytes.capacity();
-        let ptr = bytes.as_mut_ptr().cast::<u32>();
-
-        // SAFETY: We checked that the pointer is 4-byte aligned and that the size divides evenly.
-        return Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) });
-    }
-
-    // SAFETY: We checked that the size divides evenly.
-    let words = unsafe { bytes.as_chunks_unchecked::<{ size_of::<u32>() }>() };
-
-    Ok(words.iter().copied().map(u32::from_le_bytes).collect())
 }
 
 struct MacroInput {
