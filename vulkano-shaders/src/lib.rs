@@ -41,7 +41,7 @@
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //!   `try_` and `_unchecked` variants are also generated for each shader.
 //! - A Rust struct translated from each struct contained in the shader data. By default, each
-//!   structure has a `Clone` and a `Copy` implementation. This behavior an be customized through
+//!   structure has a `Clone` and a `Copy` implementation. This behavior can be customized through
 //!   the `custom_derives` macro option (see below for details). Each struct also has an
 //!   implementation of [`BufferContents`], so that it can be read from/written to a buffer.
 //!
@@ -1029,7 +1029,7 @@ impl MacroInputParser {
         self.global_compiler = Some(match lit.value().as_str() {
             "shaderc" => Compiler::Shaderc,
             "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slang`, found `{compiler}`"),
+            compiler => bail!(lit, "expected `shaderc` or `slangc, found `{compiler}`"),
         });
 
         Ok(())
@@ -1488,7 +1488,7 @@ impl ShaderFields {
         self.compiler = Some(match lit.value().as_str() {
             "shaderc" => Compiler::Shaderc,
             "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slang`, found `{compiler}`"),
+            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
         });
 
         Ok(())
