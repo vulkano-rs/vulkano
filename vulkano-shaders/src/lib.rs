@@ -1,34 +1,23 @@
-//! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of shader code into SPIR-V and generation of associated
-//! Rust code.
+//! The procedural macro for vulkano's shader system. Manages the compile-time compilation of
+//! shader code into SPIR-V and generation of associated Rust code.
 //!
 //! # Requirements
 //!
-//! This crate invokes [`glslc`] at compile time to compile shaders. `glslc` must be installed and
-//! available on your `PATH`. It is included in the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
-//! or can be installed separately via your package manager.
-//!
-//! [`glslc`]: https://github.com/google/shaderc/tree/main/glslc
+//! This crate invokes [`glslc`] and/or [`slangc`] at compile time to compile shaders. `glslc`
+//! and/or `slangc` must be installed and available on your `PATH`. Both are included in the
+//! [Vulkan SDK] or can be installed separately via your package manager.
 //!
 //! # Basic usage
 //!
 //! ```
 //! mod vs {
+//!     # mod vulkano_shaders { macro_rules! shader { ($($tt:tt)*) => {}; } pub(super) use shader; }
+//!     #
 //!     vulkano_shaders::shader! {
 //!         ty: "vertex",
-//!         src: r"
-//!             #version 450
-//!
-//!             layout(location = 0) in vec3 position;
-//!
-//!             void main() {
-//!                 gl_Position = vec4(position, 1.0);
-//!             }
-//!         ",
+//!         path: "path/to/vertex_shader.glsl",
 //!     }
 //! }
-//! #
-//! # fn main() {}
 //! ```
 //!
 //! # Details
@@ -52,8 +41,8 @@
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //!   `try_` and `_unchecked` variants are also generated for each shader.
 //! - A Rust struct translated from each struct contained in the shader data. By default, each
-//!   structure has a `Clone` and a `Copy` implementation. This behavior could be customized
-//!   through the `custom_derives` macro option (see below for details). Each struct also has an
+//!   structure has a `Clone` and a `Copy` implementation. This behavior can be customized through
+//!   the `custom_derives` macro option (see below for details). Each struct also has an
 //!   implementation of [`BufferContents`], so that it can be read from/written to a buffer.
 //!
 //! All of these generated items will be accessed through the module where the macro was invoked.
@@ -65,7 +54,7 @@
 //! # use vulkano::{device::Device, shader::ShaderModule, Validated, VulkanError};
 //! #
 //! # mod vs {
-//! #     vulkano_shaders::shader!{
+//! #     vulkano_shaders::shader! {
 //! #         ty: "vertex",
 //! #         src: r"
 //! #             #version 450
@@ -101,10 +90,19 @@
 //!
 //! The options available are in the form of the following fields:
 //!
-//! ## `ty: "..."`
+//! ## `ty`
 //!
-//! This defines what shader type the given shader source will be compiled into. The type can be
-//! any of the following:
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     ty: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! This defines what shader type the given shader source will be compiled into. It can be any of
+//! the following:
 //!
 //! - `vertex`
 //! - `tess_ctrl`
@@ -123,23 +121,206 @@
 //!
 //! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
 //!
-//! ## `src: "..."`
+//! Cannot be defined alongside the [`bytes`] option.
 //!
-//! Provides the raw shader source to be compiled in the form of a string. Cannot be used in
-//! conjunction with the `path` or `bytes` field.
+//! ## `path`
 //!
-//! ## `path: "..."`
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     path: "...",
+//!     ...
+//! }
+//! ```
 //!
 //! Provides the path to the shader source to be compiled, relative to the file invoking the macro.
-//! Cannot be used in conjunction with the `src` or `bytes` field.
 //!
-//! ## `bytes: "..."`
+//! Cannot be defined alongside the [`src`] or [`bytes`] option.
+//!
+//! ## `src`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     src: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the raw shader source to be compiled in the form of a string.
+//!
+//! Cannot be defined alongside the [`path`] or [`bytes`] option.
+//!
+//! ## `bytes`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     bytes: "...",
+//!     ...
+//! }
+//! ```
 //!
 //! Provides the path to precompiled SPIR-V bytecode, relative to the file invoking the macro.
-//! Cannot be used in conjunction with the `src` or `path` field, and may also not specify a shader
-//! `ty` type. This allows using shaders compiled through a separate build system.
 //!
-//! ## `root_path_env: "..."`
+//! Cannot be defined alongside the [`src`] or [`path`] option, and may also not specify the
+//! [`ty`], [`lang`], [`entry_point`] or [`compiler`] option. This allows using shaders compiled
+//! through a separate build system.
+//!
+//! ## `lang`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     lang: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the language of the shader source. It can be any of the following:
+//!
+//! - `glsl` (default)
+//! - `hlsl`
+//! - `slang`
+//!
+//! Cannot be defined alongside the [`bytes`] option.
+//!
+//! ## `entry_point`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     entry_point: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the entry point of the shader source to compile.
+//!
+//! By default, `main` is compiled.
+//!
+//! Cannot be defined alongside the [`bytes`] option.
+//!
+//! ## `compiler`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     compiler: "...",
+//!     ...
+//! }
+//! ```
+//!
+//! Provides the compiler to invoke. It can be any of the following:
+//!
+//! - `shaderc` (default for GLSL and HLSL)
+//! - `slangc` (default for Slang)
+//!
+//! Here are the source languages supported for each compiler:
+//!
+//! - `shaderc`: GLSL and HLSL
+//! - `slangc`: GLSL, HLSL and Slang
+//!
+//! When using `shaderc`, you must have [`glslc`] available on your `PATH`. When using `slangc`,
+//! you must have [`slangc`] available on your `PATH`. The [Vulkan SDK] comes with both.
+//!
+//! Cannot be defined alongside the [`bytes`] option.
+//!
+//! ## `shaders`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     shaders: {
+//!         first: {
+//!             ...
+//!         },
+//!         ...
+//!     },
+//!     ...
+//! }
+//! ```
+//!
+//! With this option, the user can compile several shaders in a single macro invocation. Each entry
+//! key will be the suffix of the generated `load` function (`load_first` in the above example).
+//! However, all other Rust structs translated from the shader source will be shared between
+//! shaders. The macro checks that the source structs with the same names between different shaders
+//! have the same declaration signature, and throws a compile-time error if they don't.
+//!
+//! Each entry accepts [`ty`], [`path`], [`src`], [`bytes`] and [`entry_point`] options same as
+//! above.
+//!
+//! If an entry defines the [`lang`] option, it overrides a potential global `lang` option:
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     shaders: {
+//!         first: {
+//!             ty: "...",
+//!             path: "...",
+//!         },
+//!         second: {
+//!             ty: "...",
+//!             path: "...",
+//!             lang: "slang",
+//!         },
+//!     },
+//!     lang: "hlsl",
+//! }
+//! ```
+//!
+//! Above, the shaders named `first` and `second` will be compiled as HLSL and Slang, respectively.
+//! Without the global `lang` option present, they will be compiled as GLSL and Slang,
+//! respectively.
+//!
+//! If an entry defines the [`compiler`] option, it overrides a potential global `compiler` option
+//! in the same way as the `lang` option does.
+//!
+//! If an entry defines the [`define`] option, it extends a potential global `define` option,
+//! overriding any duplicates:
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     shaders: {
+//!         first: {
+//!             ty: "...",
+//!             path: "...",
+//!         },
+//!         second: {
+//!             ty: "...",
+//!             path: "...",
+//!             define: [("X", "69"), ("Z", "3")],
+//!         },
+//!     },
+//!     define: [("X", "1"), ("Y", "2")],
+//! }
+//! ```
+//!
+//! Above, the shaders named `first` and `second` will be compiled with `-DX=1 -DY=2` and
+//! `-DX=69 -DY=2 -DZ=3`, respectively. Without the global `define` option present, they will be
+//! compiled with no defines and `-DX=69 -DZ=3`, respectively.
+//!
+//! ## `root_path_env`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     root_path_env: "...",
+//!     ...
+//! }
+//! ```
 //!
 //! Instead of searching relative to the file invoking the macro, search relative to some other
 //! folder specified by this env variable. The intended use case is using `OUT_DIR` to be able to
@@ -148,24 +329,22 @@
 //!
 //! See [`cargo-env-vars`] for a full set of env variables set by cargo. It is also possible to
 //! specify env variables from within the build script using the following:
-//! ```rust
+//!
+//! ```
 //! # let shader_out_dir = "";
 //! println!("cargo:rustc-env=SHADER_OUT_DIR={shader_out_dir}");
 //! ```
 //!
-//! ## `shaders: { first: { src: "...", ty: "..." }, ... }`
+//! ## `include`
 //!
-//! With these options the user can compile several shaders in a single macro invocation. Each
-//! entry key will be the suffix of the generated `load` function (`load_first` in this case).
-//! However, all other Rust structs translated from the shader source will be shared between
-//! shaders. The macro checks that the source structs with the same names between different shaders
-//! have the same declaration signature, and throws a compile-time error if they don't.
-//!
-//! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
-//! An optional `define: [("NAME", "VALUE"), ...]` list sets preprocessor definitions
-//! for just this source file.
-//!
-//! ## `include: ["...", "...", ...]`
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     include: ["...", "...", ...],
+//!     ...
+//! }
+//! ```
 //!
 //! Specifies the standard include directories to be searched through when using the
 //! `#include <...>` directive within a shader source. Include directories can be absolute or
@@ -173,60 +352,140 @@
 //! source file the `#include "..."` directive is declared in. This includes the Rust files with
 //! embedded shader source.
 //!
-//! ## `define: [("NAME", "VALUE"), ...]`
+//! ## `define`
 //!
-//! Adds the given macro definitions to the pre-processor. This is equivalent to passing the
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     define: [("NAME", "VALUE"), ...],
+//!     ...
+//! }
+//! ```
+//!
+//! Adds the given macro definitions for the pre-processor. This is equivalent to passing the
 //! `-DNAME=VALUE` argument on the command line.
 //!
-//! ## `lang: "..."`
+//! ## `vulkan_version`
 //!
-//! Provides the language of the shader source. Must be either `glsl` or `hlsl` (defaults to
-//! `glsl`).
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     vulkan_version: "...",
+//!     ...
+//! }
+//! ```
 //!
-//! ## `vulkan_version: "major.minor"` and `spirv_version: "major.minor"`
+//! Sets the Vulkan version to compile for. It can be any of the following:
 //!
-//! Sets the Vulkan and SPIR-V versions to compile into, respectively. These map directly to the
-//! [`set_target_env`] and [`set_target_spirv`] compile options. If neither option is specified,
-//! then SPIR-V 1.0 code targeting Vulkan 1.0 will be generated.
+//! - `1.0` (default)
+//! - `1.1`
+//! - `1.2`
+//! - `1.3`
 //!
 //! The generated code must be supported by the device at runtime. If not, then an error will be
 //! returned when calling `load`.
 //!
-//! ## `generate_structs: true`
+//! ## `spirv_version`
 //!
-//! Generate rust structs that represent the structs contained in the shader. They all implement
-//! [`BufferContents`], which allows then to be passed to the shader, without having to worry about
-//! the layout of the struct manually. However, some use-cases, such as Rust-GPU, may not have any
-//! use for such structs, and may choose to disable them.
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     spirv_version: "...",
+//!     ...
+//! }
+//! ```
 //!
-//! ## `custom_derives: [Clone, Default, PartialEq, ...]`
+//! Sets the SPIR-V version to compile for. It can be any of the following:
+//!
+//! - `1.0`
+//! - `1.1`
+//! - `1.2`
+//! - `1.3`
+//! - `1.4`
+//! - `1.5`
+//! - `1.6`
+//!
+//! By default, the minimum required SPIR-V version for the [`vulkan_version`] is used.
+//!
+//! The generated code must be supported by the device at runtime. If not, then an error will be
+//! returned when calling `load`.
+//!
+//! ## `generate_structs`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     generate_structs: false,
+//!     ...
+//! }
+//! ```
+//!
+//! Generate Rust structs that represent the structs contained in the shader. They all implement
+//! [`BufferContents`], which allows them to be passed to the shader without having to worry about
+//! the layout of the struct manually. However, some use cases, such as Rust-GPU, may not have any
+//! use for such structs and may choose to disable them.
+//!
+//! By default, structs are generated.
+//!
+//! ## `custom_derives`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     custom_derives: [Clone, Default, PartialEq, ...],
+//!     ...
+//! }
+//! ```
 //!
 //! Extends the list of derive macros that are added to the `derive` attribute of Rust structs that
 //! represent shader structs.
 //!
-//! By default, each generated struct derives `Clone` and `Copy`. If the struct has unsized members
-//! none of the derives are applied on the struct, except [`BufferContents`], which is always
-//! derived.
+//! By default, each generated struct derives `Clone` and `Copy`. If the struct has unsized
+//! members, none of the derives are applied on the struct, except [`BufferContents`], which is
+//! always derived.
 //!
-//! ## `linalg_type: "..."`
+//! ## `linalg_type`
+//!
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     linalg_type: "...",
+//!     ...
+//! }
+//! ```
 //!
 //! Specifies the way that linear algebra types should be generated. It can be any of the
 //! following:
 //!
-//! - `std`
+//! - `std` (default)
 //! - `cgmath`
 //! - `nalgebra`
 //!
-//! The default is `std`, which uses arrays to represent vectors and matrices. Note that if the
-//! chosen crate doesn't have a type that represents a certain linear algebra type (e.g. `mat3`, or
-//! a rectangular matrix) then the macro will default back to arrays for that type.
+//! `std` uses arrays to represent vectors and matrices. Note that if the chosen crate doesn't have
+//! a type that represents a certain linear algebra type (e.g., `mat3` or a rectangular matrix),
+//! then the macro will default back to arrays for that type.
 //!
 //! If you use linear algebra types from a third-party crate, then you have to have the crate in
 //! your dependencies with the appropriate feature enabled that adds `bytemuck` support.
 //!
-//! ## `dump: true`
+//! ## `dump`
 //!
-//! The crate fails to compile but prints the generated Rust code to stdout.
+//! ```
+//! # macro_rules! shader { ($($tt:tt)*) => {}; }
+//! #
+//! shader! {
+//!     dump: true,
+//!     ...
+//! }
+//! ```
+//!
+//! The crate fails to compile, but prints the generated Rust code to stdout.
 //!
 //! # Cargo features
 //!
@@ -234,12 +493,25 @@
 //! |-----------------|--------------------------------------------------|
 //! | `shaderc-debug` | Compile shaders with debug information included. |
 //!
-//! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
+//! [`glslc`]: https://github.com/google/shaderc/tree/main/glslc
+//! [`slangc`]: https://github.com/shader-slang/slang
+//! [Vulkan SDK]: https://www.lunarg.com/vulkan-sdk/
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule`]: vulkano::shader::ShaderModule
 //! [`ShaderModule::try_new`]: vulkano::shader::ShaderModule::try_new
-//! [pipeline]: vulkano::pipeline
+//! [`ShaderModule::new_unchecked`]: vulkano::shader::ShaderModule::new_unchecked
 //! [`BufferContents`]: vulkano::buffer::BufferContents
+//! [pipeline]: vulkano::pipeline
+//! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
+//! [`ty`]: self#ty
+//! [`path`]: self#path
+//! [`src`]: self#src
+//! [`bytes`]: self#bytes
+//! [`lang`]: self#lang
+//! [`entry_point`]: self#entry_point
+//! [`compiler`]: self#compiler
+//! [`define`]: self#define
+//! [`vulkan_version`]: self#vulkan_version
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
@@ -247,24 +519,30 @@
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use std::{env, fs, mem, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 use structs::TypeRegistry;
 use syn::{
     braced, bracketed, parenthesized,
-    parse::{Parse, ParseStream, Result},
+    parse::{Parse, ParseStream},
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
+use vulkano::shader::spirv;
 
-mod codegen;
-mod rust_gpu;
+mod shaders;
 mod structs;
+#[cfg(test)]
+mod tests;
 
 #[proc_macro]
 pub fn include_vulkano_glsl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     parse_macro_input!(input as syn::parse::Nothing);
+
     let include_string = include_str!("../include/vulkano.glsl");
-    let expanded = quote! { #include_string };
-    expanded.into()
+
+    quote! { #include_string }.into()
 }
 
 #[proc_macro]
@@ -276,118 +554,170 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .into()
 }
 
-fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
-    let (root_path, relative_path_error_msg) = match input.root_path_env.as_ref() {
-        None => root_path_from_call_site(),
-        Some(root_path_env) => root_path_from_env_var(root_path_env),
-    }?;
+fn shader_inner(input: MacroInput) -> Result<TokenStream> {
+    let MacroInput { shaders, options } = input;
 
-    let shaders = mem::take(&mut input.shaders); // yoink
+    let mut state = MacroState::new(&options)?;
 
-    let mut shaders_code = Vec::with_capacity(shaders.len());
-    let mut types_code = Vec::with_capacity(shaders.len());
-    let mut type_registry = TypeRegistry::default();
-
-    for (
-        name,
-        ShaderFields {
-            shader_kind,
-            source_kind,
-            macro_defines,
-        },
-    ) in shaders
-    {
-        let (code, types) = match source_kind {
-            SourceKind::Src(source) => {
-                let (artifact, includes) = codegen::compile(
-                    &input,
-                    &source.value(),
-                    &root_path,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
-                .map_err(|err| Error::new_spanned(&source, err))?;
-
-                codegen::reflect(
-                    &input,
-                    source,
-                    name,
-                    &artifact,
-                    includes,
-                    &mut type_registry,
-                )?
+    match shaders {
+        Shaders::Single(shader_fields) => {
+            state.process_shader(None, shader_fields)?;
+        }
+        Shaders::Multiple(shaders) => {
+            for (shader_name, shader_fields) in shaders {
+                state.process_shader(Some(shader_name), shader_fields)?;
             }
-            SourceKind::Path(path) => {
-                let full_path = root_path.join(path.value());
-
-                if !full_path.is_file() {
-                    bail!(
-                        path,
-                        "file `{full_path:?}` was not found, note that the path must be relative \
-                        {relative_path_error_msg}",
-                    );
-                }
-
-                let source = fs::read_to_string(&full_path).map_err(|err| {
-                    Error::new_spanned(
-                        &path,
-                        format_args!("failed to read shader source `{full_path:?}`: {err}"),
-                    )
-                })?;
-
-                let working_dir = full_path.parent().unwrap();
-
-                let (artifact, mut includes) = codegen::compile(
-                    &input,
-                    &source,
-                    working_dir,
-                    shader_kind.unwrap(),
-                    &macro_defines,
-                )
-                .map_err(|err| Error::new_spanned(&path, err))?;
-
-                includes.push(full_path.into_os_string().into_string().unwrap());
-
-                codegen::reflect(&input, path, name, &artifact, includes, &mut type_registry)?
-            }
-            SourceKind::Bytes(path) => {
-                let full_path = root_path.join(path.value());
-
-                if !full_path.is_file() {
-                    bail!(
-                        path,
-                        "file `{full_path:?}` was not found, note that the path must be relative \
-                        {relative_path_error_msg}",
-                    );
-                }
-
-                let bytes = fs::read(&full_path)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
-
-                let words = vulkano::shader::spirv::bytes_to_words(&bytes)
-                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
-
-                let includes = vec![full_path.into_os_string().into_string().unwrap()];
-
-                codegen::reflect(&input, path, name, &words, includes, &mut type_registry)?
-            }
-        };
-
-        shaders_code.push(code);
-        types_code.push(types);
+        }
     }
 
-    let result = quote! {
-        #( #shaders_code )*
-        #( #types_code )*
-    };
+    let result = state.finalize();
 
-    if input.dump.value {
+    if options.dump.value {
         println!("{}", result);
-        bail!(input.dump, "`shader!` Rust codegen dumped");
+        bail!(options.dump, "`shader!` Rust codegen dumped");
     }
 
     Ok(result)
+}
+
+struct MacroState<'a> {
+    options: &'a MacroOptions,
+    root_path: PathBuf,
+    relative_path_error_message: String,
+    shaders_code: TokenStream,
+    structs_code: TokenStream,
+    type_registry: TypeRegistry,
+}
+
+impl<'a> MacroState<'a> {
+    fn new(options: &'a MacroOptions) -> Result<Self> {
+        let (root_path, relative_path_error_message) = match options.root_path_env.as_ref() {
+            None => root_path_from_call_site(),
+            Some(root_path_env) => root_path_from_env_var(root_path_env),
+        }?;
+
+        Ok(MacroState {
+            options,
+            root_path,
+            relative_path_error_message,
+            shaders_code: TokenStream::new(),
+            structs_code: TokenStream::new(),
+            type_registry: TypeRegistry::default(),
+        })
+    }
+
+    fn process_shader(
+        &mut self,
+        shader_name: Option<String>,
+        shader_fields: ShaderFields,
+    ) -> Result {
+        let ShaderFields {
+            shader_kind,
+            source_kind,
+            source_language,
+            entry_point,
+            compiler,
+            macro_defines,
+        } = shader_fields;
+
+        let (lit, bytes, input_paths) = match source_kind.unwrap() {
+            SourceKind::Compiled(compiled_source_kind) => {
+                let source_path;
+                let source_code;
+                let working_dir;
+
+                let lit = match compiled_source_kind {
+                    CompiledSourceKind::Path(lit) => {
+                        source_path = Some(self.root_path.join(lit.value()));
+                        let path = source_path.as_deref().unwrap();
+
+                        self.check_file_exists(&lit, path)?;
+
+                        source_code = read_file_to_string(&lit, path)?;
+                        working_dir = path.parent().unwrap();
+
+                        lit
+                    }
+                    CompiledSourceKind::Inline(lit) => {
+                        source_path = None;
+                        source_code = lit.value();
+                        working_dir = &self.root_path;
+
+                        lit
+                    }
+                };
+
+                let (bytes, mut input_paths) = shaders::compile_shader(
+                    self.options,
+                    &source_code,
+                    working_dir,
+                    shader_kind.unwrap(),
+                    source_language,
+                    entry_point.as_deref(),
+                    compiler,
+                    &macro_defines,
+                )
+                .map_err(|err| Error::new_spanned(&lit, err))?;
+
+                if let Some(source_path) = source_path {
+                    input_paths.push(source_path.into_os_string().into_string().unwrap());
+                }
+
+                (lit, bytes, input_paths)
+            }
+            SourceKind::Precompiled(lit) => {
+                let path = self.root_path.join(lit.value());
+
+                self.check_file_exists(&lit, &path)?;
+
+                let bytes = read_file(&lit, &path)?;
+
+                let input_paths = vec![path.into_os_string().into_string().unwrap()];
+
+                (lit, bytes, input_paths)
+            }
+        };
+
+        let words = spirv::bytes_to_words(&bytes)
+            .map_err(|err| Error::new_spanned(&lit, format!("malformed SPIR-V: {err}")))?;
+
+        let shaders_code = shaders::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
+        let structs_code = structs::generate_structs(
+            self.options,
+            lit,
+            shader_name,
+            &words,
+            &mut self.type_registry,
+        )?;
+
+        self.shaders_code.extend(shaders_code);
+        self.structs_code.extend(structs_code);
+
+        Ok(())
+    }
+
+    fn check_file_exists(&self, lit: &LitStr, path: &Path) -> Result {
+        if !path.is_file() {
+            let msg = &self.relative_path_error_message;
+
+            bail!(
+                lit,
+                "file `{path:?}` was not found; note that the path must be relative {msg}",
+            );
+        }
+
+        Ok(())
+    }
+
+    fn finalize(self) -> TokenStream {
+        let shaders_code = self.shaders_code;
+        let structs_code = self.structs_code;
+
+        quote! {
+            #shaders_code
+            #structs_code
+        }
+    }
 }
 
 fn root_path_from_call_site() -> Result<(PathBuf, String)> {
@@ -450,102 +780,784 @@ fn root_path_from_env_var(root_path_env: &LitStr) -> Result<(PathBuf, String)> {
     Ok((root.into(), error))
 }
 
+fn read_file_to_string(lit: &LitStr, path: &Path) -> Result<String> {
+    fs::read_to_string(path).map_err(|err| {
+        Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
+    })
+}
+
+fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).map_err(|err| {
+        Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
+    })
+}
+
+struct MacroInput {
+    shaders: Shaders,
+    options: MacroOptions,
+}
+
+enum Shaders {
+    Single(ShaderFields),
+    Multiple(HashMap<String, ShaderFields>),
+}
+
+#[derive(Default)]
+struct ShaderFields {
+    shader_kind: Option<ShaderKind>,
+    source_kind: Option<SourceKind>,
+    source_language: Option<SourceLanguage>,
+    entry_point: Option<String>,
+    compiler: Option<Compiler>,
+    macro_defines: Vec<(String, String)>,
+}
+
 enum SourceKind {
-    Src(LitStr),
+    Compiled(CompiledSourceKind),
+    Precompiled(LitStr),
+}
+
+enum CompiledSourceKind {
     Path(LitStr),
-    Bytes(LitStr),
+    Inline(LitStr),
 }
 
-#[derive(Copy, Clone)]
-enum SourceLanguage {
-    Glsl,
-    Hlsl,
-    Slang,
+struct MacroOptions {
+    global_source_language: SourceLanguage,
+    global_compiler: Option<Compiler>,
+    root_path_env: Option<LitStr>,
+    include_directories: Vec<PathBuf>,
+    global_macro_defines: Vec<(String, String)>,
+    spirv_version: SpirvVersion,
+    vulkan_version: VulkanVersion,
+    generate_structs: bool,
+    custom_derives: Vec<SynPath>,
+    linalg_type: LinAlgType,
+    dump: LitBool,
 }
 
-impl From<SourceLanguage> for &str {
-    fn from(lang: SourceLanguage) -> Self {
-        match lang {
-            SourceLanguage::Glsl => "glsl",
-            SourceLanguage::Hlsl => "hlsl",
-            SourceLanguage::Slang => "slang",
+impl Parse for MacroInput {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let mut parser = MacroInputParser::new();
+
+        parser.parse(input)?;
+
+        let shaders = parser.shaders.unwrap();
+
+        let vulkan_version = parser.vulkan_version.unwrap_or_default();
+        let options = MacroOptions {
+            global_source_language: parser.global_source_language.unwrap_or_default(),
+            global_compiler: parser.global_compiler,
+            root_path_env: parser.root_path_env,
+            include_directories: parser.include_directories,
+            global_macro_defines: parser.global_macro_defines,
+            vulkan_version,
+            spirv_version: parser
+                .spirv_version
+                .unwrap_or(vulkan_version.to_spirv_version()),
+            generate_structs: parser.generate_structs.unwrap_or(true),
+            custom_derives: parser.custom_derives.unwrap_or_else(|| {
+                vec![
+                    parse_quote! { ::std::clone::Clone },
+                    parse_quote! { ::std::marker::Copy },
+                ]
+            }),
+            linalg_type: parser.linalg_type.unwrap_or_default(),
+            dump: parser
+                .dump
+                .unwrap_or_else(|| LitBool::new(false, Span::call_site())),
+        };
+
+        Ok(MacroInput { shaders, options })
+    }
+}
+
+impl MacroOptions {
+    #[cfg(test)]
+    fn empty() -> Self {
+        MacroOptions {
+            global_source_language: SourceLanguage::Glsl,
+            global_compiler: None,
+            root_path_env: None,
+            include_directories: Vec::new(),
+            global_macro_defines: Vec::new(),
+            vulkan_version: VulkanVersion::V1_0,
+            spirv_version: SpirvVersion::V1_0,
+            generate_structs: true,
+            custom_derives: Vec::new(),
+            linalg_type: LinAlgType::default(),
+            dump: LitBool::new(false, Span::call_site()),
         }
     }
 }
 
-impl std::fmt::Display for SourceLanguage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
+struct MacroInputParser {
+    manifest_dir: String,
+    shaders: Option<Shaders>,
+    global_source_language: Option<SourceLanguage>,
+    global_compiler: Option<Compiler>,
+    root_path_env: Option<LitStr>,
+    include_directories: Vec<PathBuf>,
+    global_macro_defines: Vec<(String, String)>,
+    vulkan_version: Option<VulkanVersion>,
+    spirv_version: Option<SpirvVersion>,
+    generate_structs: Option<bool>,
+    custom_derives: Option<Vec<SynPath>>,
+    linalg_type: Option<LinAlgType>,
+    dump: Option<LitBool>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum EnvVersion {
-    Vulkan1_0,
-    Vulkan1_1,
-    Vulkan1_2,
-    Vulkan1_3,
-}
-
-impl From<EnvVersion> for &str {
-    fn from(version: EnvVersion) -> Self {
-        match version {
-            EnvVersion::Vulkan1_0 => "vulkan1.0",
-            EnvVersion::Vulkan1_1 => "vulkan1.1",
-            EnvVersion::Vulkan1_2 => "vulkan1.2",
-            EnvVersion::Vulkan1_3 => "vulkan1.3",
+impl MacroInputParser {
+    fn new() -> Self {
+        MacroInputParser {
+            manifest_dir: env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()),
+            shaders: None,
+            global_source_language: None,
+            global_compiler: None,
+            root_path_env: None,
+            include_directories: Vec::new(),
+            global_macro_defines: Vec::new(),
+            vulkan_version: None,
+            spirv_version: None,
+            generate_structs: None,
+            custom_derives: None,
+            linalg_type: None,
+            dump: None,
         }
     }
-}
 
-impl std::fmt::Display for EnvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
-    }
-}
+    fn parse(&mut self, input: ParseStream<'_>) -> Result {
+        while !input.is_empty() {
+            let field_ident = input.parse::<Ident>()?;
+            input.parse::<Token![:]>()?;
+            let field_name = field_ident.to_string();
 
-#[derive(Copy, Clone, Debug)]
-enum SpirvVersion {
-    V1_0,
-    V1_1,
-    V1_2,
-    V1_3,
-    V1_4,
-    V1_5,
-    V1_6,
-}
+            match field_name.as_str() {
+                "ty" | "path" | "src" | "bytes" | "entry_point" => {
+                    self.parse_shader_field(input, &field_ident, &field_name)?
+                }
+                "lang" => self.parse_lang(input)?,
+                "compiler" => self.parse_compiler(input)?,
+                "shaders" => self.parse_shader_entries(input, &field_ident)?,
+                "root_path_env" => self.parse_root_path_env(input)?,
+                "include" => self.parse_include(input)?,
+                "define" => self.parse_define(input)?,
+                "vulkan_version" => self.parse_vulkan_version(input)?,
+                "spirv_version" => self.parse_spirv_version(input)?,
+                "generate_structs" => self.parse_generate_structs(input)?,
+                "custom_derives" => self.parse_custom_derives(input)?,
+                "linalg_type" => self.parse_linalg_type(input)?,
+                "dump" => self.parse_dump(input)?,
+                _ => bail!(
+                    field_ident,
+                    "expected `ty`, `path`, `src`, `bytes`, `entry_point`, `lang`, `compiler`, \
+                    `shaders`, `root_path_env`, `include`, `define`, `vulkan_version`, \
+                    `spirv_version`, `generate_structs`, `custom_derives`, `linalg_type` or \
+                    `dump` as a field, found `{field_name}`",
+                ),
+            }
 
-impl From<SpirvVersion> for &str {
-    fn from(version: SpirvVersion) -> Self {
-        match version {
-            SpirvVersion::V1_0 => "spv1.0",
-            SpirvVersion::V1_1 => "spv1.1",
-            SpirvVersion::V1_2 => "spv1.2",
-            SpirvVersion::V1_3 => "spv1.3",
-            SpirvVersion::V1_4 => "spv1.4",
-            SpirvVersion::V1_5 => "spv1.5",
-            SpirvVersion::V1_6 => "spv1.6",
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
+            }
         }
-    }
-}
 
-impl SpirvVersion {
-    fn as_slangc_profile(self) -> &'static str {
-        match self {
-            SpirvVersion::V1_0 => "spirv_1_0",
-            SpirvVersion::V1_1 => "spirv_1_1",
-            SpirvVersion::V1_2 => "spirv_1_2",
-            SpirvVersion::V1_3 => "spirv_1_3",
-            SpirvVersion::V1_4 => "spirv_1_4",
-            SpirvVersion::V1_5 => "spirv_1_5",
-            SpirvVersion::V1_6 => "spirv_1_6",
+        if self.shaders.is_none()
+            || matches!(&self.shaders, Some(Shaders::Multiple(shaders)) if shaders.is_empty())
+        {
+            bail!(
+                "please specify at least one shader (e.g., `ty: \"vertex\", path: \
+                \"entry_point.glsl\"`)",
+            );
         }
+
+        if let Some(Shaders::Single(shader_fields)) = &self.shaders {
+            shader_fields.check_valid(Span::call_site(), None, None)?;
+        }
+
+        Ok(())
+    }
+
+    fn parse_shader_field(
+        &mut self,
+        input: ParseStream<'_>,
+        field_ident: &Ident,
+        field_name: &str,
+    ) -> Result {
+        if matches!(&self.shaders, Some(Shaders::Multiple(_))) {
+            bail!(
+                field_ident,
+                "only one of `path`, `src`, `bytes` or `shaders` can be defined",
+            );
+        }
+
+        if self.shaders.is_none() {
+            self.shaders = Some(Shaders::Single(ShaderFields::default()));
+        }
+
+        let Some(Shaders::Single(shader_fields)) = &mut self.shaders else {
+            unreachable!();
+        };
+
+        shader_fields.parse_shader_field(input, field_name)
+    }
+
+    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.global_source_language.is_some() {
+            bail!(lit, "field `lang` is already defined");
+        }
+
+        self.global_source_language = Some(match lit.value().as_str() {
+            "glsl" => SourceLanguage::Glsl,
+            "hlsl" => SourceLanguage::Hlsl,
+            "slang" => SourceLanguage::Slang,
+            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.global_compiler.is_some() {
+            bail!(lit, "field `compiler` is already defined");
+        }
+
+        self.global_compiler = Some(match lit.value().as_str() {
+            "shaderc" => Compiler::Shaderc,
+            "slangc" => Compiler::Slangc,
+            compiler => bail!(lit, "expected `shaderc` or `slangc, found `{compiler}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result {
+        if !self.shaders.is_none() {
+            bail!(
+                field_ident,
+                "only one of `path`, `src`, `bytes` or `shaders` can be defined",
+            );
+        }
+
+        self.shaders = Some(Shaders::Multiple(HashMap::default()));
+
+        let Some(Shaders::Multiple(shaders)) = &mut self.shaders else {
+            unreachable!();
+        };
+
+        let in_braces;
+        braced!(in_braces in input);
+
+        while !in_braces.is_empty() {
+            let shader_ident = in_braces.parse::<Ident>()?;
+            let shader_name = shader_ident.to_string();
+
+            if shaders.contains_key(&shader_name) {
+                bail!(
+                    shader_ident,
+                    "shader entry `{shader_name}` is already defined",
+                );
+            }
+
+            in_braces.parse::<Token![:]>()?;
+
+            let in_shader_definition;
+            braced!(in_shader_definition in in_braces);
+
+            while !in_shader_definition.is_empty() {
+                let field_ident = in_shader_definition.parse::<Ident>()?;
+                in_shader_definition.parse::<Token![:]>()?;
+                let field_name = field_ident.to_string();
+
+                match field_name.as_str() {
+                    "ty" | "path" | "src" | "bytes" | "lang" | "entry_point" | "compiler"
+                    | "define" => {
+                        shaders
+                            .entry(shader_name.clone())
+                            .or_default()
+                            .parse_shader_field(&in_shader_definition, &field_name)?;
+                    }
+                    _ => bail!(
+                        field_ident,
+                        "expected `ty`, `path`, `src`, `bytes`, `lang`, `entry_point`, `compiler` \
+                        or `define` as a field, found `{field_name}`",
+                    ),
+                }
+
+                if !in_shader_definition.is_empty() {
+                    in_shader_definition.parse::<Token![,]>()?;
+                }
+            }
+
+            if !in_braces.is_empty() {
+                in_braces.parse::<Token![,]>()?;
+            }
+
+            shaders.get(&shader_name).unwrap().check_valid(
+                shader_ident.span(),
+                self.global_source_language,
+                self.global_compiler,
+            )?;
+        }
+
+        if shaders.is_empty() {
+            bail!(
+                field_ident,
+                "please specify at least one shader entry (e.g, `shaders: {{ `ty: \"vertex\", \
+                path: \"entry_point.glsl\" }}`)",
+            );
+        }
+
+        Ok(())
+    }
+
+    fn parse_root_path_env(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.root_path_env.is_some() {
+            bail!(lit, "field `root_path_env` is already defined");
+        }
+
+        self.root_path_env = Some(lit);
+
+        Ok(())
+    }
+
+    fn parse_include(&mut self, input: ParseStream<'_>) -> Result {
+        let in_brackets;
+        bracketed!(in_brackets in input);
+
+        while !in_brackets.is_empty() {
+            let path = in_brackets.parse::<LitStr>()?;
+
+            self.include_directories
+                .push([&self.manifest_dir, &path.value()].into_iter().collect());
+
+            if !in_brackets.is_empty() {
+                in_brackets.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
+        let array_input;
+        bracketed!(array_input in input);
+
+        while !array_input.is_empty() {
+            let tuple_input;
+            parenthesized!(tuple_input in array_input);
+
+            let name = tuple_input.parse::<LitStr>()?;
+            tuple_input.parse::<Token![,]>()?;
+            let value = tuple_input.parse::<LitStr>()?;
+            self.global_macro_defines
+                .push((name.value(), value.value()));
+
+            if !array_input.is_empty() {
+                array_input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn parse_vulkan_version(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.vulkan_version.is_some() {
+            bail!(lit, "field `vulkan_version` is already defined");
+        }
+
+        self.vulkan_version = Some(match lit.value().as_str() {
+            "1.0" => VulkanVersion::V1_0,
+            "1.1" => VulkanVersion::V1_1,
+            "1.2" => VulkanVersion::V1_2,
+            "1.3" => VulkanVersion::V1_3,
+            ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_spirv_version(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.spirv_version.is_some() {
+            bail!(lit, "field `spirv_version` is already defined");
+        }
+
+        self.spirv_version = Some(match lit.value().as_str() {
+            "1.0" => SpirvVersion::V1_0,
+            "1.1" => SpirvVersion::V1_1,
+            "1.2" => SpirvVersion::V1_2,
+            "1.3" => SpirvVersion::V1_3,
+            "1.4" => SpirvVersion::V1_4,
+            "1.5" => SpirvVersion::V1_5,
+            "1.6" => SpirvVersion::V1_6,
+            ver => bail!(
+                lit,
+                "expected `1.0`, `1.1`, `1.2`, `1.3`, `1.4`, `1.5` or `1.6`, found `{ver}`",
+            ),
+        });
+
+        Ok(())
+    }
+
+    fn parse_generate_structs(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitBool>()?;
+
+        if self.generate_structs.is_some() {
+            bail!(lit, "field `generate_structs` is already defined");
+        }
+
+        self.generate_structs = Some(lit.value);
+
+        Ok(())
+    }
+
+    fn parse_custom_derives(&mut self, input: ParseStream<'_>) -> Result {
+        let in_brackets;
+        bracketed!(in_brackets in input);
+
+        while !in_brackets.is_empty() {
+            if self.custom_derives.is_none() {
+                self.custom_derives = Some(Vec::new());
+            }
+
+            self.custom_derives
+                .as_mut()
+                .unwrap()
+                .push(in_brackets.parse::<SynPath>()?);
+
+            if !in_brackets.is_empty() {
+                in_brackets.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn parse_linalg_type(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.linalg_type.is_some() {
+            bail!(lit, "field `linalg_type` is already defined");
+        }
+
+        self.linalg_type = Some(match lit.value().as_str() {
+            "std" => LinAlgType::Std,
+            "cgmath" => LinAlgType::CgMath,
+            "nalgebra" => LinAlgType::Nalgebra,
+            ty => bail!(lit, "expected `std`, `cgmath` or `nalgebra`, found `{ty}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_dump(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitBool>()?;
+
+        if self.dump.is_some() {
+            bail!(lit, "field `dump` is already defined");
+        }
+
+        self.dump = Some(lit);
+
+        Ok(())
     }
 }
 
-impl std::fmt::Display for SpirvVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(<&str>::from(*self))
+impl ShaderFields {
+    fn parse_shader_field(&mut self, input: ParseStream<'_>, field_name: &str) -> Result {
+        match field_name {
+            "ty" => self.parse_ty(input)?,
+            "path" => self.parse_path(input)?,
+            "src" => self.parse_src(input)?,
+            "bytes" => self.parse_bytes(input)?,
+            "lang" => self.parse_lang(input)?,
+            "entry_point" => self.parse_entry_point(input)?,
+            "compiler" => self.parse_compiler(input)?,
+            "define" => self.parse_define(input)?,
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    fn parse_ty(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.shader_kind.is_some() {
+            bail!(lit, "field `ty` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `ty` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.shader_kind = Some(match lit.value().as_str() {
+            "vertex" => ShaderKind::Vertex,
+            "tess_ctrl" => ShaderKind::TessControl,
+            "tess_eval" => ShaderKind::TessEvaluation,
+            "geometry" => ShaderKind::Geometry,
+            "task" => ShaderKind::Task,
+            "mesh" => ShaderKind::Mesh,
+            "fragment" => ShaderKind::Fragment,
+            "compute" => ShaderKind::Compute,
+            "raygen" => ShaderKind::RayGeneration,
+            "anyhit" => ShaderKind::AnyHit,
+            "closesthit" => ShaderKind::ClosestHit,
+            "miss" => ShaderKind::Miss,
+            "intersection" => ShaderKind::Intersection,
+            "callable" => ShaderKind::Callable,
+            kind => bail!(
+                lit,
+                "expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, `mesh`, \
+                `fragment`, `compute`, `raygen`, `anyhit`, `closesthit`, `miss`, `intersection` \
+                or `callable`, found `{kind}`",
+            ),
+        });
+
+        Ok(())
+    }
+
+    fn parse_path(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
+                    "field `path` is already defined"
+                }
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
+                    "fields `path` and `src` cannot be defined in the same shader entry"
+                }
+                SourceKind::Precompiled(_) => {
+                    "fields `path` and `bytes` cannot be defined in the same shader entry"
+                }
+            };
+
+            bail!(lit, "{msg}");
+        }
+
+        self.source_kind = Some(SourceKind::Compiled(CompiledSourceKind::Path(lit)));
+
+        Ok(())
+    }
+
+    fn parse_src(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
+                    "fields `src` and `path` cannot be defined in the same shader entry"
+                }
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
+                    "field `src` is already defined"
+                }
+                SourceKind::Precompiled(_) => {
+                    "fields `src` and `bytes` cannot be defined in the same shader entry"
+                }
+            };
+
+            bail!(lit, "{msg}");
+        }
+
+        self.source_kind = Some(SourceKind::Compiled(CompiledSourceKind::Inline(lit)));
+
+        Ok(())
+    }
+
+    fn parse_bytes(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if let Some(source_kind) = &self.source_kind {
+            let msg = match source_kind {
+                SourceKind::Compiled(CompiledSourceKind::Path(_)) => {
+                    "fields `bytes` and `path` cannot be defined in the same shader entry"
+                }
+                SourceKind::Compiled(CompiledSourceKind::Inline(_)) => {
+                    "fields `bytes` and `src` cannot be defined in the same shader entry"
+                }
+                SourceKind::Precompiled(_) => "field `bytes` is already defined",
+            };
+
+            bail!(lit, "{msg}");
+        }
+
+        if self.shader_kind.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `ty` cannot be defined in the same shader entry",
+            );
+        }
+
+        if self.source_language.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `lang` cannot be defined in the same shader entry",
+            );
+        }
+
+        if self.entry_point.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `entry_point` cannot be defined in the same shader entry",
+            );
+        }
+
+        if self.compiler.is_some() {
+            bail!(
+                lit,
+                "fields `bytes` and `compiler` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.source_kind = Some(SourceKind::Precompiled(lit));
+
+        Ok(())
+    }
+
+    fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.source_language.is_some() {
+            bail!(lit, "field `lang` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `lang` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.source_language = Some(match lit.value().as_str() {
+            "glsl" => SourceLanguage::Glsl,
+            "hlsl" => SourceLanguage::Hlsl,
+            "slang" => SourceLanguage::Slang,
+            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_entry_point(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.entry_point.is_some() {
+            bail!(lit, "field `entry_point` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `entry_point` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.entry_point = Some(lit.value());
+
+        Ok(())
+    }
+
+    fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
+        let lit = input.parse::<LitStr>()?;
+
+        if self.compiler.is_some() {
+            bail!(lit, "field `compiler` is already defined");
+        }
+
+        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
+            bail!(
+                lit,
+                "fields `compiler` and `bytes` cannot be defined in the same shader entry",
+            );
+        }
+
+        self.compiler = Some(match lit.value().as_str() {
+            "shaderc" => Compiler::Shaderc,
+            "slangc" => Compiler::Slangc,
+            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
+        });
+
+        Ok(())
+    }
+
+    fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
+        let array_input;
+        bracketed!(array_input in input);
+
+        while !array_input.is_empty() {
+            let tuple_input;
+            parenthesized!(tuple_input in array_input);
+
+            let name = tuple_input.parse::<LitStr>()?;
+            tuple_input.parse::<Token![,]>()?;
+            let value = tuple_input.parse::<LitStr>()?;
+            self.macro_defines.push((name.value(), value.value()));
+
+            if !array_input.is_empty() {
+                array_input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_valid(
+        &self,
+        span: Span,
+        global_source_language: Option<SourceLanguage>,
+        global_compiler: Option<Compiler>,
+    ) -> Result {
+        let Some(source_kind) = &self.source_kind else {
+            return Err(Error::new(
+                span,
+                "please specify the shader source (e.g., `path: \"entry_point.glsl\"`)",
+            ));
+        };
+
+        if !matches!(source_kind, SourceKind::Precompiled(_)) {
+            if self.shader_kind.is_none() {
+                return Err(Error::new(
+                    span,
+                    "please specify the shader type (e.g., `ty: \"vertex\"`)",
+                ));
+            }
+        }
+
+        let source_language = self
+            .source_language
+            .or(global_source_language)
+            .unwrap_or_default();
+        let compiler = self
+            .compiler
+            .or(global_compiler)
+            .unwrap_or(source_language.default_compiler());
+
+        if !compiler.is_valid_for(source_language) {
+            return Err(Error::new(
+                span,
+                format_args!(
+                    "source language `{}` cannot be compiled with compiler `{}`",
+                    source_language.as_str(),
+                    compiler.as_str(),
+                ),
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -568,7 +1580,7 @@ enum ShaderKind {
 }
 
 impl ShaderKind {
-    fn as_glslc_stage(self) -> &'static str {
+    fn as_shaderc_stage(self) -> &'static str {
         match self {
             ShaderKind::Vertex => "vert",
             ShaderKind::TessControl => "tesc",
@@ -607,481 +1619,130 @@ impl ShaderKind {
     }
 }
 
-impl TryFrom<&str> for ShaderKind {
-    type Error = String;
+#[derive(Copy, Clone, Debug, Default)]
+enum SourceLanguage {
+    #[default]
+    Glsl,
+    Hlsl,
+    Slang,
+}
 
-    fn try_from(s: &str) -> std::result::Result<Self, Self::Error> {
-        match s {
-            "vertex" => Ok(ShaderKind::Vertex),
-            "tess_ctrl" => Ok(ShaderKind::TessControl),
-            "tess_eval" => Ok(ShaderKind::TessEvaluation),
-            "geometry" => Ok(ShaderKind::Geometry),
-            "task" => Ok(ShaderKind::Task),
-            "mesh" => Ok(ShaderKind::Mesh),
-            "fragment" => Ok(ShaderKind::Fragment),
-            "compute" => Ok(ShaderKind::Compute),
-            "raygen" => Ok(ShaderKind::RayGeneration),
-            "anyhit" => Ok(ShaderKind::AnyHit),
-            "closesthit" => Ok(ShaderKind::ClosestHit),
-            "miss" => Ok(ShaderKind::Miss),
-            "intersection" => Ok(ShaderKind::Intersection),
-            "callable" => Ok(ShaderKind::Callable),
-            _ => Err(format!(
-                "unknown shader kind: {s}; expected `vertex`, `tess_ctrl`, `tess_eval`, \
-                `geometry`, `task`, `mesh`, `fragment`, `compute`, `raygen`, `anyhit`, \
-                `closesthit`, `miss`, `intersection` or `callable`",
-            )),
+impl SourceLanguage {
+    fn as_str(self) -> &'static str {
+        match self {
+            SourceLanguage::Glsl => "glsl",
+            SourceLanguage::Hlsl => "hlsl",
+            SourceLanguage::Slang => "slang",
+        }
+    }
+
+    fn default_compiler(self) -> Compiler {
+        match self {
+            Self::Glsl | Self::Hlsl => Compiler::Shaderc,
+            Self::Slang => Compiler::Slangc,
         }
     }
 }
 
-struct MacroInput {
-    root_path_env: Option<LitStr>,
-    include_directories: Vec<PathBuf>,
-    global_macro_defines: Vec<(String, String)>,
-    shaders: HashMap<String, ShaderFields>,
-    source_language: Option<SourceLanguage>,
-    spirv_version: Option<SpirvVersion>,
-    vulkan_version: Option<EnvVersion>,
-    generate_structs: bool,
-    custom_derives: Vec<SynPath>,
-    linalg_type: LinAlgType,
-    dump: LitBool,
+#[derive(Clone, Copy, Debug)]
+enum Compiler {
+    Shaderc,
+    Slangc,
 }
 
-struct ShaderFields {
-    shader_kind: Option<ShaderKind>,
-    source_kind: SourceKind,
-    macro_defines: Vec<(String, String)>,
-}
+impl Compiler {
+    fn as_str(self) -> &'static str {
+        match self {
+            Compiler::Shaderc => "shaderc",
+            Compiler::Slangc => "slangc",
+        }
+    }
 
-impl MacroInput {
-    #[cfg(test)]
-    fn empty() -> Self {
-        MacroInput {
-            root_path_env: None,
-            include_directories: Vec::new(),
-            global_macro_defines: Vec::new(),
-            shaders: HashMap::default(),
-            vulkan_version: None,
-            spirv_version: None,
-            generate_structs: true,
-            custom_derives: Vec::new(),
-            linalg_type: LinAlgType::default(),
-            dump: LitBool::new(false, Span::call_site()),
-            source_language: None,
+    fn as_command(self) -> &'static str {
+        match self {
+            Compiler::Shaderc => "glslc",
+            Compiler::Slangc => "slangc",
+        }
+    }
+
+    fn is_valid_for(self, source_language: SourceLanguage) -> bool {
+        match self {
+            Compiler::Shaderc => {
+                matches!(source_language, SourceLanguage::Glsl | SourceLanguage::Hlsl)
+            }
+            Compiler::Slangc => {
+                matches!(
+                    source_language,
+                    SourceLanguage::Glsl | SourceLanguage::Hlsl | SourceLanguage::Slang,
+                )
+            }
         }
     }
 }
 
-impl Parse for MacroInput {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+#[derive(Copy, Clone, Debug, Default)]
+enum VulkanVersion {
+    #[default]
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+}
 
-        #[derive(Default)]
-        struct MaybeShaderFields {
-            shader_kind: Option<ShaderKind>,
-            source_kind: Option<SourceKind>,
-            macro_defines: Vec<(String, String)>,
+impl VulkanVersion {
+    fn as_shaderc_target_env(self) -> &'static str {
+        match self {
+            VulkanVersion::V1_0 => "vulkan1.0",
+            VulkanVersion::V1_1 => "vulkan1.1",
+            VulkanVersion::V1_2 => "vulkan1.2",
+            VulkanVersion::V1_3 => "vulkan1.3",
         }
+    }
 
-        let mut root_path_env = None;
-        let mut include_directories = Vec::new();
-        let mut global_macro_defines = Vec::new();
-        let mut shaders = HashMap::default();
-        let mut vulkan_version = None;
-        let mut spirv_version = None;
-        let mut generate_structs = None;
-        let mut custom_derives = None;
-        let mut linalg_type = None;
-        let mut dump = None;
-        let mut source_language = None;
-
-        fn parse_shader_fields(
-            output: &mut MaybeShaderFields,
-            name: &str,
-            input: ParseStream<'_>,
-        ) -> Result<()> {
-            match name {
-                "ty" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if output.shader_kind.is_some() {
-                        bail!(lit, "field `ty` is already defined");
-                    }
-
-                    output.shader_kind = Some(match ShaderKind::try_from(lit.value().as_str()) {
-                        Ok(shader_kind) => shader_kind,
-                        Err(msg) => bail!(lit, "{msg}"),
-                    });
-                }
-                "bytes" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if output.source_kind.is_some() {
-                        bail!(
-                            lit,
-                            "only one of `src`, `path`, or `bytes` can be defined per shader entry",
-                        );
-                    }
-
-                    output.source_kind = Some(SourceKind::Bytes(lit));
-                }
-                "path" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if output.source_kind.is_some() {
-                        bail!(
-                            lit,
-                            "only one of `src`, `path` or `bytes` can be defined per shader entry",
-                        );
-                    }
-
-                    output.source_kind = Some(SourceKind::Path(lit));
-                }
-                "src" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if output.source_kind.is_some() {
-                        bail!(
-                            lit,
-                            "only one of `src`, `path` or `bytes` can be defined per shader entry",
-                        );
-                    }
-
-                    output.source_kind = Some(SourceKind::Src(lit));
-                }
-                "define" => {
-                    let array_input;
-                    bracketed!(array_input in input);
-
-                    while !array_input.is_empty() {
-                        let tuple_input;
-                        parenthesized!(tuple_input in array_input);
-
-                        let name = tuple_input.parse::<LitStr>()?;
-                        tuple_input.parse::<Token![,]>()?;
-                        let value = tuple_input.parse::<LitStr>()?;
-                        output.macro_defines.push((name.value(), value.value()));
-
-                        if !array_input.is_empty() {
-                            array_input.parse::<Token![,]>()?;
-                        }
-                    }
-                }
-                _ => unreachable!(),
-            }
-
-            Ok(())
+    fn to_spirv_version(self) -> SpirvVersion {
+        match self {
+            VulkanVersion::V1_0 => SpirvVersion::V1_0,
+            VulkanVersion::V1_1 => SpirvVersion::V1_3,
+            VulkanVersion::V1_2 => SpirvVersion::V1_5,
+            VulkanVersion::V1_3 => SpirvVersion::V1_6,
         }
+    }
+}
 
-        while !input.is_empty() {
-            let field_ident = input.parse::<Ident>()?;
-            input.parse::<Token![:]>()?;
-            let field = field_ident.to_string();
+#[derive(Copy, Clone, Debug)]
+enum SpirvVersion {
+    V1_0,
+    V1_1,
+    V1_2,
+    V1_3,
+    V1_4,
+    V1_5,
+    V1_6,
+}
 
-            match field.as_str() {
-                "bytes" | "src" | "path" | "ty" => {
-                    if shaders.len() > 1 || (shaders.len() == 1 && !shaders.contains_key("")) {
-                        bail!(
-                            field_ident,
-                            "only one of `src`, `path`, `bytes` or `shaders` can be defined",
-                        );
-                    }
-
-                    parse_shader_fields(shaders.entry(String::new()).or_default(), &field, input)?;
-                }
-                "shaders" => {
-                    if !shaders.is_empty() {
-                        bail!(
-                            field_ident,
-                            "only one of `src`, `path`, `bytes` or `shaders` can be defined",
-                        );
-                    }
-
-                    let in_braces;
-                    braced!(in_braces in input);
-
-                    while !in_braces.is_empty() {
-                        let name_ident = in_braces.parse::<Ident>()?;
-                        let name = name_ident.to_string();
-
-                        if shaders.contains_key(&name) {
-                            bail!(name_ident, "shader entry `{name}` is already defined");
-                        }
-
-                        in_braces.parse::<Token![:]>()?;
-
-                        let in_shader_definition;
-                        braced!(in_shader_definition in in_braces);
-
-                        while !in_shader_definition.is_empty() {
-                            let field_ident = in_shader_definition.parse::<Ident>()?;
-                            in_shader_definition.parse::<Token![:]>()?;
-                            let field = field_ident.to_string();
-
-                            match field.as_str() {
-                                "bytes" | "src" | "path" | "ty" | "define" => {
-                                    parse_shader_fields(
-                                        shaders.entry(name.clone()).or_default(),
-                                        &field,
-                                        &in_shader_definition,
-                                    )?;
-                                }
-                                field => bail!(
-                                    field_ident,
-                                    "expected `bytes`, `src`, `path` or `ty` as a field, found \
-                                    `{field}`",
-                                ),
-                            }
-
-                            if !in_shader_definition.is_empty() {
-                                in_shader_definition.parse::<Token![,]>()?;
-                            }
-                        }
-
-                        if !in_braces.is_empty() {
-                            in_braces.parse::<Token![,]>()?;
-                        }
-
-                        match shaders.get(&name).unwrap() {
-                            MaybeShaderFields {
-                                shader_kind: None, ..
-                            } => bail!(
-                                "please specify a type for shader `{name}` e.g. `ty: \"vertex\"`",
-                            ),
-                            MaybeShaderFields {
-                                source_kind: None, ..
-                            } => bail!(
-                                "please specify a source for shader `{name}` e.g. \
-                                `path: \"entry_point.glsl\"`",
-                            ),
-                            _ => (),
-                        }
-                    }
-
-                    if shaders.is_empty() {
-                        bail!("at least one shader entry must be defined");
-                    }
-                }
-                "define" => {
-                    let array_input;
-                    bracketed!(array_input in input);
-
-                    while !array_input.is_empty() {
-                        let tuple_input;
-                        parenthesized!(tuple_input in array_input);
-
-                        let name = tuple_input.parse::<LitStr>()?;
-                        tuple_input.parse::<Token![,]>()?;
-                        let value = tuple_input.parse::<LitStr>()?;
-                        global_macro_defines.push((name.value(), value.value()));
-
-                        if !array_input.is_empty() {
-                            array_input.parse::<Token![,]>()?;
-                        }
-                    }
-                }
-                "root_path_env" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if root_path_env.is_some() {
-                        bail!(lit, "field `root_path_env` is already defined");
-                    }
-                    root_path_env = Some(lit);
-                }
-                "include" => {
-                    let in_brackets;
-                    bracketed!(in_brackets in input);
-
-                    while !in_brackets.is_empty() {
-                        let path = in_brackets.parse::<LitStr>()?;
-
-                        include_directories
-                            .push([&manifest_dir, &path.value()].into_iter().collect());
-
-                        if !in_brackets.is_empty() {
-                            in_brackets.parse::<Token![,]>()?;
-                        }
-                    }
-                }
-                "lang" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if source_language.is_some() {
-                        bail!(lit, "field `lang` is already defined");
-                    }
-
-                    source_language = Some(match lit.value().as_str() {
-                        "glsl" => SourceLanguage::Glsl,
-                        "hlsl" => SourceLanguage::Hlsl,
-                        "slang" => SourceLanguage::Slang,
-                        lang => bail!(lit, "expected `glsl`, `hlsl`, or `slang`, found `{lang}`"),
-                    })
-                }
-                "vulkan_version" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if vulkan_version.is_some() {
-                        bail!(lit, "field `vulkan_version` is already defined");
-                    }
-
-                    vulkan_version = Some(match lit.value().as_str() {
-                        "1.0" => EnvVersion::Vulkan1_0,
-                        "1.1" => EnvVersion::Vulkan1_1,
-                        "1.2" => EnvVersion::Vulkan1_2,
-                        "1.3" => EnvVersion::Vulkan1_3,
-                        ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
-                    });
-                }
-                "spirv_version" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if spirv_version.is_some() {
-                        bail!(lit, "field `spirv_version` is already defined");
-                    }
-
-                    spirv_version = Some(match lit.value().as_str() {
-                        "1.0" => SpirvVersion::V1_0,
-                        "1.1" => SpirvVersion::V1_1,
-                        "1.2" => SpirvVersion::V1_2,
-                        "1.3" => SpirvVersion::V1_3,
-                        "1.4" => SpirvVersion::V1_4,
-                        "1.5" => SpirvVersion::V1_5,
-                        "1.6" => SpirvVersion::V1_6,
-                        ver => bail!(
-                            lit,
-                            "expected `1.0`, `1.1`, `1.2`, `1.3`, `1.4`, `1.5` or `1.6`, found \
-                            `{ver}`",
-                        ),
-                    });
-                }
-                "generate_structs" => {
-                    let lit = input.parse::<LitBool>()?;
-                    if generate_structs.is_some() {
-                        bail!(lit, "field `generate_structs` is already defined");
-                    }
-                    generate_structs = Some(lit.value);
-                }
-                "custom_derives" => {
-                    let in_brackets;
-                    bracketed!(in_brackets in input);
-
-                    while !in_brackets.is_empty() {
-                        if custom_derives.is_none() {
-                            custom_derives = Some(Vec::new());
-                        }
-
-                        custom_derives
-                            .as_mut()
-                            .unwrap()
-                            .push(in_brackets.parse::<SynPath>()?);
-
-                        if !in_brackets.is_empty() {
-                            in_brackets.parse::<Token![,]>()?;
-                        }
-                    }
-                }
-                "types_meta" => {
-                    bail!(
-                        field_ident,
-                        "you no longer need to add any derives to use the generated structs in \
-                        buffers, and you also no longer need bytemuck as a dependency, because \
-                        `BufferContents` is derived automatically for the generated structs; if \
-                        you need to add additional derives (e.g. `Debug`, `PartialEq`) then please \
-                        use the `custom_derives` field of the macro",
-                    );
-                }
-                "linalg_type" => {
-                    let lit = input.parse::<LitStr>()?;
-                    if linalg_type.is_some() {
-                        bail!(lit, "field `linalg_type` is already defined");
-                    }
-
-                    linalg_type = Some(match lit.value().as_str() {
-                        "std" => LinAlgType::Std,
-                        "cgmath" => LinAlgType::CgMath,
-                        "nalgebra" => LinAlgType::Nalgebra,
-                        ty => bail!(lit, "expected `std`, `cgmath` or `nalgebra`, found `{ty}`"),
-                    });
-                }
-                "dump" => {
-                    let lit = input.parse::<LitBool>()?;
-                    if dump.is_some() {
-                        bail!(lit, "field `dump` is already defined");
-                    }
-
-                    dump = Some(lit);
-                }
-                field => bail!(
-                    field_ident,
-                    "expected `bytes`, `src`, `path`, `ty`, `shaders`, `define`, `include`, \
-                    `vulkan_version`, `spirv_version`, `generate_structs`, `custom_derives`, \
-                    `linalg_type` or `dump` as a field, found `{field}`",
-                ),
-            }
-
-            if !input.is_empty() {
-                input.parse::<Token![,]>()?;
-            }
+impl SpirvVersion {
+    fn as_shaderc_target_spv(self) -> &'static str {
+        match self {
+            SpirvVersion::V1_0 => "spv1.0",
+            SpirvVersion::V1_1 => "spv1.1",
+            SpirvVersion::V1_2 => "spv1.2",
+            SpirvVersion::V1_3 => "spv1.3",
+            SpirvVersion::V1_4 => "spv1.4",
+            SpirvVersion::V1_5 => "spv1.5",
+            SpirvVersion::V1_6 => "spv1.6",
         }
+    }
 
-        if shaders.is_empty() {
-            bail!(r#"please specify at least one shader e.g. `ty: "vertex", src: "<GLSL code>"`"#);
+    fn as_slangc_profile(self) -> &'static str {
+        match self {
+            SpirvVersion::V1_0 => "spirv_1_0",
+            SpirvVersion::V1_1 => "spirv_1_1",
+            SpirvVersion::V1_2 => "spirv_1_2",
+            SpirvVersion::V1_3 => "spirv_1_3",
+            SpirvVersion::V1_4 => "spirv_1_4",
+            SpirvVersion::V1_5 => "spirv_1_5",
+            SpirvVersion::V1_6 => "spirv_1_6",
         }
-
-        if let Some(fields) = shaders.get("") {
-            match fields {
-                MaybeShaderFields {
-                    shader_kind: None,
-                    source_kind: Some(SourceKind::Bytes(_)),
-                    ..
-                } => {}
-                MaybeShaderFields {
-                    shader_kind: Some(_),
-                    source_kind: Some(SourceKind::Bytes(_)),
-                    ..
-                } => {
-                    bail!(
-                        r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
-                    );
-                }
-                MaybeShaderFields {
-                    shader_kind: None, ..
-                } => {
-                    bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
-                }
-                MaybeShaderFields {
-                    source_kind: None, ..
-                } => {
-                    bail!(r#"please specify the source of the shader e.g. `src: "<GLSLcode>"`"#);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(MacroInput {
-            root_path_env,
-            include_directories,
-            global_macro_defines,
-            shaders: shaders
-                .into_iter()
-                .map(|(key, fields)| {
-                    (
-                        key,
-                        ShaderFields {
-                            shader_kind: fields.shader_kind,
-                            source_kind: fields.source_kind.unwrap(),
-                            macro_defines: fields.macro_defines,
-                        },
-                    )
-                })
-                .collect(),
-            vulkan_version,
-            spirv_version,
-            generate_structs: generate_structs.unwrap_or(true),
-            custom_derives: custom_derives.unwrap_or_else(|| {
-                vec![
-                    parse_quote! { ::std::clone::Clone },
-                    parse_quote! { ::std::marker::Copy },
-                ]
-            }),
-            linalg_type: linalg_type.unwrap_or_default(),
-            dump: dump.unwrap_or_else(|| LitBool::new(false, Span::call_site())),
-            source_language,
-        })
     }
 }
 
@@ -1092,6 +1753,8 @@ enum LinAlgType {
     CgMath,
     Nalgebra,
 }
+
+type Result<T = (), E = syn::Error> = ::std::result::Result<T, E>;
 
 macro_rules! bail {
     ($msg:literal $(,)?) => {
