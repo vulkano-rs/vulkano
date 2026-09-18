@@ -211,7 +211,7 @@ pub use self::{
     layout::DeviceLayout,
     suballocator::{
         AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, Suballocation,
-        Suballocator, SuballocatorError,
+        Suballocator, SuballocatorError, TlsfAllocator,
     },
 };
 use super::{
@@ -984,8 +984,8 @@ impl Display for MemoryAllocatorError {
 /// not suited to the task.
 ///
 /// See also [`GenericMemoryAllocator`] for details about the allocation algorithm, and
-/// [`FreeListAllocator`] for details about the suballocation algorithm.
-pub type StandardMemoryAllocator = GenericMemoryAllocator<FreeListAllocator>;
+/// [`TlsfAllocator`] for details about the suballocation algorithm.
+pub type StandardMemoryAllocator = GenericMemoryAllocator<TlsfAllocator>;
 
 /// A generic implementation of a [memory allocator].
 ///

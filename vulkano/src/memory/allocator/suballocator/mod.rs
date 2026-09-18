@@ -6,6 +6,7 @@
 
 pub use self::{
     buddy::BuddyAllocator, bump::BumpAllocator, free_list::FreeListAllocator, region::Region,
+    tlsf::TlsfAllocator,
 };
 use super::{align_down, AllocationHandle, DeviceAlignment, DeviceLayout};
 use crate::{image::ImageTiling, DeviceSize};
@@ -18,6 +19,7 @@ use std::{
 mod buddy;
 mod bump;
 mod free_list;
+mod tlsf;
 
 /// Suballocators are used to divide a *region* into smaller *suballocations*.
 ///
@@ -75,7 +77,7 @@ mod free_list;
 ///     memory::{
 ///         allocator::{
 ///             suballocator::Region, AllocationCreateInfo, AllocationType, DeviceLayout,
-///             FreeListAllocator, Suballocator,
+///             Suballocator, TlsfAllocator,
 ///         },
 ///         DeviceAlignment,
 ///     },
@@ -101,7 +103,7 @@ mod free_list;
 /// );
 ///
 /// // Since we want to suballocate the whole buffer, the region is created to match the buffer.
-/// let allocator = FreeListAllocator::new(Region::new(0, buffer.len()).unwrap());
+/// let allocator = TlsfAllocator::new(Region::new(0, buffer.len()).unwrap());
 ///
 /// // We can then allocate whatever type of data we need and reinterpret the bytes to that type.
 /// # let index_count = return;
@@ -148,7 +150,7 @@ mod free_list;
 ///     buffer::Subbuffer,
 ///     memory::{
 ///         allocator::{
-///             suballocator::Region, AllocationType, DeviceLayout, FreeListAllocator, Suballocator,
+///             suballocator::Region, AllocationType, DeviceLayout, Suballocator, TlsfAllocator,
 ///         },
 ///         DeviceAlignment,
 ///     },
@@ -165,7 +167,7 @@ mod free_list;
 ///
 /// // Since we want to suballocate the whole buffer, the region is created to match the buffer.
 /// // Note that unlike in the first example, this time the region is not in bytes.
-/// let allocator = FreeListAllocator::new(Region::new(0, vertex_buffer.len()).unwrap());
+/// let allocator = TlsfAllocator::new(Region::new(0, vertex_buffer.len()).unwrap());
 ///
 /// // We can then allocate some elements. Note that unlike in the first example, we have to use
 /// // `DeviceLayout::from_size_alignment` directly. This is because our layout is in elements
@@ -220,7 +222,7 @@ mod free_list;
 ///     memory::{
 ///         allocator::{
 ///             suballocator::Region, AllocationCreateInfo, AllocationType, DeviceLayout,
-///             FreeListAllocator, Suballocator,
+///             Suballocator, TlsfAllocator,
 ///         },
 ///         DeviceAlignment,
 ///     },
@@ -252,7 +254,7 @@ mod free_list;
 ///
 /// // Since we want to suballocate the parent `DeviceMemory` block, but only the portion that's
 /// // taken up by the buffer, the region is created with the offset and size of the buffer.
-/// let allocator = FreeListAllocator::new(Region::new(offset, buffer.len()).unwrap());
+/// let allocator = TlsfAllocator::new(Region::new(offset, buffer.len()).unwrap());
 ///
 /// // We can then allocate whatever type of data we need. Note that unlike in the first example,
 /// // we don't know what the alignment might be. We subtract the offset of the buffer to get a
@@ -742,6 +744,176 @@ mod tests {
             LAST_PAGE_OFFSET + 15,
             PAGE_SIZE,
         ));
+    }
+
+    #[test]
+    fn tlsf_allocator_capacity() {
+        const THREADS: DeviceSize = 12;
+        const ALLOCATIONS_PER_THREAD: DeviceSize = 100;
+        const ALLOCATION_STEP: DeviceSize = 117;
+        const MAX_ALLOCATION_SIZE: DeviceSize = ALLOCATION_STEP * THREADS;
+        const REGION_SIZE: DeviceSize = (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2)
+            * ALLOCATIONS_PER_THREAD
+            + MAX_ALLOCATION_SIZE;
+
+        let allocator = Mutex::new(TlsfAllocator::new(Region::new(0, REGION_SIZE).unwrap()));
+        let allocs = ArrayQueue::new((ALLOCATIONS_PER_THREAD * THREADS) as usize);
+
+        let barrier = &Barrier::new(THREADS as usize);
+
+        // Using threads to randomize allocation order.
+        thread::scope(|scope| {
+            for i in 1..=THREADS {
+                let (allocator, allocs) = (&allocator, &allocs);
+
+                scope.spawn(move || {
+                    let layout = DeviceLayout::from_size_alignment(i * ALLOCATION_STEP, 1).unwrap();
+
+                    barrier.wait();
+
+                    for _ in 0..ALLOCATIONS_PER_THREAD {
+                        let mut allocator = allocator.lock();
+                        let alloc = allocator
+                            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                            .unwrap();
+                        allocs.push(alloc).unwrap();
+                    }
+                });
+            }
+        });
+
+        let mut allocator = allocator.into_inner();
+
+        let layout = DeviceLayout::from_size_alignment(MAX_ALLOCATION_SIZE, 1).unwrap();
+        assert!(allocator
+            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
+        assert_eq!(allocator.free_size(), MAX_ALLOCATION_SIZE);
+        assert_eq!(
+            allocator.suballocations().count(),
+            (ALLOCATIONS_PER_THREAD * THREADS) as usize + 1,
+        );
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
+
+        let mut free_size = MAX_ALLOCATION_SIZE;
+
+        for (index, alloc) in allocs.into_iter().enumerate() {
+            unsafe { allocator.deallocate(alloc) };
+
+            free_size += alloc.size;
+
+            let allocated_allocs = (ALLOCATIONS_PER_THREAD * THREADS) as usize - index - 1;
+            let total_allocs = if allocated_allocs == 0 {
+                1
+            } else {
+                allocated_allocs + 2
+            };
+
+            assert_eq!(allocator.free_size(), free_size);
+            assert_eq!(allocator.suballocations().count(), total_allocs);
+            assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
+        }
+
+        assert!(allocator
+            .allocate(
+                DeviceLayout::from_size_alignment(REGION_SIZE, 1).unwrap(),
+                AllocationType::Unknown,
+                DeviceAlignment::MIN,
+            )
+            .is_err());
+        assert_eq!(allocator.free_size(), REGION_SIZE);
+        assert_eq!(allocator.suballocations().count(), 1);
+        assert_eq!(suballocation_size_sum(&allocator), REGION_SIZE);
+    }
+
+    #[test]
+    fn tlsf_allocator_respects_alignment() {
+        const REGION_SIZE: DeviceSize = 10 * 256;
+        const LAYOUT: DeviceLayout = DeviceLayout::from_size_alignment(1, 256).unwrap();
+
+        let mut allocator = TlsfAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocs = Vec::with_capacity(10);
+
+        for _ in 0..9 {
+            allocs.push(
+                allocator
+                    .allocate(LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                    .unwrap(),
+            );
+        }
+
+        assert!(allocator
+            .allocate(LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
+        assert_eq!(allocator.free_size(), 256);
+
+        for alloc in allocs.drain(..) {
+            unsafe { allocator.deallocate(alloc) };
+        }
+    }
+
+    #[test]
+    fn tlsf_allocator_respects_granularity() {
+        const GRANULARITY: DeviceAlignment = DeviceAlignment::new(256).unwrap();
+        const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
+
+        let mut allocator = TlsfAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+
+        {
+            const ALLOCATIONS: DeviceSize = REGION_SIZE / tlsf::MIN_NODE_SIZE;
+
+            let mut allocs = Vec::with_capacity(ALLOCATIONS as usize);
+
+            for _ in 0..ALLOCATIONS {
+                allocs.push(
+                    allocator
+                        .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                        .unwrap(),
+                );
+            }
+
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                .is_err());
+            assert_eq!(allocator.free_size(), 0);
+
+            for alloc in allocs {
+                unsafe { allocator.deallocate(alloc) };
+            }
+        }
+
+        {
+            const ALLOCATIONS: DeviceSize = GRANULARITY.as_devicesize() / tlsf::MIN_NODE_SIZE;
+
+            let alloc1 = allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+                .unwrap();
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+                .is_err());
+            assert_eq!(allocator.free_size(), GRANULARITY.as_devicesize());
+
+            let mut allocs = Vec::with_capacity(ALLOCATIONS as usize);
+
+            for _ in 0..ALLOCATIONS {
+                allocs.push(
+                    allocator
+                        .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                        .unwrap(),
+                );
+            }
+
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                .is_err());
+            assert_eq!(allocator.free_size(), 0);
+
+            for alloc in allocs {
+                unsafe { allocator.deallocate(alloc) };
+            }
+
+            unsafe { allocator.deallocate(alloc1) };
+        }
     }
 
     #[test]

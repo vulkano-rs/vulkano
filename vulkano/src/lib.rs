@@ -741,6 +741,11 @@ macro_rules! autogen_output {
 }
 use autogen_output;
 
+// TODO: Replace with `std::hint::cold_path` once we bump the MSRV.
+#[cold]
+#[inline(always)]
+const fn cold_path() {}
+
 // The following functions are explicitly written to NOT have an early return. An early return
 // inhibits the loop unroller and auto-vectorizer. These functions are used with arrays small
 // enough where an early return would never be a gain (quite the opposite). The loops as written

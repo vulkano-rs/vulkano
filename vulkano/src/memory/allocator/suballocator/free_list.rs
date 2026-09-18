@@ -13,14 +13,9 @@ use std::{cmp, hint, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 
 /// A [suballocator] that uses the most generic [free-list].
 ///
-/// The strength of this allocator is that it can create and free allocations completely
-/// dynamically, which means they can be any size and created/freed in any order. The downside is
-/// that this always leads to horrific [external fragmentation] the more such dynamic allocations
-/// are made. Therefore, this allocator is best suited for long-lived allocations. If you need
-/// to create allocations of various sizes, but can't afford this fragmentation, then the
-/// [`BuddyAllocator`] is your best buddy. If you need to create allocations which share a similar
-/// size, consider an allocation pool. Lastly, if you need to allocate very often, then
-/// [`BumpAllocator`] is best suited.
+/// You generally shouldn't use this allocator as [`TlsfAllocator`] is better in almost every way.
+/// However, unlike `TlsfAllocator`, this allocator employs a best-fit strategy, which can lead to
+/// slightly better [fragmentation] at the cost of considerably worse performance.
 ///
 /// See also [the `Suballocator` implementation].
 ///
@@ -29,35 +24,34 @@ use std::{cmp, hint, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 /// The free-list stores suballocations which can have any offset and size. When an allocation
 /// request is made, the list is searched using the best-fit strategy, meaning that the smallest
 /// suballocation that fits the request is chosen. If required, the chosen suballocation is trimmed
-/// at the ends and the ends are returned to the free-list. As such, no [internal fragmentation]
+/// at the ends, and the ends are returned to the free-list. As such, no [internal fragmentation]
 /// occurs. The front might need to be trimmed because of [alignment requirements] and the end
 /// because of a larger than required size. When an allocation is freed, the allocator checks if
-/// the adjacent suballocations are free, and if so it coalesces them into a bigger one before
+/// the adjacent suballocations are free, and if so, it coalesces them into a bigger one before
 /// putting it in the free-list.
 ///
 /// # Efficiency
 ///
 /// The free-list is sorted by size, which means that when allocating, finding a best-fit is always
-/// possible in *O*(log(*n*)) time in the worst case. When freeing, the coalescing requires us to
-/// remove the adjacent free suballocations from the free-list which is *O*(log(*n*)), and insert
-/// the possibly coalesced suballocation into the free-list which has the same time complexity, so
-/// in total freeing is *O*(log(*n*)).
+/// possible in *O*(log(*n*)) time in the worst case. When deallocating, the coalescing requires us
+/// to remove the adjacent free suballocations from the free-list, which is *O*(log(*n*)), and
+/// insert the possibly coalesced suballocation into the free-list, which has the same time
+/// complexity, so in total deallocation is *O*(log(*n*)). Resetting is *O*(1).
 ///
-/// There is one notable edge-case: after the allocator finds a best-fit, it is possible that it
+/// There is one notable edge case: after the allocator finds a best-fit, it is possible that it
 /// needs to align the suballocation's offset to a higher value, after which the requested size
 /// might no longer fit. In such a case, the next free suballocation in sorted order is tried until
 /// a fit is successful. If this issue is encountered with all candidates, then the time complexity
-/// would be *O*(*n*). However, this scenario is extremely unlikely which is why we are not
+/// would be *O*(*n*). However, this scenario is extremely unlikely, which is why we are not
 /// considering it in the above analysis. Additionally, if your free-list is filled with
-/// allocations that all have the same size then that seems pretty sus. Sounds like you're in dire
+/// allocations that all have the same size, then that seems pretty sus. Sounds like you're in dire
 /// need of an allocation pool.
 ///
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
-/// [external fragmentation]: super::super#external-fragmentation
-/// [`BuddyAllocator`]: super::BuddyAllocator
-/// [`BumpAllocator`]: super::BumpAllocator
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
+/// [`TlsfAllocator`]: super::TlsfAllocator
+/// [fragmentation]: super::super#fragmentation
+/// [the `Suballocator` implementation]: Self#impl-Suballocator-for-FreeListAllocator
 /// [internal fragmentation]: super::super#internal-fragmentation
 /// [alignment requirements]: super::super#alignment
 #[derive(Debug)]
@@ -467,12 +461,13 @@ impl SuballocationList {
         debug_assert!(!self.free_list.contains(&node_ptr));
 
         let prev_ptr = node.prev_ptr;
-        let prev = unsafe { prev_ptr.as_ref() };
 
-        if prev.allocation_type == SuballocationType::Free {
-            // SAFETY: We checked that the suballocation is free, which means that it must be
-            // in the free-list.
+        if unsafe { prev_ptr.as_ref() }.allocation_type == SuballocationType::Free {
+            // SAFETY: We checked that the suballocation is free, which means that it must be in
+            // the free-list.
             unsafe { self.remove_from_free_list(prev_ptr) };
+
+            let prev = unsafe { prev_ptr.as_ref() };
 
             node.prev_ptr = prev.prev_ptr;
             node.offset = prev.offset;
@@ -491,17 +486,18 @@ impl SuballocationList {
             // - The suballocation was removed from the free-list.
             // - The next suballocation and possibly a previous suballocation have been updated such
             //   that they no longer reference the suballocation.
-            // - The head no longer points to the suballocation if it used to.
+            //
             // All of these conditions combined guarantee that `prev_ptr` cannot be used again.
             unsafe { self.node_allocator.deallocate(prev_ptr) };
         }
 
         let next_ptr = node.next_ptr;
-        let next = unsafe { next_ptr.as_ref() };
 
-        if next.allocation_type == SuballocationType::Free {
+        if unsafe { next_ptr.as_ref() }.allocation_type == SuballocationType::Free {
             // SAFETY: Same as above.
             unsafe { self.remove_from_free_list(next_ptr) };
+
+            let next = unsafe { next_ptr.as_ref() };
 
             node.next_ptr = next.next_ptr;
             // This is overflow-safe for the same reason as above.

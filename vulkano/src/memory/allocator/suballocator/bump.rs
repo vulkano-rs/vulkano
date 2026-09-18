@@ -13,40 +13,40 @@ use std::iter::FusedIterator;
 
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
 ///
-/// With bump allocation, the used up space increases linearly as allocations are made and
+/// With bump allocation, the used up space increases linearly as allocations are made, and
 /// allocations can never be freed individually, which is why this algorithm is also called *linear
-/// allocation*. It is also known as *arena allocation*.
+/// allocation*.
 ///
 /// `BumpAllocator`s are best suited for very short-lived (say a few frames at best) resources that
-/// need to be allocated often (say each frame), to really take advantage of the performance gains.
-/// For creating long-lived allocations, [`FreeListAllocator`] is best suited. The way you would
+/// need to be allocated often (say each frame) to really take advantage of the performance gains.
+/// For creating long-lived allocations, [`TlsfAllocator`] is best suited. The way you would
 /// typically use this allocator is to have one for each frame in flight. At the start of a frame,
-/// you reset it and allocate your resources with it. You write to the resources, render with them,
-/// and drop them at the end of the frame.
+/// you reset it and allocate your resources with it. You then write to the resources and render
+/// that frame with them.
 ///
 /// See also [the `Suballocator` implementation].
 ///
 /// # Algorithm
 ///
 /// What happens is that every time you make an allocation, you receive one with an offset
-/// corresponding to the *free start* within the [region], and then the free start is *bumped*, so
-/// that following allocations wouldn't alias it. As you can imagine, this is **extremely fast**,
-/// because it doesn't need to keep a [free-list]. It only needs to do a few additions and
-/// comparisons. But beware, **fast is about all this is**. It is horribly memory inefficient when
-/// used wrong, and is very susceptible to [memory leaks].
+/// corresponding to the *free start* within the [region], and then the free start is *bumped* so
+/// that following allocations wouldn't alias it. As you can imagine, this is **extremely fast**
+/// because it doesn't need to keep a [free-list]. It only needs to do a few arithmetic and bitwise
+/// operations and comparisons. But beware, **fast is about all this is**. It is horribly memory
+/// inefficient when used wrong, and is very susceptible to [memory leaks].
 ///
-/// Once you know that you are done with the allocations, meaning you know they have all been
-/// dropped, you can safely reset the allocator using the [`reset`] method as long as the allocator
-/// is not shared between threads. This is one of the reasons you are generally advised to use one
-/// `BumpAllocator` per thread if you can.
+/// Once you know that you are done with the allocations, meaning you know they are all no longer
+/// used, you can safely reset the allocator using the [`reset`] method as long as the allocator
+/// is not shared between threads. This is one of the reasons you are generally advised to use (at
+/// least) one `BumpAllocator` per thread if you can.
 ///
 /// # Efficiency
 ///
 /// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations).
 ///
 /// [suballocator]: Suballocator
-/// [`FreeListAllocator`]: super::FreeListAllocator
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
+/// [`TlsfAllocator`]: super::TlsfAllocator
+/// [the `Suballocator` implementation]: Self#impl-Suballocator-for-BumpAllocator
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
 /// [memory leaks]: super::super#leakage
