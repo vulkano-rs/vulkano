@@ -13,6 +13,33 @@
       system: let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
+        vulkanDependencies = with pkgs; [
+          shader-slang
+          shaderc
+          vulkan-loader
+        ];
+        vulkanTools = with pkgs; [
+          spirv-tools
+          vulkan-tools
+          vulkan-tools-lunarg
+          vulkan-validation-layers
+        ];
+        # (needed for the gl-interop example)
+        openglDependencies = with pkgs; [
+          libGL
+        ];
+        winitDependencies = with pkgs; [
+          libx11
+          libxcursor
+          libxi
+          libxkbcommon
+          libxrandr
+          wayland
+        ];
+        workflowDependencies = with pkgs; [
+          cargo-hack
+          typos
+        ];
       in {
         devShells.default = with pkgs; mkShell rec {
           buildInputs = [
@@ -21,27 +48,17 @@
             })
             # We use nightly rustfmt features.
             (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
+          ] ++ vulkanDependencies ++ vulkanTools ++ openglDependencies ++ winitDependencies;
 
-            # Vulkan dependencies
-            shader-slang
-            shaderc
-            spirv-tools
-            vulkan-loader
-            vulkan-tools
-            vulkan-tools-lunarg
-            vulkan-validation-layers
-
-            # OpenGL dependencies (needed for the gl-interop example)
-            libGL
-
-            # winit dependencies
-            libx11
-            libxcursor
-            libxi
-            libxkbcommon
-            libxrandr
-            wayland
-          ];
+          LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
+          VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
+        };
+        devShells.nightly = with pkgs; mkShell rec {
+          buildInputs = [
+            (rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal.override {
+              extensions = [ "clippy" "miri" "rust-analyzer" "rustfmt" "rust-docs" "rust-src" ];
+            }))
+          ] ++ vulkanDependencies ++ vulkanTools ++ openglDependencies ++ winitDependencies;
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
           VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
@@ -56,15 +73,7 @@
             })
             # We use nightly rustfmt features.
             (rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
-
-            # Vulkan dependencies
-            shader-slang
-            shaderc
-
-            # Workflow dependencies
-            cargo-hack
-            typos
-          ];
+          ] ++ vulkanDependencies ++ workflowDependencies;
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
         };
@@ -78,11 +87,7 @@
               # work on Windows.
               targets = [ "x86_64-pc-windows-msvc" ];
             })
-
-            # Vulkan dependencies
-            shader-slang
-            shaderc
-          ];
+          ] ++ vulkanDependencies;
 
           LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
         };
