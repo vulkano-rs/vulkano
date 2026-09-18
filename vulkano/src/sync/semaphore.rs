@@ -2505,7 +2505,7 @@ mod tests {
             Err(_) => return,
         };
 
-        let instance = match Instance::new(
+        let instance = match Instance::try_new(
             &library,
             &InstanceCreateInfo {
                 enabled_extensions: &InstanceExtensions {

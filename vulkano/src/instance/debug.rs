@@ -680,7 +680,7 @@ mod tests {
                 Err(_) => return,
             };
 
-            match Instance::new(
+            match Instance::try_new(
                 &library,
                 &InstanceCreateInfo {
                     enabled_extensions: &InstanceExtensions {
