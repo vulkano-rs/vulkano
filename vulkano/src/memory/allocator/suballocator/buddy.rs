@@ -29,8 +29,8 @@ use std::{
 /// `TlsfAllocator` instead. However, this allocator does have its niche: when all your allocations
 /// are dynamically- but power-of-two-sized, then there is no [internal fragmentation], and since
 /// this algorithm somewhat reduces [external fragmentation], the overall fragmentation can beat
-/// `TlsfAllocator` and `FreeListAllocator`. The algorithm is also fast in practice. Please make
-/// sure to test and profile to make sure that this is actually better.
+/// `TlsfAllocator` and `FreeListAllocator`. The algorithm is also fast in practice. Please test
+/// and profile to make sure that this is actually better.
 ///
 /// See also [the `Suballocator` implementation].
 ///

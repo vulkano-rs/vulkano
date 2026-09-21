@@ -86,7 +86,7 @@ pub struct TlsfAllocator {
 unsafe impl Suballocator for TlsfAllocator {
     type Suballocations<'a> = Suballocations<'a>;
 
-    /// Creates a new `BuddyAllocator` for the given [region].
+    /// Creates a new `TlsfAllocator` for the given [region].
     ///
     /// # Panics
     ///
