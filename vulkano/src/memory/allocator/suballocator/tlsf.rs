@@ -90,7 +90,6 @@ unsafe impl Suballocator for TlsfAllocator {
     ///
     /// # Panics
     ///
-    /// - Panics if `region.size` is not a power of two.
     /// - Panics if `region.size` is not in the range \[16B,&nbsp;32GiB).
     ///
     /// [region]: Suballocator#regions
@@ -400,7 +399,7 @@ impl FirstLevel {
         let next_suitable_first_level_index = self.find_suitable_bin_index(first_level_index + 1);
 
         // SAFETY: `suitable_first_level_index` is the index of an occupied bin.
-        let second_level = unsafe { bin_unchecked_mut(&mut self.bins, suitable_first_level_index) };
+        let second_level = unsafe { self.second_level_unchecked_mut(suitable_first_level_index) };
 
         // If `first_level_index` is occupied, this checks whether that first-level bin has a
         // suitable second-level bin, and if not, we select the next suitable first-level bin. If
@@ -413,7 +412,7 @@ impl FirstLevel {
         );
 
         // SAFETY: `suitable_first_level_index` is the index of an occupied bin.
-        let second_level = unsafe { bin_unchecked_mut(&mut self.bins, suitable_first_level_index) };
+        let second_level = unsafe { self.second_level_unchecked_mut(suitable_first_level_index) };
 
         // If `first_level_index` is occupied and has a suitable second-level bin, this simply
         // reruns the calculation of that bin. Otherwise, we are using the next suitable
@@ -551,7 +550,7 @@ impl FirstLevel {
         let node = unsafe { node_ptr.as_mut() };
 
         // SAFETY: The caller must ensure that `node_ptr` refers to a suballocation, and
-        // suballocations always have a nonzero size.
+        // suballocations always have a size of at least `MIN_NODE_SIZE`.
         let (first_level_index, second_level_index) = unsafe { segregate_down(node.size) };
 
         // SAFETY: The caller must ensure that `node_ptr` refers to a suballocation.
@@ -590,8 +589,8 @@ impl FirstLevel {
         let next_free = unsafe { next_free_ptr.as_mut() };
         next_free.prev_free_ptr = node_ptr;
 
-        self.occupied_bins |= 1 << first_level_index;
         second_level.occupied_bins |= 1 << second_level_index;
+        self.occupied_bins |= 1 << first_level_index;
     }
 
     unsafe fn init_bin(&mut self, first_level_index: usize) -> NonNull<SecondLevel> {
@@ -680,7 +679,7 @@ impl FirstLevel {
         // SAFETY: The caller must ensure that `node_ptr` refers to a free suballocation, which
         // means that there must be a free-list with it in it, and this list is given by
         // `segregate_down`.
-        let second_level = unsafe { bin_unchecked_mut(&mut self.bins, first_level_index) };
+        let second_level = unsafe { self.second_level_unchecked_mut(first_level_index) };
 
         let prev_free = unsafe { node.prev_free_ptr.as_mut() };
         prev_free.next_free_ptr = node.next_free_ptr;
@@ -692,6 +691,18 @@ impl FirstLevel {
         second_level.occupied_bins &= !(u64::from(is_last_node) << second_level_index);
         let is_last_bin = second_level.occupied_bins == 0;
         self.occupied_bins &= !(u64::from(is_last_bin) << first_level_index);
+    }
+
+    #[inline(always)]
+    unsafe fn second_level_unchecked_mut(&mut self, first_level_index: usize) -> &mut SecondLevel {
+        // SAFETY: Enforced by the caller.
+        let second_level = *unsafe { self.bins.get_unchecked_mut(first_level_index) };
+
+        // SAFETY: Enforced by the caller.
+        let mut second_level = unsafe { second_level.unwrap_unchecked() };
+
+        // SAFETY: Enforced by the caller.
+        unsafe { second_level.as_mut() }
     }
 
     fn reset(&mut self) {
@@ -897,21 +908,6 @@ unsafe fn segregate_down(size: DeviceSize) -> (usize, usize) {
     let second_level_index = (size >> second_level_index_index) & SECOND_LEVEL_INDEX_MASK;
 
     (first_level_index as usize, second_level_index as usize)
-}
-
-#[inline(always)]
-unsafe fn bin_unchecked_mut<T, const N: usize>(
-    bins: &mut [Option<NonNull<T>>; N],
-    bin_index: usize,
-) -> &mut T {
-    // SAFETY: Enforced by the caller.
-    let bin = *unsafe { bins.get_unchecked_mut(bin_index) };
-
-    // SAFETY: Enforced by the caller.
-    let mut bin = unsafe { bin.unwrap_unchecked() };
-
-    // SAFETY: Enforced by the caller.
-    unsafe { bin.as_mut() }
 }
 
 impl Debug for FirstLevel {
