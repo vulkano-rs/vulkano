@@ -131,6 +131,8 @@ Changes to command buffers:
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
 - Added support for the rest of the `ext_swapchain_maintenance1` extension.
 - Added `Suballocator::allocate_buffer`, a shortcut for suballocating buffers into smaller buffers.
+- Vulkano-shaders: Added a `compiler` macro option, which allows you to specify the shader compiler to use.
+- Vulkano-shaders: Added an `entry_point` macro option, which allows you to specify the entry point of the shader source to compile.
 
 ### Bugs fixed
 
