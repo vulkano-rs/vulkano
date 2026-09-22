@@ -908,15 +908,11 @@ pub fn bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, SpirvBytesNotMulti
         return Ok(Cow::Borrowed(words));
     }
 
-    if !bytes.len().is_multiple_of(4) {
+    let (words, []) = bytes.as_chunks::<{ size_of::<u32>() }>() else {
         return Err(SpirvBytesNotMultipleOf4);
-    }
+    };
 
-    // TODO: Use `slice::array_chunks` once it's stable.
-    let words: Vec<u32> = bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-        .collect();
+    let words = words.iter().copied().map(u32::from_le_bytes).collect();
 
     Ok(Cow::Owned(words))
 }
