@@ -100,6 +100,7 @@ Changes to pipelines:
 
 Changes to command buffers:
 - `RecordingCommandBuffer` now only has the single `bind_pipeline` method for binding pipelines.
+- `AutoCommandBufferBuilder::{build_acceleration_structure, build_acceleration_structure_indirect, copy_acceleration_structure_to_memory, copy_memory_to_acceleration_structure}` were removed.
 
 ### Additions
 
@@ -125,12 +126,12 @@ Changes to command buffers:
 - Added support for the `khr_pipeline_executable_properties` extension via `Pipeline::executable_properties`, `Pipeline::executable_statistics` and `Pipeline::executable_internal_representations`.
 - Added `Pipeline::flags`.
 - Added `new_with` constructor functions to `Device` and `Instance`, which can be used to manually invoke create functions while using vulkano's create infos.
+- Added support for the rest of the `ext_swapchain_maintenance1` extension.
+- Added `Suballocator::allocate_buffer`, a shortcut for suballocating buffers into smaller buffers.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
-- Added support for the rest of the `ext_swapchain_maintenance1` extension.
-- Added `Suballocator::allocate_buffer`, a shortcut for suballocating buffers into smaller buffers.
 - Vulkano-shaders: Added a `compiler` macro option, which allows you to specify the shader compiler to use.
 - Vulkano-shaders: Added an `entry_point` macro option, which allows you to specify the entry point of the shader source to compile.
 
