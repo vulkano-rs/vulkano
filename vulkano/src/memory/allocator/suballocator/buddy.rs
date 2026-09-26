@@ -22,15 +22,15 @@ use std::{
 
 /// A [suballocator] whose structure forms a binary tree of power-of-two-sized suballocations.
 ///
-/// That is, all allocation sizes are rounded up to the next power of two. This helps reduce
-/// [external fragmentation] by a lot, at the expense of possibly severe [internal fragmentation]
-/// if you're not careful. For example, if you needed an allocation size of 64MiB, you would be
-/// wasting no memory. But with an allocation size of 70MiB, you would use a whole 128MiB instead,
-/// wasting 45% of the memory. Use this algorithm if you need to create and free a lot of
-/// allocations, which would cause too much external fragmentation when using
-/// [`FreeListAllocator`]. However, if the sizes of your allocations are more or less the same,
-/// then using an allocation pool would be a better choice and would eliminate external
-/// fragmentation completely.
+/// You generally shouldn't use this allocator. It has some of the worst [fragmentation] overall,
+/// worse than both [`TlsfAllocator`] and [`FreeListAllocator`]. This is because it can only
+/// allocate sizes that are powers of two. For example, if you need an allocation size of 70MiB,
+/// you would use a whole 128MiB instead, wasting 45% of the memory. It is recommended that you use
+/// `TlsfAllocator` instead. However, this allocator does have its niche: when all your allocations
+/// are dynamically- but power-of-two-sized, then there is no [internal fragmentation], and since
+/// this algorithm somewhat reduces [external fragmentation], the overall fragmentation can beat
+/// `TlsfAllocator` and `FreeListAllocator`. The algorithm is also fast in practice. Please test
+/// and profile to make sure that this is actually better.
 ///
 /// See also [the `Suballocator` implementation].
 ///
@@ -43,13 +43,13 @@ use std::{
 /// would happen after 4 splits and end up with a node size of 16MiB. Since the allocation
 /// requested was 14MiB, 2MiB would become internal fragmentation and be unusable for the lifetime
 /// of the allocation. When an allocation is freed, this process is done backwards, checking if the
-/// buddy of each node on the way up is free and if so they are coalesced.
+/// buddy of each node on the way up is free, and if so, they are coalesced.
 ///
 /// Each possible node size has an *order*, with the smallest node size being of order 0 and the
 /// largest of the highest order. With this notion, node sizes are proportional to 2<sup>*n*</sup>
 /// where *n* is the order. The highest order is determined from the size of the region and a
-/// constant minimum node size, which we chose to be 16B: log(*region&nbsp;size*&nbsp;/&nbsp;16) or
-/// equivalently log(*region&nbsp;size*)&nbsp;-&nbsp;4 (assuming
+/// constant minimum node size, which we chose to be 16B: log(*region&nbsp;size*&nbsp;/&nbsp;16),
+/// or equivalently, log(*region&nbsp;size*)&nbsp;-&nbsp;4 (assuming
 /// *region&nbsp;size*&nbsp;&ge;&nbsp;16).
 ///
 /// It's safe to say that this algorithm works best if you have some level of control over your
@@ -59,14 +59,15 @@ use std::{
 ///
 /// # Efficiency
 ///
-/// The time complexity of both allocation and freeing is *O*(*m*) in the worst case where *m* is
-/// the highest order, which equates to *O*(log (*n*)) where *n* is the size of the region.
+/// The time complexity of both allocation and deallocation is *O*(log(*n*)). Resetting is *O*(1).
 ///
 /// [suballocator]: Suballocator
+/// [fragmentation]: super::super#fragmentation
+/// [`TlsfAllocator`]: super::TlsfAllocator
+/// [`FreeListAllocator`]: super::FreeListAllocator
 /// [internal fragmentation]: super::super#internal-fragmentation
 /// [external fragmentation]: super::super#external-fragmentation
-/// [`FreeListAllocator`]: super::FreeListAllocator
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BuddyAllocator>
+/// [the `Suballocator` implementation]: Self#impl-Suballocator-for-BuddyAllocator
 /// [region]: Suballocator#regions
 /// [`BumpAllocator`]: super::BumpAllocator
 #[derive(Debug)]
@@ -158,6 +159,8 @@ unsafe impl Suballocator for BuddyAllocator {
         // allocation of `self`, which means that `node_ptr` is the same one we gave out on
         // allocation, making it a valid pointer.
         let node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
+
+        debug_assert!(self.suballocations.node_allocator.contains(node_ptr));
 
         // SAFETY: Same as the previous.
         let order = unsafe { self.suballocations.deallocate(node_ptr) };
@@ -651,6 +654,7 @@ impl SuballocationTree {
         unsafe { self.init(max_order) };
     }
 
+    #[inline]
     fn iter(&self) -> Suballocations<'_> {
         let head = unsafe { self.head_ptr.as_ref() };
         let tail = unsafe { self.tail_ptr.as_ref() };
