@@ -1012,36 +1012,11 @@ impl MacroInputParser {
     }
 
     fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
-        let lit = input.parse::<LitStr>()?;
-
-        if self.global_source_language.is_some() {
-            bail!(lit, "field `lang` is already defined");
-        }
-
-        self.global_source_language = Some(match lit.value().as_str() {
-            "glsl" => SourceLanguage::Glsl,
-            "hlsl" => SourceLanguage::Hlsl,
-            "slang" => SourceLanguage::Slang,
-            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
-        });
-
-        Ok(())
+        parse_lang(&mut self.global_source_language, None, input)
     }
 
     fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
-        let lit = input.parse::<LitStr>()?;
-
-        if self.global_compiler.is_some() {
-            bail!(lit, "field `compiler` is already defined");
-        }
-
-        self.global_compiler = Some(match lit.value().as_str() {
-            "shaderc" => Compiler::Shaderc,
-            "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
-        });
-
-        Ok(())
+        parse_compiler(&mut self.global_compiler, None, input)
     }
 
     fn parse_shader_entries(&mut self, input: ParseStream<'_>, field_ident: &Ident) -> Result {
@@ -1151,25 +1126,7 @@ impl MacroInputParser {
     }
 
     fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
-        let array_input;
-        bracketed!(array_input in input);
-
-        while !array_input.is_empty() {
-            let tuple_input;
-            parenthesized!(tuple_input in array_input);
-
-            let name = tuple_input.parse::<LitStr>()?;
-            tuple_input.parse::<Token![,]>()?;
-            let value = tuple_input.parse::<LitStr>()?;
-            self.global_macro_defines
-                .push((name.value(), value.value()));
-
-            if !array_input.is_empty() {
-                array_input.parse::<Token![,]>()?;
-            }
-        }
-
-        Ok(())
+        parse_define(&mut self.global_macro_defines, input)
     }
 
     fn parse_vulkan_version(&mut self, input: ParseStream<'_>) -> Result {
@@ -1463,27 +1420,7 @@ impl ShaderFields {
     }
 
     fn parse_lang(&mut self, input: ParseStream<'_>) -> Result {
-        let lit = input.parse::<LitStr>()?;
-
-        if self.source_language.is_some() {
-            bail!(lit, "field `lang` is already defined");
-        }
-
-        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
-            bail!(
-                lit,
-                "fields `lang` and `bytes` cannot be defined in the same shader entry",
-            );
-        }
-
-        self.source_language = Some(match lit.value().as_str() {
-            "glsl" => SourceLanguage::Glsl,
-            "hlsl" => SourceLanguage::Hlsl,
-            "slang" => SourceLanguage::Slang,
-            lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
-        });
-
-        Ok(())
+        parse_lang(&mut self.source_language, self.source_kind.as_ref(), input)
     }
 
     fn parse_entry_point(&mut self, input: ParseStream<'_>) -> Result {
@@ -1506,47 +1443,11 @@ impl ShaderFields {
     }
 
     fn parse_compiler(&mut self, input: ParseStream<'_>) -> Result {
-        let lit = input.parse::<LitStr>()?;
-
-        if self.compiler.is_some() {
-            bail!(lit, "field `compiler` is already defined");
-        }
-
-        if matches!(self.source_kind, Some(SourceKind::Precompiled(_))) {
-            bail!(
-                lit,
-                "fields `compiler` and `bytes` cannot be defined in the same shader entry",
-            );
-        }
-
-        self.compiler = Some(match lit.value().as_str() {
-            "shaderc" => Compiler::Shaderc,
-            "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
-        });
-
-        Ok(())
+        parse_compiler(&mut self.compiler, self.source_kind.as_ref(), input)
     }
 
     fn parse_define(&mut self, input: ParseStream<'_>) -> Result {
-        let array_input;
-        bracketed!(array_input in input);
-
-        while !array_input.is_empty() {
-            let tuple_input;
-            parenthesized!(tuple_input in array_input);
-
-            let name = tuple_input.parse::<LitStr>()?;
-            tuple_input.parse::<Token![,]>()?;
-            let value = tuple_input.parse::<LitStr>()?;
-            self.macro_defines.push((name.value(), value.value()));
-
-            if !array_input.is_empty() {
-                array_input.parse::<Token![,]>()?;
-            }
-        }
-
-        Ok(())
+        parse_define(&mut self.macro_defines, input)
     }
 
     fn check_valid(
@@ -1592,6 +1493,82 @@ impl ShaderFields {
 
         Ok(())
     }
+}
+
+fn parse_lang(
+    source_language: &mut Option<SourceLanguage>,
+    source_kind: Option<&SourceKind>,
+    input: ParseStream<'_>,
+) -> Result {
+    let lit = input.parse::<LitStr>()?;
+
+    if source_language.is_some() {
+        bail!(lit, "field `lang` is already defined");
+    }
+
+    if matches!(source_kind, Some(SourceKind::Precompiled(_))) {
+        bail!(
+            lit,
+            "fields `lang` and `bytes` cannot be defined in the same shader entry",
+        );
+    }
+
+    *source_language = Some(match lit.value().as_str() {
+        "glsl" => SourceLanguage::Glsl,
+        "hlsl" => SourceLanguage::Hlsl,
+        "slang" => SourceLanguage::Slang,
+        lang => bail!(lit, "expected `glsl`, `hlsl` or `slang`, found `{lang}`"),
+    });
+
+    Ok(())
+}
+
+fn parse_compiler(
+    compiler: &mut Option<Compiler>,
+    source_kind: Option<&SourceKind>,
+    input: ParseStream<'_>,
+) -> Result {
+    let lit = input.parse::<LitStr>()?;
+
+    if compiler.is_some() {
+        bail!(lit, "field `compiler` is already defined");
+    }
+
+    if matches!(source_kind, Some(SourceKind::Precompiled(_))) {
+        bail!(
+            lit,
+            "fields `compiler` and `bytes` cannot be defined in the same shader entry",
+        );
+    }
+
+    *compiler = Some(match lit.value().as_str() {
+        "shaderc" => Compiler::Shaderc,
+        "slangc" => Compiler::Slangc,
+        compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
+    });
+
+    Ok(())
+}
+
+fn parse_define(macro_defines: &mut Vec<(String, String)>, input: ParseStream<'_>) -> Result {
+    let array_input;
+    bracketed!(array_input in input);
+
+    while !array_input.is_empty() {
+        let tuple_input;
+        parenthesized!(tuple_input in array_input);
+
+        let name = tuple_input.parse::<LitStr>()?;
+        tuple_input.parse::<Token![,]>()?;
+        let value = tuple_input.parse::<LitStr>()?;
+        macro_defines.push((name.value(), value.value()));
+
+        if !array_input.is_empty() {
+            array_input.parse::<Token![,]>()?;
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Copy, Clone, Debug)]
