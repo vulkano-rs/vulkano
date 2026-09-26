@@ -128,6 +128,7 @@ Changes to command buffers:
 - Added `new_with` constructor functions to `Device` and `Instance`, which can be used to manually invoke create functions while using vulkano's create infos.
 - Added support for the rest of the `ext_swapchain_maintenance1` extension.
 - Added `Suballocator::allocate_buffer`, a shortcut for suballocating buffers into smaller buffers.
+- Added `TlsfAllocator`, the new go-to suballocator.
 - Vulkano-shaders: Allow defining per-shader macros in a `shader! { shaders: { ... } }` block in addition to global defines.
 - Vulkano-shaders: Added a `lang` option to the macro for defining the shader language.
 - Vulkano-shaders: Relative includes (`#include "..."`) now work in shader source embedded in Rust, and they are relative to the file in which that source is embedded.
