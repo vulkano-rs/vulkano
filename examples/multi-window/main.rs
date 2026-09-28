@@ -415,9 +415,9 @@ impl ApplicationHandler for App {
 
                 self.resources.remove_swapchain(rcx.swapchain_id);
 
-                // Unfortunately, the only way to guarantee that a swapchain is no longer being used
-                // by the presentation engine is to do a device-wide wait for idle. Without this,
-                // the swapchain would never get cleaned up.
+                // Unfortunately, the only way to guarantee that a swapchain is no longer being
+                // used by the presentation engine is to do a device-wide wait for idle. Without
+                // this, the swapchain would never get cleaned up.
                 self.resources.wait_idle().unwrap();
 
                 if self.rcxs.is_empty() {

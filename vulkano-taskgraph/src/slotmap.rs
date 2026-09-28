@@ -180,8 +180,8 @@ impl<V> SlotMapInner<V> {
             slot.generation = (id.generation() & GENERATION_MASK).wrapping_add(ONE_GENERATION);
 
             // SAFETY: We checked that `id.generation` matches the slot's generation, which means
-            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
-            // must have been initialized in `SlotMap::insert`.
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means
+            // it must have been initialized in `SlotMap::insert`.
             let value = unsafe { &mut slot.inner.value };
 
             // SAFETY: We set the slot's state tag to `VACANT_TAG` such that future attempts to
@@ -205,8 +205,8 @@ impl<V> SlotMapInner<V> {
 
         if slot.generation == id.generation() {
             // SAFETY: We checked that `id.generation` matches the slot's generation, which means
-            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
-            // must have been initialized in `SlotMap::insert`.
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means
+            // it must have been initialized in `SlotMap::insert`.
             Some(unsafe { slot.value_unchecked() })
         } else {
             None
@@ -228,8 +228,8 @@ impl<V> SlotMapInner<V> {
 
         if slot.generation == id.generation() {
             // SAFETY: We checked that `id.generation` matches the slot's generation, which means
-            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
-            // must have been initialized in `SlotMap::insert`.
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means
+            // it must have been initialized in `SlotMap::insert`.
             Some(unsafe { slot.value_unchecked_mut() })
         } else {
             None
@@ -295,8 +295,8 @@ impl<V> SlotMapInner<V> {
             }
 
             // SAFETY: We checked that `id.generation` matches the slot's generation, which means
-            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means it
-            // must have been initialized in `SlotMap::insert`.
+            // that the previous state tag of the slot must have been `OCCUPIED_TAG`, which means
+            // it must have been initialized in `SlotMap::insert`.
             let value = unsafe { slot.value_unchecked_mut() };
 
             // SAFETY: `i` is in bounds of the array.

@@ -350,8 +350,8 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
-            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size
+            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(&memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
@@ -438,8 +438,8 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
-            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size
+            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(&memory_range) }
                 .map_err(HostAccessError::Invalidate)?;

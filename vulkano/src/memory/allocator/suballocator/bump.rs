@@ -162,8 +162,9 @@ impl BumpAllocator {
 
         // `offset`, no matter the alignment, can't end up as more than `DeviceAlignment::MAX` for
         // the same reason as above. `DeviceLayout` guarantees that `size` doesn't exceed
-        // `DeviceLayout::MAX_SIZE`. `DeviceAlignment::MAX.as_devicesize() + DeviceLayout::MAX_SIZE`
-        // is equal to `DeviceSize::MAX`. Therefore, `offset + size` can't overflow.
+        // `DeviceLayout::MAX_SIZE`. `DeviceAlignment::MAX.as_devicesize() +
+        // DeviceLayout::MAX_SIZE` is equal to `DeviceSize::MAX`. Therefore, `offset + size` can't
+        // overflow.
         let free_start = offset + size;
 
         if free_start > self.free_end {

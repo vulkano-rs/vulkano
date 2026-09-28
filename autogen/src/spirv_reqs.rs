@@ -252,8 +252,8 @@ fn spirv_capabilities_members(
     for ext_or_cap in capabilities {
         let (requires_one_of, requires_properties) = make_requires(&ext_or_cap.enables);
 
-        // Find the capability in the list of enumerants, then go backwards through the list to find
-        // the first enumerant with the same value.
+        // Find the capability in the list of enumerants, then go backwards through the list to
+        // find the first enumerant with the same value.
         let enumerant_pos = match grammar_enumerants
             .iter()
             .position(|enumerant| enumerant.enumerant == ext_or_cap.name)

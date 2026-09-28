@@ -1288,10 +1288,10 @@ impl AutoSyncState {
                     {
                         // Collision found between `latest_command_id` and `collision_cmd_id`.
 
-                        // We now want to modify the current pipeline barrier in order to handle the
-                        // collision. But since the pipeline barrier is going to be submitted before
-                        // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
-                        // been flushed yet.
+                        // We now want to modify the current pipeline barrier in order to handle
+                        // the collision. But since the pipeline barrier is going to be submitted
+                        // before the flushed commands, it would be a mistake if `collision_cmd_id`
+                        // hasn't been flushed yet.
                         if state
                             .resource_uses
                             .iter()

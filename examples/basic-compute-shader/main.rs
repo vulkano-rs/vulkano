@@ -188,8 +188,9 @@ fn main() {
 
     // Create a storage buffer.
     //
-    // This example reads and writes the same buffer from a compute shader. The buffer also needs to
-    // be accessible from the host to copy the initial data into it and read the result back later.
+    // This example reads and writes the same buffer from a compute shader. The buffer also needs
+    // to be accessible from the host to copy the initial data into it and read the result back
+    // later.
     const BUFFER_LEN: u32 = 65536;
     let buffer_id = resources
         .create_buffer(

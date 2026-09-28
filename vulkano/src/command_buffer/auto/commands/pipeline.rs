@@ -2034,9 +2034,9 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }));
                     }
 
-                    // - If the Sampled Type of the OpTypeImage does not match the numeric format of
-                    //   the image, as shown in the SPIR-V Sampled Type column of the Interpretation
-                    //   of Numeric Format table.
+                    // - If the Sampled Type of the OpTypeImage does not match the numeric format
+                    //   of the image, as shown in the SPIR-V Sampled Type column of the
+                    //   Interpretation of Numeric Format table.
                     // - If the signedness of any read or sample operation does not match the
                     //   signedness of the image’s format.
                     if let Some(shader_numeric_type) = binding_reqs.image_scalar_type {
@@ -2135,8 +2135,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                         */
 
                         if desc_reqs.sampler_compare && sampler.compare().is_none() {
-                            // - The SPIR-V instruction is one of the OpImage*Dref* instructions and
-                            //   the sampler compareEnable is VK_FALSE
+                            // - The SPIR-V instruction is one of the OpImage*Dref* instructions
+                            //   and the sampler compareEnable is VK_FALSE
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the currently bound pipeline accesses the sampler bound to \
@@ -2150,8 +2150,8 @@ impl<L> AutoCommandBufferBuilder<L> {
                                 ..Default::default()
                             }));
                         } else if !desc_reqs.sampler_compare && sampler.compare().is_some() {
-                            // - The SPIR-V instruction is not one of the OpImage*Dref* instructions
-                            //   and the sampler compareEnable is VK_TRUE
+                            // - The SPIR-V instruction is not one of the OpImage*Dref*
+                            //   instructions and the sampler compareEnable is VK_TRUE
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the currently bound pipeline accesses the sampler bound to \

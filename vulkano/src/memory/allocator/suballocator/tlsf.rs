@@ -638,8 +638,8 @@ impl FirstLevel {
             // SAFETY:
             // - The suballocation is free.
             // - The suballocation was removed from the free-list.
-            // - The next suballocation and possibly a previous suballocation have been updated such
-            //   that they no longer reference the suballocation.
+            // - The next suballocation and possibly a previous suballocation have been updated
+            //   such that they no longer reference the suballocation.
             //
             // All of these conditions combined guarantee that `prev_ptr` cannot be used again.
             unsafe { self.node_allocator.deallocate(prev_ptr) };
