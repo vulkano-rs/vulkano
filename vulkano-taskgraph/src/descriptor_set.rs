@@ -747,9 +747,9 @@ impl GlobalDescriptorSet {
 
         // SAFETY: We unbind the lifetime because this would result in E0515 otherwise. This is
         // perfectly safe to do -- none of these methods actually borrow from the guard (there's
-        // physically no way for them to; this is encoded in the type system). The lifetime is bound
-        // to the returned reference to ensure that the reference doesn't outlive the guard. We
-        // enforce that by `Ref` owning the `hyaline::Guard` instead.
+        // physically no way for them to; this is encoded in the type system). The lifetime is
+        // bound to the returned reference to ensure that the reference doesn't outlive the guard.
+        // We enforce that by `Ref` owning the `hyaline::Guard` instead.
         let descriptor = self.samplers.get(id, unsafe {
             mem::transmute::<&hyaline::Guard<'_>, &hyaline::Guard<'_>>(&guard)
         })?;

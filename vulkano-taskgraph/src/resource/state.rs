@@ -420,10 +420,10 @@ impl SwapchainState {
                 // The present operation doesn't have an associated fence yet. When the same image
                 // index as this presentation operation's is acquired next time, that acquire's
                 // fence will be associated with this present operation. However, there is no
-                // guarantee that an image index is ever reacquired, so it's possible that a present
-                // operation never gets a fence associated with it. That's why we step over such
-                // present operations in case there are present operations with associated fences
-                // following.
+                // guarantee that an image index is ever reacquired, so it's possible that a
+                // present operation never gets a fence associated with it. That's why we step over
+                // such present operations in case there are present operations with associated
+                // fences following.
                 present_index += 1;
                 continue;
             };
@@ -553,8 +553,8 @@ impl SwapchainState {
             }
         }
 
-        // Since we haven't successfully executed the submission(s) with these semaphore operations,
-        // these semaphores are still unsignaled and can be recycled.
+        // Since we haven't successfully executed the submission(s) with these semaphore
+        // operations, these semaphores are still unsignaled and can be recycled.
         if sync_stage < SwapchainSyncStage::SignalPrePresent {
             if let Some(semaphore) = sync_state.current_pre_present_semaphore.take() {
                 sync_state.deallocate_semaphore(semaphore);
@@ -622,8 +622,8 @@ impl SwapchainState {
 
             // If the old swapchain doesn't have any fence to check for cleanup, the garbage
             // associated with the old swapchain cannot be cleaned up until the new swapchain's
-            // garbage can be cleaned up. We therefore combine the old and new garbage and associate
-            // it with the new swapchain. Otherwise, we add new garbage.
+            // garbage can be cleaned up. We therefore combine the old and new garbage and
+            // associate it with the new swapchain. Otherwise, we add new garbage.
             if !has_garbage || has_cleanup_fence {
                 sync_state
                     .garbage_queue
@@ -636,8 +636,8 @@ impl SwapchainState {
 
             let mut present_index = sync_state.present_queue.len();
 
-            // Remove all present operations without a cleanup fence since they would have no way of
-            // getting cleaned up and add them to the garbage associated with the new swapchain.
+            // Remove all present operations without a cleanup fence since they would have no way
+            // of getting cleaned up and add them to the garbage associated with the new swapchain.
             while present_index > 0 {
                 present_index -= 1;
 
@@ -668,10 +668,10 @@ impl SwapchainState {
                 }
             }
         } else {
-            // Since the swapchain must have been locked for recreation, which ensures that it can't
-            // also be used in a task graph execution or used again in the future, and there are no
-            // existing present operations, there are no current uses or possible future uses of the
-            // swapchain, so we know it is sound to remove the swapchain immediately.
+            // Since the swapchain must have been locked for recreation, which ensures that it
+            // can't also be used in a task graph execution or used again in the future, and there
+            // are no existing present operations, there are no current uses or possible future
+            // uses of the swapchain, so we know it is sound to remove the swapchain immediately.
             resources
                 .storage
                 .swapchains
@@ -748,8 +748,8 @@ impl SwapchainState {
         } else {
             // Since we removed the swapchain above, which ensures that it can't also be used in a
             // task graph execution or used again in the future, and there are no existing present
-            // operations, there are no current uses or possible future uses of the swapchain, so we
-            // know it is sound to remove the swapchain immediately.
+            // operations, there are no current uses or possible future uses of the swapchain, so
+            // we know it is sound to remove the swapchain immediately.
             resources
                 .storage
                 .swapchains

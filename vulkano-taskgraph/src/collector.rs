@@ -72,8 +72,8 @@ impl<'a> DeferredBatch<'a> {
             .expect("invalid buffer ID");
 
         self.defer(move |resources| {
-            // SAFETY: Since this method is the only way to remove the buffer and future attempts to
-            // remove it will fail because we invalidated the buffer above, there is no way the
+            // SAFETY: Since this method is the only way to remove the buffer and future attempts
+            // to remove it will fail because we invalidated the buffer above, there is no way the
             // buffer can be removed besides this deferred function.
             unsafe { resources.remove_invalidated_buffer_unchecked(id) };
         })
@@ -314,16 +314,16 @@ impl<'a> DeferredBatch<'a> {
 
         let mut this = ManuallyDrop::new(self);
 
-        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot drop
-        // the guard naturally.
+        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot
+        // drop the guard naturally.
         unsafe { this.set_drop_guard() };
 
         // SAFETY:
         // * We own `self`, which ensures that this method isn't called again.
         // * We have wrapped `self` in a `ManuallyDrop` to ensure that the `Drop` implementation
         //   doesn't call this method.
-        // * The caller must ensure that `flight_ids` constitutes the correct set of flights for our
-        //   deferred functions.
+        // * The caller must ensure that `flight_ids` constitutes the correct set of flights for
+        //   our deferred functions.
         unsafe { this.enqueue_inner(biased_frames) };
     }
 
@@ -364,8 +364,8 @@ impl<'a> DeferredBatch<'a> {
 
         let mut this = ManuallyDrop::new(self);
 
-        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot drop
-        // the guard naturally.
+        // SAFETY: We have wrapped `self` in a `ManuallyDrop`, which means the drop glue cannot
+        // drop the guard naturally.
         unsafe { this.set_drop_guard() };
 
         // SAFETY:
@@ -779,8 +779,8 @@ impl Queue {
                     Relaxed,
                 ) {
                     Ok(_) => {
-                        // Our thread unlinked `curr_node`. Deallocate `curr_node` and move onto the
-                        // next node.
+                        // Our thread unlinked `curr_node`. Deallocate `curr_node` and move onto
+                        // the next node.
 
                         // SAFETY: We successfully unlinked the node from the queue such that it is
                         // not reachable going forward and no other thread can be deallocating this
@@ -845,8 +845,8 @@ impl Queue {
                     Relaxed,
                 ) {
                     Ok(_) => {
-                        // Our thread unlinked `curr_node`. Deallocate `curr_node` and move onto the
-                        // next node.
+                        // Our thread unlinked `curr_node`. Deallocate `curr_node` and move onto
+                        // the next node.
 
                         // SAFETY: We successfully unlinked the node from the queue such that it is
                         // not reachable going forward and no other thread can be deallocating this
@@ -918,7 +918,8 @@ impl Queue {
                 }
                 Err(_) => {
                     // Another thread deleted `curr_node` or unlinked `prev_node`. We have to
-                    // restart from the beginning, as our snapshot of the queue is now inconsistent.
+                    // restart from the beginning, as our snapshot of the queue is now
+                    // inconsistent.
                     prev_node = head_node;
                     curr_index = prev_node.next.load(Acquire);
                 }

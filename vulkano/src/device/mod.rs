@@ -1739,10 +1739,10 @@ impl Device {
         impl Drop for UnlockGuard<'_> {
             fn drop(&mut self) {
                 for (_, queue_lock) in &self.queue_locks[..self.locked_count] {
-                    // SAFETY: The code below ensures that the `locked_count` is incremented after a
-                    // lock is locked such that our `..locked_count` range always denotes the locked
-                    // locks. Notably, this ensures that locks are soundly unlocked even if one of
-                    // the locks in the middle panics.
+                    // SAFETY: The code below ensures that the `locked_count` is incremented after
+                    // a lock is locked such that our `..locked_count` range always denotes the
+                    // locked locks. Notably, this ensures that locks are soundly unlocked even if
+                    // one of the locks in the middle panics.
                     unsafe { queue_lock.unlock() };
                 }
             }

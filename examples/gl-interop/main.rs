@@ -136,12 +136,12 @@ mod linux {
             // A requirement for sharing memory between OpenGL and Vulkan is that both instances
             // need to use the same graphics device and driver. Historically, choosing which device
             // to use has not been a feature available in OpenGL (depending on the platform, it's
-            // now possible to do this via environment variables, driver hints, driver extensions or
-            // EGL).
+            // now possible to do this via environment variables, driver hints, driver extensions
+            // or EGL).
             //
-            // But since Vulkan allows us to explicitly choose a graphics device, we'll first create
-            // an OpenGL context to query what device and driver UUIDs got chosen. Then we'll make
-            // sure our Vulkan instance uses the same ones.
+            // But since Vulkan allows us to explicitly choose a graphics device, we'll first
+            // create an OpenGL context to query what device and driver UUIDs got chosen. Then
+            // we'll make sure our Vulkan instance uses the same ones.
             let (gl_driver_uuid, gl_device_uuids) = {
                 let (window, config) = create_window_with_opengl_support(event_loop);
                 let gl_surface = create_opengl_surface(&window.unwrap(), config);

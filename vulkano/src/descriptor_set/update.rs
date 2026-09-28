@@ -718,7 +718,8 @@ impl<'a> WriteDescriptorSet<'a> {
                         mut image_layout,
                     } = image_info;
 
-                    // For the `SampledImage` descriptor type, the `sampler` field should be `None`.
+                    // For the `SampledImage` descriptor type, the `sampler` field should be
+                    // `None`.
                     if sampler.is_some() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].sampler", index).into(),
@@ -824,7 +825,8 @@ impl<'a> WriteDescriptorSet<'a> {
                         mut image_layout,
                     } = image_info;
 
-                    // For the `StorageImage` descriptor type, the `sampler` field should be `None`.
+                    // For the `StorageImage` descriptor type, the `sampler` field should be
+                    // `None`.
                     if sampler.is_some() {
                         return Err(Box::new(ValidationError {
                             context: format!("elements[{}].sampler", index).into(),

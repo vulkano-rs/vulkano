@@ -158,8 +158,8 @@ impl<'a> ResourceAccesses<'a> {
     unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &'a Arc<Buffer> {
         if id.is_virtual() {
             // SAFETY:
-            // * The caller of `Task::execute` must ensure that `self.resource_map` maps the virtual
-            //   IDs of the graph exhaustively.
+            // * The caller of `Task::execute` must ensure that `self.resource_map` maps the
+            //   virtual IDs of the graph exhaustively.
             // * The caller must ensure that `id` is valid.
             unsafe { self.resource_map.buffer_unchecked(id) }.buffer()
         } else {

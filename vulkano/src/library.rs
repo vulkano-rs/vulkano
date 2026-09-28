@@ -154,8 +154,8 @@ impl VulkanLibrary {
     ) -> Result<Version, VulkanError> {
         // Per the Vulkan spec:
         // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
-        // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
-        // to determine the version of Vulkan.
+        // Vulkan 1.0 implementation. Otherwise, the application can call
+        // vkEnumerateInstanceVersion to determine the version of Vulkan.
 
         let func = unsafe {
             get_instance_proc_addr(vk::Instance::null(), c"vkEnumerateInstanceVersion".as_ptr())
