@@ -204,6 +204,9 @@
 //!
 //! By default, `main` is compiled.
 //!
+//! This option cannot be used when compiling with shaderc as it has no support for compiling any
+//! entry point other than `main`.
+//!
 //! Cannot be defined alongside the [`bytes`] option.
 //!
 //! ## `compiler`
@@ -219,12 +222,12 @@
 //!
 //! Provides the compiler to invoke. It can be any of the following:
 //!
-//! - `shaderc` (default for GLSL and HLSL)
-//! - `slangc` (default for Slang)
+//! - `shaderc` (default for GLSL)
+//! - `slangc` (default for HLSL and Slang)
 //!
 //! Here are the source languages supported for each compiler:
 //!
-//! - `shaderc`: GLSL and HLSL
+//! - `shaderc`: GLSL
 //! - `slangc`: GLSL, HLSL and Slang
 //!
 //! When using `shaderc`, you must have [`glslc`] available on your `PATH`. When using `slangc`,
@@ -1029,7 +1032,7 @@ impl MacroInputParser {
         self.global_compiler = Some(match lit.value().as_str() {
             "shaderc" => Compiler::Shaderc,
             "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slangc, found `{compiler}`"),
+            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
         });
 
         Ok(())
@@ -1638,8 +1641,8 @@ impl SourceLanguage {
 
     fn default_compiler(self) -> Compiler {
         match self {
-            Self::Glsl | Self::Hlsl => Compiler::Shaderc,
-            Self::Slang => Compiler::Slangc,
+            Self::Glsl => Compiler::Shaderc,
+            Self::Hlsl | Self::Slang => Compiler::Slangc,
         }
     }
 }
@@ -1667,9 +1670,7 @@ impl Compiler {
 
     fn is_valid_for(self, source_language: SourceLanguage) -> bool {
         match self {
-            Compiler::Shaderc => {
-                matches!(source_language, SourceLanguage::Glsl | SourceLanguage::Hlsl)
-            }
+            Compiler::Shaderc => matches!(source_language, SourceLanguage::Glsl),
             Compiler::Slangc => {
                 matches!(
                     source_language,
