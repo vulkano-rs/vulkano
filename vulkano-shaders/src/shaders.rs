@@ -73,6 +73,9 @@ pub(super) fn compile_shader(
                 command.arg("-entry").arg(entry_point);
             }
 
+            // Make sure the matrix majorness is consistent across languages.
+            command.arg("-matrix-layout-column-major");
+
             // slangc renames an entry point specified by the `-entry` option to `main` unless this
             // option is specified for some reason.
             command.arg("-fvk-use-entrypoint-name");
