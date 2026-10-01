@@ -73,6 +73,10 @@ pub(super) fn compile_shader(
                 command.arg("-entry").arg(entry_point);
             }
 
+            // slangc renames an entry point specified by the `-entry` option to `main` unless this
+            // option is specified for some reason.
+            command.arg("-fvk-use-entrypoint-name");
+
             // vulkano.glsl dir first, working dir for module imports, then user include
             // directories.
             command.arg("-I").arg(vulkano_dir);
