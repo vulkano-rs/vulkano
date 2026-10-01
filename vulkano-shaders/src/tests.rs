@@ -44,7 +44,7 @@ fn compile(
         options,
         source,
         working_dir,
-        shader_kind,
+        Some(shader_kind),
         source_language,
         None,
         None,
