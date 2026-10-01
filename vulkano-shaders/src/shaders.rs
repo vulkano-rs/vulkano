@@ -15,7 +15,7 @@ pub(super) fn compile_shader(
     options: &MacroOptions,
     source: &str,
     working_dir: &Path,
-    shader_kind: ShaderKind,
+    shader_kind: Option<ShaderKind>,
     source_language: Option<SourceLanguage>,
     entry_point: Option<&str>,
     compiler: Option<Compiler>,
@@ -25,7 +25,6 @@ pub(super) fn compile_shader(
     let compiler = compiler
         .or(options.global_compiler)
         .unwrap_or(source_language.default_compiler());
-    let entry_point = entry_point.unwrap_or("main");
 
     let mut command = Command::new(compiler.as_command());
 
@@ -38,12 +37,18 @@ pub(super) fn compile_shader(
     match compiler {
         Compiler::Shaderc => {
             command.arg("-x").arg(source_language.as_str());
-            command.arg(format!("-fshader-stage={}", shader_kind.as_shaderc_stage()));
-            command.arg(format!("-fentry-point={}", entry_point));
             let target_env = options.vulkan_version.as_shaderc_target_env();
             command.arg(format!("--target-env={}", target_env));
             let target_spv = options.spirv_version.as_shaderc_target_spv();
             command.arg(format!("--target-spv={}", target_spv));
+
+            if let Some(shader_kind) = shader_kind {
+                command.arg(format!("-fshader-stage={}", shader_kind.as_shaderc_stage()));
+            }
+
+            if let Some(entry_point) = entry_point {
+                command.arg(format!("-fentry-point={}", entry_point));
+            }
 
             // vulkano.glsl dir first, then user include directories.
             command.arg("-I").arg(vulkano_dir);
@@ -56,11 +61,17 @@ pub(super) fn compile_shader(
         }
         Compiler::Slangc => {
             command.arg("-lang").arg(source_language.as_str());
-            command.arg("-stage").arg(shader_kind.as_slangc_stage());
-            command.arg("-entry").arg(entry_point);
             command.arg("-target").arg("spirv");
             let profile = options.spirv_version.as_slangc_profile();
             command.arg("-profile").arg(profile);
+
+            if let Some(shader_kind) = shader_kind {
+                command.arg("-stage").arg(shader_kind.as_slangc_stage());
+            }
+
+            if let Some(entry_point) = entry_point {
+                command.arg("-entry").arg(entry_point);
+            }
 
             // vulkano.glsl dir first, working dir for module imports, then user include
             // directories.
