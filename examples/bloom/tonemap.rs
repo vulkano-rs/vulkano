@@ -1,4 +1,4 @@
-use crate::{App, RenderContext};
+use crate::{App, RenderContext, ShaderLanguage};
 use std::{slice, sync::Arc};
 use vulkano::{
     pipeline::{
@@ -36,10 +36,15 @@ impl TonemapTask {
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = unsafe { fs::load(&app.device) }
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let fs = match app.shader_language {
+                ShaderLanguage::Glsl => unsafe { fs_glsl::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+                ShaderLanguage::Slang => unsafe { fs_slang::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+            }
+            .unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(&vs),
                 PipelineShaderStageCreateInfo::new(&fs),
@@ -86,7 +91,9 @@ impl Task for TonemapTask {
         cbf.push_constants(
             self.pipeline.as_ref().unwrap().layout(),
             0,
-            &fs::PushConstants {
+            // We use the GLSL shader's push constants regardless of which shader is used for
+            // simplicity because we know that they have the same representation.
+            &fs_glsl::PushConstants {
                 sampler_id: rcx.bloom_sampler_id,
                 texture_id: rcx.bloom_sampled_image_id,
                 exposure: EXPOSURE,
@@ -127,9 +134,17 @@ mod vs {
     }
 }
 
-mod fs {
+mod fs_glsl {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "tonemap.glsl",
+        path: "shaders/tonemap.glsl",
+    }
+}
+
+mod fs_slang {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        lang: "slang",
+        path: "shaders/tonemap.slang",
     }
 }

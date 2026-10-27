@@ -134,3 +134,11 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Run typos
         run: nix develop .#CI -c typos
+  checksums:
+    if: github.repository == 'vulkano-rs/vulkano'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Verify checksums
+        run: nix develop .#CI -c sh -c 'cd vulkano-shaders && sha256sum -c include-sha256sums include-sha256sums.sha256'

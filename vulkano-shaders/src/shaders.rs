@@ -3,12 +3,13 @@ use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{
-    fs,
+    cell::Cell,
+    env, fs,
     io::Write,
     iter::Iterator,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::atomic::{AtomicU32, Ordering},
+    process::{self, Command, Stdio},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 pub(super) fn compile_shader(
@@ -30,9 +31,9 @@ pub(super) fn compile_shader(
 
     command.current_dir(working_dir);
 
-    let vulkano_temp_dir = create_vulkano_dir()?;
-    let vulkano_dir = &vulkano_temp_dir.0;
-    let dependencies_file = vulkano_dir.join("deps.d");
+    let vulkano_include_dir = init_include_dir()?;
+    let temp_dir = &TempDir::new()?.0;
+    let dependencies_file = temp_dir.join("deps.d");
 
     match compiler {
         Compiler::Shaderc => {
@@ -51,7 +52,7 @@ pub(super) fn compile_shader(
             }
 
             // vulkano.glsl dir first, then user include directories.
-            command.arg("-I").arg(vulkano_dir);
+            command.arg("-I").arg(&vulkano_include_dir);
             set_common_options(&mut command, options, macro_defines);
 
             command.arg("-MD");
@@ -82,7 +83,7 @@ pub(super) fn compile_shader(
 
             // vulkano.glsl dir first, working dir for module imports, then user include
             // directories.
-            command.arg("-I").arg(vulkano_dir);
+            command.arg("-I").arg(&vulkano_include_dir);
             command.arg("-I").arg(working_dir);
             set_common_options(&mut command, options, macro_defines);
 
@@ -120,7 +121,7 @@ pub(super) fn compile_shader(
 
     let content = &fs::read_to_string(&dependencies_file)
         .map_err(|e| format!("failed to read dependencies file: {e}"))?;
-    let input_files = parse_deps_file(content, vulkano_dir, working_dir).map_err(|e| {
+    let input_files = parse_deps_file(content, &vulkano_include_dir, working_dir).map_err(|e| {
         let content = content
             .lines()
             .flat_map(|line| ["    ", line])
@@ -132,32 +133,87 @@ pub(super) fn compile_shader(
     Ok((output.stdout, input_files))
 }
 
-fn create_vulkano_dir() -> Result<TempDir, String> {
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let vulkano_dir = TempDir(std::env::temp_dir().join(format!(
-        "vulkano_shaders_{}_{}",
-        std::process::id(),
-        id,
-    )));
+fn init_include_dir() -> Result<PathBuf, String> {
+    // The include directory only needs to be written anew when the contents have changed, so we
+    // key the temp dir on the hash of its contents.
+    let hash = &include_str!("../include-sha256sums.sha256")[0..64];
+    let path = env::temp_dir().join(format!("vulkano-shaders-include-{hash}"));
 
-    fs::create_dir_all(&vulkano_dir.0)
+    // If the path proper exists, we know that all include files must have finished being written.
+    if path.exists() {
+        return Ok(path);
+    }
+
+    // Otherwise, we have to write the include files to a different, unique directory such that we
+    // don't race with other invocations of the macro.
+    let process_id = process::id();
+    let thread_id = thread_id();
+    let frag_path = path.with_extension(format!("frag-{process_id}-{thread_id}"));
+
+    fs::create_dir_all(&frag_path)
         .map_err(|e| format!("failed to create vulkano include dir: {e}"))?;
     fs::write(
-        vulkano_dir.0.join("vulkano.glsl"),
+        frag_path.join("vulkano.glsl"),
         include_str!("../include/vulkano.glsl"),
     )
     .map_err(|e| format!("failed to write vulkano.glsl: {e}"))?;
+    fs::write(
+        frag_path.join("vulkano.slang"),
+        include_str!("../include/vulkano.slang"),
+    )
+    .map_err(|e| format!("failed to write vulkano.slang: {e}"))?;
 
-    Ok(vulkano_dir)
+    // Only after writing is done can we attempt to rename the directory to the path proper.
+    if let Err(e) = fs::rename(&frag_path, &path) {
+        let _ = fs::remove_dir_all(frag_path);
+
+        // If the path exists this time around, another process/thread has beaten us to the punch.
+        if !path.exists() {
+            return Err(format!("failed to create vulkano include dir: {e}"));
+        }
+    }
+
+    Ok(path)
 }
 
 struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new() -> Result<Self, String> {
+        let process_id = process::id();
+        let thread_id = thread_id();
+        let path = env::temp_dir().join(format!("vulkano-shaders-{process_id}-{thread_id}"));
+
+        fs::create_dir_all(&path).map_err(|e| format!("failed to create vulkano temp dir: {e}"))?;
+
+        Ok(TempDir(path))
+    }
+}
 
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+fn thread_id() -> usize {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    thread_local! {
+        static CURRENT: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    if let Some(id) = CURRENT.get() {
+        return id;
+    }
+
+    let id = COUNTER
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .expect("we somehow managed to have more than `usize::MAX` threads");
+
+    CURRENT.set(Some(id));
+
+    id
 }
 
 fn set_common_options(

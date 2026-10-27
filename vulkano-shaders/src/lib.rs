@@ -557,6 +557,15 @@ pub fn include_vulkano_glsl(input: proc_macro::TokenStream) -> proc_macro::Token
 }
 
 #[proc_macro]
+pub fn include_vulkano_slang(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    parse_macro_input!(input as syn::parse::Nothing);
+
+    let include_string = include_str!("../include/vulkano.slang");
+
+    quote! { #include_string }.into()
+}
+
+#[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
 

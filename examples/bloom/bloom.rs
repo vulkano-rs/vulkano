@@ -1,4 +1,4 @@
-use crate::{App, RenderContext};
+use crate::{App, RenderContext, ShaderLanguage};
 use core::slice;
 use std::sync::Arc;
 use vulkano::{
@@ -28,10 +28,15 @@ impl BloomTask {
         let bcx = app.resources.bindless_context().unwrap();
 
         let downsample_pipeline = {
-            let cs = unsafe { downsample::load(&app.device) }
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let cs = match app.shader_language {
+                ShaderLanguage::Glsl => unsafe { downsample_glsl::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+                ShaderLanguage::Slang => unsafe { downsample_slang::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+            }
+            .unwrap();
             let stage = PipelineShaderStageCreateInfo::new(&cs);
             let layout = bcx
                 .pipeline_layout_from_stages(slice::from_ref(&stage))
@@ -46,10 +51,15 @@ impl BloomTask {
         };
 
         let upsample_pipeline = {
-            let cs = unsafe { upsample::load(&app.device) }
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
+            let cs = match app.shader_language {
+                ShaderLanguage::Glsl => unsafe { upsample_glsl::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+                ShaderLanguage::Slang => unsafe { upsample_slang::load(&app.device) }
+                    .unwrap()
+                    .entry_point("main"),
+            }
+            .unwrap();
             let stage = PipelineShaderStageCreateInfo::new(&cs);
             let layout = bcx
                 .pipeline_layout_from_stages(slice::from_ref(&stage))
@@ -103,7 +113,9 @@ impl Task for BloomTask {
             cbf.push_constants(
                 self.downsample_pipeline.layout(),
                 0,
-                &downsample::PushConstants {
+                // We use the GLSL shader's push constants regardless of which shader is used for
+                // simplicity because we know that they have the same representation.
+                &downsample_glsl::PushConstants {
                     sampler_id: rcx.bloom_sampler_id,
                     texture_id: rcx.bloom_sampled_image_id,
                     dst_mip_image_id: rcx.bloom_storage_image_ids[dst_mip_level as usize],
@@ -127,7 +139,9 @@ impl Task for BloomTask {
             cbf.push_constants(
                 self.upsample_pipeline.layout(),
                 0,
-                &upsample::PushConstants {
+                // We use the GLSL shader's push constants regardless of which shader is used for
+                // simplicity because we know that they have the same representation.
+                &upsample_glsl::PushConstants {
                     sampler_id: rcx.bloom_sampler_id,
                     texture_id: rcx.bloom_sampled_image_id,
                     dst_mip_image_id: rcx.bloom_storage_image_ids[dst_mip_level as usize],
@@ -147,16 +161,34 @@ impl Task for BloomTask {
     }
 }
 
-mod downsample {
+mod downsample_glsl {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "downsample.glsl",
+        path: "shaders/downsample.glsl",
     }
 }
 
-mod upsample {
+mod upsample_glsl {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "upsample.glsl",
+        path: "shaders/upsample.glsl",
+    }
+}
+
+mod downsample_slang {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        lang: "slang",
+        entry_point: "downsample",
+        path: "shaders/bloom.slang",
+    }
+}
+
+mod upsample_slang {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        lang: "slang",
+        entry_point: "upsample",
+        path: "shaders/bloom.slang",
     }
 }
