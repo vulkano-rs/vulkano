@@ -531,6 +531,7 @@ use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::{
+    collections::hash_map::Entry,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -575,7 +576,8 @@ fn shader_inner(input: MacroInput) -> Result<TokenStream> {
             state.process_shader(None, shader_fields)?;
         }
         Shaders::Multiple(shaders) => {
-            for (shader_name, shader_fields) in shaders {
+            for (shader_ident, shader_fields) in shaders {
+                let shader_name = shader_ident.to_string();
                 state.process_shader(Some(shader_name), shader_fields)?;
             }
         }
@@ -810,7 +812,7 @@ struct MacroInput {
 
 enum Shaders {
     Single(ShaderFields),
-    Multiple(HashMap<String, ShaderFields>),
+    Multiple(HashMap<Ident, ShaderFields>),
 }
 
 #[derive(Default)]
@@ -973,24 +975,7 @@ impl MacroInputParser {
             }
         }
 
-        if self.shaders.is_none()
-            || matches!(&self.shaders, Some(Shaders::Multiple(shaders)) if shaders.is_empty())
-        {
-            bail!(
-                "please specify at least one shader (e.g., `ty: \"vertex\", path: \
-                \"entry_point.glsl\"`)",
-            );
-        }
-
-        if let Some(Shaders::Single(shader_fields)) = &self.shaders {
-            shader_fields.check_valid(
-                Span::call_site(),
-                self.global_source_language,
-                self.global_compiler,
-            )?;
-        }
-
-        Ok(())
+        self.check_valid()
     }
 
     fn parse_shader_field(
@@ -1069,14 +1054,19 @@ impl MacroInputParser {
 
         while !in_braces.is_empty() {
             let shader_ident = in_braces.parse::<Ident>()?;
-            let shader_name = shader_ident.to_string();
 
-            if shaders.contains_key(&shader_name) {
-                bail!(
-                    shader_ident,
-                    "shader entry `{shader_name}` is already defined",
-                );
-            }
+            let shader_fields = match shaders.entry(shader_ident) {
+                Entry::Occupied(entry) => {
+                    let shader_ident = entry.key();
+                    let shader_name = shader_ident.to_string();
+
+                    bail!(
+                        shader_ident,
+                        "shader entry `{shader_name}` is already defined",
+                    );
+                }
+                Entry::Vacant(entry) => entry.insert(ShaderFields::default()),
+            };
 
             in_braces.parse::<Token![:]>()?;
 
@@ -1091,10 +1081,7 @@ impl MacroInputParser {
                 match field_name.as_str() {
                     "ty" | "path" | "src" | "bytes" | "lang" | "entry_point" | "compiler"
                     | "define" => {
-                        shaders
-                            .entry(shader_name.clone())
-                            .or_default()
-                            .parse_shader_field(&in_shader_definition, &field_name)?;
+                        shader_fields.parse_shader_field(&in_shader_definition, &field_name)?;
                     }
                     _ => bail!(
                         field_ident,
@@ -1111,12 +1098,6 @@ impl MacroInputParser {
             if !in_braces.is_empty() {
                 in_braces.parse::<Token![,]>()?;
             }
-
-            shaders.get(&shader_name).unwrap().check_valid(
-                shader_ident.span(),
-                self.global_source_language,
-                self.global_compiler,
-            )?;
         }
 
         if shaders.is_empty() {
@@ -1283,6 +1264,35 @@ impl MacroInputParser {
         }
 
         self.dump = Some(lit);
+
+        Ok(())
+    }
+
+    fn check_valid(&self) -> Result {
+        match &self.shaders {
+            Some(Shaders::Single(shader_fields)) => {
+                shader_fields.check_valid(
+                    Span::call_site(),
+                    self.global_source_language,
+                    self.global_compiler,
+                )?;
+            }
+            Some(Shaders::Multiple(shaders)) if !shaders.is_empty() => {
+                for (shader_ident, shader_fields) in shaders {
+                    shader_fields.check_valid(
+                        shader_ident.span(),
+                        self.global_source_language,
+                        self.global_compiler,
+                    )?;
+                }
+            }
+            Some(Shaders::Multiple(_)) | None => {
+                bail!(
+                    "please specify at least one shader (e.g., `ty: \"vertex\", path: \
+                    \"entry_point.glsl\"`)",
+                );
+            }
+        }
 
         Ok(())
     }
