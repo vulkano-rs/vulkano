@@ -121,6 +121,11 @@
 //!
 //! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
 //!
+//! If unspecified, the behavior is the same as the behavior of the compiler of choice when the
+//! shader stage is unspecified. In particular, this means that shaderc will expect a `#pragma
+//! shader_stage(<stage>)` directive in the code, and slangc will expect the entry point(s) to be
+//! annotated with `[shader("<stage>")]`.
+//!
 //! Cannot be defined alongside the [`bytes`] option.
 //!
 //! ## `path`
@@ -202,7 +207,13 @@
 //!
 //! Provides the entry point of the shader source to compile.
 //!
-//! By default, `main` is compiled.
+//! If unspecified, the behavior is the same as the behavior of the compiler of choice when the
+//! entry point is unspecified. In particular, this means that the entry point defaults to `main`,
+//! except when using slangc and the [`ty`] option is also left out, in which case slangc searches
+//! for entry points annotated with `[shader("<stage>")]`.
+//!
+//! This option cannot be used when compiling with shaderc as it has no support for compiling any
+//! entry point other than `main`.
 //!
 //! Cannot be defined alongside the [`bytes`] option.
 //!
@@ -219,12 +230,12 @@
 //!
 //! Provides the compiler to invoke. It can be any of the following:
 //!
-//! - `shaderc` (default for GLSL and HLSL)
-//! - `slangc` (default for Slang)
+//! - `shaderc` (default for GLSL)
+//! - `slangc` (default for HLSL and Slang)
 //!
 //! Here are the source languages supported for each compiler:
 //!
-//! - `shaderc`: GLSL and HLSL
+//! - `shaderc`: GLSL
 //! - `slangc`: GLSL, HLSL and Slang
 //!
 //! When using `shaderc`, you must have [`glslc`] available on your `PATH`. When using `slangc`,
@@ -651,7 +662,7 @@ impl<'a> MacroState<'a> {
                     self.options,
                     &source_code,
                     working_dir,
-                    shader_kind.unwrap(),
+                    shader_kind,
                     source_language,
                     entry_point.as_deref(),
                     compiler,
@@ -1029,7 +1040,7 @@ impl MacroInputParser {
         self.global_compiler = Some(match lit.value().as_str() {
             "shaderc" => Compiler::Shaderc,
             "slangc" => Compiler::Slangc,
-            compiler => bail!(lit, "expected `shaderc` or `slangc, found `{compiler}`"),
+            compiler => bail!(lit, "expected `shaderc` or `slangc`, found `{compiler}`"),
         });
 
         Ok(())
@@ -1521,20 +1532,11 @@ impl ShaderFields {
         global_source_language: Option<SourceLanguage>,
         global_compiler: Option<Compiler>,
     ) -> Result {
-        let Some(source_kind) = &self.source_kind else {
+        if self.source_kind.is_none() {
             return Err(Error::new(
                 span,
                 "please specify the shader source (e.g., `path: \"entry_point.glsl\"`)",
             ));
-        };
-
-        if !matches!(source_kind, SourceKind::Precompiled(_)) {
-            if self.shader_kind.is_none() {
-                return Err(Error::new(
-                    span,
-                    "please specify the shader type (e.g., `ty: \"vertex\"`)",
-                ));
-            }
         }
 
         let source_language = self
@@ -1545,6 +1547,14 @@ impl ShaderFields {
             .compiler
             .or(global_compiler)
             .unwrap_or(source_language.default_compiler());
+
+        if self.entry_point.is_some() && compiler == Compiler::Shaderc {
+            return Err(Error::new(
+                span,
+                "the `entry_point` option cannot be used when compiling with shaderc; please \
+                remove it",
+            ));
+        }
 
         if !compiler.is_valid_for(source_language) {
             return Err(Error::new(
@@ -1638,13 +1648,13 @@ impl SourceLanguage {
 
     fn default_compiler(self) -> Compiler {
         match self {
-            Self::Glsl | Self::Hlsl => Compiler::Shaderc,
-            Self::Slang => Compiler::Slangc,
+            Self::Glsl => Compiler::Shaderc,
+            Self::Hlsl | Self::Slang => Compiler::Slangc,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Compiler {
     Shaderc,
     Slangc,
@@ -1667,9 +1677,7 @@ impl Compiler {
 
     fn is_valid_for(self, source_language: SourceLanguage) -> bool {
         match self {
-            Compiler::Shaderc => {
-                matches!(source_language, SourceLanguage::Glsl | SourceLanguage::Hlsl)
-            }
+            Compiler::Shaderc => matches!(source_language, SourceLanguage::Glsl),
             Compiler::Slangc => {
                 matches!(
                     source_language,
