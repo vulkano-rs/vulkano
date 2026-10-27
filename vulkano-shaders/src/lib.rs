@@ -983,7 +983,11 @@ impl MacroInputParser {
         }
 
         if let Some(Shaders::Single(shader_fields)) = &self.shaders {
-            shader_fields.check_valid(Span::call_site(), None, None)?;
+            shader_fields.check_valid(
+                Span::call_site(),
+                self.global_source_language,
+                self.global_compiler,
+            )?;
         }
 
         Ok(())
