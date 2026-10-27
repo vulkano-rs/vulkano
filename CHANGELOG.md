@@ -135,6 +135,7 @@ Changes to command buffers:
 - Vulkano-shaders: Implemented support for the HLSL and Slang languages.
 - Vulkano-shaders: Added a `compiler` macro option, which allows you to specify the shader compiler to use.
 - Vulkano-shaders: Added an `entry_point` macro option, which allows you to specify the entry point of the shader source to compile.
+- Vulkano-shaders: The `ty` option is no longer required.
 
 ### Bugs fixed
 
