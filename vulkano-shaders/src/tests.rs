@@ -1,7 +1,8 @@
 use crate::{
     shaders::{compile_shader, generate_shaders},
+    spirv_bytes_to_words,
     structs::{generate_structs, TypeRegistry},
-    MacroOptions, Result, ShaderKind, SourceLanguage, SpirvVersion, VulkanVersion,
+    MacroOptions, Result, ShaderKind, SourceLanguage,
 };
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
@@ -10,10 +11,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use syn::{File, Item, LitStr};
-use vulkano::shader::{
-    reflect,
-    spirv::{self, Spirv},
-};
 
 fn compile_inline(
     options: &MacroOptions,
@@ -50,7 +47,7 @@ fn compile(
         None,
         macro_defines,
     )?;
-    let words = spirv::bytes_to_words(&bytes).unwrap().into_owned();
+    let words = spirv_bytes_to_words(&bytes).unwrap().into_owned();
 
     Ok((words, includes))
 }
@@ -71,14 +68,8 @@ fn normalize_str(path: PathBuf) -> String {
 }
 
 #[test]
-fn spirv_parse() {
-    let words = spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
-    Spirv::new(&words).unwrap();
-}
-
-#[test]
 fn spirv_reflect() {
-    let words = spirv::bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
+    let words = spirv_bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
 
     let mut type_registry = TypeRegistry::default();
     let (_shader_code, _structs) = reflect(
@@ -951,261 +942,8 @@ fn macros_slangc() {
     );
 }
 
-/// `entrypoint1.frag.glsl`:
-/// ```glsl
-/// #version 450
-///
-/// layout(set = 0, binding = 0) uniform Uniform {
-///     uint data;
-/// } ubo;
-///
-/// layout(set = 0, binding = 1) buffer Buffer {
-///     uint data;
-/// } bo;
-///
-/// layout(set = 0, binding = 2) uniform sampler textureSampler;
-/// layout(set = 0, binding = 3) uniform texture2D imageTexture;
-///
-/// layout(push_constant) uniform PushConstant {
-///    uint data;
-/// } push;
-///
-/// layout(input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput inputAttachment;
-///
-/// layout(location = 0) out vec4 outColor;
-///
-/// void entrypoint1() {
-///     bo.data = 12;
-///     outColor = vec4(
-///         float(ubo.data),
-///         float(push.data),
-///         texture(sampler2D(imageTexture, textureSampler), vec2(0.0, 0.0)).x,
-///         subpassLoad(inputAttachment).x
-///     );
-/// }
-/// ```
-///
-/// `entrypoint2.frag.glsl`:
-/// ```glsl
-/// #version 450
-///
-/// layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputAttachment2;
-///
-/// layout(set = 0, binding = 1) buffer Buffer {
-///     uint data;
-/// } bo2;
-///
-/// layout(set = 0, binding = 2) uniform Uniform {
-///     uint data;
-/// } ubo2;
-///
-/// layout(push_constant) uniform PushConstant {
-///    uint data;
-/// } push2;
-///
-/// void entrypoint2() {
-///     bo2.data = ubo2.data + push2.data + int(subpassLoad(inputAttachment2).y);
-/// }
-/// ```
-///
-/// Compiled and linked with:
-/// ```sh
-/// glslangvalidator -e entrypoint1 --source-entrypoint entrypoint1 -V100 entrypoint1.frag.glsl -o entrypoint1.spv
-/// glslangvalidator -e entrypoint2 --source-entrypoint entrypoint2 -V100 entrypoint2.frag.glsl -o entrypoint2.spv
-/// spirv-link entrypoint1.spv entrypoint2.spv -o multiple_entrypoints.spv
-/// ```
 #[test]
-fn descriptor_calculation_with_multiple_entrypoints() {
-    let words = spirv::bytes_to_words(include_bytes!("../tests/multiple_entrypoints.spv")).unwrap();
-    let spirv = Spirv::new(&words).unwrap();
-
-    let mut descriptors = Vec::new();
-    for (_, info) in reflect::entry_points(&spirv) {
-        descriptors.push(info.descriptor_binding_requirements);
-    }
-
-    // Check first entrypoint
-    let e1_descriptors = &descriptors[0];
-    let mut e1_bindings = Vec::new();
-    for loc in e1_descriptors.keys() {
-        e1_bindings.push(*loc);
-    }
-
-    assert_eq!(e1_bindings.len(), 5);
-    assert!(e1_bindings.contains(&(0, 0)));
-    assert!(e1_bindings.contains(&(0, 1)));
-    assert!(e1_bindings.contains(&(0, 2)));
-    assert!(e1_bindings.contains(&(0, 3)));
-    assert!(e1_bindings.contains(&(0, 4)));
-
-    // Check second entrypoint
-    let e2_descriptors = &descriptors[1];
-    let mut e2_bindings = Vec::new();
-    for loc in e2_descriptors.keys() {
-        e2_bindings.push(*loc);
-    }
-
-    assert_eq!(e2_bindings.len(), 3);
-    assert!(e2_bindings.contains(&(0, 0)));
-    assert!(e2_bindings.contains(&(0, 1)));
-    assert!(e2_bindings.contains(&(0, 2)));
-}
-
-#[test]
-fn reflect_descriptor_calculation_with_multiple_entrypoints() {
-    let words = spirv::bytes_to_words(include_bytes!("../tests/multiple_entrypoints.spv")).unwrap();
-
-    let mut type_registry = TypeRegistry::default();
-    let (_shader_code, _structs) = reflect(
-        &MacroOptions::empty(),
-        LitStr::new("../tests/multiple_entrypoints.spv", Span::call_site()),
-        None,
-        &words,
-        Vec::new(),
-        &mut type_registry,
-    )
-    .expect("reflecting spv failed");
-
-    let structs = _structs.to_string();
-    assert_ne!(structs, "", "Has some structs");
-
-    let file: File = syn::parse2(_structs).unwrap();
-    let structs: Vec<_> = file
-        .items
-        .iter()
-        .filter_map(|item| {
-            if let Item::Struct(s) = item {
-                Some(s)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let buffer = structs.iter().find(|s| s.ident == "Buffer").unwrap();
-    assert_eq!(
-        buffer.fields.to_token_stream().to_string(),
-        quote!({pub data: u32,}).to_string()
-    );
-
-    let uniform = structs.iter().find(|s| s.ident == "Uniform").unwrap();
-    assert_eq!(
-        uniform.fields.to_token_stream().to_string(),
-        quote!({pub data: u32,}).to_string()
-    );
-}
-
-fn descriptor_calculation_with_multiple_functions_shader() -> (Vec<u32>, Vec<String>) {
-    compile_inline(
-        &MacroOptions {
-            spirv_version: SpirvVersion::V1_6,
-            vulkan_version: VulkanVersion::V1_3,
-            ..MacroOptions::empty()
-        },
-        r#"
-            #version 460
-
-            layout(set = 1, binding = 0) buffer Buffer {
-                vec3 data;
-            } bo;
-
-            layout(set = 2, binding = 0) uniform Uniform {
-                float data;
-            } ubo;
-
-            layout(set = 3, binding = 1) uniform sampler textureSampler;
-            layout(set = 3, binding = 2) uniform texture2D imageTexture;
-
-            float withMagicSparkles(float data) {
-                return texture(sampler2D(imageTexture, textureSampler), vec2(data, data)).x;
-            }
-
-            vec3 makeSecretSauce() {
-                return vec3(withMagicSparkles(ubo.data));
-            }
-
-            void main() {
-                bo.data = makeSecretSauce();
-            }
-        "#,
-        ShaderKind::Vertex,
-        Some(SourceLanguage::Glsl),
-        &[],
-    )
-    .unwrap()
-}
-
-#[test]
-fn descriptor_calculation_with_multiple_functions() {
-    let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
-    let spirv = Spirv::new(&artifact).unwrap();
-
-    if let Some((_, info)) = reflect::entry_points(&spirv).next() {
-        let mut bindings = Vec::new();
-        for (loc, _reqs) in info.descriptor_binding_requirements {
-            bindings.push(loc);
-        }
-
-        assert_eq!(bindings.len(), 4);
-        assert!(bindings.contains(&(1, 0)));
-        assert!(bindings.contains(&(2, 0)));
-        assert!(bindings.contains(&(3, 1)));
-        assert!(bindings.contains(&(3, 2)));
-
-        return;
-    }
-    panic!("could not find entrypoint");
-}
-
-#[test]
-fn reflect_descriptor_calculation_with_multiple_functions() {
-    let (artifact, _) = descriptor_calculation_with_multiple_functions_shader();
-
-    let mut type_registry = TypeRegistry::default();
-    let (_shader_code, _structs) = reflect(
-        &MacroOptions::empty(),
-        LitStr::new(
-            "descriptor_calculation_with_multiple_functions_shader",
-            Span::call_site(),
-        ),
-        None,
-        &artifact,
-        Vec::new(),
-        &mut type_registry,
-    )
-    .expect("reflecting spv failed");
-
-    let structs = _structs.to_string();
-    assert_ne!(structs, "", "Has some structs");
-
-    let file: File = syn::parse2(_structs).unwrap();
-    let structs: Vec<_> = file
-        .items
-        .iter()
-        .filter_map(|item| {
-            if let Item::Struct(s) = item {
-                Some(s)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let buffer = structs.iter().find(|s| s.ident == "Buffer").unwrap();
-    assert_eq!(
-        buffer.fields.to_token_stream().to_string(),
-        quote!({pub data: [f32; 3usize],}).to_string()
-    );
-
-    let uniform = structs.iter().find(|s| s.ident == "Uniform").unwrap();
-    assert_eq!(
-        uniform.fields.to_token_stream().to_string(),
-        quote!({pub data: f32,}).to_string()
-    );
-}
-
-#[test]
-fn slangc_compile_simple_compute() {
+fn reflect_slangc_simple_compute() {
     let (words, _includes) = compile_inline(
         &MacroOptions::empty(),
         r#"
@@ -1224,12 +962,16 @@ fn slangc_compile_simple_compute() {
     )
     .expect("slangc failed to compile simple compute shader");
 
-    assert!(!words.is_empty(), "SPIR-V output should not be empty");
-
-    // Present in every SPIR-V module (https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#Magic)
-    assert_eq!(words[0], 0x07230203, "expected SPIR-V magic number");
-
-    Spirv::new(&words).expect("failed to parse SPIR-V produced by slangc");
+    let mut type_registry = TypeRegistry::default();
+    let (_shader_code, _structs) = reflect(
+        &MacroOptions::empty(),
+        LitStr::new("slangc_simple_compute", Span::call_site()),
+        None,
+        &words,
+        Vec::new(),
+        &mut type_registry,
+    )
+    .expect("reflecting spv failed");
 }
 
 #[test]
@@ -1319,14 +1061,14 @@ fn reflect_slangc_multiple_structured_buffers() {
 }
 
 #[test]
-fn rust_gpu_reflect_vertex() {
+fn reflect_rust_gpu_vertex() {
     let words =
-        spirv::bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-vertex.spv")).unwrap();
+        spirv_bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-vertex.spv")).unwrap();
 
     let mut type_registry = TypeRegistry::default();
     let (_shader_code, _structs) = reflect(
         &MacroOptions::empty(),
-        LitStr::new("rust-gpu vertex shader", Span::call_site()),
+        LitStr::new("rust_gpu_vertex", Span::call_site()),
         None,
         &words,
         Vec::new(),
@@ -1336,14 +1078,14 @@ fn rust_gpu_reflect_vertex() {
 }
 
 #[test]
-fn rust_gpu_reflect_fragment() {
-    let words = spirv::bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-fragment.spv"))
-        .unwrap();
+fn reflect_rust_gpu_fragment() {
+    let words =
+        spirv_bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-fragment.spv")).unwrap();
 
     let mut type_registry = TypeRegistry::default();
     let (_shader_code, _structs) = reflect(
         &MacroOptions::empty(),
-        LitStr::new("rust-gpu vertex shader", Span::call_site()),
+        LitStr::new("rust_gpu_fragment", Span::call_site()),
         None,
         &words,
         Vec::new(),

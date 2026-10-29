@@ -50,25 +50,19 @@
 //! this:
 //!
 //! ```
-//! # use std::sync::Arc;
-//! # use vulkano::{device::Device, shader::ShaderModule, Validated, VulkanError};
-//! #
 //! # mod vs {
-//! #     vulkano_shaders::shader! {
-//! #         ty: "vertex",
-//! #         src: r"
-//! #             #version 450
+//! #     pub use std::sync::Arc;
 //! #
-//! #             layout(location = 0) in vec3 position;
+//! #     pub struct Device;
+//! #     pub struct ShaderModule;
+//! #     pub struct VulkanError;
 //! #
-//! #             void main() {
-//! #                 gl_Position = vec4(position, 1.0);
-//! #             }
-//! #         ",
+//! #     pub unsafe fn load(device: &Arc<Device>) -> Result<Arc<ShaderModule>, VulkanError> {
+//! #         unimplemented!()
 //! #     }
 //! # }
 //! #
-//! # fn main() {}
+//! # use vs::{Arc, Device, ShaderModule, VulkanError};
 //! #
 //! // ...various use statements...
 //! // ...`vs` module containing a `shader!` call...
@@ -531,8 +525,10 @@ use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::{
+    borrow::Cow,
     env, fs,
     path::{Path, PathBuf},
+    slice,
 };
 use structs::TypeRegistry;
 use syn::{
@@ -540,7 +536,6 @@ use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
-use vulkano::shader::spirv;
 
 mod shaders;
 mod structs;
@@ -689,7 +684,7 @@ impl<'a> MacroState<'a> {
             }
         };
 
-        let words = spirv::bytes_to_words(&bytes)
+        let words = spirv_bytes_to_words(&bytes)
             .map_err(|err| Error::new_spanned(&lit, format!("malformed SPIR-V: {err}")))?;
 
         let shaders_code = shaders::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
@@ -801,6 +796,59 @@ fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|err| {
         Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
     })
+}
+
+/// Converts SPIR-V bytes to words. If necessary, the byte order is swapped to match native-endian.
+fn spirv_bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, String> {
+    let (words, []) = bytes.as_chunks::<{ size_of::<u32>() }>() else {
+        return Err("the length of the bytes is not a multiple of 4".to_owned());
+    };
+
+    if words.is_empty() {
+        return Err("invalid header".to_owned());
+    }
+
+    let magic = words[0];
+    let is_little_endian = match magic {
+        [0x03, 0x02, 0x23, 0x07] => true,
+        [0x07, 0x23, 0x02, 0x03] => false,
+        _ => return Err("invalid header".to_owned()),
+    };
+    let endiannesses_match = !(is_little_endian ^ cfg!(target_endian = "little"));
+
+    let words = if endiannesses_match {
+        // If the SPIR-V and current target endiannesses match (which they always will in practice)
+        // and the slice already has the right size and alignment (which it also always has in
+        // practice), then we can just cast the slice.
+        if <*const _>::addr(bytes).is_multiple_of(align_of::<u32>()) {
+            let ptr = bytes.as_ptr().cast::<u32>();
+            let len = bytes.len() / size_of::<u32>();
+
+            // SAFETY: We checked that the slice is sufficiently aligned. The length is definitely
+            // in bounds as we divided it by the size of `u32`.
+            let words = unsafe { slice::from_raw_parts(ptr, len) };
+
+            return Ok(Cow::Borrowed(words));
+        }
+
+        words.iter().copied().map(u32::from_ne_bytes).collect()
+    } else {
+        words.iter().copied().map(u32_from_not_ne_bytes).collect()
+    };
+
+    Ok(Cow::Owned(words))
+}
+
+fn u32_from_not_ne_bytes(bytes: [u8; 4]) -> u32 {
+    u32::from_ne_bytes(bytes).swap_bytes()
+}
+
+fn spirv_words_to_rspirv2_words(words: &[u32]) -> &[rspirv2::Word] {
+    const { assert!(size_of::<u32>() == size_of::<rspirv2::Word>()) };
+    const { assert!(align_of::<u32>() == align_of::<rspirv2::Word>()) };
+
+    // SAFETY: `rspirv2::Word` is publicly transparent over `u32`.
+    unsafe { std::slice::from_raw_parts(words.as_ptr().cast(), words.len()) }
 }
 
 struct MacroInput {
