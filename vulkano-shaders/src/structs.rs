@@ -1,10 +1,23 @@
-use crate::{bail, LinAlgType, MacroOptions, Result};
+use crate::{bail, spirv_words_to_rspirv2_words, LinAlgType, MacroOptions, Result};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use rspirv2::{
+    core::{
+        inst::{
+            OpConstant, OpDecorate, OpMemberDecorate, OpMemberName, OpName, OpTypeArray,
+            OpTypeFloat, OpTypeInt, OpTypeMatrix, OpTypePointer, OpTypeRuntimeArray, OpTypeStruct,
+            OpTypeVector,
+        },
+        preamble::{self, CoreInstSet, Decoration},
+    },
+    inst::{Inst, InstEncoding},
+    module::SpirvHeader,
+    operand::{IdRef, IdResult},
+    slice::InstSlice,
+};
 use std::{cmp::Ordering, num::NonZero};
 use syn::{Error, Ident, LitStr};
-use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub(super) fn generate_structs(
@@ -18,31 +31,27 @@ pub(super) fn generate_structs(
         return Ok(TokenStream::new());
     }
 
-    let spirv = Spirv::new(words).map_err(|err| {
+    let words = spirv_words_to_rspirv2_words(words);
+    let (header, insts) = words.split_at(5);
+    let header = SpirvHeader::from_slice(header);
+    header.validate().unwrap();
+    let insts = InstSlice::from_words(insts).map_err(|err| {
         Error::new_spanned(&lit, format_args!("failed to parse SPIR-V words: {err}"))
     })?;
     let shader = Shader {
         lit,
         name: shader_name.unwrap_or_default(),
-        spirv,
+        insts,
     };
 
     let mut structs = TokenStream::new();
 
-    for (struct_id, member_type_ids) in shader
-        .spirv
-        .types()
-        .iter()
-        .filter_map(|instruction| match *instruction {
-            Instruction::TypeStruct {
-                result_id,
-                ref member_types,
-            } => Some((result_id, member_types)),
-            _ => None,
-        })
-        .filter(|&(struct_id, _)| has_defined_layout(&shader, struct_id))
+    for op_type_struct in shader
+        .insts
+        .iter_inst::<OpTypeStruct>()
+        .filter(|op_type_struct| has_defined_layout(&shader, op_type_struct))
     {
-        let struct_ty = TypeStruct::new(&shader, struct_id, member_type_ids)?;
+        let struct_ty = TypeStruct::new(&shader, &op_type_struct);
 
         // Register the type if needed.
         if !type_registry.register_struct(&shader, &struct_ty)? {
@@ -71,44 +80,39 @@ pub(super) fn generate_structs(
     Ok(structs)
 }
 
-struct Shader {
+struct Shader<'a> {
     lit: LitStr,
     name: String,
-    spirv: Spirv,
+    insts: &'a InstSlice<CoreInstSet>,
 }
 
-fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
-    for member_info in shader.spirv.id(struct_id).members() {
-        let mut offset_found = false;
+fn has_defined_layout(shader: &Shader<'_>, op_type_struct: &OpTypeStruct) -> bool {
+    let mut offset_found = false;
 
-        for instruction in member_info.decorations() {
-            match instruction {
-                Instruction::MemberDecorate {
-                    decoration: Decoration::BuiltIn { .. },
-                    ..
-                } => {
-                    // Ignore the whole struct if a member is built in, which includes
-                    // `gl_Position` for example.
-                    return false;
-                }
-                Instruction::MemberDecorate {
-                    decoration: Decoration::Offset { .. },
-                    ..
-                } => {
-                    offset_found = true;
-                }
-                _ => (),
+    for op_member_decorate in
+        shader
+            .insts
+            .iter_inst::<OpMemberDecorate>()
+            .filter(|op_member_decorate| {
+                op_member_decorate.structure_type.0 == op_type_struct.id_result
+            })
+    {
+        match op_member_decorate.decoration {
+            Decoration::BuiltIn(_) => {
+                // Ignore the whole struct if a member is built in, which includes `gl_Position`
+                // for example.
+                return false;
             }
-        }
-
-        // Some structs don't have `Offset` decorations, in that case they are used as local
-        // variables only. Ignoring these.
-        if !offset_found {
-            return false;
+            Decoration::Offset(_) => {
+                offset_found = true;
+            }
+            _ => {}
         }
     }
 
-    true
+    // Some structs don't have `Offset` decorations. In that case, they are used as local variables
+    // only. Ignoring these.
+    offset_found
 }
 
 #[derive(Default)]
@@ -117,7 +121,7 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
-    fn register_struct(&mut self, shader: &Shader, ty: &TypeStruct) -> Result<bool> {
+    fn register_struct(&mut self, shader: &Shader<'_>, ty: &TypeStruct) -> Result<bool> {
         // Checking with registry if this struct is already registered by another shader, and if
         // their signatures match.
         if let Some(registered) = self.registered_structs.get(&ty.ident) {
@@ -230,9 +234,15 @@ fn align_up(offset: usize, alignment: Alignment) -> usize {
     (offset + alignment as usize - 1) & !(alignment as usize - 1)
 }
 
-fn is_aligned(offset: usize, alignment: Alignment) -> bool {
-    offset & (alignment as usize - 1) == 0
-}
+const OP_TYPE_BOOL_OPCODE: u16 = preamble::OP_TYPE_BOOL.opcode;
+const OP_TYPE_INT_OPCODE: u16 = preamble::OP_TYPE_INT.opcode;
+const OP_TYPE_FLOAT_OPCODE: u16 = preamble::OP_TYPE_FLOAT.opcode;
+const OP_TYPE_POINTER_OPCODE: u16 = preamble::OP_TYPE_POINTER.opcode;
+const OP_TYPE_VECTOR_OPCODE: u16 = preamble::OP_TYPE_VECTOR.opcode;
+const OP_TYPE_MATRIX_OPCODE: u16 = preamble::OP_TYPE_MATRIX.opcode;
+const OP_TYPE_ARRAY_OPCODE: u16 = preamble::OP_TYPE_ARRAY.opcode;
+const OP_TYPE_RUNTIME_ARRAY_OPCODE: u16 = preamble::OP_TYPE_RUNTIME_ARRAY.opcode;
+const OP_TYPE_STRUCT_OPCODE: u16 = preamble::OP_TYPE_STRUCT.opcode;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
@@ -245,43 +255,76 @@ enum Type {
 }
 
 impl Type {
-    fn new(shader: &Shader, type_id: Id) -> Result<Self> {
-        let id_info = shader.spirv.id(type_id);
+    fn new(shader: &Shader<'_>, id_ref: IdRef) -> Self {
+        shader
+            .insts
+            .iter_ref()
+            .find_map(|inst_ref| {
+                // For the below instructions, the Result ID is always the first operand. So if
+                // this word doesn't match the type we're searching for, it can't be it (a true
+                // negative), so false negatives can't happen. There is the possibility of false
+                // positives if it's not one of the below types, but worst case, we fall through in
+                // the below code, which results in a true negative again. Otherwise, both the
+                // Result ID and opcode must match, so we end up with a true positive. This way, we
+                // don't spend any more time than necessary decoding irrelevant instructions.
+                if inst_ref.to_words().get(1).copied() != Some(id_ref.0 .0) {
+                    return None;
+                }
 
-        let ty = match *id_info.instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
-            Instruction::TypeInt {
-                width, signedness, ..
-            } => Type::Scalar(TypeScalar::Int(TypeInt::new(shader, width, signedness)?)),
-            Instruction::TypeFloat { width, .. } => {
-                Type::Scalar(TypeScalar::Float(TypeFloat::new(shader, width)?))
-            }
-            Instruction::TypePointer { .. } => Type::Pointer(TypePointer::new(shader)?),
-            Instruction::TypeVector {
-                component_type,
-                component_count,
-                ..
-            } => Type::Vector(TypeVector::new(shader, component_type, component_count)?),
-            Instruction::TypeMatrix {
-                column_type,
-                column_count,
-                ..
-            } => Type::Matrix(TypeMatrix::new(shader, column_type, column_count)?),
-            Instruction::TypeArray {
-                element_type,
-                length,
-                ..
-            } => Type::Array(TypeArray::new(shader, type_id, element_type, Some(length))?),
-            Instruction::TypeRuntimeArray { element_type, .. } => {
-                Type::Array(TypeArray::new(shader, type_id, element_type, None)?)
-            }
-            Instruction::TypeStruct {
-                ref member_types, ..
-            } => Type::Struct(TypeStruct::new(shader, type_id, member_types)?),
-            _ => bail!(shader.lit, "type {type_id} was not found"),
-        };
+                match inst_ref.opcode() {
+                    OP_TYPE_BOOL_OPCODE => panic!("can't put booleans in structs"),
+                    OP_TYPE_INT_OPCODE => {
+                        let op_type_int = OpTypeInt::decode(*inst_ref).unwrap();
+                        let type_int = TypeInt::new(&op_type_int);
 
-        Ok(ty)
+                        Some(Type::Scalar(TypeScalar::Int(type_int)))
+                    }
+                    OP_TYPE_FLOAT_OPCODE => {
+                        let op_type_float = OpTypeFloat::decode(*inst_ref).unwrap();
+                        let type_float = TypeFloat::new(&op_type_float);
+
+                        Some(Type::Scalar(TypeScalar::Float(type_float)))
+                    }
+                    OP_TYPE_POINTER_OPCODE => {
+                        let _op_type_pointer = OpTypePointer::decode(*inst_ref).unwrap();
+                        let type_pointer = TypePointer::new();
+
+                        Some(Type::Pointer(type_pointer))
+                    }
+                    OP_TYPE_VECTOR_OPCODE => {
+                        let op_type_vector = OpTypeVector::decode(*inst_ref).unwrap();
+                        let type_vector = TypeVector::new(shader, &op_type_vector);
+
+                        Some(Type::Vector(type_vector))
+                    }
+                    OP_TYPE_MATRIX_OPCODE => {
+                        let op_type_matrix = OpTypeMatrix::decode(*inst_ref).unwrap();
+                        let type_matrix = TypeMatrix::new(shader, &op_type_matrix);
+
+                        Some(Type::Matrix(type_matrix))
+                    }
+                    OP_TYPE_ARRAY_OPCODE => {
+                        let op_type_array = OpTypeArray::decode(*inst_ref).unwrap();
+                        let type_array = TypeArray::new(shader, &op_type_array);
+
+                        Some(Type::Array(type_array))
+                    }
+                    OP_TYPE_RUNTIME_ARRAY_OPCODE => {
+                        let op_type_runtime_array = OpTypeRuntimeArray::decode(*inst_ref).unwrap();
+                        let type_array = TypeArray::new_runtime(shader, &op_type_runtime_array);
+
+                        Some(Type::Array(type_array))
+                    }
+                    OP_TYPE_STRUCT_OPCODE => {
+                        let op_type_struct = OpTypeStruct::decode(*inst_ref).unwrap();
+                        let type_struct = TypeStruct::new(shader, &op_type_struct);
+
+                        Some(Type::Struct(type_struct))
+                    }
+                    _ => None,
+                }
+            })
+            .unwrap()
     }
 
     fn size(&self) -> Option<usize> {
@@ -356,6 +399,16 @@ impl TypeScalar {
             Self::Float(ty) => ty.alignment(),
         }
     }
+
+    #[track_caller]
+    fn unwrap_float(self) -> TypeFloat {
+        match self {
+            TypeScalar::Int(_) => {
+                panic!("called `TypeScalar::unwrap_float` on an `Int` value")
+            }
+            TypeScalar::Float(type_float) => type_float,
+        }
+    }
 }
 
 impl ToTokens for TypeScalar {
@@ -383,22 +436,22 @@ enum IntWidth {
 }
 
 impl TypeInt {
-    fn new(shader: &Shader, width: u32, signedness: u32) -> Result<Self> {
-        let width = match width {
+    fn new(op_type_int: &OpTypeInt) -> Self {
+        let width = match op_type_int.width.to_u32() {
             8 => IntWidth::W8,
             16 => IntWidth::W16,
             32 => IntWidth::W32,
             64 => IntWidth::W64,
-            _ => bail!(shader.lit, "integers must be 8, 16, 32, or 64-bit wide"),
+            _ => unreachable!(),
         };
 
-        let signed = match signedness {
+        let signed = match op_type_int.signedness.to_u32() {
             0 => false,
             1 => true,
-            _ => bail!(shader.lit, "signedness must be 0 or 1"),
+            _ => unreachable!(),
         };
 
-        Ok(TypeInt { width, signed })
+        TypeInt { width, signed }
     }
 
     fn size(&self) -> usize {
@@ -448,15 +501,15 @@ enum FloatWidth {
 }
 
 impl TypeFloat {
-    fn new(shader: &Shader, width: u32) -> Result<Self> {
-        let width = match width {
+    fn new(op_type_float: &OpTypeFloat) -> Self {
+        let width = match op_type_float.width.to_u32() {
             16 => FloatWidth::W16,
             32 => FloatWidth::W32,
             64 => FloatWidth::W64,
-            _ => bail!(shader.lit, "floats must be 16, 32, or 64-bit wide"),
+            _ => unreachable!(),
         };
 
-        Ok(TypeFloat { width })
+        TypeFloat { width }
     }
 
     fn size(&self) -> usize {
@@ -493,8 +546,8 @@ impl ToTokens for TypeFloat {
 struct TypePointer;
 
 impl TypePointer {
-    fn new(_shader: &Shader) -> Result<Self> {
-        Ok(TypePointer)
+    fn new() -> Self {
+        TypePointer
     }
 
     fn size(&self) -> usize {
@@ -519,24 +572,47 @@ struct TypeVector {
 }
 
 impl TypeVector {
-    fn new(shader: &Shader, component_type_id: Id, component_count: u32) -> Result<Self> {
-        let component_count = ComponentCount::new(shader, component_count)?;
+    fn new(shader: &Shader<'_>, op_type_vector: &OpTypeVector) -> Self {
+        let component_count = ComponentCount::new(op_type_vector.component_count.to_u32());
 
-        let component_type = match *shader.spirv.id(component_type_id).instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
-            Instruction::TypeInt {
-                width, signedness, ..
-            } => TypeScalar::Int(TypeInt::new(shader, width, signedness)?),
-            Instruction::TypeFloat { width, .. } => {
-                TypeScalar::Float(TypeFloat::new(shader, width)?)
-            }
-            _ => bail!(shader.lit, "vector components must be scalars"),
-        };
+        let component_type = shader
+            .insts
+            .iter_ref()
+            .find_map(|inst_ref| {
+                // For the below instructions, the Result ID is always the first operand. So if
+                // this word doesn't match the type we're searching for, it can't be it (a true
+                // negative), so false negatives can't happen. There is the possibility of false
+                // positives if it's not one of the below types, but worst case, we fall through in
+                // the below code, which results in a true negative again. Otherwise, both the
+                // Result ID and opcode must match, so we end up with a true positive. This way, we
+                // don't spend any more time than necessary decoding irrelevant instructions.
+                if inst_ref.to_words().get(1).copied() != Some(op_type_vector.component_type.0 .0) {
+                    return None;
+                }
 
-        Ok(TypeVector {
+                match inst_ref.opcode() {
+                    OP_TYPE_BOOL_OPCODE => panic!("can't put booleans in structs"),
+                    OP_TYPE_INT_OPCODE => {
+                        let op_type_int = OpTypeInt::decode(*inst_ref).unwrap();
+                        let type_int = TypeInt::new(&op_type_int);
+
+                        Some(TypeScalar::Int(type_int))
+                    }
+                    OP_TYPE_FLOAT_OPCODE => {
+                        let op_type_float = OpTypeFloat::decode(*inst_ref).unwrap();
+                        let type_float = TypeFloat::new(&op_type_float);
+
+                        Some(TypeScalar::Float(type_float))
+                    }
+                    _ => None,
+                }
+            })
+            .unwrap();
+
+        TypeVector {
             component_type,
             component_count,
-        })
+        }
     }
 
     fn size(&self) -> usize {
@@ -554,36 +630,33 @@ struct TypeMatrix {
 }
 
 impl TypeMatrix {
-    fn new(shader: &Shader, column_type_id: Id, column_count: u32) -> Result<Self> {
-        let column_count = ComponentCount::new(shader, column_count)?;
+    fn new(shader: &Shader<'_>, op_type_matrix: &OpTypeMatrix) -> Self {
+        let column_count = ComponentCount::new(op_type_matrix.column_count.to_u32());
 
-        let (component_type, row_count) = match *shader.spirv.id(column_type_id).instruction() {
-            Instruction::TypeVector {
-                component_type,
-                component_count,
-                ..
-            } => match *shader.spirv.id(component_type).instruction() {
-                Instruction::TypeFloat { width, .. } => (
-                    TypeFloat::new(shader, width)?,
-                    ComponentCount::new(shader, component_count)?,
-                ),
-                _ => bail!(shader.lit, "matrix components must be floats"),
-            },
-            _ => bail!(shader.lit, "matrix columns must be vectors"),
-        };
+        let column_type = shader
+            .insts
+            .iter_inst::<OpTypeVector>()
+            .find_map(|op_type_vector| {
+                (op_type_vector.id_result == op_type_matrix.column_type.0)
+                    .then(|| TypeVector::new(shader, &op_type_vector))
+            })
+            .unwrap();
+
+        let component_type = column_type.component_type.unwrap_float();
+        let row_count = column_type.component_count;
 
         // We can't know these until we get to the members and their decorations, so just use
         // defaults for now.
         let stride = component_type.size() * row_count as usize;
         let majorness = MatrixMajorness::ColumnMajor;
 
-        Ok(TypeMatrix {
+        TypeMatrix {
             component_type,
             column_count,
             row_count,
             stride,
             majorness,
-        })
+        }
     }
 
     fn size(&self) -> usize {
@@ -624,15 +697,13 @@ enum ComponentCount {
 }
 
 impl ComponentCount {
-    fn new(shader: &Shader, count: u32) -> Result<Self> {
-        let count = match count {
+    fn new(count: u32) -> Self {
+        match count {
             2 => ComponentCount::C2,
             3 => ComponentCount::C3,
             4 => ComponentCount::C4,
-            _ => bail!(shader.lit, "component counts must be 2, 3 or 4"),
-        };
-
-        Ok(count)
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -644,76 +715,59 @@ struct TypeArray {
 }
 
 impl TypeArray {
-    fn new(
-        shader: &Shader,
-        array_id: Id,
-        element_type_id: Id,
-        length_id: Option<Id>,
-    ) -> Result<Self> {
-        let element_type = Box::new(Type::new(shader, element_type_id)?);
+    fn new(shader: &Shader<'_>, op_type_array: &OpTypeArray) -> Self {
+        let length = shader
+            .insts
+            .iter_inst::<OpConstant>()
+            .find_map(|op_constant| {
+                (op_constant.id_result == op_type_array.length.0).then(|| {
+                    let len = op_constant.value.as_u64().unwrap();
 
-        let length = length_id
-            .map(|id| match shader.spirv.id(id).instruction() {
-                Instruction::Constant { value, .. } | Instruction::SpecConstant { value, .. } => {
-                    assert!(matches!(value.len(), 1 | 2));
-                    let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-
-                    NonZero::new(len.try_into().unwrap()).ok_or_else(|| {
-                        Error::new_spanned(&shader.lit, "arrays must have a non-zero length")
-                    })
-                }
-                _ => bail!(shader.lit, "failed to find array length"),
+                    NonZero::new(len.try_into().unwrap()).unwrap()
+                })
             })
-            .transpose()?;
+            .unwrap();
 
-        let stride = {
-            let mut strides =
-                shader
-                    .spirv
-                    .id(array_id)
-                    .decorations()
-                    .iter()
-                    .filter_map(|instruction| match *instruction {
-                        Instruction::Decorate {
-                            decoration: Decoration::ArrayStride { array_stride },
-                            ..
-                        } => Some(array_stride as usize),
-                        _ => None,
-                    });
-            let stride = strides.next().ok_or_else(|| {
-                Error::new_spanned(
-                    &shader.lit,
-                    "arrays inside structs must have an `ArrayStride` decoration",
-                )
-            })?;
+        Self::new_inner(
+            shader,
+            op_type_array.id_result,
+            op_type_array.element_type,
+            Some(length),
+        )
+    }
 
-            if !strides.all(|s| s == stride) {
-                bail!(shader.lit, "found conflicting `ArrayStride` decorations");
-            }
+    fn new_runtime(shader: &Shader<'_>, op_type_runtime_array: &OpTypeRuntimeArray) -> Self {
+        Self::new_inner(
+            shader,
+            op_type_runtime_array.id_result,
+            op_type_runtime_array.element_type,
+            None,
+        )
+    }
 
-            if !is_aligned(stride, element_type.scalar_alignment()) {
-                bail!(
-                    shader.lit,
-                    "array strides must be aligned for the element type",
-                );
-            }
+    fn new_inner(
+        shader: &Shader<'_>,
+        id_result: IdResult,
+        element_type_id_ref: IdRef,
+        length: Option<NonZero<usize>>,
+    ) -> Self {
+        let element_type = Box::new(Type::new(shader, element_type_id_ref));
 
-            let element_size = element_type
-                .size()
-                .ok_or_else(|| Error::new_spanned(&shader.lit, "array elements must be sized"))?;
+        let stride = shader
+            .insts
+            .iter_inst::<OpDecorate>()
+            .filter(|op_decorate| op_decorate.target.0 == id_result)
+            .find_map(|op_decorate| match op_decorate.decoration {
+                Decoration::ArrayStride(array_stride) => Some(array_stride.0 .0 as usize),
+                _ => None,
+            })
+            .unwrap();
 
-            if stride < element_size {
-                bail!(shader.lit, "array elements must not overlap");
-            }
-
-            stride
-        };
-
-        Ok(TypeArray {
+        TypeArray {
             element_type,
             length,
             stride,
-        })
+        }
     }
 
     fn size(&self) -> Option<usize> {
@@ -725,20 +779,6 @@ impl TypeArray {
     }
 }
 
-fn deduplicate_ident(ident: &Ident, members: &[Member]) -> Option<Ident> {
-    let name = ident.to_string();
-    if !(name.starts_with("StructuredBuffer") || name.starts_with("RWStructuredBuffer"))
-        || members.len() != 1
-    {
-        return None;
-    }
-    let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
-        return None;
-    };
-    let e = element_type.ident()?;
-    Some(format_ident!("{}_{}", ident, e, span = ident.span()))
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeStruct {
     ident: Ident,
@@ -746,51 +786,36 @@ struct TypeStruct {
 }
 
 impl TypeStruct {
-    fn new(shader: &Shader, struct_id: Id, member_type_ids: &[Id]) -> Result<Self> {
-        let id_info = shader.spirv.id(struct_id);
-
-        let ident = id_info
-            .names()
-            .iter()
-            .find_map(|instruction| match instruction {
-                Instruction::Name { name, .. } => {
-                    // Replace chars that could potentially cause the ident to be invalid with "_".
-                    // For example, Rust-GPU names structs by their fully qualified rust name (e.g.
-                    // "foo::bar::MyStruct") in which the ":" is an invalid character for idents.
-                    let mut name =
-                        name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
-                    if name.starts_with(|c: char| !c.is_ascii_alphabetic()) {
-                        name.insert(0, '_');
-                    }
-
-                    // Worst case: invalid idents will get the UnnamedX name below
-                    syn::parse_str(&name).ok()
-                }
-                _ => None,
+    fn new(shader: &Shader<'_>, op_type_struct: &OpTypeStruct) -> Self {
+        let ident = shader
+            .insts
+            .iter_inst::<OpName>()
+            .find_map(|op_name| {
+                (op_name.target.0 == op_type_struct.id_result)
+                    .then(|| name_to_ident(op_name.name.as_str()))
             })
-            .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
+            .unwrap_or_else(|| format_ident!("Unnamed{}", op_type_struct.id_result.0 .0));
 
-        let mut members = Vec::<Member>::with_capacity(member_type_ids.len());
+        let mut members = Vec::<Member>::with_capacity(op_type_struct.id_ref.len());
 
-        for (member_index, (&member_id, member_info)) in
-            member_type_ids.iter().zip(id_info.members()).enumerate()
-        {
-            let ident = member_info
-                .names()
-                .iter()
-                .find_map(|instruction| match instruction {
-                    Instruction::MemberName { name, .. } => {
-                        Some(Ident::new(name, Span::call_site()))
-                    }
-                    _ => None,
+        for (member_index, &member_id) in op_type_struct.id_ref.iter().enumerate() {
+            let member_index = member_index as u32;
+
+            let ident = shader
+                .insts
+                .iter_inst::<OpMemberName>()
+                .find_map(|op_member_name| {
+                    (op_member_name.ty.0 == op_type_struct.id_result
+                        && op_member_name.member.0 .0 == member_index)
+                        .then(|| name_to_ident(op_member_name.name.as_str()))
                 })
                 .unwrap_or_else(|| format_ident!("unnamed{member_index}"));
 
-            let mut ty = Type::new(shader, member_id)?;
+            let mut ty = Type::new(shader, member_id);
 
             {
-                // If the member is an array, then matrix-decorations can be applied to it if the
-                // innermost type of the array is a matrix. Else this will stay being the type of
+                // If the member is an array, then matrix decorations can be applied to it if the
+                // innermost type of the array is a matrix. Else, this will stay being the type of
                 // the member.
                 let mut ty = &mut ty;
                 while let Type::Array(TypeArray { element_type, .. }) = ty {
@@ -798,118 +823,56 @@ impl TypeStruct {
                 }
 
                 if let Type::Matrix(matrix) = ty {
-                    let mut strides =
-                        member_info.decorations().iter().filter_map(
-                            |instruction| match *instruction {
-                                Instruction::MemberDecorate {
-                                    decoration: Decoration::MatrixStride { matrix_stride },
-                                    ..
-                                } => Some(matrix_stride as usize),
-                                _ => None,
-                            },
-                        );
-                    matrix.stride = strides.next().ok_or_else(|| {
-                        Error::new_spanned(
-                            &shader.lit,
-                            "matrices inside structs must have a `MatrixStride` decoration",
-                        )
-                    })?;
-
-                    if !strides.all(|s| s == matrix.stride) {
-                        bail!(shader.lit, "found conflicting `MatrixStride` decorations");
-                    }
-
-                    if !is_aligned(matrix.stride, matrix.component_type.alignment()) {
-                        bail!(
-                            shader.lit,
-                            "matrix strides must be an integer multiple of the size of the \
-                            component",
-                        );
-                    }
-
-                    let mut majornessess = member_info.decorations().iter().filter_map(
-                        |instruction| match *instruction {
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::ColMajor,
-                                ..
-                            } => Some(MatrixMajorness::ColumnMajor),
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::RowMajor,
-                                ..
-                            } => Some(MatrixMajorness::RowMajor),
+                    matrix.stride = shader
+                        .insts
+                        .iter_inst::<OpMemberDecorate>()
+                        .filter(|op_member_decorate| {
+                            op_member_decorate.structure_type.0 == op_type_struct.id_result
+                                && op_member_decorate.member.0 .0 == member_index
+                        })
+                        .find_map(|op_member_decorate| match op_member_decorate.decoration {
+                            Decoration::MatrixStride(matrix_stride) => {
+                                Some(matrix_stride.0 .0 as usize)
+                            }
                             _ => None,
-                        },
-                    );
-                    matrix.majorness = majornessess.next().ok_or_else(|| {
-                        Error::new_spanned(
-                            &shader.lit,
-                            "matrices inside structs must have a `ColMajor` or `RowMajor` \
-                            decoration",
-                        )
-                    })?;
+                        })
+                        .unwrap();
 
-                    if !majornessess.all(|m| m == matrix.majorness) {
-                        bail!(shader.lit, "found conflicting matrix majorness decorations");
-                    }
-
-                    // NOTE(Marc): It is crucial that we do this check after setting the majorness,
-                    // because `TypeMatrix::vector_size` depends on it.
-                    if matrix.stride < matrix.vector_size() {
-                        bail!(shader.lit, "matrix columns/rows must not overlap");
-                    }
+                    matrix.majorness = shader
+                        .insts
+                        .iter_inst::<OpMemberDecorate>()
+                        .filter(|op_member_decorate| {
+                            op_member_decorate.structure_type.0 == op_type_struct.id_result
+                                && op_member_decorate.member.0 .0 == member_index
+                        })
+                        .find_map(|op_member_decorate| match op_member_decorate.decoration {
+                            Decoration::ColMajor => Some(MatrixMajorness::ColumnMajor),
+                            Decoration::RowMajor => Some(MatrixMajorness::RowMajor),
+                            _ => None,
+                        })
+                        .unwrap();
                 }
             }
 
-            let offset = member_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::MemberDecorate {
-                        decoration: Decoration::Offset { byte_offset },
-                        ..
-                    } => Some(byte_offset as usize),
+            let offset = shader
+                .insts
+                .iter_inst::<OpMemberDecorate>()
+                .filter(|op_member_decorate| {
+                    op_member_decorate.structure_type.0 == op_type_struct.id_result
+                        && op_member_decorate.member.0 .0 == member_index
+                })
+                .find_map(|op_member_decorate| match op_member_decorate.decoration {
+                    Decoration::Offset(offset) => Some(offset.0 .0 as usize),
                     _ => None,
                 })
-                .ok_or_else(|| {
-                    Error::new_spanned(
-                        &shader.lit,
-                        "struct members must have an `Offset` decoration",
-                    )
-                })?;
-
-            if !is_aligned(offset, ty.scalar_alignment()) {
-                bail!(
-                    shader.lit,
-                    "struct member offsets must be aligned for the member type",
-                );
-            }
-
-            if let Some(last) = members.last() {
-                if !is_aligned(offset, last.ty.scalar_alignment()) {
-                    bail!(
-                        shader.lit,
-                        "expected struct member offset to be aligned for the preceding member type",
-                    );
-                }
-
-                let last_size = last.ty.size().ok_or_else(|| {
-                    Error::new_spanned(
-                        &shader.lit,
-                        "all members except the last member of a struct must be sized",
-                    )
-                })?;
-
-                if last.offset + last_size > offset {
-                    bail!(shader.lit, "struct members must not overlap");
-                }
-            }
+                .unwrap();
 
             members.push(Member { ident, ty, offset });
         }
 
-        let ident = deduplicate_ident(&ident, &members).unwrap_or(ident);
+        let ident = disambiguate_structured_buffer(&ident, &members).unwrap_or(ident);
 
-        Ok(TypeStruct { ident, members })
+        TypeStruct { ident, members }
     }
 
     fn size(&self) -> Option<usize> {
@@ -954,6 +917,40 @@ impl TypeStruct {
     }
 }
 
+fn name_to_ident(name: &str) -> Ident {
+    // Replace chars that could potentially cause the ident to be invalid with "_". For example,
+    // Rust-GPU names structs by their fully qualified Rust name (e.g., "foo::bar::MyStruct"), in
+    // which the ":" is an invalid character for idents.
+    let mut name = name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
+
+    if name.starts_with(|c: char| !(c.is_ascii_alphabetic() || c == '_')) {
+        name.insert(0, '_');
+    }
+
+    Ident::new(&name, Span::call_site())
+}
+
+fn disambiguate_structured_buffer(ident: &Ident, members: &[Member]) -> Option<Ident> {
+    let name = ident.to_string();
+
+    if !(name.starts_with("StructuredBuffer") || name.starts_with("RWStructuredBuffer"))
+        || members.len() != 1
+    {
+        return None;
+    }
+
+    let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
+        return None;
+    };
+
+    let element_ident = element_type.ident()?;
+
+    Some(format_ident!(
+        "{ident}_{element_ident}",
+        span = ident.span()
+    ))
+}
+
 #[derive(Clone, Debug)]
 struct Member {
     ident: Ident,
@@ -968,6 +965,18 @@ impl PartialEq for Member {
 }
 
 impl Eq for Member {}
+
+trait InstSliceExt {
+    fn iter_inst<T: Inst + InstEncoding>(&self) -> impl Iterator<Item = T>;
+}
+
+impl InstSliceExt for InstSlice<CoreInstSet> {
+    fn iter_inst<T: Inst + InstEncoding>(&self) -> impl Iterator<Item = T> {
+        self.iter_ref()
+            .filter(|inst_ref| inst_ref.opcode() == T::META.opcode)
+            .map(|inst_ref| T::decode(*inst_ref).unwrap())
+    }
+}
 
 /// Helper for serializing a type to tokens with respect to macro options.
 struct Serializer<'a, T>(&'a T, &'a MacroOptions);
