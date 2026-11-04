@@ -14,7 +14,7 @@ uint convertToSharedExponent(vec3 color) {
 
     if (max_shared_component == MANTISSA_VALUES) {
         shared_exponent += 1;
-        divisor *= 2;
+        divisor *= 2.0;
     }
 
     vec3 shared_color = floor(clamped_color / divisor + 0.5);

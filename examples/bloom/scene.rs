@@ -178,7 +178,7 @@ mod fs {
         ty: "fragment",
         src: r#"
             #version 450
-            #include "shared_exponent.glsl"
+            #include "shaders/shared_exponent.glsl"
 
             layout(location = 0) out uint f_color;
 

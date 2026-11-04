@@ -18,20 +18,29 @@ vec3 sample1(vec2 uv) {
     return textureLod(vko_sampler2D(texture_id, sampler_id), uv, src_mip_level).rgb;
 }
 
-// 9-tap tent filter.
+// 9-tap tent filter with the locations and corresponding weights depicted below. This is Unity's
+// preferred upsample bloom filter. This filter is really nice for upsampling because it can be
+// implemented with just 4 taps with identical results (although Unity didn't do this optimization
+// for some reason). And keep in mind that the upsample filter's performance is more important than
+// the downsample filter's performance as the former writes to the highest-resolution image unlike
+// the latter. This cheap but well-working filter paired with the much more expensive 13-tap filter
+// on the way down results in a very good outcome.
+//
+// ┌───┬───┬───┐
+// │ 1 │ 2 │ 1 │
+// ├───┼───┼───┤
+// │ 2 │ 4 │ 2 │
+// ├───┼───┼───┤
+// │ 1 │ 2 │ 1 │
+// └───┴───┴───┘
 vec3 upsampleTent9(vec2 uv, vec2 src_texel_size) {
     vec3 color;
-    color  = sample1(uv + vec2(-1.0, -1.0) * src_texel_size) * 1.0;
-    color += sample1(uv + vec2( 0.0, -1.0) * src_texel_size) * 2.0;
-    color += sample1(uv + vec2( 1.0, -1.0) * src_texel_size) * 1.0;
-    color += sample1(uv + vec2(-1.0,  0.0) * src_texel_size) * 2.0;
-    color += sample1(uv + vec2( 0.0,  0.0) * src_texel_size) * 4.0;
-    color += sample1(uv + vec2( 1.0,  0.0) * src_texel_size) * 2.0;
-    color += sample1(uv + vec2(-1.0,  1.0) * src_texel_size) * 1.0;
-    color += sample1(uv + vec2( 0.0,  1.0) * src_texel_size) * 2.0;
-    color += sample1(uv + vec2( 1.0,  1.0) * src_texel_size) * 1.0;
+    color  = sample1(uv + vec2(-0.5, -0.5) * src_texel_size);
+    color += sample1(uv + vec2( 0.5, -0.5) * src_texel_size);
+    color += sample1(uv + vec2(-0.5,  0.5) * src_texel_size);
+    color += sample1(uv + vec2( 0.5,  0.5) * src_texel_size);
 
-    return color * (1.0 / 16.0);
+    return color / 4.0;
 }
 
 void blend(vec2 uv, ivec2 dst_coord, vec3 color) {

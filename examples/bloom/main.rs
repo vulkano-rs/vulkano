@@ -2,7 +2,7 @@
 
 use bloom::BloomTask;
 use scene::SceneTask;
-use std::{array, cmp, error::Error, sync::Arc};
+use std::{array, cmp, env, error::Error, sync::Arc};
 use tonemap::TonemapTask;
 use vulkano::{
     device::{
@@ -57,7 +57,14 @@ struct App {
     queue: Arc<Queue>,
     resources: Arc<Resources>,
     flight_id: Id<Flight>,
+    shader_language: ShaderLanguage,
     rcx: Option<RenderContext>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShaderLanguage {
+    Glsl,
+    Slang,
 }
 
 pub struct RenderContext {
@@ -185,12 +192,18 @@ impl App {
 
         let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
+        let shader_language = match env::args().nth(1) {
+            Some(arg) if arg == "slang" => ShaderLanguage::Slang,
+            _ => ShaderLanguage::Glsl,
+        };
+
         App {
             instance,
             device,
             queue,
             resources,
             flight_id,
+            shader_language,
             rcx: None,
         }
     }

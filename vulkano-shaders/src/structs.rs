@@ -49,7 +49,7 @@ pub(super) fn generate_structs(
             continue;
         }
 
-        if struct_ty.is_bindless_id() {
+        if struct_ty.to_bindless_id().is_some() {
             continue;
         }
 
@@ -932,25 +932,51 @@ impl TypeStruct {
             .unwrap_or(Alignment::A1)
     }
 
-    fn is_bindless_id(&self) -> bool {
-        self.members.len() == 2
-            && self.members.iter().all(|member| {
-                matches!(
-                    member.ty,
-                    Type::Scalar(TypeScalar::Int(TypeInt {
-                        width: IntWidth::W32,
-                        signed: false,
-                    })),
-                )
-            })
-            && matches!(
-                self.ident.to_string().as_str(),
-                "SamplerId"
-                    | "SampledImageId"
-                    | "StorageImageId"
-                    | "StorageBufferId"
-                    | "AccelerationStructureId",
+    fn to_bindless_id(&self) -> Option<Ident> {
+        if self.members.len() != 2 {
+            return None;
+        }
+
+        if !self.members.iter().all(|member| {
+            matches!(
+                member.ty,
+                Type::Scalar(TypeScalar::Int(TypeInt {
+                    width: IntWidth::W32,
+                    signed: false,
+                })),
             )
+        }) {
+            return None;
+        }
+
+        let name = self.ident.to_string();
+
+        if matches!(
+            name.as_str(),
+            "SamplerId"
+                | "SampledImageId"
+                | "StorageImageId"
+                | "StorageBufferId"
+                | "AccelerationStructureId",
+        ) {
+            return Some(self.ident.clone());
+        }
+
+        if matches!(
+            name.as_str(),
+            "SamplerId_std430"
+                | "SampledImageId_std430"
+                | "StorageImageId_std430"
+                | "StorageBufferId_std430"
+                | "AccelerationStructureId_std430",
+        ) {
+            return Some(Ident::new(
+                name.strip_suffix("_std430").unwrap(),
+                Span::call_site(),
+            ));
+        }
+
+        None
     }
 }
 
@@ -981,11 +1007,11 @@ impl ToTokens for Serializer<'_, Type> {
             Type::Matrix(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Array(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Struct(ty) => {
-                if ty.is_bindless_id() {
-                    tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set:: });
+                if let Some(ident) = ty.to_bindless_id() {
+                    tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set::#ident });
+                } else {
+                    tokens.append(ty.ident.clone());
                 }
-
-                tokens.append(ty.ident.clone());
             }
         }
     }
