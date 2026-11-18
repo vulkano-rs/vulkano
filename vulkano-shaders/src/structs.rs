@@ -1,168 +1,191 @@
-use crate::{bail, LinAlgType, MacroOptions, Result};
+use self::{
+    reflected_map::{Annotation, Metadata, ReflectedMap},
+    reflected_ref::{ReflectedRef, Type, TypeRef, TypeScalar, TypeScalarRef},
+};
+use crate::{
+    arena::{slice_assume_init_mut, Arena},
+    bail, LinAlgType, MacroOptions, Result,
+};
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
-use std::{cmp::Ordering, num::NonZero};
+use rspirv2::{
+    core::{
+        inst::{
+            OpConstant, OpDecorate, OpMemberDecorate, OpMemberName, OpName, OpTypeArray,
+            OpTypeFloat, OpTypeInt, OpTypeMatrix, OpTypePointer, OpTypeRuntimeArray, OpTypeStruct,
+            OpTypeVector,
+        },
+        preamble::{self, CoreInstSet},
+    },
+    inst::{InstEncoding, InstRef},
+    module::{ParseError, SpirvHeader},
+    slice::InstSlice,
+};
+use std::{
+    cmp::Ordering,
+    fmt::{Arguments, Write},
+    num::NonZero,
+};
 use syn::{Error, Ident, LitStr};
-use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
-/// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub(super) fn generate_structs(
+mod reflected_map;
+mod reflected_ref;
+
+const OP_NAME_OPCODE: u16 = preamble::OP_NAME.opcode;
+const OP_MEMBER_NAME_OPCODE: u16 = preamble::OP_MEMBER_NAME.opcode;
+
+const OP_TYPE_INT_OPCODE: u16 = preamble::OP_TYPE_INT.opcode;
+const OP_TYPE_FLOAT_OPCODE: u16 = preamble::OP_TYPE_FLOAT.opcode;
+const OP_TYPE_VECTOR_OPCODE: u16 = preamble::OP_TYPE_VECTOR.opcode;
+const OP_TYPE_MATRIX_OPCODE: u16 = preamble::OP_TYPE_MATRIX.opcode;
+const OP_TYPE_ARRAY_OPCODE: u16 = preamble::OP_TYPE_ARRAY.opcode;
+const OP_TYPE_RUNTIME_ARRAY_OPCODE: u16 = preamble::OP_TYPE_RUNTIME_ARRAY.opcode;
+const OP_TYPE_STRUCT_OPCODE: u16 = preamble::OP_TYPE_STRUCT.opcode;
+const OP_TYPE_POINTER_OPCODE: u16 = preamble::OP_TYPE_POINTER.opcode;
+const OP_CONSTANT_OPCODE: u16 = preamble::OP_CONSTANT.opcode;
+
+const OP_DECORATE_OPCODE: u16 = preamble::OP_DECORATE.opcode;
+const OP_MEMBER_DECORATE_OPCODE: u16 = preamble::OP_MEMBER_DECORATE.opcode;
+
+/// Translates all the structs that are contained in the SPIR-V module to Rust structs.
+pub(super) fn generate_structs<'global_arena>(
     options: &MacroOptions,
     lit: LitStr,
-    shader_name: Option<String>,
+    shader_name: Option<&'global_arena str>,
     words: &[u32],
-    type_registry: &mut TypeRegistry,
+    type_registry: &mut TypeRegistry<'global_arena>,
 ) -> Result<TokenStream> {
     if !options.generate_structs {
         return Ok(TokenStream::new());
     }
 
-    let spirv = Spirv::new(words).map_err(|err| {
+    let arena = Arena::new();
+
+    let mut decoder = Decoder::new(words, &arena).map_err(|err| {
         Error::new_spanned(&lit, format_args!("failed to parse SPIR-V words: {err}"))
     })?;
-    let shader = Shader {
-        lit,
-        name: shader_name.unwrap_or_default(),
-        spirv,
-    };
+
+    for inst_ref in decoder.insts.iter_ref() {
+        match inst_ref.opcode() {
+            OP_NAME_OPCODE => decoder.decode_name(inst_ref),
+            OP_MEMBER_NAME_OPCODE => decoder.decode_member_name(inst_ref),
+            OP_TYPE_INT_OPCODE => decoder.decode_type_int(inst_ref),
+            OP_TYPE_FLOAT_OPCODE => decoder.decode_type_float(inst_ref),
+            OP_TYPE_VECTOR_OPCODE => decoder.decode_type_vector(inst_ref),
+            OP_TYPE_MATRIX_OPCODE => decoder.decode_type_matrix(inst_ref),
+            OP_TYPE_ARRAY_OPCODE => decoder.decode_type_array(inst_ref),
+            OP_TYPE_RUNTIME_ARRAY_OPCODE => decoder.decode_type_runtime_array(inst_ref),
+            OP_TYPE_STRUCT_OPCODE => decoder.decode_type_struct(inst_ref),
+            OP_TYPE_POINTER_OPCODE => decoder.decode_type_pointer(inst_ref),
+            OP_CONSTANT_OPCODE => decoder.decode_constant(inst_ref),
+            OP_DECORATE_OPCODE => decoder.decode_decorate(inst_ref),
+            OP_MEMBER_DECORATE_OPCODE => decoder.decode_member_decorate(inst_ref),
+            _ => {}
+        }
+    }
 
     let mut structs = TokenStream::new();
 
-    for (struct_id, member_type_ids) in shader
-        .spirv
-        .types()
-        .iter()
-        .filter_map(|instruction| match *instruction {
-            Instruction::TypeStruct {
-                result_id,
-                ref member_types,
-            } => Some((result_id, member_types)),
-            _ => None,
-        })
-        .filter(|&(struct_id, _)| has_defined_layout(&shader, struct_id))
+    for ty in decoder
+        .reflected
+        .values()
+        .filter_map(|reflected_ref| reflected_ref.to_type_struct())
     {
-        let struct_ty = TypeStruct::new(&shader, struct_id, member_type_ids)?;
-
         // Register the type if needed.
-        if !type_registry.register_struct(&shader, &struct_ty)? {
+        if let Some(shader_name) = shader_name {
+            if !type_registry.register_struct(shader_name, ty)? {
+                continue;
+            }
+        }
+
+        if ty.to_bindless_id().is_some() {
             continue;
         }
 
-        if struct_ty.to_bindless_id().is_some() {
-            continue;
-        }
-
-        let custom_derives = if struct_ty.size().is_some() {
+        let custom_derives = if ty.size().is_some() {
             options.custom_derives.as_slice()
         } else {
             &[]
         };
-        let struct_ser = Serializer(&struct_ty, options);
+        let ser = Serializer {
+            ty,
+            options,
+            matrix_stride: None,
+            matrix_majorness: None,
+        };
 
         structs.extend(quote! {
             #[allow(non_camel_case_types, non_snake_case)]
             #[derive(::vulkano::buffer::BufferContents #(, #custom_derives )* )]
             #[repr(C)]
-            #struct_ser
+            #ser
         })
     }
 
     Ok(structs)
 }
 
-struct Shader {
-    lit: LitStr,
-    name: String,
-    spirv: Spirv,
+pub(super) struct TypeRegistry<'global_arena> {
+    registered_structs: HashMap<&'global_arena str, RegisteredType<'global_arena>>,
+    global_arena: &'global_arena Arena,
 }
 
-fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
-    for member_info in shader.spirv.id(struct_id).members() {
-        let mut offset_found = false;
-
-        for instruction in member_info.decorations() {
-            match instruction {
-                Instruction::MemberDecorate {
-                    decoration: Decoration::BuiltIn { .. },
-                    ..
-                } => {
-                    // Ignore the whole struct if a member is built in, which includes
-                    // `gl_Position` for example.
-                    return false;
-                }
-                Instruction::MemberDecorate {
-                    decoration: Decoration::Offset { .. },
-                    ..
-                } => {
-                    offset_found = true;
-                }
-                _ => (),
-            }
-        }
-
-        // Some structs don't have `Offset` decorations, in that case they are used as local
-        // variables only. Ignoring these.
-        if !offset_found {
-            return false;
+impl<'global_arena> TypeRegistry<'global_arena> {
+    pub(crate) fn new(global_arena: &'global_arena Arena) -> Self {
+        Self {
+            registered_structs: HashMap::default(),
+            global_arena,
         }
     }
 
-    true
-}
+    fn register_struct(
+        &mut self,
+        shader_name: &'global_arena str,
+        ty: &TypeStruct<'_>,
+    ) -> Result<bool> {
+        // Check with the registry if this struct is already registered by another shader, and if
+        // so, if their signatures match.
+        if let Some(registered) = self.registered_structs.get(ty.name) {
+            registered.validate_signatures(shader_name, ty)?;
 
-#[derive(Default)]
-pub struct TypeRegistry {
-    registered_structs: HashMap<Ident, RegisteredType>,
-}
-
-impl TypeRegistry {
-    fn register_struct(&mut self, shader: &Shader, ty: &TypeStruct) -> Result<bool> {
-        // Checking with registry if this struct is already registered by another shader, and if
-        // their signatures match.
-        if let Some(registered) = self.registered_structs.get(&ty.ident) {
-            registered.validate_signatures(&shader.name, ty)?;
-
-            // If the struct is already registered and matches this one, skip the duplicate.
+            // If the struct is already registered and machtes this one, skip serializing the
+            // duplicate.
             Ok(false)
         } else {
-            self.registered_structs.insert(
-                ty.ident.clone(),
-                RegisteredType {
-                    shader: shader.name.clone(),
-                    ty: ty.clone(),
-                },
-            );
+            let ty = ty.clone_to(self.global_arena);
+            let registered = RegisteredType { shader_name, ty };
+            self.registered_structs.insert(ty.name, registered);
 
             Ok(true)
         }
     }
 }
 
-struct RegisteredType {
-    shader: String,
-    ty: TypeStruct,
+struct RegisteredType<'global_arena> {
+    shader_name: &'global_arena str,
+    ty: &'global_arena TypeStruct<'global_arena>,
 }
 
-impl RegisteredType {
-    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result {
-        let (shader, struct_ident) = (&self.shader, &self.ty.ident);
+impl<'global_arena> RegisteredType<'global_arena> {
+    fn validate_signatures(&self, other_shader_name: &str, other_ty: &TypeStruct<'_>) -> Result {
+        let (shader_name, struct_name) = (self.shader_name, self.ty.name);
 
         if self.ty.members.len() > other_ty.members.len() {
-            let member_ident = &self.ty.members[other_ty.members.len()].ident;
+            let member_name = self.ty.members[other_ty.members.len()].name;
             bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{shader}` contains an extra field \
-                `{member_ident}`",
+                "shaders `{shader_name}` and `{other_shader_name}` declare structs with the same \
+                name `{struct_name}`, but the struct from shader `{shader_name}` contains an \
+                extra field `{member_name}`",
             );
         }
 
         if self.ty.members.len() < other_ty.members.len() {
-            let member_ident = &other_ty.members[self.ty.members.len()].ident;
+            let member_name = other_ty.members[self.ty.members.len()].name;
             bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{other_shader}` contains an extra \
-                field `{member_ident}`",
+                "shaders `{shader_name}` and `{other_shader_name}` declare structs with the same \
+                name `{struct_name}`, but the struct from shader `{other_shader_name}` contains \
+                an extra field `{member_name}`",
             );
         }
 
@@ -174,13 +197,16 @@ impl RegisteredType {
             .enumerate()
         {
             if member.ty != other_member.ty {
-                let (member_ty, other_member_ty) = (&member.ty, &other_member.ty);
+                let mut member_ty = String::new();
+                member.ty().to_string(&mut member_ty);
+                let mut other_member_ty = String::new();
+                other_member.ty().to_string(&mut other_member_ty);
                 bail!(
-                    "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                    `{struct_ident}`, but the struct from shader `{shader}` contains a field of \
-                    type `{member_ty:?}` at index `{index}`, whereas the same struct from shader \
-                    `{other_shader}` contains a field of type `{other_member_ty:?}` in the same \
-                    position",
+                    "shaders `{shader_name}` and `{other_shader_name}` declare structs with the \
+                    same name `{struct_name}`, but the struct from shader `{shader_name}` \
+                    contains a field of type `{member_ty:?}` at index `{index}`, whereas the same \
+                    struct from shader `{other_shader_name}` contains a field of type \
+                    `{other_member_ty:?}` in the same position",
                 );
             }
         }
@@ -189,8 +215,485 @@ impl RegisteredType {
     }
 }
 
+struct Decoder<'arena> {
+    // This has a longer lifetime than `'arena`, but since both lifetimes are covariant and we
+    // don't need to recover the original lifetime, it doesn't make a difference.
+    insts: &'arena InstSlice<CoreInstSet>,
+    reflected: ReflectedMap<'arena>,
+    member_buffer: Vec<Member<'arena>>,
+    string_buffer: String,
+    arena: &'arena Arena,
+}
+
+impl<'arena> Decoder<'arena> {
+    fn new(words: &'arena [u32], arena: &'arena Arena) -> Result<Self, ParseError> {
+        let (header, insts) = words.split_at(5);
+        let header = SpirvHeader::from_slice(header);
+        header.validate()?;
+        let insts = InstSlice::from_words(insts)?;
+
+        let inst_count_estimate = words.len() / 8;
+
+        Ok(Decoder {
+            insts,
+            reflected: ReflectedMap::with_capacity(inst_count_estimate / 8, arena),
+            member_buffer: Vec::with_capacity(16),
+            string_buffer: String::with_capacity(32),
+            arena,
+        })
+    }
+
+    fn decode_name(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_name) = OpName::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        self.reflected
+            .push_name(op_name.target, op_name.name.as_str());
+    }
+
+    fn decode_member_name(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_member_name) = OpMemberName::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        self.reflected.push_member_name(
+            op_member_name.ty,
+            op_member_name.member.to_u32(),
+            op_member_name.name.as_str(),
+        );
+    }
+
+    fn decode_decorate(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_decorate) = OpDecorate::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Some(annotation) = Annotation::from_decoration(op_decorate.decoration) else {
+            return;
+        };
+
+        self.reflected
+            .push_annotation(op_decorate.target, annotation);
+    }
+
+    fn decode_member_decorate(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_member_decorate) = OpMemberDecorate::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Some(annotation) = Annotation::from_decoration(op_member_decorate.decoration) else {
+            return;
+        };
+
+        self.reflected.push_member_annotation(
+            op_member_decorate.structure_type,
+            op_member_decorate.member.to_u32(),
+            annotation,
+        );
+    }
+
+    fn decode_type_int(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_int) = OpTypeInt::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let type_int = self.arena.allocate_sized();
+
+        let width = match op_type_int.width.to_u32() {
+            8 => IntWidth::W8,
+            16 => IntWidth::W16,
+            32 => IntWidth::W32,
+            64 => IntWidth::W64,
+            // This can't panic because int width must be 8, 16, 32 or 64.
+            _ => unreachable!(),
+        };
+
+        let signed = match op_type_int.signedness.to_u32() {
+            0 => false,
+            1 => true,
+            // This can't panic because int signedness must be 0 or 1.
+            _ => unreachable!(),
+        };
+
+        let type_int = type_int.write(TypeInt { width, signed });
+        self.reflected.insert(
+            op_type_int.id_result,
+            TypeRef::new(type_int).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_float(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_float) = OpTypeFloat::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let type_float = self.arena.allocate_sized();
+
+        let width = match op_type_float.width.to_u32() {
+            16 => FloatWidth::W16,
+            32 => FloatWidth::W32,
+            64 => FloatWidth::W64,
+            // This can't panic because float width must be 16, 32 or 64.
+            _ => unreachable!(),
+        };
+
+        let type_float = type_float.write(TypeFloat { width });
+        self.reflected.insert(
+            op_type_float.id_result,
+            TypeRef::new(type_float).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_pointer(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_pointer) = OpTypePointer::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let type_pointer = &TypePointer;
+        self.reflected.insert(
+            op_type_pointer.id_result,
+            TypeRef::new(type_pointer).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_vector(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_vector) = OpTypeVector::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        // We only decode the types we care about, and a vector can contain a bool type, so we have
+        // to skip decoding this if we skipped decoding the component type. There's no other way
+        // this can fail: operands must be declared before being used.
+        let Some(component_type) = self.reflected.get(op_type_vector.component_type) else {
+            return;
+        };
+
+        let type_vector = self.arena.allocate_sized();
+
+        // This can't panic because vector component types must be scalars.
+        let component_type = component_type.to_type_scalar_ref().unwrap();
+
+        let component_count = ComponentCount::new(op_type_vector.component_count.to_u32());
+
+        let type_vector = type_vector.write(TypeVector {
+            component_type,
+            component_count,
+        });
+        self.reflected.insert(
+            op_type_vector.id_result,
+            TypeRef::new(type_vector).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_matrix(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_matrix) = OpTypeMatrix::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let type_matrix = self.arena.allocate_sized();
+
+        // These two can't panic because matrix column types must be vectors and operands must be
+        // declared before being used.
+        let column_type = self.reflected.get(op_type_matrix.column_type).unwrap();
+        let column_type = column_type.to_type_vector().unwrap();
+
+        let component_type = match column_type.component_type() {
+            TypeScalar::Float(ty) => ty,
+            // This can't panic because matrix component types must be floats.
+            _ => unreachable!(),
+        };
+
+        let column_count = ComponentCount::new(op_type_matrix.column_count.to_u32());
+
+        let row_count = column_type.component_count;
+
+        let type_matrix = type_matrix.write(TypeMatrix {
+            component_type,
+            column_count,
+            row_count,
+        });
+        self.reflected.insert(
+            op_type_matrix.id_result,
+            TypeRef::new(type_matrix).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_array(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_array) = OpTypeArray::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Some(metadata_list) = self.reflected.metadata_list(op_type_array.id_result) else {
+            return;
+        };
+
+        // We only decode the types we care about, and an array can contain an arbitrary element
+        // type, so we have to skip decoding this if we skipped decoding the element type. There's
+        // no other way this can fail: operands must be declared before being used.
+        let Some(element_type) = self.reflected.get(op_type_array.element_type) else {
+            return;
+        };
+
+        // This can't panic because array elements must be types.
+        let element_type = element_type.to_type_ref().unwrap();
+
+        let Some(stride) = metadata_list.find_array_stride() else {
+            return;
+        };
+
+        let type_array = self.arena.allocate_sized();
+
+        // These two can't panic because array lengths must be constants and operands must be
+        // declared before being used.
+        let length_constant = self.reflected.get(op_type_array.length).unwrap();
+        let length_constant = length_constant.to_constant().unwrap();
+
+        // This can't panic because arrays must have a length of at least 1.
+        let length = NonZero::new(length_constant.value).unwrap();
+
+        let type_array = type_array.write(TypeArray {
+            element_type,
+            length: Some(length),
+            stride,
+        });
+        self.reflected.insert(
+            op_type_array.id_result,
+            TypeRef::new(type_array).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_runtime_array(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_runtime_array) = OpTypeRuntimeArray::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Some(metadata_list) = self
+            .reflected
+            .metadata_list(op_type_runtime_array.id_result)
+        else {
+            return;
+        };
+
+        // We only decode the types we care about, and an array can contain an arbitrary element
+        // type, so we have to skip decoding this if we skipped decoding the element type. There's
+        // no other way this can fail: operands must be declared before being used.
+        let Some(element_type) = self.reflected.get(op_type_runtime_array.element_type) else {
+            return;
+        };
+
+        // This can't panic because array elements must be types.
+        let element_type = element_type.to_type_ref().unwrap();
+
+        let Some(stride) = metadata_list.find_array_stride() else {
+            return;
+        };
+
+        let type_array = self.arena.allocate_sized();
+        let type_array = type_array.write(TypeArray {
+            element_type,
+            length: None,
+            stride,
+        });
+        self.reflected.insert(
+            op_type_runtime_array.id_result,
+            TypeRef::new(type_array).to_reflected_ref(),
+        );
+    }
+
+    fn decode_type_struct(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_type_struct) = OpTypeStruct::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Some(metadata_list) = self.reflected.metadata_list(op_type_struct.id_result) else {
+            return;
+        };
+
+        let mut name = "";
+
+        self.member_buffer.clear();
+
+        for &member_ty in &op_type_struct.id_ref {
+            // We only decode the types we care about, and a member can have an arbitrary type, so
+            // we have to skip decoding the struct if we skipped decoding a member's type. There's
+            // no other way this can fail: operands must be declared before being used.
+            let Some(ty) = self.reflected.get(member_ty) else {
+                return;
+            };
+
+            // This can't panic because members must be types.
+            let ty = ty.to_type_ref().unwrap();
+
+            self.member_buffer.push(Member {
+                name: "",
+                ty,
+                offset: u32::MAX,
+                matrix_stride: None,
+                matrix_majorness: None,
+            });
+        }
+
+        for metadata in metadata_list.iter() {
+            match metadata {
+                Metadata::Name(val) => {
+                    name = *val;
+                }
+                Metadata::MemberName(member_index, val) => {
+                    let member = &mut self.member_buffer[*member_index as usize];
+                    member.name = *val;
+                }
+                Metadata::Annotation(_) => {}
+                Metadata::MemberAnnotation(member_index, annotation) => {
+                    let member = &mut self.member_buffer[*member_index as usize];
+
+                    match annotation {
+                        Annotation::Offset(val) => {
+                            member.offset = *val;
+                        }
+                        Annotation::BuiltIn => {
+                            // Ignore the whole struct if a member is built in, which includes
+                            // `gl_Position` for example.
+                            return;
+                        }
+                        Annotation::ArrayStride(_) => {}
+                        Annotation::MatrixStride(val) => {
+                            member.matrix_stride = Some(*val);
+                        }
+                        Annotation::MatrixMajorness(val) => {
+                            member.matrix_majorness = Some(*val);
+                        }
+                    }
+                }
+            }
+        }
+
+        for member in &self.member_buffer {
+            if member.offset == u32::MAX {
+                // Some structs don't have `Offset` decorations. In that case, they are used as
+                // local variables only. Ignoring these.
+                return;
+            }
+        }
+
+        let type_struct = self.arena.allocate_sized();
+        let members = self.arena.allocate_slice_copy(&self.member_buffer);
+
+        let name = if !name.is_empty() {
+            self.sanitize_name(name)
+        } else {
+            self.format(format_args!("Unnamed{}", op_type_struct.id_result.as_u32()))
+        };
+        let name = self
+            .disambiguate_structured_buffer(name, members)
+            .unwrap_or(name);
+
+        for (member_index, member) in members.iter_mut().enumerate() {
+            member.name = if !member.name.is_empty() {
+                self.sanitize_name(member.name)
+            } else {
+                self.format(format_args!("unnamed{member_index}"))
+            };
+        }
+
+        let type_struct = type_struct.write(TypeStruct { name, members });
+        self.reflected.insert(
+            op_type_struct.id_result,
+            TypeRef::new(type_struct).to_reflected_ref(),
+        );
+    }
+
+    fn sanitize_name(&mut self, name: &'arena str) -> &'arena str {
+        self.string_buffer.clear();
+
+        if name.starts_with(|c: char| !(c.is_ascii_alphabetic() || c == '_')) {
+            self.string_buffer.push('_');
+        }
+
+        let mut prev_end = 0;
+
+        // Replace chars that could potentially cause the ident to be invalid with "_". For
+        // example, Rust-GPU names structs by their fully qualified Rust name (e.g.,
+        // "foo::bar::MyStruct"), in which the ":" is an invalid character for idents.
+        for (start, matched_str) in
+            name.match_indices(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        {
+            // SAFETY: `str::match_indices` produces valid indices.
+            let unmatched_str = unsafe { name.get_unchecked(prev_end..start) };
+
+            self.string_buffer.push_str(unmatched_str);
+            self.string_buffer.push('_');
+            prev_end = start + matched_str.len();
+        }
+
+        // If nothing was written to the buffer, then the original str is already a valid ident, so
+        // we can simply return the original str.
+        if self.string_buffer.is_empty() {
+            return name;
+        }
+
+        // SAFETY: `str::match_indices` produces valid indices.
+        let unmatched_str = unsafe { name.get_unchecked(prev_end..name.len()) };
+
+        self.string_buffer.push_str(unmatched_str);
+
+        self.arena.allocate_str_copy(&self.string_buffer)
+    }
+
+    fn format(&mut self, args: Arguments<'_>) -> &'arena str {
+        self.string_buffer.clear();
+        self.string_buffer.write_fmt(args).unwrap();
+
+        self.arena.allocate_str_copy(&self.string_buffer)
+    }
+
+    fn disambiguate_structured_buffer(
+        &mut self,
+        name: &str,
+        members: &[Member<'_>],
+    ) -> Option<&'arena str> {
+        let [member] = members else {
+            return None;
+        };
+
+        let Type::Array(type_array) = member.ty() else {
+            return None;
+        };
+
+        let (name, layout) = match name {
+            "StructuredBuffer" => ("StructuredBuffer", "std430"),
+            "RWStructuredBuffer" => ("RWStructuredBuffer", "std430"),
+            _ => return None,
+        };
+
+        self.string_buffer.clear();
+        self.string_buffer.push_str(name);
+        self.string_buffer.push('_');
+        type_array.element_type().to_string(&mut self.string_buffer);
+        self.string_buffer.push('_');
+        self.string_buffer.push_str(layout);
+
+        Some(self.arena.allocate_str_copy(&self.string_buffer))
+    }
+
+    fn decode_constant(&mut self, inst_ref: InstRef<'_, CoreInstSet>) {
+        let Ok(op_constant) = OpConstant::decode(*inst_ref) else {
+            unreachable!();
+        };
+
+        let Ok(value) = op_constant.value.as_u32() else {
+            return;
+        };
+
+        let constant = self.arena.allocate_sized();
+        let constant = constant.write(Constant { value });
+        self.reflected
+            .insert(op_constant.id_result, ReflectedRef::from_constant(constant));
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
+#[repr(u32)]
 enum Alignment {
     A1 = 1,
     A2 = 2,
@@ -201,7 +704,7 @@ enum Alignment {
 }
 
 impl Alignment {
-    fn new(alignment: usize) -> Self {
+    fn new(alignment: u32) -> Self {
         match alignment {
             1 => Alignment::A1,
             2 => Alignment::A2,
@@ -215,165 +718,141 @@ impl Alignment {
 }
 
 impl PartialOrd for Alignment {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Alignment {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        (*self as usize).cmp(&(*other as usize))
+        (*self as u32).cmp(&(*other as u32))
     }
 }
 
-fn align_up(offset: usize, alignment: Alignment) -> usize {
-    (offset + alignment as usize - 1) & !(alignment as usize - 1)
+/// # Panics
+///
+/// - Panics on overflow.
+fn align_up(offset: u32, alignment: Alignment) -> u32 {
+    (offset.checked_add(alignment as u32 - 1).unwrap()) & !(alignment as u32 - 1)
 }
 
-fn is_aligned(offset: usize, alignment: Alignment) -> bool {
-    offset & (alignment as usize - 1) == 0
+fn is_aligned(offset: u32, alignment: Alignment) -> bool {
+    offset & (alignment as u32 - 1) == 0
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Type {
-    Scalar(TypeScalar),
-    Pointer(TypePointer),
-    Vector(TypeVector),
-    Matrix(TypeMatrix),
-    Array(TypeArray),
-    Struct(TypeStruct),
-}
-
-impl Type {
-    fn new(shader: &Shader, type_id: Id) -> Result<Self> {
-        let id_info = shader.spirv.id(type_id);
-
-        let ty = match *id_info.instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
-            Instruction::TypeInt {
-                width, signedness, ..
-            } => Type::Scalar(TypeScalar::Int(TypeInt::new(shader, width, signedness)?)),
-            Instruction::TypeFloat { width, .. } => {
-                Type::Scalar(TypeScalar::Float(TypeFloat::new(shader, width)?))
-            }
-            Instruction::TypePointer { .. } => Type::Pointer(TypePointer::new(shader)?),
-            Instruction::TypeVector {
-                component_type,
-                component_count,
-                ..
-            } => Type::Vector(TypeVector::new(shader, component_type, component_count)?),
-            Instruction::TypeMatrix {
-                column_type,
-                column_count,
-                ..
-            } => Type::Matrix(TypeMatrix::new(shader, column_type, column_count)?),
-            Instruction::TypeArray {
-                element_type,
-                length,
-                ..
-            } => Type::Array(TypeArray::new(shader, type_id, element_type, Some(length))?),
-            Instruction::TypeRuntimeArray { element_type, .. } => {
-                Type::Array(TypeArray::new(shader, type_id, element_type, None)?)
-            }
-            Instruction::TypeStruct {
-                ref member_types, ..
-            } => Type::Struct(TypeStruct::new(shader, type_id, member_types)?),
-            _ => bail!(shader.lit, "type {type_id} was not found"),
-        };
-
-        Ok(ty)
-    }
-
-    fn size(&self) -> Option<usize> {
+impl<'arena> Type<'arena> {
+    fn size(
+        self,
+        matrix_stride: Option<NonZero<u32>>,
+        matrix_majorness: Option<MatrixMajorness>,
+    ) -> Option<u32> {
         match self {
-            Self::Scalar(ty) => Some(ty.size()),
+            Self::Int(ty) => Some(ty.size()),
+            Self::Float(ty) => Some(ty.size()),
             Self::Pointer(ty) => Some(ty.size()),
             Self::Vector(ty) => Some(ty.size()),
-            Self::Matrix(ty) => Some(ty.size()),
+            Self::Matrix(ty) => Some(ty.size(matrix_stride.unwrap(), matrix_majorness.unwrap())),
             Self::Array(ty) => ty.size(),
             Self::Struct(ty) => ty.size(),
         }
     }
 
-    fn ident(&self) -> Option<Ident> {
+    fn scalar_alignment(self) -> Alignment {
         match self {
-            Self::Scalar(TypeScalar::Int(ty)) => Some(ty.to_ident()),
-            Self::Scalar(TypeScalar::Float(ty)) => Some(ty.to_ident()),
-            Self::Pointer(_) => None,
-            Self::Vector(ty) => {
-                let scalar = Ident::new(
-                    match &ty.component_type {
-                        TypeScalar::Int(i) => i.as_str(),
-                        TypeScalar::Float(f) => f.as_str(),
-                    },
-                    Span::call_site(),
-                );
-                Some(format_ident!(
-                    "vec{}_{}",
-                    ty.component_count as usize,
-                    scalar
-                ))
-            }
-            Self::Matrix(ty) => Some(format_ident!(
-                "mat{}x{}",
-                ty.column_count as usize,
-                ty.row_count as usize,
-            )),
-            Self::Array(ty) => ty.element_type.ident(),
-            Self::Struct(ty) => Some(ty.ident.clone()),
-        }
-    }
-
-    fn scalar_alignment(&self) -> Alignment {
-        match self {
-            Self::Scalar(ty) => ty.alignment(),
+            Self::Int(ty) => ty.alignment(),
+            Self::Float(ty) => ty.alignment(),
             Self::Pointer(ty) => ty.alignment(),
-            Self::Vector(ty) => ty.component_type.alignment(),
-            Self::Matrix(ty) => ty.component_type.alignment(),
+            Self::Vector(ty) => ty.scalar_alignment(),
+            Self::Matrix(ty) => ty.scalar_alignment(),
             Self::Array(ty) => ty.scalar_alignment(),
             Self::Struct(ty) => ty.scalar_alignment(),
         }
     }
+
+    fn to_string(self, string: &mut String) {
+        match self {
+            Self::Int(ty) => string.push_str(ty.as_str()),
+            Self::Float(ty) => string.push_str(ty.as_str()),
+            Self::Pointer(ty) => string.push_str(ty.as_str()),
+            Self::Vector(ty) => ty.to_string(string),
+            Self::Matrix(ty) => ty.to_string(string),
+            Self::Array(ty) => ty.to_string(string),
+            Self::Struct(ty) => string.push_str(ty.name),
+        }
+    }
+
+    fn clone_to<'other_arena>(self, other_arena: &'other_arena Arena) -> TypeRef<'other_arena> {
+        match self {
+            Type::Int(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Float(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Pointer(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Vector(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Matrix(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Array(ty) => TypeRef::new(ty.clone_to(other_arena)),
+            Type::Struct(ty) => TypeRef::new(ty.clone_to(other_arena)),
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum TypeScalar {
-    Int(TypeInt),
-    Float(TypeFloat),
-}
-
-impl TypeScalar {
-    fn size(&self) -> usize {
+impl TypeScalar<'_> {
+    fn size(self) -> u32 {
         match self {
             Self::Int(ty) => ty.size(),
             Self::Float(ty) => ty.size(),
         }
     }
 
-    fn alignment(&self) -> Alignment {
+    fn alignment(self) -> Alignment {
         match self {
             Self::Int(ty) => ty.alignment(),
             Self::Float(ty) => ty.alignment(),
         }
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Int(ty) => ty.as_str(),
+            Self::Float(ty) => ty.as_str(),
+        }
+    }
+
+    fn to_ident(self) -> Ident {
+        match self {
+            Self::Int(ty) => ty.to_ident(),
+            Self::Float(ty) => ty.to_ident(),
+        }
+    }
+
+    fn clone_to<'other_arena>(
+        self,
+        other_arena: &'other_arena Arena,
+    ) -> TypeScalarRef<'other_arena> {
+        match self {
+            TypeScalar::Int(ty) => TypeScalarRef::from_type_int(ty.clone_to(other_arena)),
+            TypeScalar::Float(ty) => TypeScalarRef::from_type_float(ty.clone_to(other_arena)),
+        }
+    }
 }
 
-impl ToTokens for TypeScalar {
+impl ToTokens for TypeScalar<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
+        match *self {
             Self::Int(ty) => ty.to_tokens(tokens),
             Self::Float(ty) => ty.to_tokens(tokens),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[repr(align(8))]
 struct TypeInt {
     width: IntWidth,
     signed: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum IntWidth {
     W8 = 8,
@@ -383,26 +862,8 @@ enum IntWidth {
 }
 
 impl TypeInt {
-    fn new(shader: &Shader, width: u32, signedness: u32) -> Result<Self> {
-        let width = match width {
-            8 => IntWidth::W8,
-            16 => IntWidth::W16,
-            32 => IntWidth::W32,
-            64 => IntWidth::W64,
-            _ => bail!(shader.lit, "integers must be 8, 16, 32, or 64-bit wide"),
-        };
-
-        let signed = match signedness {
-            0 => false,
-            1 => true,
-            _ => bail!(shader.lit, "signedness must be 0 or 1"),
-        };
-
-        Ok(TypeInt { width, signed })
-    }
-
-    fn size(&self) -> usize {
-        self.width as usize >> 3
+    fn size(&self) -> u32 {
+        self.width as u32 >> 3
     }
 
     fn alignment(&self) -> Alignment {
@@ -426,6 +887,15 @@ impl TypeInt {
     fn to_ident(&self) -> Ident {
         Ident::new(self.as_str(), Span::call_site())
     }
+
+    fn clone_to<'other_arena>(&self, other_arena: &'other_arena Arena) -> &'other_arena TypeInt {
+        let other = other_arena.allocate_sized();
+
+        other.write(TypeInt {
+            width: self.width,
+            signed: self.signed,
+        })
+    }
 }
 
 impl ToTokens for TypeInt {
@@ -434,12 +904,13 @@ impl ToTokens for TypeInt {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[repr(align(8))]
 struct TypeFloat {
     width: FloatWidth,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum FloatWidth {
     W16 = 16,
@@ -448,19 +919,8 @@ enum FloatWidth {
 }
 
 impl TypeFloat {
-    fn new(shader: &Shader, width: u32) -> Result<Self> {
-        let width = match width {
-            16 => FloatWidth::W16,
-            32 => FloatWidth::W32,
-            64 => FloatWidth::W64,
-            _ => bail!(shader.lit, "floats must be 16, 32, or 64-bit wide"),
-        };
-
-        Ok(TypeFloat { width })
-    }
-
-    fn size(&self) -> usize {
-        self.width as usize >> 3
+    fn size(&self) -> u32 {
+        self.width as u32 >> 3
     }
 
     fn alignment(&self) -> Alignment {
@@ -478,6 +938,12 @@ impl TypeFloat {
     fn to_ident(&self) -> Ident {
         Ident::new(self.as_str(), Span::call_site())
     }
+
+    fn clone_to<'other_arena>(&self, other_arena: &'other_arena Arena) -> &'other_arena TypeFloat {
+        let other = other_arena.allocate_sized();
+
+        other.write(TypeFloat { width: self.width })
+    }
 }
 
 impl ToTokens for TypeFloat {
@@ -485,24 +951,33 @@ impl ToTokens for TypeFloat {
         if self.width == FloatWidth::W16 {
             tokens.extend(quote! { ::vulkano::half:: });
         }
+
         tokens.append(self.to_ident());
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[repr(align(8))]
 struct TypePointer;
 
 impl TypePointer {
-    fn new(_shader: &Shader) -> Result<Self> {
-        Ok(TypePointer)
-    }
-
-    fn size(&self) -> usize {
+    fn size(&self) -> u32 {
         8
     }
 
     fn alignment(&self) -> Alignment {
         Alignment::A8
+    }
+
+    fn as_str(&self) -> &'static str {
+        "ptr"
+    }
+
+    fn clone_to<'other_arena>(
+        &self,
+        _other_arena: &'other_arena Arena,
+    ) -> &'other_arena TypePointer {
+        &TypePointer
     }
 }
 
@@ -512,110 +987,119 @@ impl ToTokens for TypePointer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct TypeVector {
-    component_type: TypeScalar,
+#[derive(PartialEq, Eq)]
+#[repr(align(8))]
+struct TypeVector<'arena> {
+    component_type: TypeScalarRef<'arena>,
     component_count: ComponentCount,
 }
 
-impl TypeVector {
-    fn new(shader: &Shader, component_type_id: Id, component_count: u32) -> Result<Self> {
-        let component_count = ComponentCount::new(shader, component_count)?;
-
-        let component_type = match *shader.spirv.id(component_type_id).instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.lit, "can't put booleans in structs"),
-            Instruction::TypeInt {
-                width, signedness, ..
-            } => TypeScalar::Int(TypeInt::new(shader, width, signedness)?),
-            Instruction::TypeFloat { width, .. } => {
-                TypeScalar::Float(TypeFloat::new(shader, width)?)
-            }
-            _ => bail!(shader.lit, "vector components must be scalars"),
-        };
-
-        Ok(TypeVector {
-            component_type,
-            component_count,
-        })
+impl<'arena> TypeVector<'arena> {
+    fn component_type(&self) -> TypeScalar<'arena> {
+        self.component_type.to_type_scalar()
     }
 
-    fn size(&self) -> usize {
-        self.component_type.size() * self.component_count as usize
+    fn size(&self) -> u32 {
+        self.component_type().size() * self.component_count as u32
+    }
+
+    fn scalar_alignment(&self) -> Alignment {
+        self.component_type().alignment()
+    }
+
+    fn to_string(&self, string: &mut String) {
+        write!(
+            string,
+            "{}vec{}",
+            self.component_type().as_str(),
+            self.component_count as u32,
+        )
+        .unwrap();
+    }
+
+    fn clone_to<'other_arena>(
+        &self,
+        other_arena: &'other_arena Arena,
+    ) -> &'other_arena TypeVector<'other_arena> {
+        let other = other_arena.allocate_sized();
+
+        other.write(TypeVector {
+            component_type: self.component_type().clone_to(other_arena),
+            component_count: self.component_count,
+        })
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct TypeMatrix {
-    component_type: TypeFloat,
+#[derive(PartialEq, Eq)]
+#[repr(align(8))]
+struct TypeMatrix<'arena> {
+    component_type: &'arena TypeFloat,
     column_count: ComponentCount,
     row_count: ComponentCount,
-    stride: usize,
-    majorness: MatrixMajorness,
 }
 
-impl TypeMatrix {
-    fn new(shader: &Shader, column_type_id: Id, column_count: u32) -> Result<Self> {
-        let column_count = ComponentCount::new(shader, column_count)?;
+impl<'arena> TypeMatrix<'arena> {
+    fn size(&self, stride: NonZero<u32>, majorness: MatrixMajorness) -> u32 {
+        let vector_count = self.vector_count(majorness) as u32;
 
-        let (component_type, row_count) = match *shader.spirv.id(column_type_id).instruction() {
-            Instruction::TypeVector {
-                component_type,
-                component_count,
-                ..
-            } => match *shader.spirv.id(component_type).instruction() {
-                Instruction::TypeFloat { width, .. } => (
-                    TypeFloat::new(shader, width)?,
-                    ComponentCount::new(shader, component_count)?,
-                ),
-                _ => bail!(shader.lit, "matrix components must be floats"),
-            },
-            _ => bail!(shader.lit, "matrix columns must be vectors"),
-        };
-
-        // We can't know these until we get to the members and their decorations, so just use
-        // defaults for now.
-        let stride = component_type.size() * row_count as usize;
-        let majorness = MatrixMajorness::ColumnMajor;
-
-        Ok(TypeMatrix {
-            component_type,
-            column_count,
-            row_count,
-            stride,
-            majorness,
-        })
+        // This can't panic because the matrix must fit in the address space.
+        stride.get().checked_mul(vector_count).unwrap()
     }
 
-    fn size(&self) -> usize {
-        self.stride * self.vector_count() as usize
+    fn vector_size(&self, majorness: MatrixMajorness) -> u32 {
+        self.component_type.size() * self.component_count(majorness) as u32
     }
 
-    fn vector_size(&self) -> usize {
-        self.component_type.size() * self.component_count() as usize
-    }
-
-    fn vector_count(&self) -> ComponentCount {
-        match self.majorness {
-            MatrixMajorness::ColumnMajor => self.column_count,
+    fn vector_count(&self, majorness: MatrixMajorness) -> ComponentCount {
+        match majorness {
+            MatrixMajorness::ColMajor => self.column_count,
             MatrixMajorness::RowMajor => self.row_count,
         }
     }
 
-    fn component_count(&self) -> ComponentCount {
-        match self.majorness {
-            MatrixMajorness::ColumnMajor => self.row_count,
+    fn component_count(&self, majorness: MatrixMajorness) -> ComponentCount {
+        match majorness {
+            MatrixMajorness::ColMajor => self.row_count,
             MatrixMajorness::RowMajor => self.column_count,
         }
     }
+
+    fn scalar_alignment(&self) -> Alignment {
+        self.component_type.alignment()
+    }
+
+    fn to_string(&self, string: &mut String) {
+        write!(
+            string,
+            "{}mat{}x{}",
+            self.component_type.as_str(),
+            self.column_count as u32,
+            self.row_count as u32,
+        )
+        .unwrap();
+    }
+
+    fn clone_to<'other_arena>(
+        &self,
+        other_arena: &'other_arena Arena,
+    ) -> &'other_arena TypeMatrix<'other_arena> {
+        let other = other_arena.allocate_sized();
+
+        other.write(TypeMatrix {
+            component_type: self.component_type.clone_to(other_arena),
+            column_count: self.column_count,
+            row_count: self.row_count,
+        })
+    }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum MatrixMajorness {
-    ColumnMajor,
+    ColMajor,
     RowMajor,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum ComponentCount {
     C2 = 2,
@@ -624,302 +1108,84 @@ enum ComponentCount {
 }
 
 impl ComponentCount {
-    fn new(shader: &Shader, count: u32) -> Result<Self> {
-        let count = match count {
+    fn new(count: u32) -> Self {
+        match count {
             2 => ComponentCount::C2,
             3 => ComponentCount::C3,
             4 => ComponentCount::C4,
-            _ => bail!(shader.lit, "component counts must be 2, 3 or 4"),
-        };
-
-        Ok(count)
+            // This can't panic because a component/column count must to be between 2 and 4.
+            _ => unreachable!(),
+        }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct TypeArray {
-    element_type: Box<Type>,
-    length: Option<NonZero<usize>>,
-    stride: usize,
+#[derive(PartialEq, Eq)]
+#[repr(align(8))]
+struct TypeArray<'arena> {
+    element_type: TypeRef<'arena>,
+    length: Option<NonZero<u32>>,
+    stride: NonZero<u32>,
 }
 
-impl TypeArray {
-    fn new(
-        shader: &Shader,
-        array_id: Id,
-        element_type_id: Id,
-        length_id: Option<Id>,
-    ) -> Result<Self> {
-        let element_type = Box::new(Type::new(shader, element_type_id)?);
+impl<'arena> TypeArray<'arena> {
+    fn element_type(&self) -> Type<'arena> {
+        self.element_type.to_type()
+    }
 
-        let length = length_id
-            .map(|id| match shader.spirv.id(id).instruction() {
-                Instruction::Constant { value, .. } | Instruction::SpecConstant { value, .. } => {
-                    assert!(matches!(value.len(), 1 | 2));
-                    let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-
-                    NonZero::new(len.try_into().unwrap()).ok_or_else(|| {
-                        Error::new_spanned(&shader.lit, "arrays must have a non-zero length")
-                    })
-                }
-                _ => bail!(shader.lit, "failed to find array length"),
-            })
-            .transpose()?;
-
-        let stride = {
-            let mut strides =
-                shader
-                    .spirv
-                    .id(array_id)
-                    .decorations()
-                    .iter()
-                    .filter_map(|instruction| match *instruction {
-                        Instruction::Decorate {
-                            decoration: Decoration::ArrayStride { array_stride },
-                            ..
-                        } => Some(array_stride as usize),
-                        _ => None,
-                    });
-            let stride = strides.next().ok_or_else(|| {
-                Error::new_spanned(
-                    &shader.lit,
-                    "arrays inside structs must have an `ArrayStride` decoration",
-                )
-            })?;
-
-            if !strides.all(|s| s == stride) {
-                bail!(shader.lit, "found conflicting `ArrayStride` decorations");
-            }
-
-            if !is_aligned(stride, element_type.scalar_alignment()) {
-                bail!(
-                    shader.lit,
-                    "array strides must be aligned for the element type",
-                );
-            }
-
-            let element_size = element_type
-                .size()
-                .ok_or_else(|| Error::new_spanned(&shader.lit, "array elements must be sized"))?;
-
-            if stride < element_size {
-                bail!(shader.lit, "array elements must not overlap");
-            }
-
-            stride
-        };
-
-        Ok(TypeArray {
-            element_type,
-            length,
-            stride,
+    fn size(&self) -> Option<u32> {
+        self.length.map(|length| {
+            // This can't panic because the array must fit in the address space.
+            self.stride.get().checked_mul(length.get()).unwrap()
         })
     }
 
-    fn size(&self) -> Option<usize> {
-        self.length.map(|length| self.stride * length.get())
-    }
-
     fn scalar_alignment(&self) -> Alignment {
-        self.element_type.scalar_alignment()
+        self.element_type().scalar_alignment()
     }
-}
 
-fn deduplicate_ident(ident: &Ident, members: &[Member]) -> Option<Ident> {
-    let name = ident.to_string();
-    if !(name.starts_with("StructuredBuffer") || name.starts_with("RWStructuredBuffer"))
-        || members.len() != 1
-    {
-        return None;
-    }
-    let Type::Array(TypeArray { element_type, .. }) = &members[0].ty else {
-        return None;
-    };
-    let e = element_type.ident()?;
-    Some(format_ident!("{}_{}", ident, e, span = ident.span()))
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct TypeStruct {
-    ident: Ident,
-    members: Vec<Member>,
-}
-
-impl TypeStruct {
-    fn new(shader: &Shader, struct_id: Id, member_type_ids: &[Id]) -> Result<Self> {
-        let id_info = shader.spirv.id(struct_id);
-
-        let ident = id_info
-            .names()
-            .iter()
-            .find_map(|instruction| match instruction {
-                Instruction::Name { name, .. } => {
-                    // Replace chars that could potentially cause the ident to be invalid with "_".
-                    // For example, Rust-GPU names structs by their fully qualified rust name (e.g.
-                    // "foo::bar::MyStruct") in which the ":" is an invalid character for idents.
-                    let mut name =
-                        name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
-                    if name.starts_with(|c: char| !c.is_ascii_alphabetic()) {
-                        name.insert(0, '_');
-                    }
-
-                    // Worst case: invalid idents will get the UnnamedX name below
-                    syn::parse_str(&name).ok()
-                }
-                _ => None,
-            })
-            .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
-
-        let mut members = Vec::<Member>::with_capacity(member_type_ids.len());
-
-        for (member_index, (&member_id, member_info)) in
-            member_type_ids.iter().zip(id_info.members()).enumerate()
-        {
-            let ident = member_info
-                .names()
-                .iter()
-                .find_map(|instruction| match instruction {
-                    Instruction::MemberName { name, .. } => {
-                        Some(Ident::new(name, Span::call_site()))
-                    }
-                    _ => None,
-                })
-                .unwrap_or_else(|| format_ident!("unnamed{member_index}"));
-
-            let mut ty = Type::new(shader, member_id)?;
-
-            {
-                // If the member is an array, then matrix-decorations can be applied to it if the
-                // innermost type of the array is a matrix. Else this will stay being the type of
-                // the member.
-                let mut ty = &mut ty;
-                while let Type::Array(TypeArray { element_type, .. }) = ty {
-                    ty = element_type;
-                }
-
-                if let Type::Matrix(matrix) = ty {
-                    let mut strides =
-                        member_info.decorations().iter().filter_map(
-                            |instruction| match *instruction {
-                                Instruction::MemberDecorate {
-                                    decoration: Decoration::MatrixStride { matrix_stride },
-                                    ..
-                                } => Some(matrix_stride as usize),
-                                _ => None,
-                            },
-                        );
-                    matrix.stride = strides.next().ok_or_else(|| {
-                        Error::new_spanned(
-                            &shader.lit,
-                            "matrices inside structs must have a `MatrixStride` decoration",
-                        )
-                    })?;
-
-                    if !strides.all(|s| s == matrix.stride) {
-                        bail!(shader.lit, "found conflicting `MatrixStride` decorations");
-                    }
-
-                    if !is_aligned(matrix.stride, matrix.component_type.alignment()) {
-                        bail!(
-                            shader.lit,
-                            "matrix strides must be an integer multiple of the size of the \
-                            component",
-                        );
-                    }
-
-                    let mut majornessess = member_info.decorations().iter().filter_map(
-                        |instruction| match *instruction {
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::ColMajor,
-                                ..
-                            } => Some(MatrixMajorness::ColumnMajor),
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::RowMajor,
-                                ..
-                            } => Some(MatrixMajorness::RowMajor),
-                            _ => None,
-                        },
-                    );
-                    matrix.majorness = majornessess.next().ok_or_else(|| {
-                        Error::new_spanned(
-                            &shader.lit,
-                            "matrices inside structs must have a `ColMajor` or `RowMajor` \
-                            decoration",
-                        )
-                    })?;
-
-                    if !majornessess.all(|m| m == matrix.majorness) {
-                        bail!(shader.lit, "found conflicting matrix majorness decorations");
-                    }
-
-                    // NOTE(Marc): It is crucial that we do this check after setting the majorness,
-                    // because `TypeMatrix::vector_size` depends on it.
-                    if matrix.stride < matrix.vector_size() {
-                        bail!(shader.lit, "matrix columns/rows must not overlap");
-                    }
-                }
-            }
-
-            let offset = member_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::MemberDecorate {
-                        decoration: Decoration::Offset { byte_offset },
-                        ..
-                    } => Some(byte_offset as usize),
-                    _ => None,
-                })
-                .ok_or_else(|| {
-                    Error::new_spanned(
-                        &shader.lit,
-                        "struct members must have an `Offset` decoration",
-                    )
-                })?;
-
-            if !is_aligned(offset, ty.scalar_alignment()) {
-                bail!(
-                    shader.lit,
-                    "struct member offsets must be aligned for the member type",
-                );
-            }
-
-            if let Some(last) = members.last() {
-                if !is_aligned(offset, last.ty.scalar_alignment()) {
-                    bail!(
-                        shader.lit,
-                        "expected struct member offset to be aligned for the preceding member type",
-                    );
-                }
-
-                let last_size = last.ty.size().ok_or_else(|| {
-                    Error::new_spanned(
-                        &shader.lit,
-                        "all members except the last member of a struct must be sized",
-                    )
-                })?;
-
-                if last.offset + last_size > offset {
-                    bail!(shader.lit, "struct members must not overlap");
-                }
-            }
-
-            members.push(Member { ident, ty, offset });
+    fn to_string(&self, string: &mut String) {
+        if let Some(length) = self.length {
+            write!(string, "arr{length}_").unwrap();
+        } else {
+            write!(string, "arr_").unwrap();
         }
 
-        let ident = deduplicate_ident(&ident, &members).unwrap_or(ident);
-
-        Ok(TypeStruct { ident, members })
+        self.element_type().to_string(string);
     }
 
-    fn size(&self) -> Option<usize> {
+    fn clone_to<'other_arena>(
+        &self,
+        arena_other: &'other_arena Arena,
+    ) -> &'other_arena TypeArray<'other_arena> {
+        let other = arena_other.allocate_sized();
+
+        other.write(TypeArray {
+            element_type: self.element_type().clone_to(arena_other),
+            length: self.length,
+            stride: self.stride,
+        })
+    }
+}
+
+#[derive(PartialEq, Eq)]
+#[repr(align(8))]
+struct TypeStruct<'arena> {
+    name: &'arena str,
+    members: &'arena [Member<'arena>],
+}
+
+impl<'arena> TypeStruct<'arena> {
+    fn size(&self) -> Option<u32> {
         self.members
             .last()
             .map(|member| {
-                member
-                    .ty
-                    .size()
-                    .map(|size| align_up(member.offset + size, self.scalar_alignment()))
+                member.size().map(|size| {
+                    // This can't panic because the struct must fit in the address space.
+                    let end = member.offset.checked_add(size).unwrap();
+
+                    // This can't panic because the struct must fit in the address space.
+                    align_up(end, self.scalar_alignment())
+                })
             })
             .unwrap_or(Some(0))
     }
@@ -927,7 +1193,7 @@ impl TypeStruct {
     fn scalar_alignment(&self) -> Alignment {
         self.members
             .iter()
-            .map(|member| member.ty.scalar_alignment())
+            .map(Member::scalar_alignment)
             .max()
             .unwrap_or(Alignment::A1)
     }
@@ -939,31 +1205,29 @@ impl TypeStruct {
 
         if !self.members.iter().all(|member| {
             matches!(
-                member.ty,
-                Type::Scalar(TypeScalar::Int(TypeInt {
+                member.ty(),
+                Type::Int(TypeInt {
                     width: IntWidth::W32,
                     signed: false,
-                })),
+                }),
             )
         }) {
             return None;
         }
 
-        let name = self.ident.to_string();
-
         if matches!(
-            name.as_str(),
+            self.name,
             "SamplerId"
                 | "SampledImageId"
                 | "StorageImageId"
                 | "StorageBufferId"
                 | "AccelerationStructureId",
         ) {
-            return Some(self.ident.clone());
+            return Some(Ident::new(self.name, Span::call_site()));
         }
 
         if matches!(
-            name.as_str(),
+            self.name,
             "SamplerId_std430"
                 | "SampledImageId_std430"
                 | "StorageImageId_std430"
@@ -971,89 +1235,164 @@ impl TypeStruct {
                 | "AccelerationStructureId_std430",
         ) {
             return Some(Ident::new(
-                name.strip_suffix("_std430").unwrap(),
+                self.name.strip_suffix("_std430").unwrap(),
                 Span::call_site(),
             ));
         }
 
         None
     }
-}
 
-#[derive(Clone, Debug)]
-struct Member {
-    ident: Ident,
-    ty: Type,
-    offset: usize,
-}
+    fn clone_to<'other_arena>(
+        &self,
+        other_arena: &'other_arena Arena,
+    ) -> &'other_arena TypeStruct<'other_arena> {
+        let other = other_arena.allocate_sized();
+        let other_name = other_arena.allocate_str_copy(self.name);
+        let other_members = other_arena.allocate_slice(self.members.len());
 
-impl PartialEq for Member {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty && self.offset == other.offset
+        for (member, other_member) in self.members.iter().zip(&mut *other_members) {
+            other_member.write(Member {
+                name: other_arena.allocate_str_copy(member.name),
+                ty: member.ty.to_type().clone_to(other_arena),
+                offset: member.offset,
+                matrix_stride: member.matrix_stride,
+                matrix_majorness: member.matrix_majorness,
+            });
+        }
+
+        // SAFETY: We have initialized all the members above.
+        let other_members = unsafe { slice_assume_init_mut(other_members) };
+
+        other.write(TypeStruct {
+            name: other_name,
+            members: other_members,
+        })
     }
 }
 
-impl Eq for Member {}
+struct Member<'arena> {
+    name: &'arena str,
+    ty: TypeRef<'arena>,
+    offset: u32,
+    matrix_stride: Option<NonZero<u32>>,
+    matrix_majorness: Option<MatrixMajorness>,
+}
 
-/// Helper for serializing a type to tokens with respect to macro options.
-struct Serializer<'a, T>(&'a T, &'a MacroOptions);
+impl<'arena> Member<'arena> {
+    fn ty(&self) -> Type<'arena> {
+        self.ty.to_type()
+    }
 
-impl ToTokens for Serializer<'_, Type> {
+    fn size(&self) -> Option<u32> {
+        self.ty().size(self.matrix_stride, self.matrix_majorness)
+    }
+
+    fn scalar_alignment(&self) -> Alignment {
+        self.ty().scalar_alignment()
+    }
+}
+
+impl PartialEq for Member<'_> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+            && self.offset == other.offset
+            && self.matrix_stride == other.matrix_stride
+            && self.matrix_majorness == other.matrix_majorness
+    }
+}
+
+impl Eq for Member<'_> {}
+
+#[repr(align(8))]
+struct Constant {
+    value: u32,
+}
+
+/// Helper for serializing a type to tokens.
+struct Serializer<'a, T> {
+    ty: &'a T,
+    options: &'a MacroOptions,
+    matrix_stride: Option<NonZero<u32>>,
+    matrix_majorness: Option<MatrixMajorness>,
+}
+
+impl<'a, T> Serializer<'a, T> {
+    fn project<U>(&self, ty: &'a U) -> Serializer<'a, U> {
+        Serializer {
+            ty,
+            options: self.options,
+            matrix_stride: self.matrix_stride,
+            matrix_majorness: self.matrix_majorness,
+        }
+    }
+}
+
+impl ToTokens for Serializer<'_, Type<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        match &self.0 {
-            Type::Scalar(ty) => ty.to_tokens(tokens),
+        match *self.ty {
+            Type::Int(ty) => ty.to_tokens(tokens),
+            Type::Float(ty) => ty.to_tokens(tokens),
             Type::Pointer(ty) => ty.to_tokens(tokens),
-            Type::Vector(ty) => Serializer(ty, self.1).to_tokens(tokens),
-            Type::Matrix(ty) => Serializer(ty, self.1).to_tokens(tokens),
-            Type::Array(ty) => Serializer(ty, self.1).to_tokens(tokens),
+            Type::Vector(ty) => self.project(ty).to_tokens(tokens),
+            Type::Matrix(ty) => self.project(ty).to_tokens(tokens),
+            Type::Array(ty) => self.project(ty).to_tokens(tokens),
             Type::Struct(ty) => {
                 if let Some(ident) = ty.to_bindless_id() {
                     tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set::#ident });
                 } else {
-                    tokens.append(ty.ident.clone());
+                    tokens.append(Ident::new(ty.name, Span::call_site()));
                 }
             }
         }
     }
 }
 
-impl ToTokens for Serializer<'_, TypeVector> {
+impl ToTokens for Serializer<'_, TypeVector<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let component_type = &self.0.component_type;
-        let component_count = self.0.component_count as usize;
+        let component_type_ident = self.ty.component_type().to_ident();
+        let component_count = self.ty.component_count as usize;
 
-        match self.1.linalg_type {
+        match self.options.linalg_type {
             LinAlgType::Std => {
-                tokens.extend(quote! { [#component_type; #component_count] });
+                tokens.extend(quote! { [#component_type_ident; #component_count] });
             }
             LinAlgType::CgMath => {
                 let vector = format_ident!("Vector{}", component_count);
-                tokens.extend(quote! { ::cgmath::#vector<#component_type> });
+                tokens.extend(quote! { ::cgmath::#vector<#component_type_ident> });
             }
             LinAlgType::Nalgebra => {
                 tokens.extend(quote! {
-                    ::nalgebra::base::SVector<#component_type, #component_count>
+                    ::nalgebra::base::SVector<#component_type_ident, #component_count>
                 });
             }
         }
     }
 }
 
-impl ToTokens for Serializer<'_, TypeMatrix> {
+impl ToTokens for Serializer<'_, TypeMatrix<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let component_type = &self.0.component_type;
-        let vector_count = self.0.vector_count() as usize;
-        let component_count = self.0.component_count() as usize;
-        let majorness = self.0.majorness;
+        // These two can't panic because we only serialize types with a defined layout.
+        let stride = self.matrix_stride.unwrap().get();
+        let majorness = self.matrix_majorness.unwrap();
 
-        // This can't overflow because the stride must be at least the vector size.
-        let padding = self.0.stride - self.0.vector_size();
+        let component_type = self.ty.component_type;
+        let vector_size = self.ty.vector_size(majorness);
+        let vector_count = self.ty.vector_count(majorness) as usize;
+        let component_count = self.ty.component_count(majorness) as usize;
 
-        match self.1.linalg_type {
+        // This can't panic because the stride must be aligned to the component type's alignment.
+        assert!(is_aligned(stride, component_type.alignment()));
+
+        // This can't panic because the stride must be at least the vector size.
+        let padding = stride.checked_sub(vector_size).unwrap();
+
+        match self.options.linalg_type {
             // cgmath only has column-major matrices. It also only has square matrices, and its 3x3
             // matrix is not padded right. Fall back to std for anything else.
             LinAlgType::CgMath
-                if majorness == MatrixMajorness::ColumnMajor
+                if majorness == MatrixMajorness::ColMajor
                     && padding == 0
                     && vector_count == component_count =>
             {
@@ -1062,30 +1401,44 @@ impl ToTokens for Serializer<'_, TypeMatrix> {
             }
             // nalgebra only has column-major matrices, and its 3xN matrices are not padded right.
             // Fall back to std for anything else.
-            LinAlgType::Nalgebra if majorness == MatrixMajorness::ColumnMajor && padding == 0 => {
+            LinAlgType::Nalgebra if majorness == MatrixMajorness::ColMajor && padding == 0 => {
                 tokens.extend(quote! {
                     ::nalgebra::base::SMatrix<#component_type, #component_count, #vector_count>
                 });
             }
             _ => {
-                let vector = Padded(quote! { [#component_type; #component_count] }, padding);
+                let vector = quote! { [#component_type; #component_count] };
+                let vector = Padded(&vector, padding);
                 tokens.extend(quote! { [#vector; #vector_count] });
             }
         }
     }
 }
 
-impl ToTokens for Serializer<'_, TypeArray> {
+impl ToTokens for Serializer<'_, TypeArray<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let element_type = &*self.0.element_type;
+        let element_type = self.ty.element_type();
+
+        // This can't panic because we only serialize types with a defined layout.
+        let element_size = element_type.size(self.matrix_stride, self.matrix_majorness);
+
         // This can't panic because array elements must be sized.
-        let element_size = element_type.size().unwrap();
-        // This can't overflow because the stride must be at least the element size.
-        let padding = self.0.stride - element_size;
+        let element_size = element_size.unwrap();
 
-        let element_type = Padded(Serializer(element_type, self.1), padding);
+        let element_alignment = element_type.scalar_alignment();
 
-        if let Some(length) = self.0.length.map(NonZero::get) {
+        let stride = self.ty.stride.get();
+
+        // This can't panic because the stride must be aligned to the element type's alignment.
+        assert!(is_aligned(stride, element_alignment));
+
+        // This can't panic because the stride must be at least the element size.
+        let padding = stride.checked_sub(element_size).unwrap();
+
+        let element_type = self.project(&element_type);
+        let element_type = Padded(&element_type, padding);
+
+        if let Some(length) = self.ty.length.map(NonZero::get) {
             tokens.extend(quote! { [#element_type; #length] });
         } else {
             tokens.extend(quote! { [#element_type] });
@@ -1093,38 +1446,75 @@ impl ToTokens for Serializer<'_, TypeArray> {
     }
 }
 
-impl ToTokens for Serializer<'_, TypeStruct> {
+impl ToTokens for Serializer<'_, TypeStruct<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let struct_ident = &self.0.ident;
-        let member_idents = self.0.members.iter().map(|member| &member.ident);
-        let mut member_types = Vec::new();
+        let struct_ident = Ident::new(self.ty.name, Span::call_site());
+        let mut members_code = TokenStream::new();
 
-        // TODO: Replace with the `ArrayWindows` iterator once it is stabilized.
-        for member_pair in self.0.members.windows(2) {
+        if let Some(first_member) = self.ty.members.first() {
+            if first_member.offset != 0 {
+                unimplemented!(
+                    "expected struct member 0 of struct `{}` to be at offset 0",
+                    self.ty.name,
+                );
+            }
+        }
+
+        // TODO: Replace with the `ArrayWindows` iterator once we bump the MSRV.
+        for (member_index, member_pair) in self.ty.members.windows(2).enumerate() {
             let member = &member_pair[0];
             let next_member = &member_pair[1];
+            let member_ty = member.ty();
+            let next_member_ty = next_member.ty();
 
-            let offset = member.offset;
-            // This can't panic, because only the last member can be unsized.
-            let size = member.ty.size().unwrap();
-            let next_offset = next_member.offset;
-            let next_alignment = next_member.ty.scalar_alignment();
+            // This can't panic because we only serialize types with a defined layout.
+            let size = member_ty.size(member.matrix_stride, member.matrix_majorness);
 
-            let ser = Serializer(&member.ty, self.1);
+            // This can't panic because only the last member can be unsized.
+            let size = size.unwrap();
 
-            // Wrap the member in `Padded` in order to pad the next member, if required. Note that
-            // the next offset can't be larger than the aligned offset, and all offsets must be
-            // aligned to the scalar alignment of its member's type.
+            let next_alignment = next_member_ty.scalar_alignment();
+
+            // These two can't panic because the member must fit in the struct.
+            let end = member.offset.checked_add(size).unwrap();
+            let aligned_end = align_up(end, next_alignment);
+
+            if aligned_end > next_member.offset {
+                // This would be a huge pain in the ass to support, but teeeeechnically, nothing in
+                // the spec forbids this. Or rather, the spec is ambiguous.
+                unimplemented!(
+                    "expected struct members of struct `{}` to be in order of increasing offsets",
+                    self.ty.name,
+                );
+            }
+
+            if !is_aligned(next_member.offset, member.scalar_alignment()) {
+                unimplemented!(
+                    "expected the offset of struct member {} of struct `{}` to be aligned to the \
+                    previous member's scalar alignment",
+                    member_index + 1,
+                    self.ty.name,
+                );
+            }
+
+            let ser = Serializer {
+                ty: &member_ty,
+                options: self.options,
+                matrix_stride: member.matrix_stride,
+                matrix_majorness: member.matrix_majorness,
+            };
+
+            // Pad the member such that the next member is at the right offset, if required.
             //
-            // NOTE(Marc): The next offset must also be aligned to the scalar alignment of the
-            // previous member's type. What this prevents is a situation like this:
+            // NOTE(Marc): The next offset must be aligned to the scalar alignment of the previous
+            // member's type in order to prevent a situation like this:
             //
             // | 0x0 |     |     |     |     | 0x5 |
             // |-----------------------|-----|-----|
             // | u32                   |     | u8  |
             //
-            // We can't pad the `u8` using a `Padded<u32, N>`, because its size will always be
-            // rounded up to the nearest multiple of its alignment which is 4 in this case. We
+            // We can't pad the `u8` using a `Padded<u32, N>` because its size will always be
+            // rounded up to the nearest multiple of its alignment, which is 4 in this case. We
             // could pad the `u8` field if `Padded` also had a const parameter for the number of
             // leading padding bytes, but that would make the logic here more complicated than I
             // feel is necessary for now. We can always add this functionality later if someone's
@@ -1139,34 +1529,45 @@ impl ToTokens for Serializer<'_, TypeStruct> {
             //
             // For now, the first member must also start at offset 0, for simplicity. This can be
             // adjusted in the future also by adding a parameter for leading padding.
-            if align_up(offset + size, next_alignment) < next_offset {
-                member_types.push(Padded(ser, next_offset - offset - size).into_token_stream());
+            let padding = if aligned_end < next_member.offset {
+                next_member.offset - member.offset - size
             } else {
-                member_types.push(ser.into_token_stream());
-            }
+                0
+            };
+
+            let ident = Ident::new(member.name, Span::call_site());
+            let ser = Padded(&ser, padding);
+            members_code.extend(quote! { pub #ident: #ser, });
         }
 
         // Add the last field, which is excluded in the above loop (both if the number of members
         // is 1 and >= 2).
-        if let Some(last) = self.0.members.last() {
-            member_types.push(Serializer(&last.ty, self.1).into_token_stream());
+        if let Some(member) = self.ty.members.last() {
+            let ident = Ident::new(member.name, Span::call_site());
+            let ser = Serializer {
+                ty: &member.ty(),
+                options: self.options,
+                matrix_stride: member.matrix_stride,
+                matrix_majorness: member.matrix_majorness,
+            };
+            members_code.extend(quote! { pub #ident: #ser, });
         }
 
         tokens.extend(quote! {
             pub struct #struct_ident {
-                #( pub #member_idents: #member_types, )*
+                #members_code
             }
         })
     }
 }
 
 /// Helper for wrapping tokens in `Padded`. Doesn't wrap if the padding is `0`.
-struct Padded<T>(T, usize);
+struct Padded<'a, T>(&'a T, u32);
 
-impl<T: ToTokens> ToTokens for Padded<T> {
+impl<T: ToTokens> ToTokens for Padded<'_, T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ty = &self.0;
-        let padding = self.1;
+        let ty = self.0;
+        let padding = self.1 as usize;
 
         if padding == 0 {
             ty.to_tokens(tokens);
