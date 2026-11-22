@@ -148,18 +148,27 @@ where
     /// If `timeout` is `None`, then the wait is infinite. Otherwise the thread will unblock after
     /// the specified timeout has elapsed and an error will be returned.
     ///
-    /// If the wait is successful, this function also cleans any resource locked by previous
-    /// submissions.
+    /// This function releases the resources locked by previous submissions after a successful wait
+    /// or on device loss. On device loss it still returns the error. A timeout leaves the
+    /// submission and its resources tracked so that the wait can be retried.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
 
         self.flush_impl(&mut state)?;
 
-        match replace(&mut *state, FenceSignalFutureState::Cleaned) {
+        match &*state {
             FenceSignalFutureState::Flushed(previous, fence) => {
-                unsafe { fence.wait_unchecked(timeout) }?;
-                unsafe { previous.signal_finished() };
-                Ok(())
+                // SAFETY: This fence was submitted and is kept alive by the future.
+                let result = unsafe { fence.wait_unchecked(timeout) };
+
+                if matches!(result, Ok(()) | Err(VulkanError::DeviceLost)) {
+                    // SAFETY: Vulkan treats device loss like success for determining whether
+                    // submitted resources are still in use, including after a fence wait.
+                    unsafe { previous.signal_finished() };
+                    *state = FenceSignalFutureState::Cleaned;
+                }
+
+                result.map_err(Into::into)
             }
             FenceSignalFutureState::Cleaned => Ok(()),
             _ => unreachable!(),
@@ -515,10 +524,13 @@ where
 
         match replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
-                // This is a normal situation. Submitting worked.
-                // TODO: handle errors?
-                fence.wait(None).unwrap();
-                unsafe { previous.signal_finished() };
+                match fence.wait(None) {
+                    Ok(()) | Err(VulkanError::DeviceLost) => {
+                        // SAFETY: Both outcomes mean the submission is no longer in use.
+                        unsafe { previous.signal_finished() };
+                    }
+                    Err(err) => panic!("failed to wait for the submission fence: {err}"),
+                }
             }
             FenceSignalFutureState::Cleaned => {
                 // Also a normal situation. The user called `cleanup_finished()` before dropping.

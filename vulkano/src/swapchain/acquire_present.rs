@@ -400,7 +400,11 @@ impl Drop for SwapchainAcquireFuture {
         }
 
         if let Some(fence) = &self.fence {
-            fence.wait(None).unwrap(); // TODO: handle error?
+            match fence.wait(None) {
+                // Device loss also ends Vulkan's use of the acquire semaphore.
+                Ok(()) | Err(VulkanError::DeviceLost) => {}
+                Err(err) => panic!("failed to wait for swapchain acquisition: {err}"),
+            }
             self.semaphore = None;
         }
 
@@ -1344,9 +1348,13 @@ where
         }
 
         if !*self.finished.get_mut() {
-            // Block until the queue finished.
-            self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
-            unsafe { self.previous.signal_finished() };
+            match self.queue.with(|mut queue| queue.wait_idle()) {
+                Ok(()) | Err(VulkanError::DeviceLost) => {
+                    // SAFETY: No earlier submission on the queue can still be in use.
+                    unsafe { self.previous.signal_finished() };
+                }
+                Err(err) => panic!("failed to wait for the presentation queue: {err}"),
+            }
         }
     }
 }
