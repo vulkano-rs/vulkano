@@ -1078,38 +1078,29 @@ impl Swapchain {
             unsafe { output.assume_init() }
         };
 
-        let image_handles = loop {
-            let mut count = 0;
-            unsafe {
-                (fns.khr_swapchain.get_swapchain_images_khr)(
-                    device.handle(),
-                    handle,
-                    &mut count,
-                    ptr::null_mut(),
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)?;
+        let image_handles = enumerate_swapchain_images(
+            |count, images| {
+                let images = images.map_or(ptr::null_mut(), |images| images.as_mut_ptr());
 
-            let mut images = Vec::with_capacity(count as usize);
-            let result = unsafe {
-                (fns.khr_swapchain.get_swapchain_images_khr)(
-                    device.handle(),
-                    handle,
-                    &mut count,
-                    images.as_mut_ptr(),
-                )
-            };
-
-            match result {
-                vk::Result::SUCCESS => {
-                    unsafe { images.set_len(count as usize) };
-                    break images;
+                // SAFETY: `handle` was created on `device`. The output is null for the count
+                // query, or points to a writable buffer of `*count` image handles.
+                unsafe {
+                    (fns.khr_swapchain.get_swapchain_images_khr)(
+                        device.handle(),
+                        handle,
+                        count,
+                        images,
+                    )
                 }
-                vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err)),
-            }
-        };
+            },
+            || {
+                // SAFETY: This newly created swapchain belongs to `device`, has no acquired
+                // images or pending work, and was created with null allocation callbacks.
+                unsafe {
+                    (fns.khr_swapchain.destroy_swapchain_khr)(device.handle(), handle, ptr::null())
+                };
+            },
+        )?;
 
         Ok((handle, image_handles))
     }
@@ -2027,6 +2018,31 @@ impl Swapchain {
         let present_id = u64::from(present_id);
         self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }
+}
+
+fn enumerate_swapchain_images(
+    mut query: impl FnMut(&mut u32, Option<&mut [vk::Image]>) -> vk::Result,
+    destroy_on_error: impl FnOnce(),
+) -> Result<Vec<vk::Image>, VulkanError> {
+    let error = loop {
+        let mut count = 0;
+        if let Err(error) = query(&mut count, None).result() {
+            break error;
+        }
+
+        let mut images = vec![vk::Image::null(); count as usize];
+        match query(&mut count, Some(&mut images)) {
+            vk::Result::SUCCESS => {
+                images.truncate(count as usize);
+                return Ok(images);
+            }
+            vk::Result::INCOMPLETE => (),
+            error => break error,
+        }
+    };
+
+    destroy_on_error();
+    Err(VulkanError::from(error))
 }
 
 impl Drop for Swapchain {
@@ -2957,5 +2973,72 @@ impl<'a> ReleaseSwapchainImagesInfo<'a> {
         vk::ReleaseSwapchainImagesInfoEXT::default()
             .swapchain(swapchain_vk)
             .image_indices(self.image_indices)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ash::vk::{Handle as _, Result as VkResult};
+    use std::cell::Cell;
+
+    #[test]
+    fn swapchain_image_enumeration_cleans_up_on_error() {
+        const ERROR: VkResult = VkResult::ERROR_OUT_OF_HOST_MEMORY;
+
+        for responses in [
+            &[ERROR][..],
+            &[VkResult::SUCCESS, ERROR],
+            &[
+                VkResult::SUCCESS,
+                VkResult::INCOMPLETE,
+                VkResult::SUCCESS,
+                ERROR,
+            ],
+        ] {
+            let destroy_count = Cell::new(0);
+            let mut responses = responses.iter().copied();
+            let result = enumerate_swapchain_images(
+                |count, _| {
+                    *count = 2;
+                    responses.next().unwrap()
+                },
+                || destroy_count.set(destroy_count.get() + 1),
+            );
+
+            assert!(matches!(result, Err(VulkanError::OutOfHostMemory)));
+            assert_eq!(responses.next(), None);
+            assert_eq!(destroy_count.get(), 1);
+        }
+    }
+
+    #[test]
+    fn swapchain_image_enumeration_keeps_the_handle_after_retry() {
+        let mut responses = [
+            VkResult::SUCCESS,
+            VkResult::INCOMPLETE,
+            VkResult::SUCCESS,
+            VkResult::SUCCESS,
+        ]
+        .into_iter();
+        let expected = vk::Image::from_raw(1);
+        let images = enumerate_swapchain_images(
+            |count, images| {
+                if let Some(images) = images {
+                    assert_eq!(images.len(), *count as usize);
+                    images[0] = expected;
+                    *count = 1;
+                } else {
+                    *count = 2;
+                }
+
+                responses.next().unwrap()
+            },
+            || panic!("successful enumeration must preserve the swapchain"),
+        )
+        .unwrap();
+
+        assert_eq!(images, [expected]);
+        assert_eq!(responses.next(), None);
     }
 }
