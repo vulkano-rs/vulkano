@@ -50,25 +50,19 @@
 //! this:
 //!
 //! ```
-//! # use std::sync::Arc;
-//! # use vulkano::{device::Device, shader::ShaderModule, Validated, VulkanError};
-//! #
 //! # mod vs {
-//! #     vulkano_shaders::shader! {
-//! #         ty: "vertex",
-//! #         src: r"
-//! #             #version 450
+//! #     pub use std::sync::Arc;
 //! #
-//! #             layout(location = 0) in vec3 position;
+//! #     pub struct Device;
+//! #     pub struct ShaderModule;
+//! #     pub struct VulkanError;
 //! #
-//! #             void main() {
-//! #                 gl_Position = vec4(position, 1.0);
-//! #             }
-//! #         ",
+//! #     pub unsafe fn load(device: &Arc<Device>) -> Result<Arc<ShaderModule>, VulkanError> {
+//! #         unimplemented!()
 //! #     }
 //! # }
 //! #
-//! # fn main() {}
+//! # use vs::{Arc, Device, ShaderModule, VulkanError};
 //! #
 //! // ...various use statements...
 //! // ...`vs` module containing a `shader!` call...
@@ -527,13 +521,16 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
 
+use self::arena::Arena;
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::{
+    borrow::Cow,
     collections::hash_map::Entry,
     env, fs,
     path::{Path, PathBuf},
+    slice,
 };
 use structs::TypeRegistry;
 use syn::{
@@ -541,8 +538,8 @@ use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
-use vulkano::shader::spirv;
 
+mod arena;
 mod shaders;
 mod structs;
 #[cfg(test)]
@@ -578,7 +575,8 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn shader_inner(input: MacroInput) -> Result<TokenStream> {
     let MacroInput { shaders, options } = input;
 
-    let mut state = MacroState::new(&options)?;
+    let global_arena = Arena::new();
+    let mut state = MacroState::new(&options, &global_arena)?;
 
     match shaders {
         Shaders::Single(shader_fields) => {
@@ -586,7 +584,7 @@ fn shader_inner(input: MacroInput) -> Result<TokenStream> {
         }
         Shaders::Multiple(shaders) => {
             for (shader_ident, shader_fields) in shaders {
-                let shader_name = shader_ident.to_string();
+                let shader_name = global_arena.allocate_str_copy(&shader_ident.to_string());
                 state.process_shader(Some(shader_name), shader_fields)?;
             }
         }
@@ -602,17 +600,22 @@ fn shader_inner(input: MacroInput) -> Result<TokenStream> {
     Ok(result)
 }
 
-struct MacroState<'a> {
-    options: &'a MacroOptions,
+struct MacroState<'global_arena> {
+    // This has a longer lifetime than `'global_arena`, but since both lifetimes are covariant and
+    // we don't need to recover the original lifetime, it doesn't make a difference.
+    options: &'global_arena MacroOptions,
     root_path: PathBuf,
     relative_path_error_message: String,
     shaders_code: TokenStream,
     structs_code: TokenStream,
-    type_registry: TypeRegistry,
+    type_registry: TypeRegistry<'global_arena>,
 }
 
-impl<'a> MacroState<'a> {
-    fn new(options: &'a MacroOptions) -> Result<Self> {
+impl<'global_arena> MacroState<'global_arena> {
+    fn new(
+        options: &'global_arena MacroOptions,
+        global_arena: &'global_arena Arena,
+    ) -> Result<Self> {
         let (root_path, relative_path_error_message) = match options.root_path_env.as_ref() {
             None => root_path_from_call_site(),
             Some(root_path_env) => root_path_from_env_var(root_path_env),
@@ -624,13 +627,13 @@ impl<'a> MacroState<'a> {
             relative_path_error_message,
             shaders_code: TokenStream::new(),
             structs_code: TokenStream::new(),
-            type_registry: TypeRegistry::default(),
+            type_registry: TypeRegistry::new(global_arena),
         })
     }
 
     fn process_shader(
         &mut self,
-        shader_name: Option<String>,
+        shader_name: Option<&'global_arena str>,
         shader_fields: ShaderFields,
     ) -> Result {
         let ShaderFields {
@@ -700,10 +703,10 @@ impl<'a> MacroState<'a> {
             }
         };
 
-        let words = spirv::bytes_to_words(&bytes)
+        let words = spirv_bytes_to_words(&bytes)
             .map_err(|err| Error::new_spanned(&lit, format!("malformed SPIR-V: {err}")))?;
 
-        let shaders_code = shaders::generate_shaders(shader_name.as_deref(), &words, input_paths)?;
+        let shaders_code = shaders::generate_shaders(shader_name, &words, input_paths)?;
         let structs_code = structs::generate_structs(
             self.options,
             lit,
@@ -812,6 +815,51 @@ fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|err| {
         Error::new_spanned(lit, format_args!("failed to read file `{path:?}`: {err}"))
     })
+}
+
+/// Converts SPIR-V bytes to words. If necessary, the byte order is swapped to match native-endian.
+fn spirv_bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, String> {
+    let (words, []) = bytes.as_chunks::<{ size_of::<u32>() }>() else {
+        return Err("the length of the bytes is not a multiple of 4".to_owned());
+    };
+
+    if words.is_empty() {
+        return Err("invalid header".to_owned());
+    }
+
+    let magic = words[0];
+    let is_little_endian = match magic {
+        [0x03, 0x02, 0x23, 0x07] => true,
+        [0x07, 0x23, 0x02, 0x03] => false,
+        _ => return Err("invalid header".to_owned()),
+    };
+    let endiannesses_match = !(is_little_endian ^ cfg!(target_endian = "little"));
+
+    let words = if endiannesses_match {
+        // If the SPIR-V and current target endiannesses match (which they always will in practice)
+        // and the slice already has the right size and alignment (which it also always has in
+        // practice), then we can just cast the slice.
+        if <*const _>::addr(bytes).is_multiple_of(align_of::<u32>()) {
+            let ptr = bytes.as_ptr().cast::<u32>();
+            let len = bytes.len() / size_of::<u32>();
+
+            // SAFETY: We checked that the slice is sufficiently aligned. The length is definitely
+            // in bounds as we divided it by the size of `u32`.
+            let words = unsafe { slice::from_raw_parts(ptr, len) };
+
+            return Ok(Cow::Borrowed(words));
+        }
+
+        words.iter().copied().map(u32::from_ne_bytes).collect()
+    } else {
+        words.iter().copied().map(u32_from_not_ne_bytes).collect()
+    };
+
+    Ok(Cow::Owned(words))
+}
+
+fn u32_from_not_ne_bytes(bytes: [u8; 4]) -> u32 {
+    u32::from_ne_bytes(bytes).swap_bytes()
 }
 
 struct MacroInput {
