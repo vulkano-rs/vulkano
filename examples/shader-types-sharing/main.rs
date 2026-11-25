@@ -98,7 +98,7 @@ fn main() {
     let [queue] = queues.try_into().unwrap();
 
     mod shaders {
-        vulkano_shaders::shader! {
+        vulkano::shader! {
             // We declaring two simple compute shaders with push and specialization constants in
             // their layout interfaces.
             //

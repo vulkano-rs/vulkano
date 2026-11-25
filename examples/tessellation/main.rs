@@ -508,7 +508,7 @@ fn window_size_dependent_setup(
 }
 
 mod vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -523,7 +523,7 @@ mod vs {
 }
 
 mod tcs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "tess_ctrl",
         src: r"
             #version 450
@@ -564,7 +564,7 @@ mod tcs {
 // https://mathworld.wolfram.com/BarycentricCoordinates.html
 
 mod tes {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "tess_eval",
         src: r"
             #version 450
@@ -590,7 +590,7 @@ mod tes {
 }
 
 mod fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         src: r"
             #version 450

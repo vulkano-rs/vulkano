@@ -162,21 +162,21 @@ impl Task for BloomTask {
 }
 
 mod downsample_glsl {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         path: "shaders/downsample.glsl",
     }
 }
 
 mod upsample_glsl {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         path: "shaders/upsample.glsl",
     }
 }
 
 mod downsample_slang {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         lang: "slang",
         entry_point: "downsample",
@@ -185,7 +185,7 @@ mod downsample_slang {
 }
 
 mod upsample_slang {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         lang: "slang",
         entry_point: "upsample",

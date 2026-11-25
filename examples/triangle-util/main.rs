@@ -147,10 +147,9 @@ impl ApplicationHandler for App {
         // shader using an input logical device. The module also includes type definitions for
         // layout structures defined in the shader source, for example uniforms and push constants.
         //
-        // A more detailed overview of what the `shader!` macro generates can be found in the
-        // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
+        // A more detailed overview of what the `shader!` macro generates can be found in its docs.
         mod vs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "vertex",
                 src: r"
                     #version 450
@@ -165,7 +164,7 @@ impl ApplicationHandler for App {
         }
 
         mod fs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "fragment",
                 src: r"
                     #version 450

@@ -109,7 +109,7 @@
 //! [*Buffers*]: buffer
 //! [*Images*]: image
 //! [*Pipelines*]: pipeline
-//! [*shader*]: shader
+//! [*shader*]: mod@shader
 //! [`ComputePipeline`]: pipeline::ComputePipeline
 //! [`GraphicsPipeline`]: pipeline::GraphicsPipeline
 //! [*Descriptor sets*]: descriptor_set
@@ -139,6 +139,8 @@ use std::{
 };
 pub use version::Version;
 pub use vk::Handle;
+#[cfg(feature = "macros")]
+pub use vulkano_macros::{include_vulkano_glsl, include_vulkano_slang, shader};
 
 #[macro_use]
 mod tests;

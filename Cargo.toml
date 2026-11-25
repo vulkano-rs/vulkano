@@ -3,6 +3,7 @@ members = [
     "autogen",
     "examples/*",
     "vulkano",
+    "vulkano-codegen",
     "vulkano-macros",
     "vulkano-shaders",
     "vulkano-taskgraph",
@@ -22,6 +23,10 @@ categories = ["rendering::graphics-api"]
 version = "0.35"
 path = "vulkano"
 default-features = false
+
+[workspace.dependencies.vulkano-codegen]
+version = "0.35"
+path = "vulkano-codegen"
 
 [workspace.dependencies.vulkano-macros]
 version = "0.35"

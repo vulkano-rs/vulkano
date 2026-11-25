@@ -3,7 +3,7 @@
 use super::{
     Constant, TypeArray, TypeFloat, TypeInt, TypeMatrix, TypePointer, TypeStruct, TypeVector,
 };
-use crate::arena;
+use crate::shader::arena;
 use std::{marker::PhantomData, mem, ptr::NonNull};
 
 #[derive(Clone, Copy)]

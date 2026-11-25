@@ -82,7 +82,7 @@ fn main() {
     let [queue] = queues.try_into().unwrap();
 
     mod cs {
-        vulkano_shaders::shader! {
+        vulkano::shader! {
             ty: "compute",
             src: r"
                 #version 450

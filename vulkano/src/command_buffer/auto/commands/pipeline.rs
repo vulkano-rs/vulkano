@@ -63,7 +63,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     pub unsafe fn dispatch(
         &mut self,
         group_counts: [u32; 3],
@@ -130,7 +130,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for `DispatchIndirectCommand`](DispatchIndirectCommand#safety)
     ///   apply.
     pub unsafe fn dispatch_indirect(
@@ -217,7 +217,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     pub unsafe fn draw(
         &mut self,
         vertex_count: u32,
@@ -407,7 +407,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety) apply.
     pub unsafe fn draw_indirect(
         &mut self,
@@ -519,7 +519,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
     ///   [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) device limit.
@@ -658,7 +658,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - Every vertex number that is retrieved from the index buffer must fall within the range of
     ///   the bound vertex-rate vertex buffers.
     /// - Every vertex number that is retrieved from the index buffer, if it is not the special
@@ -897,7 +897,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for
     ///   `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety) apply.
     pub unsafe fn draw_indexed_indirect(
@@ -1024,7 +1024,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for
     ///   `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
@@ -1160,7 +1160,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     pub unsafe fn draw_mesh_tasks(
         &mut self,
         group_counts: [u32; 3],
@@ -1348,7 +1348,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for
     ///   `DrawMeshTasksIndirectCommand`](DrawMeshTasksIndirectCommand#safety) apply.
     pub unsafe fn draw_mesh_tasks_indirect(
@@ -1468,7 +1468,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ///
     /// # Safety
     ///
-    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The general [shader safety requirements](mod@crate::shader#safety) apply.
     /// - The [safety requirements for
     ///   `DrawMeshTasksIndirectCommand`](DrawMeshTasksIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
@@ -1606,7 +1606,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     /// - The general [shader safety requirements] apply.
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     pub unsafe fn trace_rays(
         &mut self,
         shader_binding_table_addresses: ShaderBindingTableAddresses,
@@ -1650,7 +1650,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
     pub unsafe fn trace_rays_indirect(
         &mut self,

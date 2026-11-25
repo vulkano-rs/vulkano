@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Error as FmtError, Formatter};
 use vulkano::padded::Padded;
 
-vulkano_shaders::shader! {
+vulkano::shader! {
     ty: "compute",
     src: r"
         #version 450

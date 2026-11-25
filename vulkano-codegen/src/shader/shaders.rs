@@ -1,4 +1,5 @@
-use crate::{Compiler, MacroOptions, Result, ShaderKind, SourceLanguage};
+use super::{Compiler, MacroOptions, Result, ShaderKind, SourceLanguage};
+use crate::CodegenContext;
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -11,6 +12,7 @@ use std::{
     process::{self, Command, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
 };
+use syn::Path as SynPath;
 
 pub(super) fn compile_shader(
     options: &MacroOptions,
@@ -136,7 +138,7 @@ pub(super) fn compile_shader(
 fn init_include_dir() -> Result<PathBuf, String> {
     // The include directory only needs to be written anew when the contents have changed, so we
     // key the temp dir on the hash of its contents.
-    let hash = &include_str!("../include-sha256sums.sha256")[0..64];
+    let hash = &include_str!("../../include-sha256sums.sha256")[0..64];
     let path = env::temp_dir().join(format!("vulkano-shaders-include-{hash}"));
 
     // If the path proper exists, we know that all include files must have finished being written.
@@ -154,12 +156,12 @@ fn init_include_dir() -> Result<PathBuf, String> {
         .map_err(|e| format!("failed to create vulkano include dir: {e}"))?;
     fs::write(
         frag_path.join("vulkano.glsl"),
-        include_str!("../include/vulkano.glsl"),
+        include_str!("../../include/vulkano.glsl"),
     )
     .map_err(|e| format!("failed to write vulkano.glsl: {e}"))?;
     fs::write(
         frag_path.join("vulkano.slang"),
-        include_str!("../include/vulkano.slang"),
+        include_str!("../../include/vulkano.slang"),
     )
     .map_err(|e| format!("failed to write vulkano.slang: {e}"))?;
 
@@ -221,9 +223,10 @@ fn set_common_options(
     options: &MacroOptions,
     macro_defines: &[(String, String)],
 ) {
-    if cfg!(feature = "shaderc-debug") {
-        command.arg("-g");
-    }
+    // FIXME:
+    // if cfg!(feature = "shaderc-debug") {
+    //     command.arg("-g");
+    // }
 
     for dir in &options.include_directories {
         command.arg("-I").arg(dir);
@@ -378,10 +381,13 @@ fn normalize_str(path: impl AsRef<Path>) -> String {
 }
 
 pub(super) fn generate_shaders(
+    ccx: &CodegenContext<'_>,
     name: Option<&str>,
     words: &[u32],
     input_paths: Vec<String>,
 ) -> Result<TokenStream> {
+    let vulkano_path = syn::parse_str::<SynPath>(ccx.vulkano_path).unwrap();
+
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
             // Using `include_bytes` here ensures that changing the shader will force recompilation.
@@ -409,17 +415,17 @@ pub(super) fn generate_shaders(
         #[inline]
         #[track_caller]
         pub unsafe fn #load_name(
-            device: &::std::sync::Arc<::vulkano::device::Device>,
+            device: &::std::sync::Arc<::#vulkano_path::device::Device>,
         ) -> ::std::result::Result<
-            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
-            ::vulkano::VulkanError,
+            ::std::sync::Arc<::#vulkano_path::shader::ShaderModule>,
+            ::#vulkano_path::VulkanError,
         > {
             match unsafe { #try_load_name(device) } {
                 ::std::result::Result::Ok(shader_module) => {
                     ::std::result::Result::Ok(shader_module)
                 }
                 ::std::result::Result::Err(err) => {
-                    ::std::result::Result::Err(::vulkano::Validated::unwrap(err))
+                    ::std::result::Result::Err(::#vulkano_path::Validated::unwrap(err))
                 }
             }
         }
@@ -428,15 +434,15 @@ pub(super) fn generate_shaders(
         #[allow(unsafe_code)]
         #[inline]
         pub unsafe fn #try_load_name(
-            device: &::std::sync::Arc<::vulkano::device::Device>,
+            device: &::std::sync::Arc<::#vulkano_path::device::Device>,
         ) -> ::std::result::Result<
-            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
-            ::vulkano::Validated<::vulkano::VulkanError>,
+            ::std::sync::Arc<::#vulkano_path::shader::ShaderModule>,
+            ::#vulkano_path::Validated<::#vulkano_path::VulkanError>,
         > {
             unsafe {
-                ::vulkano::shader::ShaderModule::try_new(
+                ::#vulkano_path::shader::ShaderModule::try_new(
                     device,
-                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
+                    &::#vulkano_path::shader::ShaderModuleCreateInfo::new(#words_name),
                 )
             }
         }
@@ -445,15 +451,15 @@ pub(super) fn generate_shaders(
         #[allow(unsafe_code)]
         #[inline]
         pub unsafe fn #load_unchecked_name(
-            device: &::std::sync::Arc<::vulkano::device::Device>,
+            device: &::std::sync::Arc<::#vulkano_path::device::Device>,
         ) -> ::std::result::Result<
-            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
-            ::vulkano::VulkanError,
+            ::std::sync::Arc<::#vulkano_path::shader::ShaderModule>,
+            ::#vulkano_path::VulkanError,
         > {
             unsafe {
-                ::vulkano::shader::ShaderModule::new_unchecked(
+                ::#vulkano_path::shader::ShaderModule::new_unchecked(
                     device,
-                    &::vulkano::shader::ShaderModuleCreateInfo::new(#words_name),
+                    &::#vulkano_path::shader::ShaderModuleCreateInfo::new(#words_name),
                 )
             }
         }

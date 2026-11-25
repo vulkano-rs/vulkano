@@ -86,7 +86,7 @@ fn main() {
 
     let pipeline = {
         mod cs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "compute",
                 src: r"
                     #version 450

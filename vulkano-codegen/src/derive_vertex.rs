@@ -1,13 +1,15 @@
-use crate::bail;
+use crate::{bail, CodegenContext};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    Data, DataStruct, Fields, Ident, LitStr, Result, Token,
+    Data, DataStruct, DeriveInput, Fields, Ident, LitStr, Path, Result, Token,
 };
 
-pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<TokenStream> {
+pub(super) fn derive_vertex(ccx: &CodegenContext<'_>, input: TokenStream) -> Result<TokenStream> {
+    let vulkano_path = syn::parse_str::<Path>(ccx.vulkano_path).unwrap();
+    let ast = syn::parse2::<DeriveInput>(input)?;
     let struct_name = &ast.ident;
 
     let fields = match &ast.data {
@@ -41,7 +43,7 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
             } else if attr_ident == "format" {
                 let format_ident = attr.parse_args_with(Ident::parse)?;
                 format = quote! {
-                    ::#crate_ident::format::Format::#format_ident;
+                    ::#vulkano_path::format::Format::#format_ident;
                 };
             }
         }
@@ -72,7 +74,7 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
 
                     members.insert(
                         #name.to_string(),
-                        ::#crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo {
+                        ::#vulkano_path::pipeline::graphics::vertex_input::VertexMemberInfo {
                             offset: offset.try_into().unwrap(),
                             format,
                             num_elements: num_elements.try_into().unwrap(),
@@ -89,28 +91,28 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
     let function_body = quote! {
         #members
 
-        ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+        ::#vulkano_path::pipeline::graphics::vertex_input::VertexBufferDescription {
             members,
             stride: ::std::mem::size_of::<#struct_name>() as u32,
-            input_rate: ::#crate_ident::pipeline::graphics::vertex_input::VertexInputRate::Vertex,
+            input_rate: ::#vulkano_path::pipeline::graphics::vertex_input::VertexInputRate::Vertex,
         }
     };
 
     Ok(quote! {
         #[allow(unsafe_code)]
-        unsafe impl ::#crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
+        unsafe impl ::#vulkano_path::pipeline::graphics::vertex_input::Vertex for #struct_name {
             #[inline(always)]
-            fn per_vertex() -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+            fn per_vertex() -> ::#vulkano_path::pipeline::graphics::vertex_input::VertexBufferDescription {
                 #function_body
             }
 
             #[inline(always)]
-            fn per_instance() -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+            fn per_instance() -> ::#vulkano_path::pipeline::graphics::vertex_input::VertexBufferDescription {
                 Self::per_vertex().per_instance()
             }
 
             #[inline(always)]
-            fn per_instance_with_divisor(divisor: u32) -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+            fn per_instance_with_divisor(divisor: u32) -> ::#vulkano_path::pipeline::graphics::vertex_input::VertexBufferDescription {
                 Self::per_vertex().per_instance_with_divisor(divisor)
             }
         }
@@ -122,7 +124,7 @@ struct NameMeta {
 }
 
 impl Parse for NameMeta {
-    fn parse(input: ParseStream) -> Result<Self> {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
         Ok(Self {
             lit_str_list: input.parse_terminated(<LitStr as Parse>::parse, Token![,])?,
         })

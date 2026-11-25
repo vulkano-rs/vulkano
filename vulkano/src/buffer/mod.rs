@@ -67,7 +67,7 @@
 //!
 //! [`SubbufferAllocator`]: allocator::SubbufferAllocator
 //! [the `view` module]: view
-//! [the `shader` module documentation]: crate::shader
+//! [the `shader` module documentation]: mod@crate::shader
 
 pub use self::{subbuffer::*, sys::*, usage::*};
 use crate::{

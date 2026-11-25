@@ -107,7 +107,7 @@ fn main() {
     // `build_with_cache(cache: Arc<PipelineCache>)`.
     let _pipeline = {
         mod cs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "compute",
                 src: r"
                     #version 450

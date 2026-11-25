@@ -559,7 +559,7 @@ fn window_size_dependent_setup(
 }
 
 mod mesh {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "mesh",
         path: "mesh.glsl",
         vulkan_version: "1.2",
@@ -567,7 +567,7 @@ mod mesh {
 }
 
 mod fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         path: "frag.glsl",
     }

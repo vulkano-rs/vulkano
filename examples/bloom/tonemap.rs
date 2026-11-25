@@ -107,7 +107,7 @@ impl Task for TonemapTask {
 }
 
 mod vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -135,14 +135,14 @@ mod vs {
 }
 
 mod fs_glsl {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         path: "shaders/tonemap.glsl",
     }
 }
 
 mod fs_slang {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         lang: "slang",
         path: "shaders/tonemap.slang",

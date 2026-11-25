@@ -258,7 +258,7 @@ impl AmbientLightingPipeline {
 }
 
 mod ambient_lighting_vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -273,7 +273,7 @@ mod ambient_lighting_vs {
 }
 
 mod ambient_lighting_fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         src: r"
             #version 450
@@ -456,7 +456,7 @@ impl DirectionalLightingPipeline {
 }
 
 mod directional_lighting_vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -471,7 +471,7 @@ mod directional_lighting_vs {
 }
 
 mod directional_lighting_fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         src: r"
             #version 450
@@ -677,7 +677,7 @@ impl PointLightingPipeline {
 }
 
 mod point_lighting_vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -694,7 +694,7 @@ mod point_lighting_vs {
 }
 
 mod point_lighting_fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         src: r"
             #version 450

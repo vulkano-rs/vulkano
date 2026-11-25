@@ -33,7 +33,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_dispatch`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_compute`]: Self::bind_pipeline_compute
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`try_dispatch`]: Self::try_dispatch
     #[track_caller]
     pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) -> &mut Self {
@@ -50,7 +50,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The general [shader safety requirements] apply.
     ///
     /// [`bind_pipeline_compute`]: Self::bind_pipeline_compute
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     pub unsafe fn try_dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self> {
         Ok(unsafe { self.dispatch_unchecked(group_counts) })
     }
@@ -88,7 +88,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_dispatch_indirect`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_compute`]: Self::bind_pipeline_compute
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DispatchIndirectCommand`]: DispatchIndirectCommand#safety
     /// [`try_dispatch_indirect`]: Self::try_dispatch_indirect
     #[track_caller]
@@ -112,7 +112,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The [safety requirements for `DispatchIndirectCommand`] apply.
     ///
     /// [`bind_pipeline_compute`]: Self::bind_pipeline_compute
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DispatchIndirectCommand`]: DispatchIndirectCommand#safety
     pub unsafe fn try_dispatch_indirect(
         &mut self,
@@ -159,7 +159,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_draw`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`try_draw`]: Self::try_draw
     #[track_caller]
     pub unsafe fn draw(
@@ -190,7 +190,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The general [shader safety requirements] apply.
     ///
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     pub unsafe fn try_draw(
         &mut self,
         vertex_count: u32,
@@ -253,7 +253,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndirectCommand`]: DrawIndirectCommand#safety
     /// [`try_draw_indirect`]: Self::try_draw_indirect
     #[track_caller]
@@ -289,7 +289,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndirectCommand`]: DrawIndirectCommand#safety
     pub unsafe fn try_draw_indirect(
         &mut self,
@@ -350,7 +350,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndirectCommand`]: DrawIndirectCommand#safety
     /// [`try_draw_indirect_count`]: Self::try_draw_indirect_count
     #[track_caller]
@@ -402,7 +402,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndirectCommand`]: DrawIndirectCommand#safety
     pub unsafe fn try_draw_indirect_count(
         &mut self,
@@ -500,7 +500,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`max_draw_indexed_index_value`]: vulkano::device::DeviceProperties::max_draw_indexed_index_value
     /// [`try_draw_indexed`]: Self::try_draw_indexed
     #[track_caller]
@@ -554,7 +554,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`max_draw_indexed_index_value`]: vulkano::device::DeviceProperties::max_draw_indexed_index_value
     pub unsafe fn try_draw_indexed(
         &mut self,
@@ -633,7 +633,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndexedIndirectCommand`]: DrawIndexedIndirectCommand#safety
     /// [`try_draw_indexed_indirect`]: Self::try_draw_indexed_indirect
     #[track_caller]
@@ -676,7 +676,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndexedIndirectCommand`]: DrawIndexedIndirectCommand#safety
     pub unsafe fn try_draw_indexed_indirect(
         &mut self,
@@ -749,7 +749,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndexedIndirectCommand`]: DrawIndexedIndirectCommand#safety
     /// [`try_draw_indexed_indirect_count`]: Self::try_draw_indexed_indirect_count
     #[track_caller]
@@ -806,7 +806,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_index_buffer`]: Self::bind_index_buffer
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawIndexedIndirectCommand`]: DrawIndexedIndirectCommand#safety
     pub unsafe fn try_draw_indexed_indirect_count(
         &mut self,
@@ -888,7 +888,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_draw_mesh_tasks`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`try_draw_mesh_tasks`]: Self::try_draw_mesh_tasks
     #[track_caller]
     pub unsafe fn draw_mesh_tasks(&mut self, group_counts: [u32; 3]) -> &mut Self {
@@ -906,7 +906,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The general [shader safety requirements] apply.
     ///
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     pub unsafe fn try_draw_mesh_tasks(&mut self, group_counts: [u32; 3]) -> Result<&mut Self> {
         Ok(unsafe { self.draw_mesh_tasks_unchecked(group_counts) })
     }
@@ -952,7 +952,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawMeshTasksIndirectCommand`]: DrawMeshTasksIndirectCommand#safety
     /// [`try_draw_mesh_tasks_indirect`]: Self::try_draw_mesh_tasks_indirect
     #[track_caller]
@@ -986,7 +986,7 @@ impl RecordingCommandBuffer<'_> {
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`multi_draw_indirect`]: vulkano::device::DeviceFeatures::multi_draw_indirect
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawMeshTasksIndirectCommand`]: DrawMeshTasksIndirectCommand#safety
     pub unsafe fn try_draw_mesh_tasks_indirect(
         &mut self,
@@ -1050,7 +1050,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawMeshTasksIndirectCommand`]: DrawMeshTasksIndirectCommand#safety
     /// [`try_draw_mesh_tasks_indirect_count`]: Self::try_draw_mesh_tasks_indirect_count
     #[track_caller]
@@ -1099,7 +1099,7 @@ impl RecordingCommandBuffer<'_> {
     ///
     /// [`max_draw_indirect_count`]: vulkano::device::DeviceProperties::max_draw_indirect_count
     /// [`bind_pipeline_graphics`]: Self::bind_pipeline_graphics
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `DrawMeshTasksIndirectCommand`]: DrawMeshTasksIndirectCommand#safety
     pub unsafe fn try_draw_mesh_tasks_indirect_count(
         &mut self,
@@ -1168,7 +1168,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_trace_rays`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [`try_trace_rays`]: Self::try_trace_rays
     #[track_caller]
     pub unsafe fn trace_rays(
@@ -1190,7 +1190,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The general [shader safety requirements] apply.
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     pub unsafe fn try_trace_rays(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
@@ -1246,7 +1246,7 @@ impl RecordingCommandBuffer<'_> {
     /// - Panics if [`try_trace_rays_indirect`] returns a [`ValidationError`].
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
     /// [`try_trace_rays_indirect`]: Self::try_trace_rays_indirect
     #[track_caller]
@@ -1275,7 +1275,7 @@ impl RecordingCommandBuffer<'_> {
     /// - The [safety requirements for `TraceRaysIndirectCommand`] apply.
     ///
     /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
-    /// [shader safety requirements]: vulkano::shader#safety
+    /// [shader safety requirements]: mod@vulkano::shader#safety
     /// [safety requirements for `TraceRaysIndirectCommand`]: TraceRaysIndirectCommand#safety
     pub unsafe fn try_trace_rays_indirect(
         &mut self,
