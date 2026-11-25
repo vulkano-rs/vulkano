@@ -128,6 +128,7 @@ impl<W: ?Sized> TaskGraph<W> {
             id,
             accesses: &mut task_node.accesses,
             attachments: &mut task_node.attachments,
+            view_mask: &mut task_node.view_mask,
             resources: &mut self.resources,
         }
     }
@@ -577,6 +578,7 @@ pub struct TaskNode<W: ?Sized> {
     dependency_level_index: u32,
     subpass: Option<Subpass>,
     task: Box<dyn Task<World = W>>,
+    view_mask: u32,
 }
 
 pub(crate) struct ResourceAccesses {
@@ -608,6 +610,7 @@ impl<W: ?Sized> TaskNode<W> {
             dependency_level_index: 0,
             subpass: None,
             task: Box::new(task),
+            view_mask: 0,
         }
     }
 
@@ -748,6 +751,7 @@ pub struct TaskNodeBuilder<'a> {
     id: NodeId,
     accesses: &'a mut ResourceAccesses,
     attachments: &'a mut Option<Attachments>,
+    view_mask: &'a mut u32,
     resources: &'a mut Resources,
 }
 
@@ -1120,6 +1124,15 @@ impl TaskNodeBuilder<'_> {
         ));
 
         self.image_access(id, access_types, layout_type)
+    }
+
+    /// Sets the mask for which multiview views should be rendered by this node.
+    ///
+    /// See [`SubpassDescription.view_mask`](vulkano::render_pass::SubpassDescription#structfield.
+    /// view_mask) for more info.
+    pub fn view_mask(&mut self, view_mask: u32) -> &mut Self {
+        *self.view_mask = view_mask;
+        self
     }
 
     /// Finishes building the task node and returns the ID of the built node.

@@ -554,7 +554,12 @@ impl<W: ?Sized> TaskGraph<W> {
             builder.nodes[node_index as usize].submission_index = submission_index;
 
             if let Some(attachments) = &task_node.attachments {
-                builder.subpass(node_index, &task_node.accesses, attachments);
+                builder.subpass(
+                    node_index,
+                    &task_node.accesses,
+                    attachments,
+                    task_node.view_mask,
+                );
                 builder.is_render_pass_instance_active = true;
             } else {
                 builder.is_render_pass_instance_active = false;
@@ -654,6 +659,7 @@ struct SubpassState {
     color_attachments: LinearMap<Id, (u32, ImageLayout)>,
     depth_stencil_attachment: Option<(Id, ImageLayout)>,
     accesses: LinearMap<Id, ResourceAccess>,
+    view_mask: u32,
 }
 
 impl IntermediateRepresentationBuilder {
@@ -675,6 +681,7 @@ impl IntermediateRepresentationBuilder {
         node_index: NodeIndex,
         accesses: &ResourceAccesses,
         attachments: &Attachments,
+        view_mask: u32,
     ) {
         let is_same_render_pass = self.is_render_pass_instance_active
             && is_render_pass_mergeable(self.render_passes.last().unwrap(), accesses, attachments);
@@ -690,13 +697,17 @@ impl IntermediateRepresentationBuilder {
             .subpasses
             .last()
             .is_some_and(|subpass_state| {
-                is_subpass_mergeable(subpass_state, accesses, attachments)
+                is_subpass_mergeable(subpass_state, accesses, attachments, view_mask)
             });
 
         if !is_same_subpass {
             render_pass_state
                 .subpasses
-                .push(SubpassState::from_task_node(accesses, attachments));
+                .push(SubpassState::from_task_node(
+                    accesses,
+                    attachments,
+                    view_mask,
+                ));
         }
 
         let subpass_state = render_pass_state.subpasses.last_mut().unwrap();
@@ -1089,7 +1100,11 @@ impl RenderPassState {
 }
 
 impl SubpassState {
-    fn from_task_node(accesses: &ResourceAccesses, attachments: &Attachments) -> Self {
+    fn from_task_node(
+        accesses: &ResourceAccesses,
+        attachments: &Attachments,
+        view_mask: u32,
+    ) -> Self {
         SubpassState {
             input_attachments: attachments
                 .input_attachments
@@ -1119,6 +1134,7 @@ impl SubpassState {
                 },
             ),
             accesses: accesses.inner.clone(),
+            view_mask,
         }
     }
 }
@@ -1169,10 +1185,15 @@ fn is_subpass_mergeable(
     subpass_state: &SubpassState,
     accesses: &ResourceAccesses,
     attachments: &Attachments,
+    view_mask: u32,
 ) -> bool {
     // We can only merge with a task node that has the exact same attachments. Keep in mind that
     // being here, `is_render_pass_mergeable` must have returned `true`, which rules out the other
     // incompatibilities.
+
+    if subpass_state.view_mask != view_mask {
+        return false;
+    }
 
     // Early nope-out to avoid the expense below.
     if subpass_state.color_attachments.len() != attachments.color_attachments.len()
@@ -1285,6 +1306,7 @@ fn create_render_pass(
                         .then_some(attachment as u32)
                     })
                     .collect::<Vec<_>>(),
+                subpass_state.view_mask,
             )
         })
         .collect::<Vec<_>>();
@@ -1296,10 +1318,10 @@ fn create_render_pass(
                 color_attachments,
                 depth_stencil_attachment,
                 preserve_attachments,
+                view_mask,
             )| {
                 SubpassDescription {
-                    // FIXME:
-                    view_mask: 0,
+                    view_mask: *view_mask,
                     input_attachments,
                     color_attachments,
                     depth_stencil_attachment: Some(depth_stencil_attachment),
