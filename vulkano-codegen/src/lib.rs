@@ -16,6 +16,8 @@ use syn::Error;
 mod derive_buffer_contents;
 mod derive_vertex;
 mod shader;
+#[cfg(test)]
+mod tests;
 
 /// See [`vulkano_macros::BufferContents`].
 ///

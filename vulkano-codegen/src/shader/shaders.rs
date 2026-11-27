@@ -14,7 +14,7 @@ use std::{
 };
 use syn::Path as SynPath;
 
-pub(super) fn compile_shader(
+pub(crate) fn compile_shader(
     options: &MacroOptions,
     source: &str,
     working_dir: &Path,
@@ -380,7 +380,7 @@ fn normalize_str(path: impl AsRef<Path>) -> String {
     inner(path.as_ref())
 }
 
-pub(super) fn generate_shaders(
+pub(crate) fn generate_shaders(
     ccx: &CodegenContext<'_>,
     name: Option<&str>,
     words: &[u32],

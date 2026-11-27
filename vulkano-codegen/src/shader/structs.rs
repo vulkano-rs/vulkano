@@ -53,7 +53,7 @@ const OP_DECORATE_OPCODE: u16 = preamble::OP_DECORATE.opcode;
 const OP_MEMBER_DECORATE_OPCODE: u16 = preamble::OP_MEMBER_DECORATE.opcode;
 
 /// Translates all the structs that are contained in the SPIR-V module to Rust structs.
-pub(super) fn generate_structs<'global_arena>(
+pub(crate) fn generate_structs<'global_arena>(
     ccx: &CodegenContext<'_>,
     options: &MacroOptions,
     lit: LitStr,
@@ -134,13 +134,13 @@ pub(super) fn generate_structs<'global_arena>(
     Ok(structs)
 }
 
-pub(super) struct TypeRegistry<'global_arena> {
+pub(crate) struct TypeRegistry<'global_arena> {
     registered_structs: HashMap<&'global_arena str, RegisteredType<'global_arena>>,
     global_arena: &'global_arena Arena,
 }
 
 impl<'global_arena> TypeRegistry<'global_arena> {
-    pub(super) fn new(global_arena: &'global_arena Arena) -> Self {
+    pub(crate) fn new(global_arena: &'global_arena Arena) -> Self {
         Self {
             registered_structs: HashMap::default(),
             global_arena,

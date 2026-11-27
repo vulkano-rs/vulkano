@@ -16,11 +16,9 @@ use syn::{
     parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
-mod arena;
-mod shaders;
-mod structs;
-#[cfg(test)]
-mod tests;
+pub(crate) mod arena;
+pub(crate) mod shaders;
+pub(crate) mod structs;
 
 pub(super) fn shader(ccx: &CodegenContext<'_>, input: TokenStream) -> Result<TokenStream> {
     let MacroInput { shaders, options } = syn::parse2(input)?;
@@ -272,7 +270,7 @@ fn read_file(lit: &LitStr, path: &Path) -> Result<Vec<u8>> {
 }
 
 /// Converts SPIR-V bytes to words. If necessary, the byte order is swapped to match native-endian.
-fn spirv_bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, String> {
+pub(crate) fn spirv_bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, String> {
     let (words, []) = bytes.as_chunks::<{ size_of::<u32>() }>() else {
         return Err("the length of the bytes is not a multiple of 4".to_owned());
     };
@@ -346,18 +344,18 @@ enum CompiledSourceKind {
     Inline(LitStr),
 }
 
-struct MacroOptions {
-    global_source_language: SourceLanguage,
-    global_compiler: Option<Compiler>,
-    root_path_env: Option<LitStr>,
-    include_directories: Vec<PathBuf>,
-    global_macro_defines: Vec<(String, String)>,
-    spirv_version: SpirvVersion,
-    vulkan_version: VulkanVersion,
-    generate_structs: bool,
-    custom_derives: Vec<SynPath>,
-    linalg_type: LinAlgType,
-    dump: LitBool,
+pub(crate) struct MacroOptions {
+    pub(crate) global_source_language: SourceLanguage,
+    pub(crate) global_compiler: Option<Compiler>,
+    pub(crate) root_path_env: Option<LitStr>,
+    pub(crate) include_directories: Vec<PathBuf>,
+    pub(crate) global_macro_defines: Vec<(String, String)>,
+    pub(crate) spirv_version: SpirvVersion,
+    pub(crate) vulkan_version: VulkanVersion,
+    pub(crate) generate_structs: bool,
+    pub(crate) custom_derives: Vec<SynPath>,
+    pub(crate) linalg_type: LinAlgType,
+    pub(crate) dump: LitBool,
 }
 
 impl Parse for MacroInput {
@@ -398,7 +396,7 @@ impl Parse for MacroInput {
 
 impl MacroOptions {
     #[cfg(test)]
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         MacroOptions {
             global_source_language: SourceLanguage::Glsl,
             global_compiler: None,
@@ -1121,7 +1119,7 @@ fn parse_define(
 }
 
 #[derive(Copy, Clone, Debug)]
-enum ShaderKind {
+pub(crate) enum ShaderKind {
     Vertex,
     TessControl,
     TessEvaluation,
@@ -1179,7 +1177,7 @@ impl ShaderKind {
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-enum SourceLanguage {
+pub(crate) enum SourceLanguage {
     #[default]
     Glsl,
     Hlsl,
@@ -1204,7 +1202,7 @@ impl SourceLanguage {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Compiler {
+pub(crate) enum Compiler {
     Shaderc,
     Slangc,
 }
@@ -1238,7 +1236,7 @@ impl Compiler {
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-enum VulkanVersion {
+pub(crate) enum VulkanVersion {
     #[default]
     V1_0,
     V1_1,
@@ -1267,7 +1265,7 @@ impl VulkanVersion {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum SpirvVersion {
+pub(crate) enum SpirvVersion {
     V1_0,
     V1_1,
     V1_2,
@@ -1304,11 +1302,11 @@ impl SpirvVersion {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum LinAlgType {
+pub(crate) enum LinAlgType {
     #[default]
     Std,
     CgMath,
     Nalgebra,
 }
 
-type Result<T = (), E = syn::Error> = ::std::result::Result<T, E>;
+pub(crate) type Result<T = (), E = syn::Error> = ::std::result::Result<T, E>;

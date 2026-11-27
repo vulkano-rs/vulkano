@@ -17,7 +17,7 @@ const MIN_REGION_ALIGNMENT: usize = 16;
 // the allocation of the current block, with all provenance preserved, except when no allocations
 // from the arena have been made yet, in which case `free_start_ptr` and `free_end_ptr` must be
 // dangling and identical and `block_footer_ptr` must be `None`.
-pub(super) struct Arena {
+pub(crate) struct Arena {
     /// The start of the free bytes of the current region. Since we grow down, this is always
     /// greater than or equal to `free_end_ptr`.
     //
@@ -63,7 +63,7 @@ const _: () = assert!(is_aligned(size_of::<BlockFooter>(), MIN_REGION_ALIGNMENT)
 const _: () = assert!(align_of::<BlockFooter>() <= MIN_REGION_ALIGNMENT);
 
 impl Arena {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let dangling_ptr = NonNull::dangling();
 
         // SAFETY: `free_start_ptr` and `free_end_ptr` are dangling and identical, and

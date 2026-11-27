@@ -1,10 +1,13 @@
-use super::{
-    shaders::{compile_shader, generate_shaders},
-    spirv_bytes_to_words,
-    structs::{generate_structs, TypeRegistry},
-    Arena, MacroOptions, Result, ShaderKind, SourceLanguage,
+use crate::{
+    shader::{
+        arena::Arena,
+        shaders::{compile_shader, generate_shaders},
+        spirv_bytes_to_words,
+        structs::{generate_structs, TypeRegistry},
+        MacroOptions, Result, ShaderKind, SourceLanguage,
+    },
+    CodegenContext,
 };
-use crate::CodegenContext;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use std::{
@@ -70,7 +73,7 @@ fn normalize_str(path: PathBuf) -> String {
 
 #[test]
 fn spirv_reflect() {
-    let words = spirv_bytes_to_words(include_bytes!("../../tests/frag.spv")).unwrap();
+    let words = spirv_bytes_to_words(include_bytes!("../tests/frag.spv")).unwrap();
 
     let global_arena = Arena::new();
     let mut type_registry = TypeRegistry::new(&global_arena);
@@ -1066,10 +1069,8 @@ fn reflect_slangc_multiple_structured_buffers() {
 
 #[test]
 fn reflect_rust_gpu_vertex() {
-    let words = spirv_bytes_to_words(include_bytes!(
-        "../../tests/rust-gpu/test_shader-vertex.spv",
-    ))
-    .unwrap();
+    let words =
+        spirv_bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-vertex.spv")).unwrap();
 
     let global_arena = Arena::new();
     let mut type_registry = TypeRegistry::new(&global_arena);
@@ -1086,10 +1087,8 @@ fn reflect_rust_gpu_vertex() {
 
 #[test]
 fn reflect_rust_gpu_fragment() {
-    let words = spirv_bytes_to_words(include_bytes!(
-        "../../tests/rust-gpu/test_shader-fragment.spv",
-    ))
-    .unwrap();
+    let words =
+        spirv_bytes_to_words(include_bytes!("../tests/rust-gpu/test_shader-fragment.spv")).unwrap();
 
     let global_arena = Arena::new();
     let mut type_registry = TypeRegistry::new(&global_arena);
