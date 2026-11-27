@@ -3,8 +3,12 @@ use self::{
     reflected_ref::{ReflectedRef, Type, TypeRef, TypeScalar, TypeScalarRef},
 };
 use crate::{
-    arena::{slice_assume_init_mut, Arena},
-    bail, LinAlgType, MacroOptions, Result,
+    bail,
+    shader::{
+        arena::{slice_assume_init_mut, Arena},
+        LinAlgType, MacroOptions, Result,
+    },
+    CodegenContext,
 };
 use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
@@ -27,7 +31,7 @@ use std::{
     fmt::{Arguments, Write},
     num::NonZero,
 };
-use syn::{Error, Ident, LitStr};
+use syn::{Error, Ident, LitStr, Path};
 
 mod reflected_map;
 mod reflected_ref;
@@ -49,7 +53,8 @@ const OP_DECORATE_OPCODE: u16 = preamble::OP_DECORATE.opcode;
 const OP_MEMBER_DECORATE_OPCODE: u16 = preamble::OP_MEMBER_DECORATE.opcode;
 
 /// Translates all the structs that are contained in the SPIR-V module to Rust structs.
-pub(super) fn generate_structs<'global_arena>(
+pub(crate) fn generate_structs<'global_arena>(
+    ccx: &CodegenContext<'_>,
     options: &MacroOptions,
     lit: LitStr,
     shader_name: Option<&'global_arena str>,
@@ -59,6 +64,8 @@ pub(super) fn generate_structs<'global_arena>(
     if !options.generate_structs {
         return Ok(TokenStream::new());
     }
+
+    let vulkano_path = syn::parse_str::<Path>(ccx.vulkano_path).unwrap();
 
     let arena = Arena::new();
 
@@ -110,6 +117,7 @@ pub(super) fn generate_structs<'global_arena>(
         };
         let ser = Serializer {
             ty,
+            vulkano_path: &vulkano_path,
             options,
             matrix_stride: None,
             matrix_majorness: None,
@@ -117,7 +125,7 @@ pub(super) fn generate_structs<'global_arena>(
 
         structs.extend(quote! {
             #[allow(non_camel_case_types, non_snake_case)]
-            #[derive(::vulkano::buffer::BufferContents #(, #custom_derives )* )]
+            #[derive(::#vulkano_path::buffer::BufferContents #(, #custom_derives )* )]
             #[repr(C)]
             #ser
         })
@@ -126,7 +134,7 @@ pub(super) fn generate_structs<'global_arena>(
     Ok(structs)
 }
 
-pub(super) struct TypeRegistry<'global_arena> {
+pub(crate) struct TypeRegistry<'global_arena> {
     registered_structs: HashMap<&'global_arena str, RegisteredType<'global_arena>>,
     global_arena: &'global_arena Arena,
 }
@@ -836,15 +844,6 @@ impl TypeScalar<'_> {
     }
 }
 
-impl ToTokens for TypeScalar<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match *self {
-            Self::Int(ty) => ty.to_tokens(tokens),
-            Self::Float(ty) => ty.to_tokens(tokens),
-        }
-    }
-}
-
 #[derive(Clone, PartialEq, Eq)]
 #[repr(align(8))]
 struct TypeInt {
@@ -946,16 +945,6 @@ impl TypeFloat {
     }
 }
 
-impl ToTokens for TypeFloat {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        if self.width == FloatWidth::W16 {
-            tokens.extend(quote! { ::vulkano::half:: });
-        }
-
-        tokens.append(self.to_ident());
-    }
-}
-
 #[derive(Clone, PartialEq, Eq)]
 #[repr(align(8))]
 struct TypePointer;
@@ -978,12 +967,6 @@ impl TypePointer {
         _other_arena: &'other_arena Arena,
     ) -> &'other_arena TypePointer {
         &TypePointer
-    }
-}
-
-impl ToTokens for TypePointer {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.extend(quote! { ::vulkano::DeviceAddress });
     }
 }
 
@@ -1313,6 +1296,7 @@ struct Constant {
 /// Helper for serializing a type to tokens.
 struct Serializer<'a, T> {
     ty: &'a T,
+    vulkano_path: &'a Path,
     options: &'a MacroOptions,
     matrix_stride: Option<NonZero<u32>>,
     matrix_majorness: Option<MatrixMajorness>,
@@ -1322,6 +1306,7 @@ impl<'a, T> Serializer<'a, T> {
     fn project<U>(&self, ty: &'a U) -> Serializer<'a, U> {
         Serializer {
             ty,
+            vulkano_path: self.vulkano_path,
             options: self.options,
             matrix_stride: self.matrix_stride,
             matrix_majorness: self.matrix_majorness,
@@ -1333,19 +1318,47 @@ impl ToTokens for Serializer<'_, Type<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match *self.ty {
             Type::Int(ty) => ty.to_tokens(tokens),
-            Type::Float(ty) => ty.to_tokens(tokens),
-            Type::Pointer(ty) => ty.to_tokens(tokens),
+            Type::Float(ty) => self.project(ty).to_tokens(tokens),
+            Type::Pointer(ty) => self.project(ty).to_tokens(tokens),
             Type::Vector(ty) => self.project(ty).to_tokens(tokens),
             Type::Matrix(ty) => self.project(ty).to_tokens(tokens),
             Type::Array(ty) => self.project(ty).to_tokens(tokens),
             Type::Struct(ty) => {
                 if let Some(ident) = ty.to_bindless_id() {
+                    // FIXME: Use a reexport from `vulkano`.
                     tokens.extend(quote! { ::vulkano_taskgraph::descriptor_set::#ident });
                 } else {
                     tokens.append(Ident::new(ty.name, Span::call_site()));
                 }
             }
         }
+    }
+}
+
+impl ToTokens for Serializer<'_, TypeScalar<'_>> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match *self.ty {
+            TypeScalar::Int(ty) => ty.to_tokens(tokens),
+            TypeScalar::Float(ty) => self.project(ty).to_tokens(tokens),
+        }
+    }
+}
+
+impl ToTokens for Serializer<'_, TypeFloat> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        if self.ty.width == FloatWidth::W16 {
+            let vulkano_path = self.vulkano_path;
+            tokens.extend(quote! { ::#vulkano_path::half:: });
+        }
+
+        tokens.append(self.ty.to_ident());
+    }
+}
+
+impl ToTokens for Serializer<'_, TypePointer> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let vulkano_path = self.vulkano_path;
+        tokens.extend(quote! { ::#vulkano_path::DeviceAddress });
     }
 }
 
@@ -1388,6 +1401,8 @@ impl ToTokens for Serializer<'_, TypeMatrix<'_>> {
         // This can't panic because the stride must be at least the vector size.
         let padding = stride.checked_sub(vector_size).unwrap();
 
+        let component_type = self.project(component_type);
+
         match self.options.linalg_type {
             // cgmath only has column-major matrices. It also only has square matrices, and its 3x3
             // matrix is not padded right. Fall back to std for anything else.
@@ -1409,6 +1424,7 @@ impl ToTokens for Serializer<'_, TypeMatrix<'_>> {
             _ => {
                 let vector = quote! { [#component_type; #component_count] };
                 let vector = Padded(&vector, padding);
+                let vector = self.project(&vector);
                 tokens.extend(quote! { [#vector; #vector_count] });
             }
         }
@@ -1437,6 +1453,7 @@ impl ToTokens for Serializer<'_, TypeArray<'_>> {
 
         let element_type = self.project(&element_type);
         let element_type = Padded(&element_type, padding);
+        let element_type = self.project(&element_type);
 
         if let Some(length) = self.ty.length.map(NonZero::get) {
             tokens.extend(quote! { [#element_type; #length] });
@@ -1497,13 +1514,6 @@ impl ToTokens for Serializer<'_, TypeStruct<'_>> {
                 );
             }
 
-            let ser = Serializer {
-                ty: &member_ty,
-                options: self.options,
-                matrix_stride: member.matrix_stride,
-                matrix_majorness: member.matrix_majorness,
-            };
-
             // Pad the member such that the next member is at the right offset, if required.
             //
             // NOTE(Marc): The next offset must be aligned to the scalar alignment of the previous
@@ -1536,21 +1546,30 @@ impl ToTokens for Serializer<'_, TypeStruct<'_>> {
             };
 
             let ident = Ident::new(member.name, Span::call_site());
-            let ser = Padded(&ser, padding);
-            members_code.extend(quote! { pub #ident: #ser, });
+            let member_ty = Serializer {
+                ty: &member_ty,
+                vulkano_path: self.vulkano_path,
+                options: self.options,
+                matrix_stride: member.matrix_stride,
+                matrix_majorness: member.matrix_majorness,
+            };
+            let padded = Padded(&member_ty, padding);
+            let member_ty = member_ty.project(&padded);
+            members_code.extend(quote! { pub #ident: #member_ty, });
         }
 
         // Add the last field, which is excluded in the above loop (both if the number of members
         // is 1 and >= 2).
         if let Some(member) = self.ty.members.last() {
             let ident = Ident::new(member.name, Span::call_site());
-            let ser = Serializer {
+            let member_ty = Serializer {
                 ty: &member.ty(),
+                vulkano_path: self.vulkano_path,
                 options: self.options,
                 matrix_stride: member.matrix_stride,
                 matrix_majorness: member.matrix_majorness,
             };
-            members_code.extend(quote! { pub #ident: #ser, });
+            members_code.extend(quote! { pub #ident: #member_ty, });
         }
 
         tokens.extend(quote! {
@@ -1564,15 +1583,16 @@ impl ToTokens for Serializer<'_, TypeStruct<'_>> {
 /// Helper for wrapping tokens in `Padded`. Doesn't wrap if the padding is `0`.
 struct Padded<'a, T>(&'a T, u32);
 
-impl<T: ToTokens> ToTokens for Padded<'_, T> {
+impl<T: ToTokens> ToTokens for Serializer<'_, Padded<'_, T>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ty = self.0;
-        let padding = self.1 as usize;
+        let ty = self.ty.0;
+        let padding = self.ty.1 as usize;
 
         if padding == 0 {
             ty.to_tokens(tokens);
         } else {
-            tokens.extend(quote! { ::vulkano::padded::Padded<#ty, #padding> });
+            let vulkano_path = self.vulkano_path;
+            tokens.extend(quote! { ::#vulkano_path::padded::Padded<#ty, #padding> });
         }
     }
 }

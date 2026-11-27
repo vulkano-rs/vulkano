@@ -1,12 +1,17 @@
-use crate::bail;
+use crate::{bail, CodegenContext};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
-    parse_quote, spanned::Spanned, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
+    parse_quote, spanned::Spanned, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Path,
     Result, Type, TypeArray, TypeSlice, WherePredicate,
 };
 
-pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Result<TokenStream> {
+pub(super) fn derive_buffer_contents(
+    ccx: &CodegenContext<'_>,
+    input: TokenStream,
+) -> Result<TokenStream> {
+    let vulkano_path = syn::parse_str::<Path>(ccx.vulkano_path).unwrap();
+    let mut ast = syn::parse2::<DeriveInput>(input)?;
     let struct_ident = &ast.ident;
 
     let is_repr_rust = ast
@@ -51,7 +56,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             .generics
             .type_params()
             .map(|ty| {
-                parse_quote! { #ty: ::#crate_ident::buffer::BufferContents }
+                parse_quote! { #ty: ::#vulkano_path::buffer::BufferContents }
             })
             .collect::<Vec<WherePredicate>>();
 
@@ -89,7 +94,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             bound_types.push(find_innermost_element_type(elem));
 
             layout = quote! {
-                ::#crate_ident::buffer::BufferContentsLayout::from_sized(
+                ::#vulkano_path::buffer::BufferContentsLayout::from_sized(
                     ::std::alloc::Layout::new::<Self>()
                 )
             };
@@ -104,9 +109,9 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             bound_types.push(find_innermost_element_type(elem));
 
             layout = quote! {
-                ::#crate_ident::buffer::BufferContentsLayout::from_field_layouts(
+                ::#vulkano_path::buffer::BufferContentsLayout::from_field_layouts(
                     &[ #( #field_layouts ),* ],
-                    ::#crate_ident::buffer::BufferContentsLayout::from_slice(
+                    ::#vulkano_path::buffer::BufferContentsLayout::from_slice(
                         ::std::alloc::Layout::new::<#elem>(),
                     ),
                 )
@@ -115,7 +120,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             ptr_from_slice = quote! {
                 let data = <*mut [u8]>::cast::<#elem>(slice.as_ptr());
 
-                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                let head_size = <Self as ::#vulkano_path::buffer::BufferContents>::LAYOUT
                     .head_size() as usize;
                 let element_size = ::std::mem::size_of::<#elem>();
 
@@ -133,18 +138,18 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             bound_types.push(ty);
 
             layout = quote! {
-                ::#crate_ident::buffer::BufferContentsLayout::from_field_layouts(
+                ::#vulkano_path::buffer::BufferContentsLayout::from_field_layouts(
                     &[ #( #field_layouts ),* ],
-                    <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT,
+                    <#last_field_type as ::#vulkano_path::buffer::BufferContents>::LAYOUT,
                 )
             };
 
             ptr_from_slice = quote! {
                 let data = <*mut [u8]>::cast::<u8>(slice.as_ptr());
 
-                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                let head_size = <Self as ::#vulkano_path::buffer::BufferContents>::LAYOUT
                     .head_size() as usize;
-                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                let element_size = <Self as ::#vulkano_path::buffer::BufferContents>::LAYOUT
                     .element_size()
                     .unwrap_or(1) as usize;
 
@@ -152,7 +157,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
                 let tail_size = slice.len() - head_size;
                 ::std::debug_assert!(tail_size % element_size == 0);
 
-                <#last_field_type as ::#crate_ident::buffer::BufferContents>::ptr_from_slice(
+                <#last_field_type as ::#vulkano_path::buffer::BufferContents>::ptr_from_slice(
                     ::std::ptr::NonNull::new_unchecked(::std::ptr::slice_from_raw_parts_mut(
                         data.add(head_size),
                         tail_size,
@@ -168,16 +173,16 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             // HACK: This works around Rust issue #48214, which makes it impossible to put these
             // bounds in the where clause of the trait implementation where they actually belong
             // until that is resolved.
-            let _: ::#crate_ident::buffer::AssertParamIsBufferContents<#ty>;
+            let _: ::#vulkano_path::buffer::AssertParamIsBufferContents<#ty>;
         }
     });
 
     Ok(quote! {
         #[allow(unsafe_code)]
-        unsafe impl #impl_generics ::#crate_ident::buffer::BufferContents
+        unsafe impl #impl_generics ::#vulkano_path::buffer::BufferContents
             for #struct_ident #type_generics #where_clause
         {
-            const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
+            const LAYOUT: ::#vulkano_path::buffer::BufferContentsLayout = #layout;
 
             #[inline(always)]
             unsafe fn ptr_from_slice(slice: ::std::ptr::NonNull<[u8]>) -> *mut Self {
@@ -203,28 +208,27 @@ fn find_innermost_element_type(mut field_type: &Type) -> &Type {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proc_macro2::Span;
 
     #[test]
     fn repr() {
-        let crate_ident = Ident::new("vulkano", Span::call_site());
+        let ccx = CodegenContext::default();
 
         let default_repr = parse_quote! {
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(&crate_ident, default_repr).is_err());
+        assert!(derive_buffer_contents(&ccx, default_repr).is_err());
 
         let irellevant_reprs = parse_quote! {
             #[repr(packed(2), align(16))]
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(&crate_ident, irellevant_reprs).is_err());
+        assert!(derive_buffer_contents(&ccx, irellevant_reprs).is_err());
 
         let transparent_repr = parse_quote! {
             #[repr(transparent)]
             struct Test([u8]);
         };
-        assert!(derive_buffer_contents(&crate_ident, transparent_repr).is_ok());
+        assert!(derive_buffer_contents(&ccx, transparent_repr).is_ok());
 
         let multiple_reprs = parse_quote! {
             #[repr(align(16))]
@@ -232,28 +236,28 @@ mod tests {
             #[repr(packed)]
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(&crate_ident, multiple_reprs).is_ok());
+        assert!(derive_buffer_contents(&ccx, multiple_reprs).is_ok());
     }
 
     #[test]
     fn zero_sized() {
-        let crate_ident = Ident::new("vulkano", Span::call_site());
+        let ccx = CodegenContext::default();
 
         let unit = parse_quote! {
             struct Test;
         };
-        assert!(derive_buffer_contents(&crate_ident, unit).is_err());
+        assert!(derive_buffer_contents(&ccx, unit).is_err());
     }
 
     #[test]
     fn unsupported_datatype() {
-        let crate_ident = Ident::new("vulkano", Span::call_site());
+        let ccx = CodegenContext::default();
 
         let enum_ = parse_quote! {
             #[repr(C)]
             enum Test { A, B, C }
         };
-        assert!(derive_buffer_contents(&crate_ident, enum_).is_err());
+        assert!(derive_buffer_contents(&ccx, enum_).is_err());
 
         let union = parse_quote! {
             #[repr(C)]
@@ -262,6 +266,6 @@ mod tests {
                 b: f32,
             }
         };
-        assert!(derive_buffer_contents(&crate_ident, union).is_err());
+        assert!(derive_buffer_contents(&ccx, union).is_err());
     }
 }

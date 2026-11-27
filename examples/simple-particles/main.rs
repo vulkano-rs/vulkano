@@ -367,7 +367,7 @@ impl ApplicationHandler for App {
         // The vertex shader determines color and is run once per particle. The vertices will be
         // updated by the compute shader each frame.
         mod vs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "vertex",
                 src: r"
                     #version 450
@@ -398,7 +398,7 @@ impl ApplicationHandler for App {
         // The fragment shader will only need to apply the color forwarded by the vertex shader,
         // because the color of a particle should be identical over all pixels.
         mod fs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "fragment",
                 src: r"
                     #version 450
@@ -618,7 +618,7 @@ struct MyVertex {
 
 // Compute shader for updating the position and velocity of each particle every frame.
 mod cs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         src: r"
             #version 450

@@ -267,7 +267,7 @@ impl Task for SceneTask {
 }
 
 mod raygen {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "raygen",
         path: "rgen.glsl",
         vulkan_version: "1.2",
@@ -275,7 +275,7 @@ mod raygen {
 }
 
 mod closest_hit {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "closesthit",
         path: "rchit.glsl",
         vulkan_version: "1.2",
@@ -283,7 +283,7 @@ mod closest_hit {
 }
 
 mod miss {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "miss",
         path: "rmiss.glsl",
         vulkan_version: "1.2",

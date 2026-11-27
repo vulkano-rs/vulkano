@@ -141,4 +141,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - name: Verify checksums
-        run: nix develop .#CI -c sh -c 'cd vulkano-shaders && sha256sum -c include-sha256sums include-sha256sums.sha256'
+        run: nix develop .#CI -c sh -c 'cd vulkano-codegen && sha256sum -c include-sha256sums include-sha256sums.sha256'

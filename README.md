@@ -7,12 +7,12 @@
 [![Website/guide](https://img.shields.io/badge/-website/guide-%23555.svg)](https://vulkano.rs/)
 <br/>
 [![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
-[![vulkano-shaders crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=shaders)](https://crates.io/crates/vulkano-shaders)
+[![vulkano-macros crates.io](https://img.shields.io/crates/v/vulkano-macros?label=macros)](https://crates.io/crates/vulkano-macros)
 [![vulkano-taskgraph crates.io](https://img.shields.io/crates/v/vulkano-taskgraph?label=taskgraph)](https://crates.io/crates/vulkano-taskgraph)
 [![vulkano-util crates.io](https://img.shields.io/crates/v/vulkano-util?label=util)](https://crates.io/crates/vulkano-util)
 <br/>
 [![vulkano docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
-[![vulkano-shaders docs](https://img.shields.io/docsrs/vulkano-shaders?label=shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![vulkano-macros docs](https://img.shields.io/docsrs/vulkano-macros?label=macros%20docs)](https://docs.rs/vulkano-macros)
 [![vulkano-taskgraph docs](https://img.shields.io/docsrs/vulkano-taskgraph?label=taskgraph%20docs)](https://docs.rs/vulkano-taskgraph)
 [![vulkano-util docs](https://img.shields.io/docsrs/vulkano-util?label=util%20docs)](https://docs.rs/vulkano-util)
 
@@ -99,11 +99,11 @@ of unreleased and breaking changes in `master`
 This repository contains four libraries:
 
 - `vulkano` is the main one.
-- `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-macros` provides the `shader!` macro for compiling shaders as well as other macros.
 - `vulkano-taskgraph` allows building a dependency graph of tasks, which are automatically
   synchronized and are then executed on the Vulkan device.
-- `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
-  a window to render to.
+- `vulkano-util` provides a variety of utility functions to streamline certain common operations
+  such as device and swapchain creation.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
 driver is up to date before doing so.

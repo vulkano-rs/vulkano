@@ -759,10 +759,9 @@ impl TriangleTask {
         // shader using a logical device. The module also includes structs compatible with the ones
         // defined in the shader source, such as uniforms and push constants for example.
         //
-        // A more detailed overview of what the `shader!` macro generates can be found in the
-        // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
+        // A more detailed overview of what the `shader!` macro generates can be found in its docs.
         mod vs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "vertex",
                 src: r"
                     #version 450
@@ -777,7 +776,7 @@ impl TriangleTask {
         }
 
         mod fs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "fragment",
                 src: r"
                     #version 450

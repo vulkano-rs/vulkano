@@ -281,7 +281,7 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         mod vs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "vertex",
                 src: r"
                     #version 450
@@ -302,7 +302,7 @@ impl ApplicationHandler for App {
         }
 
         mod fs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "fragment",
                 src: r"
                     #version 450

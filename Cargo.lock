@@ -111,7 +111,6 @@ dependencies = [
  "glam",
  "rand",
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -171,7 +170,6 @@ name = "basic-compute-shader"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
 ]
 
@@ -204,7 +202,6 @@ name = "bloom"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -425,7 +422,6 @@ version = "0.0.0"
 dependencies = [
  "glam",
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -472,7 +468,6 @@ name = "dynamic-buffers"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -481,7 +476,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -645,7 +639,6 @@ dependencies = [
  "glium",
  "glutin-winit",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -785,7 +778,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -795,7 +787,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -805,7 +796,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -824,7 +814,6 @@ name = "indirect"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -833,7 +822,6 @@ name = "instancing"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -844,7 +832,6 @@ dependencies = [
  "glam",
  "rand",
  "vulkano",
- "vulkano-shaders",
  "vulkano-util",
  "winit",
 ]
@@ -1024,7 +1011,6 @@ name = "mesh-shader"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1050,7 +1036,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1058,7 +1043,6 @@ name = "multi-window"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -1070,7 +1054,6 @@ dependencies = [
  "glam",
  "rand",
  "vulkano",
- "vulkano-shaders",
  "vulkano-util",
  "winit",
 ]
@@ -1081,7 +1064,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1430,7 +1412,6 @@ name = "occlusion-query"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1440,7 +1421,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1529,7 +1509,6 @@ name = "pipeline-caching"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1632,7 +1611,6 @@ name = "push-constants"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1641,7 +1619,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1730,7 +1707,6 @@ dependencies = [
  "ash",
  "glam",
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -1805,7 +1781,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1909,7 +1884,6 @@ name = "self-copy-buffer"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1966,7 +1940,6 @@ name = "shader-include"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -1976,7 +1949,6 @@ dependencies = [
  "ron",
  "serde",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -1985,7 +1957,6 @@ name = "shader-types-sharing"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -2021,7 +1992,6 @@ name = "simple-particles"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -2082,7 +2052,6 @@ name = "specialization-constants"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
 ]
 
 [[package]]
@@ -2108,7 +2077,6 @@ version = "0.0.0"
 dependencies = [
  "glam",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -2117,7 +2085,6 @@ name = "tessellation"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -2127,7 +2094,6 @@ version = "0.0.0"
 dependencies = [
  "png",
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -2256,7 +2222,6 @@ name = "triangle"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "vulkano-taskgraph",
  "winit",
 ]
@@ -2266,7 +2231,6 @@ name = "triangle-util"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "vulkano-util",
  "winit",
 ]
@@ -2276,7 +2240,6 @@ name = "triangle-v1_3"
 version = "0.0.0"
 dependencies = [
  "vulkano",
- "vulkano-shaders",
  "winit",
 ]
 
@@ -2347,25 +2310,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkano-codegen"
+version = "0.35.0"
+dependencies = [
+ "foldhash",
+ "heck",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "rspirv2",
+ "syn",
+]
+
+[[package]]
 name = "vulkano-macros"
 version = "0.35.0"
 dependencies = [
  "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn",
+ "vulkano-codegen",
 ]
 
 [[package]]
 name = "vulkano-shaders"
 version = "0.35.0"
 dependencies = [
- "foldhash",
- "heck",
- "proc-macro2",
- "quote",
- "rspirv2",
- "syn",
+ "vulkano-codegen",
 ]
 
 [[package]]

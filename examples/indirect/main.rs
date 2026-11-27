@@ -173,7 +173,7 @@ impl App {
         // where we output the vertices, the second is the `IndirectDrawArgs` struct we passed the
         // `draw_indirect` so we can set the number to vertices to draw.
         mod cs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "compute",
                 src: r"
                     #version 450
@@ -302,7 +302,7 @@ impl ApplicationHandler for App {
         let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
         mod vs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "vertex",
                 src: r"
                     #version 450
@@ -318,7 +318,7 @@ impl ApplicationHandler for App {
         }
 
         mod fs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                 ty: "fragment",
                 src: r"
                     #version 450

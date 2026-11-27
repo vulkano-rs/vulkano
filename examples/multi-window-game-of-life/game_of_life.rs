@@ -222,7 +222,7 @@ impl GameOfLifeComputePipeline {
 }
 
 mod compute_life_cs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         src: r"
             #version 450

@@ -20,7 +20,8 @@ rustdoc-args = ["--extend-css", "assets/rustdoc.css"]
 proc-macro = true
 
 [dependencies]
-syn = { workspace = true }
-quote = { workspace = true }
-proc-macro2 = { workspace = true }
 proc-macro-crate = { workspace = true }
+vulkano-codegen = { workspace = true }
+
+[lints]
+workspace = true

@@ -611,7 +611,7 @@ fn window_size_dependent_setup(
 }
 
 mod vs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "vertex",
         src: r"
             #version 450
@@ -628,7 +628,7 @@ mod vs {
 }
 
 mod fs {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "fragment",
         src: r"
             #version 450

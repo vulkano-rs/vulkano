@@ -1,8 +1,12 @@
 use crate::{
-    shaders::{compile_shader, generate_shaders},
-    spirv_bytes_to_words,
-    structs::{generate_structs, TypeRegistry},
-    Arena, MacroOptions, Result, ShaderKind, SourceLanguage,
+    shader::{
+        arena::Arena,
+        shaders::{compile_shader, generate_shaders},
+        spirv_bytes_to_words,
+        structs::{generate_structs, TypeRegistry},
+        MacroOptions, Result, ShaderKind, SourceLanguage,
+    },
+    CodegenContext,
 };
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
@@ -1107,8 +1111,9 @@ fn reflect<'global_arena>(
     input_paths: Vec<String>,
     type_registry: &mut TypeRegistry<'global_arena>,
 ) -> Result<(TokenStream, TokenStream)> {
-    let shaders_code = generate_shaders(name, words, input_paths)?;
-    let structs_code = generate_structs(options, source, name, words, type_registry)?;
+    let ccx = CodegenContext::default();
+    let shaders_code = generate_shaders(&ccx, name, words, input_paths)?;
+    let structs_code = generate_structs(&ccx, options, source, name, words, type_registry)?;
 
     Ok((shaders_code, structs_code))
 }

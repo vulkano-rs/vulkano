@@ -25,7 +25,7 @@ use vulkano_taskgraph::{
 
 // The compute shader we are going to run.
 mod compute_shader {
-    vulkano_shaders::shader! {
+    vulkano::shader! {
         ty: "compute",
         src: r"
             #version 450

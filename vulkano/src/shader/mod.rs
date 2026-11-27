@@ -5,8 +5,8 @@
 //! GLSL-to-SPIR-V compiler does not support multiple entry points.
 //!
 //! The vulkano library can parse and introspect SPIR-V code, but it does not fully validate the
-//! code. You are encouraged to use the `vulkano-shaders` crate that will generate Rust code that
-//! wraps around vulkano's shaders API.
+//! code. You are encouraged to use the `vulkano-macros` crate's `shader!` macro that will generate
+//! Rust code that wraps around vulkano's shaders API.
 //!
 //! # Shader interface
 //!

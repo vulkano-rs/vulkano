@@ -1,5 +1,5 @@
 use super::{MatrixMajorness, ReflectedRef};
-use crate::Arena;
+use crate::shader::Arena;
 use rspirv2::{
     core::preamble::Decoration,
     operand::{IdRef, IdResult},

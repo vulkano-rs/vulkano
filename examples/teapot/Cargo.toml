@@ -14,5 +14,4 @@ doc = false
 [dependencies]
 glam = { workspace = true }
 vulkano = { workspace = true, default-features = true }
-vulkano-shaders = { workspace = true }
 winit = { workspace = true, default-features = true }

@@ -85,7 +85,7 @@ fn main() {
 
     let pipeline = {
         mod cs {
-            vulkano_shaders::shader! {
+            vulkano::shader! {
                  ty: "compute",
                  // We declare what directories to search for when using the `#include <...>`
                  // syntax. Specified directories have descending priorities based on their order.

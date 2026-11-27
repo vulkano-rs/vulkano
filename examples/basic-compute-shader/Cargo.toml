@@ -13,5 +13,4 @@ doc = false
 
 [dependencies]
 vulkano = { workspace = true, default-features = true }
-vulkano-shaders = { workspace = true }
 vulkano-taskgraph = { workspace = true }
