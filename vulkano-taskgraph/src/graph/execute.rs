@@ -851,6 +851,11 @@ unsafe fn create_framebuffers(
                 ImageView::try_new(
                     image,
                     &ImageViewCreateInfo {
+                        view_type: if attachment.layer_count == 1 {
+                            vulkano::image::view::ImageViewType::Dim2d
+                        } else {
+                            vulkano::image::view::ImageViewType::Dim2dArray
+                        },
                         format: attachment.format,
                         component_mapping: attachment.component_mapping,
                         subresource_range: ImageSubresourceRange {
@@ -858,8 +863,7 @@ unsafe fn create_framebuffers(
                             base_mip_level: attachment.mip_level,
                             level_count: Some(1),
                             base_array_layer: attachment.base_array_layer,
-                            // FIXME:
-                            layer_count: Some(1),
+                            layer_count: Some(attachment.layer_count),
                         },
                         ..Default::default()
                     },

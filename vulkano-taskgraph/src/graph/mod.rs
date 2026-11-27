@@ -77,7 +77,7 @@ pub(crate) struct Resources {
     physical_map: HashMap<Id, Id>,
     host_reads: Vec<Id<Buffer>>,
     host_writes: Vec<Id<Buffer>>,
-    framebuffers: SlotMap<Id<Framebuffer>, ()>,
+    framebuffers: SlotMap<Id<Framebuffer>, FramebufferInfo<'static>>,
 }
 
 struct ResourceInfo {
@@ -128,6 +128,7 @@ impl<W: ?Sized> TaskGraph<W> {
             id,
             accesses: &mut task_node.accesses,
             attachments: &mut task_node.attachments,
+            view_mask: &mut task_node.view_mask,
             resources: &mut self.resources,
         }
     }
@@ -237,8 +238,8 @@ impl<W: ?Sized> TaskGraph<W> {
 
     /// Adds a [virtual framebuffer] to the task graph.
     #[must_use]
-    pub fn add_framebuffer(&mut self) -> Id<Framebuffer> {
-        self.resources.add_framebuffer()
+    pub fn add_framebuffer(&mut self, framebuffer_info: &FramebufferInfo<'_>) -> Id<Framebuffer> {
+        self.resources.add_framebuffer(framebuffer_info)
     }
 }
 
@@ -490,10 +491,16 @@ impl Resources {
         }
     }
 
-    fn add_framebuffer(&mut self) -> Id<Framebuffer> {
+    fn add_framebuffer(&mut self, framebuffer_info: &FramebufferInfo<'_>) -> Id<Framebuffer> {
         let tag = Framebuffer::TAG | Id::VIRTUAL_BIT;
 
-        self.framebuffers.insert_with_tag((), tag)
+        self.framebuffers.insert_with_tag(
+            FramebufferInfo {
+                layer_count: framebuffer_info.layer_count,
+                ..Default::default()
+            },
+            tag,
+        )
     }
 
     fn reserved_len(&self) -> u32 {
@@ -537,7 +544,7 @@ impl Resources {
         host_accesses.contains(&id)
     }
 
-    fn framebuffer_mut(&mut self, id: Id<Framebuffer>) -> Option<&mut ()> {
+    fn framebuffer_mut(&mut self, id: Id<Framebuffer>) -> Option<&mut FramebufferInfo<'static>> {
         self.framebuffers.get_mut(id)
     }
 }
@@ -577,6 +584,7 @@ pub struct TaskNode<W: ?Sized> {
     dependency_level_index: u32,
     subpass: Option<Subpass>,
     task: Box<dyn Task<World = W>>,
+    view_mask: u32,
 }
 
 pub(crate) struct ResourceAccesses {
@@ -608,6 +616,7 @@ impl<W: ?Sized> TaskNode<W> {
             dependency_level_index: 0,
             subpass: None,
             task: Box::new(task),
+            view_mask: 0,
         }
     }
 
@@ -748,6 +757,7 @@ pub struct TaskNodeBuilder<'a> {
     id: NodeId,
     accesses: &'a mut ResourceAccesses,
     attachments: &'a mut Option<Attachments>,
+    view_mask: &'a mut u32,
     resources: &'a mut Resources,
 }
 
@@ -1122,10 +1132,37 @@ impl TaskNodeBuilder<'_> {
         self.image_access(id, access_types, layout_type)
     }
 
+    /// Sets the mask for which multiview views should be rendered by this node.
+    ///
+    /// See [`SubpassDescription.view_mask`](vulkano::render_pass::SubpassDescription#structfield.
+    /// view_mask) for more info.
+    pub fn view_mask(&mut self, view_mask: u32) -> &mut Self {
+        *self.view_mask = view_mask;
+        self
+    }
+
     /// Finishes building the task node and returns the ID of the built node.
     #[inline]
     pub fn build(&mut self) -> NodeId {
         self.id
+    }
+}
+
+/// Parameters describing a virtual framebuffer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FramebufferInfo<'a> {
+    /// The number of layers in attachments associated with this framebuffer.
+    pub layer_count: u32,
+
+    pub _ne: crate::NonExhaustive<'a>,
+}
+
+impl Default for FramebufferInfo<'_> {
+    fn default() -> Self {
+        Self {
+            layer_count: 1,
+            _ne: crate::NE,
+        }
     }
 }
 
@@ -1330,6 +1367,7 @@ struct AttachmentState {
     component_mapping: ComponentMapping,
     mip_level: u32,
     base_array_layer: u32,
+    layer_count: u32,
 }
 
 impl<W: ?Sized> ExecutableTaskGraph<W> {

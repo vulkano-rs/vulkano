@@ -32,7 +32,9 @@ use vulkano::{
 };
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer,
-    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    graph::{
+        AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, FramebufferInfo, TaskGraph,
+    },
     resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
     resource_map, ClearValues, Id, QueueFamilyType, Task, TaskContext,
 };
@@ -455,7 +457,7 @@ impl ApplicationHandler for App {
         // to combine different nodes into the same render pass, or even the same subpass.
         // Therefore, you should use the same virtual framebuffer across nodes that share the same
         // framebuffer dimensions.
-        let virtual_framebuffer_id = task_graph.add_framebuffer();
+        let virtual_framebuffer_id = task_graph.add_framebuffer(&FramebufferInfo::default());
 
         // Next, we instantiate our `TriangleTask`.
         //

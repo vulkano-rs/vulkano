@@ -34,7 +34,9 @@ use vulkano::{
 };
 use vulkano_taskgraph::{
     descriptor_set::{BindlessContext, BindlessContextCreateInfo, LocalDescriptorSetCreateInfo},
-    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    graph::{
+        AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, FramebufferInfo, TaskGraph,
+    },
     resource::{AccessTypes, Flight, ImageLayoutType, Resources, ResourcesCreateInfo},
     resource_map, Id, QueueFamilyType,
 };
@@ -273,7 +275,7 @@ impl ApplicationHandler for App {
             usage: ImageUsage::TRANSIENT_ATTACHMENT,
             ..Default::default()
         });
-        let virtual_framebuffer_id = task_graph.add_framebuffer();
+        let virtual_framebuffer_id = task_graph.add_framebuffer(&FramebufferInfo::default());
 
         let scene_node_id = task_graph
             .create_task_node(
