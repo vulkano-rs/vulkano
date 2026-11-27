@@ -25,7 +25,9 @@ use vulkano::{
 };
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer,
-    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    graph::{
+        AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, FramebufferInfo, TaskGraph,
+    },
     resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType, Task, TaskContext, TaskResult,
 };
@@ -267,7 +269,7 @@ impl App {
             image_format: swapchain_format,
             ..Default::default()
         });
-        let virtual_framebuffer_id = task_graph.add_framebuffer();
+        let virtual_framebuffer_id = task_graph.add_framebuffer(&FramebufferInfo::default());
 
         let scene_node_id = task_graph
             .create_task_node(

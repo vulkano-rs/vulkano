@@ -60,7 +60,9 @@ use vulkano_taskgraph::{
         BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
     },
     descriptor_set::{BindlessContext, SampledImageId, SamplerId},
-    graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
+    graph::{
+        AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, FramebufferInfo, TaskGraph,
+    },
     resource::{
         AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources, ResourcesCreateInfo,
     },
@@ -504,7 +506,7 @@ impl ApplicationHandler for App {
             },
             ..Default::default()
         });
-        let virtual_framebuffer_id = task_graph.add_framebuffer();
+        let virtual_framebuffer_id = task_graph.add_framebuffer(&FramebufferInfo::default());
 
         let render_node_id = task_graph
             .create_task_node(

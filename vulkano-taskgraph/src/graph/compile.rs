@@ -1422,6 +1422,11 @@ fn create_render_pass(
     .map_err(Validated::unwrap)
     .map_err(CompileErrorKind::VulkanError)?;
 
+    let framebuffer_info = unsafe {
+        resources
+            .framebuffers
+            .get_unchecked(render_pass_state.framebuffer_id)
+    };
     let attachments = render_pass_state
         .attachments
         .iter()
@@ -1432,6 +1437,7 @@ fn create_render_pass(
                 component_mapping: attachment_state.component_mapping,
                 mip_level: attachment_state.mip_level,
                 base_array_layer: attachment_state.base_array_layer,
+                layer_count: framebuffer_info.layer_count,
             };
 
             (id, attachment)
@@ -1820,7 +1826,7 @@ impl<W: ?Sized> Error for CompileError<W> {
 mod tests {
     use super::*;
     use crate::{
-        graph::AttachmentInfo,
+        graph::{AttachmentInfo, FramebufferInfo},
         resource::{AccessTypes, ImageLayoutType},
         tests::test_queues,
     };
@@ -2574,7 +2580,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .framebuffer(framebuffer)
@@ -2642,7 +2648,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .framebuffer(framebuffer)
@@ -2736,7 +2742,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .framebuffer(framebuffer)
@@ -3095,7 +3101,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let compute_node = graph
             .create_task_node("", QueueFamilyType::Compute, PhantomData)
             .buffer_access(buffer1, AccessTypes::COMPUTE_SHADER_STORAGE_WRITE)
@@ -3307,7 +3313,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let compute_node = graph
             .create_task_node("", QueueFamilyType::Compute, PhantomData)
             .buffer_access(buffer1, AccessTypes::COMPUTE_SHADER_STORAGE_WRITE)
@@ -3777,7 +3783,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .framebuffer(framebuffer)
@@ -3912,7 +3918,7 @@ mod tests {
             format: Format::D16_UNORM,
             ..Default::default()
         });
-        let framebuffer = graph.add_framebuffer();
+        let framebuffer = graph.add_framebuffer(&FramebufferInfo::default());
         let node1 = graph
             .create_task_node("", QueueFamilyType::Graphics, PhantomData)
             .framebuffer(framebuffer)
